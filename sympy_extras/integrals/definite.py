@@ -192,11 +192,11 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     principal_value : bool
         Cauchy's principal value when the integrand has a singularity
         inside the range at which the integral diverges
-        (:func:`~sympy_extras.integrals.antiderivative.principal_value_integral`).
+        (:func:`~sympy_extras.integrals.antiderivative_sympy.principal_value_integral`).
     finite_part : bool
         Hadamard's finite part of a divergent integral, the divergent
         terms of the excision at each singularity dropped
-        (:func:`~sympy_extras.integrals.antiderivative.finite_part_integral`).
+        (:func:`~sympy_extras.integrals.antiderivative_sympy.finite_part_integral`).
     numeric : bool
         When every symbolic method fails and the integral has no
         parameters, a ``Float`` with ``digits`` correct digits, proved by
@@ -889,10 +889,10 @@ class _Integrator:
             # came out oo since the divergences are reported)
             regular: Optional[ConditionalValue]
             if self.finite_part:
-                from .antiderivative import finite_part_integral
+                from .antiderivative_sympy import finite_part_integral
                 regular = self._finish(finite_part_integral(f, x, a, b, self.assumptions))
             else:
-                from .antiderivative import principal_value_integral
+                from .antiderivative_sympy import principal_value_integral
                 regular = self._finish(principal_value_integral(f, x, a, b, self.assumptions))
             if regular is not None:
                 return regular
@@ -1373,7 +1373,7 @@ class _Integrator:
         case has a finite value (the divergent cases, and those no method
         answers, are for the other branch of the ``Piecewise`` of the
         caller)."""
-        from .antiderivative import antiderivative
+        from .antiderivative_sympy import antiderivative
         if len(points) > _MAX_CASE_POINTS:
             return None
         alternatives = [_positions(p, a, b, singular) for p, singular in points]
@@ -1469,7 +1469,7 @@ class _Integrator:
         ``integrate``, checked the same way; then the antiderivative with
         limits on each piece between the points inside; then every method
         on the whole range."""
-        from .antiderivative import _real_logarithms, one_sided_limit
+        from .antiderivative_sympy import one_sided_limit, real_logarithms
         if inside and f.is_rational_function(x):
             # a pole of a rational integrand inside the range: divergent,
             # decided at once (the bug: 1/((x - a)*(x - b)) over (0, 1)
@@ -1484,7 +1484,7 @@ class _Integrator:
         lower, upper = (b, a) if reversed_ else (a, b)
         ordered = integrator._place(list(inside), lower, upper)
         if ordered is not None and ordered[0] and known is not None:
-            real = _real_logarithms(known, x)
+            real = real_logarithms(known, x)
             for s in ordered[0]:
                 for side in ('-', '+'):
                     if one_sided_limit(real, x, s, side, assumptions) in (oo, -oo):
@@ -1797,7 +1797,7 @@ class _Integrator:
         with a ``log(x)`` factor by parts): ``u**3*exp(-u)*log(u)`` over
         ``(sqrt(x), oo)`` in two seconds, where the mapped range spent
         seven on the shifted form first."""
-        from .antiderivative import quick_shape, by_parts_shape
+        from .antiderivative_sympy import quick_shape, by_parts_shape
         if a.has(x) or b.has(x) or not quick_shape(f, x):
             return None
         if (a in (-oo, oo) or b in (-oo, oo)) and not by_parts_shape(f, x):
@@ -1811,10 +1811,10 @@ class _Integrator:
     def _antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
                         late: bool = False, known: Optional[Expr] = None) -> Optional[ConditionalValue]:
         """An antiderivative evaluated by one-sided limits at the
-        endpoints and at its discontinuities (:mod:`.antiderivative`):
+        endpoints and at its discontinuities (:mod:`.antiderivative_sympy`):
         by the exact methods first, by the heuristics ``late``, or the one
         ``known`` already."""
-        from .antiderivative import antiderivative_integral
+        from .antiderivative_sympy import antiderivative_integral
         if a.has(x) or b.has(x):
             return None
         found = antiderivative_integral(f, x, a, b, self.assumptions, late, known)

@@ -5,13 +5,8 @@ integrators which are still written on SymPy (:mod:`.definite`).
 :class:`Expansion` is the container of the native module on SymPy
 objects, with ``to_core`` and ``from_core``; the functions convert their
 arguments by :mod:`sympy_extras.interop`, run the native code and convert
-the results back (the values of :mod:`.conditions_sympy`). The step of
-the native module which stays on SymPy is here too, on core expressions:
-the definite integral from an antiderivative of
-:func:`~sympy_extras.integrals.antiderivative.antiderivative_integral`, not
-ported yet (:func:`antiderivative_integral_of_core`, for the Fourier
-coefficients computed with a symbolic index); the moments and the mean
-values reach :func:`~sympy_extras.integrals.definite.definite_integral`
+the results back (the values of :mod:`.conditions_sympy`). The moments
+and the mean values of the native module reach :func:`~sympy_extras.integrals.definite.definite_integral`
 through :func:`~sympy_extras.integrals.laplace_sympy.definite_integral_of_core`.
 
 Examples
@@ -44,12 +39,12 @@ from sympy.logic.boolalg import Boolean
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions import ask as native_ask
-from sympy_extras.assumptions.ask_sympy import (Assumptions, _core_symbol, _sympy_symbol, core_assumptions,
+from sympy_extras.assumptions.ask_sympy import (Assumptions, _core_symbol, core_assumptions,
                                                 core_boolean, sympy_boolean)
 from sympy_extras.concrete.eulersums import polygamma_series
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean, to_boolean
-from sympy_extras.core.symbol import Dummy as CoreDummy, Symbol as CoreSymbol
+from sympy_extras.core.symbol import Dummy as CoreDummy
 from sympy_extras.interop import from_sympy, to_sympy
 
 from . import conditions as native_conditions
@@ -57,7 +52,7 @@ from . import series as native
 from .conditions_sympy import ConditionalValue
 
 __all__ = ['Expansion', 'expansions', 'fourier_expansion', 'moments', 'sum_series', 'fourier_integral',
-           'series_integral', 'antiderivative_integral_of_core']
+           'series_integral']
 
 
 def _core_dummy(d: Basic) -> CoreDummy:
@@ -313,20 +308,3 @@ def _sympy_assumptions(assumptions: native_ask.Assumptions) -> Assumptions:
         return sympy_boolean(assumptions)
     items: list[Boolean] = [sympy_boolean(to_boolean(a)) for a in assumptions]
     return items
-
-
-def antiderivative_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                                    assumptions: native_ask.Assumptions
-                                    ) -> Optional[native_conditions.ConditionalValue]:
-    """:func:`~sympy_extras.integrals.antiderivative.antiderivative_integral`
-    of ``Integral(f, (x, a, b))`` on core expressions (not ported yet);
-    ``None`` when it is not found or cannot be converted."""
-    from .antiderivative import antiderivative_integral
-    found = antiderivative_integral(sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b),
-                                    _sympy_assumptions(assumptions))
-    if found is None:
-        return None
-    try:
-        return found.to_core()
-    except (TypeError, ValueError, NotImplementedError):
-        return None

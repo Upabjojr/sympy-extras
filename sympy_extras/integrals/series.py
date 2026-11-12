@@ -424,9 +424,10 @@ def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assum
     or when the range is unbounded, or inside another coefficient
     integral. Each system is a complete orthogonal system of ``L2(a, b)``,
     so the series converges to ``g`` in ``L2`` for every square-integrable
-    ``g``. The integrals are computed on SymPy's side
-    (:func:`~sympy_extras.integrals.series_sympy.antiderivative_integral_of_core`,
-    :func:`~sympy_extras.integrals.laplace_sympy.conditional_integral_of_core`)."""
+    ``g``. The integrals come from the native
+    :func:`~sympy_extras.integrals.antiderivative.antiderivative_integral`,
+    then from definite on SymPy's side
+    (:func:`~sympy_extras.integrals.laplace_sympy.conditional_integral_of_core`)."""
     global _nesting
     if _nesting > 0 or a in (oo, -oo) or b in (oo, -oo):
         return None
@@ -435,7 +436,7 @@ def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assum
         # the formula computed for the symbolic index is wrong
         return None
     from .laplace_sympy import conditional_integral_of_core
-    from .series_sympy import antiderivative_integral_of_core
+    from .antiderivative import antiderivative_integral
     length = b - a
     k = _fresh('k', integer=True, positive=True)
     facts: list[Boolean] = [element(k, Naturals)] + _statements(assumptions)
@@ -455,7 +456,7 @@ def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assum
         # by parts to a clean formula in k, where the driver splits the
         # range at the quarter periods and leaves sin(k pi/2) behind)
         integrand = shifted * weight
-        found = antiderivative_integral_of_core(integrand, t, S.Zero, length, facts)
+        found = antiderivative_integral(integrand, t, S.Zero, length, facts)
         if found is None:
             found = conditional_integral_of_core(integrand, t, S.Zero, length, facts, None)
         if found is None or _bad_value(found.value) or found.value.has(oo, -oo):

@@ -300,7 +300,13 @@ sympy_extras/
         transformations.py   frullani, glasser, transformation_integral: Frullani's theorem, Glasser's master theorem
                              (native: the native limits and partial fractions; the transformed integral by definite)
         transformations_sympy.py the SymPy face of transformations, used by definite
-        antiderivative.py    antiderivatives evaluated by one-sided limits at every discontinuity
+        antiderivative.py    antiderivative_integral, principal_value_integral, finite_part_integral, singularities,
+                             discontinuities, one_sided_limit: antiderivatives evaluated by one-sided limits at every
+                             discontinuity (native: the native solve, ask and limits; the antiderivative a typed step,
+                             AntiderivativeStep, by default the native radical table, then SymPy's integrate and the
+                             verified methods of indefinite through antiderivative_sympy), PORTED FROM SYMPY (singularities)
+        antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series, and integrate_of_core,
+                             verified_antiderivative_of_core
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
                              (native: the native series, limits, summation, gammasimp, hyperexpand; SymPy's fps and
                              the strip of its mellin_transform through brackets_sympy)
@@ -316,7 +322,7 @@ sympy_extras/
                              convergence tests, Euler sums and Zeilberger; the moments by definite through laplace_sympy,
                              the computed Fourier coefficients by antiderivative through series_sympy, the numerical check
                              through residues_sympy)
-        series_sympy.py      the SymPy face of series, used by definite, and antiderivative_integral_of_core
+        series_sympy.py      the SymPy face of series, used by definite
         dirichlet.py         dirichlet_integral, trigonometric_sum: the Dirichlet, Frullani and Borwein integrals of
                              trigonometric sums over powers of x (native)
         dirichlet_sympy.py   the SymPy face of dirichlet

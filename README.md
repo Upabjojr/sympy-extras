@@ -1023,7 +1023,8 @@ sympy_extras/
         laplace_sympy.py     the SymPy face of laplace
         transformations.py   Frullani's theorem, Glasser's master theorem (native)
         transformations_sympy.py the SymPy face of transformations
-        antiderivative.py    antiderivatives evaluated by one-sided limits
+        antiderivative.py    antiderivatives evaluated by one-sided limits (native)
+        antiderivative_sympy.py the SymPy face of antiderivative
         brackets.py          Ramanujan's master theorem, method of brackets
         periodic.py          integrals over whole periods by the constant Laurent coefficient (native)
         periodic_sympy.py    the SymPy face of periodic
