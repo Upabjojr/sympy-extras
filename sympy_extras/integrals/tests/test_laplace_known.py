@@ -10,7 +10,7 @@ from sympy_extras.assumptions.ask_sympy import Assumptions
 
 from sympy_extras.integrals.conditions_sympy import numerically_equal
 from sympy_extras.integrals.definite import verify_numerically
-from sympy_extras.integrals.laplace import laplace_rules
+from sympy_extras.integrals.laplace_sympy import laplace_rules
 
 t, u = symbols('t u')
 s, a, b = symbols('s a b', positive=True)

@@ -1009,7 +1009,12 @@ sympy_extras/
         definite.py          definite_integral: splitting, range mappings, verified fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD)
         telescoping.py       Almkvist–Zeilberger creative telescoping (holonomic integrals)
-        parametric.py        differentiation under the integral sign
+        parametric.py        differentiation under the integral sign (native)
+        parametric_sympy.py  the SymPy face of parametric
+        laplace.py           the operational rules of the Laplace transform (native)
+        laplace_sympy.py     the SymPy face of laplace
+        transformations.py   Frullani's theorem, Glasser's master theorem (native)
+        transformations_sympy.py the SymPy face of transformations
         antiderivative.py    antiderivatives evaluated by one-sided limits
         brackets.py          Ramanujan's master theorem, method of brackets
         periodic.py          integrals over whole periods by the constant Laurent coefficient (native)
@@ -1019,7 +1024,8 @@ sympy_extras/
         trager.py            Trager's algorithm for algebraic functions (one square root)
         curves.py            Trager's algorithm on a general curve (several or nested radicals) (native)
         curves_sympy.py      the SymPy face of curves
-        summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
+        summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals (native)
+        summability_sympy.py the SymPy face of summability
         axisymmetric.py      region integrals with a rotational symmetry reduced to their profile
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic
         indefinite.py        indefinite integration by the typed methods in turn, every antiderivative checked

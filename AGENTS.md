@@ -257,7 +257,7 @@ sympy_extras/
         slater_sympy.py      the SymPy face of slater (MeijerG on SymPy objects, mellin_barnes, slater_expansion, ...)
         marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo), tidy, checked_tidy (native: the
                              native slater, refine, gammasimp, factor and unpolarify)
-        marichev_sympy.py    the SymPy face of marichev, which definite, laplace, algebraic, series and the other
+        marichev_sympy.py    the SymPy face of marichev, which definite, algebraic, series and the other
                              integrators written on SymPy use (mellin_integrate, tidy, checked_tidy, ...)
         residues.py          rational, Fourier and trigonometric integrals by the residue theorem
         definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
@@ -270,7 +270,18 @@ sympy_extras/
         conditions_sympy.py  the SymPy face of conditions, which the integrators written on SymPy use (ConditionalValue
                              on SymPy objects; the translation of SymPy's symbol flags stays on SymPy)
         telescoping.py       Almkvist–Zeilberger creative telescoping, holonomic_ode, holonomic_integral
-        parametric.py        differentiation under the integral sign (Feynman's trick)
+        parametric.py        parametric_integral, candidate_parameters, ParametricIntegrator: differentiation under the
+                             integral sign (Feynman's trick) (native; the integrals and the numerical check by definite's
+                             integrator, SymPy's integrate in the parameter, through parametric_sympy)
+        parametric_sympy.py  the SymPy face of parametric, used by definite; DefiniteIntegrator, antiderivative_of_core
+        laplace.py           laplace_rules, laplace_integral, laplace_of_convolution, transform, real_arguments: the
+                             operational rules of the Laplace transform (native; the transforms of the pieces by
+                             definite and SymPy's periodicity through laplace_sympy)
+        laplace_sympy.py     the SymPy face of laplace, used by definite, and definite_integral_of_core,
+                             conditional_integral_of_core (also for summability, transformations), periodicity_of_core
+        transformations.py   frullani, glasser, transformation_integral: Frullani's theorem, Glasser's master theorem
+                             (native: the native limits and partial fractions; the transformed integral by definite)
+        transformations_sympy.py the SymPy face of transformations, used by definite
         antiderivative.py    antiderivatives evaluated by one-sided limits at every discontinuity
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
                              (native: the native series, limits, summation, gammasimp, hyperexpand; SymPy's fps and
@@ -300,7 +311,9 @@ sympy_extras/
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra
                              (native: the native function fields, Puiseux expansions, number fields and cancel)
         curves_sympy.py      the SymPy face of curves (the field of the residues as SymPy's, CRootOf), used by trager
-        summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
+        summability.py       summable_integral, oscillatory_tail: Abel, Cesàro and Gaussian means of divergent
+                             oscillatory integrals (native: the native limits; the regularised integrals by definite)
+        summability_sympy.py the SymPy face of summability, used by definite
         axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their profile
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions
         indefinite.py        indefinite_integral: the typed methods in turn, then SymPy's, each antiderivative checked by differentiation

@@ -1828,3 +1828,120 @@ def test_native_elliptic_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ELLIPTIC], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_LAPLACE = r'''
+import sys
+from sympy_extras.core import I, Symbol, oo, pi
+from sympy_extras.functions import Arg, cos, exp, heaviside, sin, sqrt
+from sympy_extras.integrals.laplace import has_integral, laplace_integral, laplace_of_convolution, laplace_rules, real_arguments
+assert 'sympy' not in sys.modules
+t, k = Symbol('t'), Symbol('k')
+s, a = Symbol('s', positive=True), Symbol('a', positive=True)
+assert str(real_arguments(Arg(-s - I*a)/2 - Arg(-s + I*a)/2 + pi)) == 'atan(a/s)'
+assert str(real_arguments(Arg(s + I*a))) == 'atan(a/s)' and real_arguments(Arg(k + I*a)).has(Arg)
+assert real_arguments(sqrt(s)) == sqrt(s) and not has_integral(t**2)
+assert laplace_of_convolution(sin(t), t, s) is None
+assert laplace_integral(sin(t)/t, t, 0, 1) is None and laplace_integral(sin(t)/t, t, 0, oo) is None
+assert laplace_integral(exp(s*t)*sin(t)/t, t, 0, oo) is None
+assert laplace_rules(exp(t**2), t, s) is None and laplace_rules(heaviside(t + 1)*cos(t), t, s) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_laplace_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.laplace` does not load SymPy,
+    nor do the real forms of the arguments (the native ask and
+    ``simplify``) and the rules which do not apply; the transforms of the
+    pieces reach SymPy's side (``definite_integral``) and ``periodicity``
+    through the face only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LAPLACE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_TRANSFORMATIONS = r'''
+import sys
+from sympy_extras.core import S, Symbol, oo
+from sympy_extras.functions import atan, cos, exp
+from sympy_extras.integrals.transformations import frullani, glasser, transformation_integral
+assert 'sympy' not in sys.modules
+x, k = Symbol('x'), Symbol('k')
+a, b = Symbol('a', positive=True), Symbol('b', positive=True)
+assert str(frullani((exp(-a*x) - exp(-b*x))/x, x)) == 'ConditionalValue(log(b/a))'
+assert str(frullani((atan(a*x) - atan(b*x))/x, x)) == 'ConditionalValue(-pi*log(b/a)/2)'
+assert frullani((cos(a*x) - cos(b*x))/x, x) is None and frullani(exp(-a*x)/x, x) is None
+assert frullani((exp(-a*x) - exp(-b*x**2))/x, x) is None
+assert glasser(exp(-(x + 1/x)**2), x, -oo, oo) is None
+assert glasser(exp(-(x - 1/x)**2)*(x - 1/x), x, 0, oo) is None
+assert glasser(x*exp(x)*exp(k*x)/(exp(x) + 3), x, -oo, oo) is None
+assert transformation_integral(exp(-x), x, S.Zero, S.One) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_transformations_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.transformations` does not
+    load SymPy, nor does Frullani's theorem (the native limits under
+    assumptions) or the recognition of Glasser's maps (the native partial
+    fractions); only the transformed integral reaches SymPy's side
+    (``conditional_integral``) through the face."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRANSFORMATIONS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+
+_NATIVE_SUMMABILITY = r'''
+import sys
+from sympy_extras.core import Symbol, oo
+from sympy_extras.functions import sin
+from sympy_extras.integrals.summability import METHODS, oscillatory_tail, summable_integral
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+assert str(summable_integral(sin(x), x, 2, 2, 'abel')) == 'ConditionalValue(0)' and 'cesaro' in METHODS
+for call in (lambda: summable_integral(sin(x), x, 0, oo, 'borel'), lambda: oscillatory_tail(sin(x), x, 0, 'abel ')):
+    try:
+        call()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('not a method')
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_summability_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.summability` does not load
+    SymPy, nor do its checks of the method and the range; the regularised
+    integrals reach SymPy's side (``conditional_integral``) through the
+    face only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SUMMABILITY], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PARAMETRIC = r'''
+import sys
+from sympy_extras.core import S, Symbol, oo
+from sympy_extras.functions import exp, log, sin
+from sympy_extras.integrals.parametric import candidate_parameters, parametric_integral
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+p, t = Symbol('p', positive=True), Symbol('t', positive=True)
+assert candidate_parameters(exp(-p*x)*sin(x)/x, x) == [p] and candidate_parameters(t*exp(-x), x) == []
+assert candidate_parameters(log(1 + t**2*x**2)/(1 + x**2), x) == [t]
+assert parametric_integral(exp(-x), x, S.Zero, oo, p) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_parametric_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.parametric` does not load
+    SymPy, nor does the choice of the parameters; the integrals reach
+    SymPy's side (the integrator of ``definite`` and ``integrate``)
+    through the face only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PARAMETRIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

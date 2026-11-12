@@ -260,7 +260,7 @@ def definite_integral(f: ExprLike, limits: Limits, assumptions: Assumptions = No
     if conds not in ('piecewise', 'none'):
         raise ValueError("conds must be 'piecewise' or 'none', got %r" % (conds,))
     if summability is not None:
-        from .summability import summable_integral
+        from .summability_sympy import summable_integral
         found = summable_integral(f_, x, a, b, summability, assumptions)
     else:
         found = conditional_integral(f_, x, a, b, assumptions, principal_value, finite_part, regularize)
@@ -2412,7 +2412,7 @@ class _Integrator:
     def _laplace(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """The operational rules of the Laplace transform
         (:mod:`.laplace`) for ``g(x)*exp(-s*x)`` over ``(0, oo)``."""
-        from .laplace import laplace_integral
+        from .laplace_sympy import laplace_integral
         if depth > 1 or a != 0 or b != oo or not f.has(exp):
             return None
         return self._finish(laplace_integral(f, x, a, b, self.assumptions))
@@ -2425,7 +2425,7 @@ class _Integrator:
     def _transformations(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Frullani's theorem and Glasser's master theorem
         (:mod:`.transformations`)."""
-        from .transformations import transformation_integral
+        from .transformations_sympy import transformation_integral
         if depth > 1:
             return None
         return self._finish(transformation_integral(f, x, a, b, self.assumptions))
@@ -2464,7 +2464,7 @@ class _Integrator:
     def _parametric(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Differentiation under the integral sign (:mod:`.parametric`),
         for each parameter of the integrand in turn."""
-        from .parametric import candidate_parameters, parametric_integral
+        from .parametric_sympy import candidate_parameters, parametric_integral
         if not self.parametric or depth > 1:
             return None
         for p in candidate_parameters(f, x):

@@ -539,6 +539,29 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The Laplace rules, Frullani's and Glasser's theorems, the summability
+  means and differentiation under the integral sign are native
+  (**breaking**): `sympy_extras.integrals.laplace` (`laplace_rules`,
+  `laplace_integral`, `laplace_of_convolution`, `transform`,
+  `real_arguments`, and the new `has_integral`),
+  `sympy_extras.integrals.transformations` (`frullani`, `glasser`,
+  `transformation_integral`), `sympy_extras.integrals.summability`
+  (`summable_integral`, `oscillatory_tail`, `METHODS`) and
+  `sympy_extras.integrals.parametric` (`parametric_integral`,
+  `candidate_parameters`) take and return objects of the core and
+  import no SymPy: the native ask, limits under assumptions, partial
+  fractions, `simplify`, `tidy`, `mellin` and `conditions`. The
+  integrals of the pieces still come from `definite` (not ported yet)
+  through the faces (`laplace_sympy.definite_integral_of_core` and
+  `conditional_integral_of_core`), as do SymPy's `periodicity` and, for
+  the antiderivative in the parameter, SymPy's `integrate`; SymPy is
+  loaded on those paths only. `parametric_integral` takes an
+  `integrator`, a `ParametricIntegrator` (the definite integrals and the
+  numerical check), by default `parametric_sympy.DefiniteIntegrator`.
+  Every dummy has a name of its own (the typed polynomials map their
+  symbols by name). The old API on SymPy objects is in
+  `laplace_sympy`, `transformations_sympy`, `summability_sympy` and
+  `parametric_sympy` (used by `definite`).
 - The mean value integrals of periodic integrands are native
   (**breaking**): `sympy_extras.integrals.periodic` (`mean_value_integral`,
   `laurent_coefficient`, `to_laurent`) takes and returns objects of the

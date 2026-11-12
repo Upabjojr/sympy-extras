@@ -1,6 +1,6 @@
 """The SymPy face of the Marichev–Adamchik method
 (:mod:`sympy_extras.integrals.marichev`), for the integrators which are
-still written on SymPy (:mod:`.definite`, :mod:`.laplace`,
+still written on SymPy (:mod:`.definite`,
 :mod:`.algebraic`, :mod:`.series`, ...).
 
 The functions take and return SymPy objects, converted by
