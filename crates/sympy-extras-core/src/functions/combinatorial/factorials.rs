@@ -629,16 +629,45 @@ fn is_gamma_pole(z: &Complex) -> bool {
 
 /// `prod gamma(a) / prod gamma(b)` as mpmath's `gammaprod`: zero when the
 /// denominator has more poles, infinite (`None`) when the numerator has.
-fn gamma_product(a: &[Complex], b: &[Complex], prec: usize) -> Option<Complex> {
+pub(crate) fn gamma_product(a: &[Complex], b: &[Complex], prec: usize) -> Option<Complex> {
     let pa: usize = a.iter().filter(|z| is_gamma_pole(z)).count();
     let pb: usize = b.iter().filter(|z| is_gamma_pole(z)).count();
     if pb > pa {
         use crate::core::evalf::{complex, real_int};
         return Some(complex(real_int(&Int::ZERO, prec), real_int(&Int::ZERO, prec)));
     }
-    if pa > 0 {
+    if pa > pb {
         return None;
     }
+    // as many poles above as below: mpmath's limit with one epsilon,
+    // gamma(-m + eps) ~ (-1)**m/(m!*eps)
+    let mut pole_ratio: crate::numbers::Rat = crate::numbers::Rat::ONE;
+    let residue = |z: &Complex| -> crate::numbers::Rat {
+        let m: u64 = (-crate::core::evalf::parts(z).0)
+            .to_int()
+            .value()
+            .try_into()
+            .unwrap_or(0);
+        let mut f: Int = Int::ONE;
+        for i in 2..=m {
+            f *= Int::from(i);
+        }
+        let sign: crate::numbers::Rat = if m % 2 == 1 {
+            -crate::numbers::Rat::ONE
+        } else {
+            crate::numbers::Rat::ONE
+        };
+        sign / crate::numbers::Rat::from(f)
+    };
+    for z in a.iter().filter(|z| is_gamma_pole(z)) {
+        pole_ratio *= residue(z);
+    }
+    for z in b.iter().filter(|z| is_gamma_pole(z)) {
+        pole_ratio /= residue(z);
+    }
+    let a: Vec<Complex> = a.iter().filter(|z| !is_gamma_pole(z)).cloned().collect();
+    let b: Vec<Complex> = b.iter().filter(|z| !is_gamma_pole(z)).cloned().collect();
+    let (a, b) = (&a[..], &b[..]);
     let mut top: Complex =
         crate::core::evalf::complex_real(crate::core::evalf::real_int(&Int::ONE, prec + 40), prec + 40);
     for z in a {
@@ -649,5 +678,7 @@ fn gamma_product(a: &[Complex], b: &[Complex], prec: usize) -> Option<Complex> {
     for z in b {
         bottom = &bottom * &gamma(z, prec + 20)?;
     }
-    Some(&top / &bottom)
+    let ratio: Complex =
+        crate::core::evalf::complex_real(crate::core::evalf::real_rat(&pole_ratio, prec + 40), prec + 40);
+    Some(&(&top / &bottom) * &ratio)
 }

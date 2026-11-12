@@ -296,6 +296,9 @@ pub enum Function {
     Tribonacci,
     Motzkin,
     Andre,
+    Beta,
+    BetaInc,
+    BetaIncRegularized,
 }
 
 impl Function {
@@ -385,6 +388,9 @@ impl Function {
             Function::Tribonacci => "tribonacci",
             Function::Motzkin => "motzkin",
             Function::Andre => "andre",
+            Function::Beta => "beta",
+            Function::BetaInc => "betainc",
+            Function::BetaIncRegularized => "betainc_regularized",
         }
     }
 
@@ -474,6 +480,9 @@ impl Function {
             Function::Tribonacci => "Tribonacci",
             Function::Motzkin => "Motzkin",
             Function::Andre => "Andre",
+            Function::Beta => "Beta",
+            Function::BetaInc => "BetaInc",
+            Function::BetaIncRegularized => "BetaIncRegularized",
         }
     }
 
@@ -527,6 +536,9 @@ impl Function {
             | Function::Tribonacci
             | Function::Motzkin
             | Function::Andre
+            | Function::Beta
+            | Function::BetaInc
+            | Function::BetaIncRegularized
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma

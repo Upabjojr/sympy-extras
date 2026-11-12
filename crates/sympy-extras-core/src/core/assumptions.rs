@@ -1350,6 +1350,11 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::Andre) => {
             crate::functions::combinatorial::numbertheory::number_theoretic_facts(g, e.args())
         }
+        g @ (super::basic::Function::Beta
+        | super::basic::Function::BetaInc
+        | super::basic::Function::BetaIncRegularized) => {
+            crate::functions::special::beta_functions::beta_facts(g, e.args())
+        }
         super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
             crate::functions::special::tensor_functions::tensor_facts()
         }

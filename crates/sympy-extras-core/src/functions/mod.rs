@@ -53,6 +53,9 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::LerchPhi
         | Function::RiemannXi
         | Function::Stieltjes) => special::zeta_functions::zeta_fdiff(g, e, argindex),
+        g @ (Function::Beta | Function::BetaInc | Function::BetaIncRegularized) => {
+            special::beta_functions::beta_fdiff(g, e, argindex)
+        }
         g @ (Function::Catalan
         | Function::Fibonacci
         | Function::Lucas
@@ -186,6 +189,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if special::beta_functions::is_beta_function(f) {
+        return special::beta_functions::beta_function(f, args);
+    }
     if combinatorial::numbertheory::is_number_theoretic(f) {
         return combinatorial::numbertheory::number_theoretic(f, args);
     }
@@ -243,6 +249,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Acsch => elementary::inverse::acsch(x),
         Function::Arg => elementary::argument::arg(x),
         g @ (Function::Floor | Function::Ceiling | Function::Frac) => elementary::integers::rounding(g, x),
+        Function::Beta | Function::BetaInc | Function::BetaIncRegularized => {
+            unreachable!("evaluated above with all their arguments")
+        }
         Function::Atan2 | Function::Max | Function::Min | Function::DiracDelta | Function::Heaviside => {
             unreachable!("evaluated above with all their arguments")
         }

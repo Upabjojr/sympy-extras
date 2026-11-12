@@ -284,6 +284,17 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
         }
         Head::Function(
+            g @ (super::basic::Function::Beta
+            | super::basic::Function::BetaInc
+            | super::basic::Function::BetaIncRegularized),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::beta_functions::beta_value(*g, &values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Catalan
             | super::basic::Function::Fibonacci
             | super::basic::Function::Lucas
@@ -503,7 +514,10 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::KroneckerSymbol
                 | super::basic::Function::Tribonacci
                 | super::basic::Function::Motzkin
-                | super::basic::Function::Andre => {
+                | super::basic::Function::Andre
+                | super::basic::Function::Beta
+                | super::basic::Function::BetaInc
+                | super::basic::Function::BetaIncRegularized => {
                     return None;
                 }
                 g

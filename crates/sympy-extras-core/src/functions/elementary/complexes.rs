@@ -122,6 +122,9 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Asech
         | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
         Function::Arg | Function::Atan2 => super::argument::argument_conjugate(e, f),
+        g @ (Function::Beta | Function::BetaInc | Function::BetaIncRegularized) => {
+            Ok(Some(crate::functions::special::beta_functions::beta_conjugate(g, e)?))
+        }
         g @ (Function::Gamma | Function::LogGamma) => crate::functions::special::gamma_functions::gamma_conjugate(g, e),
         Function::Max
         | Function::Min
@@ -557,6 +560,9 @@ fn function_real_imag(
         | Function::Tribonacci
         | Function::Motzkin
         | Function::Andre
+        | Function::Beta
+        | Function::BetaInc
+        | Function::BetaIncRegularized
         | Function::Sign
         | Function::Conjugate => {
             if ignore == Some(e) {

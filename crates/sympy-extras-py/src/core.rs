@@ -235,6 +235,9 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Tribonacci" => Basic::new(Head::Function(Function::Tribonacci), args()?),
         "Motzkin" => Basic::new(Head::Function(Function::Motzkin), args()?),
         "Andre" => Basic::new(Head::Function(Function::Andre), args()?),
+        "Beta" => Basic::new(Head::Function(Function::Beta), args()?),
+        "BetaInc" => Basic::new(Head::Function(Function::BetaInc), args()?),
+        "BetaIncRegularized" => Basic::new(Head::Function(Function::BetaIncRegularized), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -418,6 +421,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::Tribonacci
                 | Function::Motzkin
                 | Function::Andre => "numbers",
+                Function::Beta | Function::BetaInc | Function::BetaIncRegularized => "beta_functions",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
                 Function::Zeta
                 | Function::DirichletEta
@@ -444,6 +448,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside)
                 || sympy_extras_core::functions::special::gamma_functions::is_gamma_function(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
+                || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
             {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
@@ -2110,6 +2115,16 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
         }
         "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
+        "beta" => sympy_extras_core::functions::special::beta_functions::beta(&a[0], a.get(1)).map_err(e)?,
+        "betainc" | "betainc_regularized" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = if name == "betainc" {
+                F::BetaInc
+            } else {
+                F::BetaIncRegularized
+            };
+            sympy_extras_core::functions::special::beta_functions::betainc(f, &a).map_err(e)?
+        }
         n if [
             "totient",
             "reduced_totient",
