@@ -1421,6 +1421,9 @@ fn polytools_call<'py>(
         "factor_deep" => one(pt::factor(&args[0], &gens, true, true)),
         "factor_nofraction" => one(pt::factor(&args[0], &gens, false, false)),
         "sqf" => one(pt::sqf(&args[0], &gens, true)),
+        "minimal_polynomial" => one(sympy_extras_core::polys::numberfields::minpoly::minimal_polynomial(
+            &args[0], &gens[0],
+        )),
         "ratsimp" => one(sympy_extras_core::simplify::ratsimp::ratsimp(&args[0])),
         "apart" => one(sympy_extras_core::polys::partfrac::apart(&args[0], gens.first(), false)),
         "apart_full" => one(sympy_extras_core::polys::partfrac::apart(&args[0], gens.first(), true)),

@@ -35,6 +35,7 @@ pub enum PolysErrorKind {
     ExactQuotientFailed,
     OperationNotSupported,
     NotInvertible,
+    NotAlgebraic,
 }
 
 impl PolysErrorKind {
@@ -48,6 +49,7 @@ impl PolysErrorKind {
             PolysErrorKind::ExactQuotientFailed => "ExactQuotientFailed",
             PolysErrorKind::OperationNotSupported => "OperationNotSupported",
             PolysErrorKind::NotInvertible => "NotInvertible",
+            PolysErrorKind::NotAlgebraic => "NotAlgebraic",
         }
     }
 }
