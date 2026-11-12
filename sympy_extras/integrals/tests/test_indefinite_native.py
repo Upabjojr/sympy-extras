@@ -35,8 +35,20 @@ def test_sympys_routes_come_last_and_are_checked() -> None:
     # SymPy's integrate (the face, loaded at run time) gives a core expression
     found = verified_antiderivative(sin(x), x, methods=['sympy'])
     assert found == (-cos(x), 'sympy')
-    assert indefinite.METHODS[-len(indefinite.SYMPY_METHODS):] == [
-        (name, method) for name, method in indefinite.METHODS if name in indefinite.SYMPY_METHODS]
+    # every native method comes first, but the port of manualintegrate,
+    # which keeps the place SymPy's had among them
+    names = [name for name, _ in indefinite.METHODS]
+    tail = names[names.index(indefinite.SYMPY_METHODS[0]):]
+    assert [name for name in tail if name not in indefinite.SYMPY_METHODS] == ['manual']
+    assert [name for name in names if name in indefinite.SYMPY_METHODS] == list(indefinite.SYMPY_METHODS)
+
+
+def test_manual_method_is_native() -> None:
+    # SymPy's manualintegrate was reached through indefinite_sympy; the
+    # port answers without SymPy, with SymPy's form
+    t = Symbol('t')
+    found = verified_antiderivative(t**2*cos(3*t - 1), t, methods=['manual'])
+    assert found == (t**2*sin(3*t - 1)/3 + 2*t*cos(3*t - 1)/9 - 2*sin(3*t - 1)/27, 'manual')
 
 
 def test_the_unevaluated_integral_is_a_core_node() -> None:

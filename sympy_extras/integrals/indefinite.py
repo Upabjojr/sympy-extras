@@ -40,16 +40,18 @@ The order of the methods:
 8. the heuristic Risch integrator (:mod:`.heurisch`), on the integrand
    and then on its canonical forms (on the exponentials of hyperbolic
    functions already in 7, after the substitutions);
-9. SymPy's heuristic Risch integrator, its rule-based
-   ``manualintegrate``, its Meijer G-function route and its
+9. SymPy's heuristic Risch integrator, the rule-based
+   ``manualintegrate`` (the native port :mod:`.manualintegrate`, in the
+   place SymPy's had), SymPy's Meijer G-function route and its
    ``integrate``.
 
 The module works on the objects of :mod:`sympy_extras.core` and imports
-no SymPy: the methods 1 to 8, the checks (the native ``cancel``,
-``simplify``, the structure theorem of :mod:`sympy_extras.simplify.structure`
-and the reliable values of :mod:`sympy_extras._numeric`) and the cases
-of the special values of the parameters (:mod:`sympy_extras._special_values`)
-are native. SymPy's routes of 9 have no native counterpart: they are
+no SymPy: the methods 1 to 8, ``manualintegrate``, the checks (the native
+``cancel``, ``simplify``, the structure theorem of
+:mod:`sympy_extras.simplify.structure` and the reliable values of
+:mod:`sympy_extras._numeric`) and the cases of the special values of the
+parameters (:mod:`sympy_extras._special_values`) are native. SymPy's
+other routes of 9 have no native counterpart: they are
 reached last, through the lazily imported ``*_of_core`` functions of the
 face :mod:`.indefinite_sympy`, so that SymPy is loaded only when every
 native method has failed. The functions on SymPy objects are in
@@ -612,6 +614,7 @@ def _substituted(f: Expr, x: Symbol, substitution: Substitution, inner: list[Boo
 
 # ---------------------------------------------------------------------------
 # SymPy's routes, which have no native counterpart: through the face, last
+# (with the native manualintegrate in the place of SymPy's)
 
 def _sympy_heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .indefinite_sympy import heurisch_of_core
@@ -619,8 +622,9 @@ def _sympy_heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Ex
 
 
 def _manual(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .indefinite_sympy import manualintegrate_of_core
-    return manualintegrate_of_core(f, x, _long_budget())
+    from .manualintegrate import manualintegrate
+    found = attempt(lambda: manualintegrate(f, x), _long_budget(), native=True)
+    return None if found is None or found.has(Integral) else found
 
 
 def _meijer(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
@@ -640,8 +644,9 @@ METHODS: list[tuple[str, Method]] = [
     ('rewriting', _rewriting), ('heurisch', _heurisch), ('rewritten heurisch', _rewritten_heurisch),
     ('sympy heurisch', _sympy_heurisch), ('manual', _manual), ('meijer', _meijer), ('sympy', _sympy)]
 
-#: the methods which load SymPy (through :mod:`.indefinite_sympy`)
-SYMPY_METHODS: Final[tuple[str, ...]] = ('sympy heurisch', 'manual', 'meijer', 'sympy')
+#: the methods which load SymPy (through :mod:`.indefinite_sympy`); the
+#: native 'manual' among them keeps the place of SymPy's manualintegrate
+SYMPY_METHODS: Final[tuple[str, ...]] = ('sympy heurisch', 'meijer', 'sympy')
 
 
 def verified_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
