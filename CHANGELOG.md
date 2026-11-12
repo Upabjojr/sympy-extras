@@ -10,6 +10,18 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `concrete.summations` loads no SymPy at run time: the residue method
+  takes the poles SymPy writes as `CRootOf` by the residue of a pole of
+  order `m` at an algebraic point (SymPy's series there gives
+  `Sum(1/(i**4 + i + 1), (i, -oo, oo))` as `0`; the sum is about
+  `2.4920`) and the coefficients our `Poly` does not take (`I`, `pi`,
+  `sqrt(2)`) by the closed forms of the native `ex_roots` (SymPy raised
+  `NotImplementedError` for the sorted roots over `EX`); the Hurwitz zeta
+  function of `Sum.doit` is the port of SymPy's `Sum.eval_zeta_function`;
+  the equations of the denominators are solved by the native
+  `solve_equation` (`NotImplementedError` when it has no method), and a
+  convergence condition the native solver does not decide is not taken
+  for empty (it went to SymPy's `as_set`).
 - `assumptions.solve` loads no SymPy at run time: the systems which the
   regular chains do not solve go to the native `solve_system` (the
   substitution method of SymPy's `nonlinsolve`, the unknowns left free

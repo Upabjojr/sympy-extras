@@ -252,6 +252,9 @@ sympy_extras/
                              tests (native: the integral test by the native Risch and heuristic integrators, a port of
                              SymPy's Sum.is_convergent), PORTED FROM SYMPY (is_convergent, is_decreasing)
         convergence_sympy.py the SymPy face of convergence
+        summations.py        summation, sum_doit, eval_sum, eval_sum_hyper, eval_sum_residue: SymPy's Sum.doit (native,
+                             PORTED FROM SYMPY; the residues at CRootOf poles by the formula of a pole of order m, the
+                             roots over EX by ex_roots, the equations by solvers.solvers.solve_equation)
         tests/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of

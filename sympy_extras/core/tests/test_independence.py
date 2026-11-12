@@ -3018,3 +3018,35 @@ def test_native_systems_and_intersections_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SUMMATION_ROUTES = r'''
+import sys
+from sympy_extras.core import Symbol, oo, pi
+from sympy_extras.functions import exp
+from sympy_extras.concrete.summations import summation, _solve
+i, s, a, x = Symbol('i', integer=True), Symbol('s'), Symbol('a'), Symbol('x')
+# the poles of the residue method as CRootOf (SymPy's own sum is 0)
+r = summation(1/(i**4 + i + 1), (i, -oo, oo))
+assert r.has(pi) and abs(complex(r.evalf(20)) - 2.4919745015915575) < 1e-12, r
+# coefficients our Poly does not take
+assert str(summation(1/(i**2 + pi), (i, -oo, oo))) == 'sqrt(pi)/tanh(pi**(3/2))'
+# the Hurwitz zeta function of Sum.doit
+assert str(summation((2*i + a)**(-s), (i, 1, oo))) == \
+    'Piecewise((zeta(s, a/2 + 1)/2**s, (re(s) > 1) & ~Contains(-a/2 - 1, Naturals0)), (Sum((a + 2*i)**(-s), (i, 1, oo)), True))'
+# SymPy's solve of an equation the linear and finite solvers do not list
+assert str(_solve(x*exp(x) - 1, x)) == '[LambertW(1)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_summation_routes_do_not_load_sympy() -> None:
+    """The residue method at poles SymPy writes as ``CRootOf`` and with
+    coefficients our Poly does not take, the zeta function match of
+    ``Sum.doit`` and the equations the linear and finite solvers do not
+    list load no SymPy (they went through SymPy's ``eval_sum_residue``,
+    ``Sum.doit`` and ``solve``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SUMMATION_ROUTES], capture_output=True, text=True,
+                         timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
