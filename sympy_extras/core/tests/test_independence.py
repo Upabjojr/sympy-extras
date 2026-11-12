@@ -3101,3 +3101,27 @@ def test_native_eulersums_integral_does_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PRODUCT_OVER_EX = r'''
+import sys
+from sympy_extras.core import Symbol, I, sqrt, pi
+from sympy_extras.concrete.products import product
+k, n = Symbol('k', integer=True), Symbol('n', integer=True, positive=True)
+assert str(product(k + I, (k, 1, n))) == 'RisingFactorial(1 + I, n)'
+assert str(product(sqrt(2)*k + 1, (k, 1, n))) == '2**(n/2)*RisingFactorial(sqrt(2)/2 + 1, n)'
+assert str(product(k**2 + pi, (k, 1, n))) == \
+    'RisingFactorial(1 - I*sqrt(pi), n)*RisingFactorial(1 + I*sqrt(pi), n)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_product_over_ex_does_not_load_sympy() -> None:
+    """The product of a polynomial whose coefficients our Poly does not
+    take (SymPy's ``EX``) is native, by the roots of ``ex_roots`` (the
+    whole product went to SymPy's ``Product.doit``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PRODUCT_OVER_EX], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+

@@ -257,6 +257,8 @@ sympy_extras/
                              roots over EX by ex_roots, the equations by solvers.solvers.solve_equation)
         delta.py             deltasummation, deltaproduct: sums and products of Kronecker deltas (native, PORTED FROM SYMPY;
                              the equations by linsolve, assumptions.solve, solve_equation and solve_system)
+        products.py          product, product_doit, eval_product: SymPy's Product.doit (native, PORTED FROM SYMPY; the
+                             polynomials over EX by ex_roots)
         tests/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of

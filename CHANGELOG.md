@@ -10,6 +10,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `concrete.products` loads no SymPy at run time: the product of a
+  polynomial whose coefficients our `Poly` does not take (`I`, `sqrt(2)`,
+  `pi`, floats) is taken by the closed forms of its roots (the native
+  `ex_roots`) instead of sending the whole product to SymPy's
+  `Product.doit`; it stays unevaluated when they are not found (a cubic
+  or quartic over `EX`, where SymPy has formulas, and degree five or more,
+  where SymPy's recursion on the cofactor does not end).
 - `concrete.eulersums.polygamma_integral_representation` returns the
   core's unevaluated `Integral` (`integrals.integral`) instead of SymPy's
   `Integral` wrapped, and loads no SymPy; it prints in SymPy's order
