@@ -393,6 +393,10 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Min => {
                     unreachable!("evaluated above with all their arguments")
                 }
+                g
+                @ (super::basic::Function::Floor | super::basic::Function::Ceiling | super::basic::Function::Frac) => {
+                    crate::functions::elementary::integers::rounding_value(*g, &v)
+                }
                 super::basic::Function::Re => complex_real(parts(&v).0, wp),
                 super::basic::Function::Im => complex_real(parts(&v).1, wp),
                 super::basic::Function::Conjugate => {

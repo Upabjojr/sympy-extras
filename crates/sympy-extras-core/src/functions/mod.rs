@@ -51,7 +51,10 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Abs
         | Function::Arg
         | Function::Max
-        | Function::Min => {
+        | Function::Min
+        | Function::Floor
+        | Function::Ceiling
+        | Function::Frac => {
             unreachable!("these functions have their own derivatives")
         }
     }
@@ -108,6 +111,7 @@ pub fn eval_derivative(f: Function, e: &Basic, s: &Basic) -> PolyResult<Option<B
         }
         Function::Arg => elementary::argument::arg_derivative(e, s)?,
         Function::Max | Function::Min => elementary::miscellaneous::minmax_derivative(e, s)?,
+        Function::Floor | Function::Ceiling | Function::Frac => unevaluated(),
         Function::Conjugate => {
             if is_true(s, real) {
                 c::conjugate(&derivative(a, s)?)?
@@ -165,6 +169,7 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Asech => elementary::inverse::asech(x),
         Function::Acsch => elementary::inverse::acsch(x),
         Function::Arg => elementary::argument::arg(x),
+        g @ (Function::Floor | Function::Ceiling | Function::Frac) => elementary::integers::rounding(g, x),
         Function::Atan2 | Function::Max | Function::Min => unreachable!("evaluated above with all their arguments"),
     }
 }

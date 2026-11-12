@@ -189,6 +189,9 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
         "Arg" => Basic::new(Head::Function(Function::Arg), args()?),
         "Max" => Basic::new(Head::Function(Function::Max), args()?),
+        "Floor" => Basic::new(Head::Function(Function::Floor), args()?),
+        "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
+        "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
         "Min" => Basic::new(Head::Function(Function::Min), args()?),
         "Atan2" => Basic::new(Head::Function(Function::Atan2), args()?),
         "Asin" => Basic::new(Head::Function(Function::Asin), args()?),
@@ -337,6 +340,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                     "trigonometric"
                 }
                 Function::Max | Function::Min => "miscellaneous",
+                Function::Floor | Function::Ceiling | Function::Frac => "integers",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse_trigonometric(*f) => "trigonometric",
                 f if sympy_extras_core::functions::elementary::inverse::is_inverse(*f) => "hyperbolic",
                 Function::Sinh | Function::Cosh | Function::Tanh | Function::Coth | Function::Sech | Function::Csch => {
@@ -573,6 +577,9 @@ unary!(acot, sympy_extras_core::functions::elementary::inverse::acot);
 unary!(asec, sympy_extras_core::functions::elementary::inverse::asec);
 unary!(acsc, sympy_extras_core::functions::elementary::inverse::acsc);
 unary!(asinh, sympy_extras_core::functions::elementary::inverse::asinh);
+unary!(floor, sympy_extras_core::functions::elementary::integers::floor);
+unary!(ceiling, sympy_extras_core::functions::elementary::integers::ceiling);
+unary!(frac, sympy_extras_core::functions::elementary::integers::frac);
 unary!(acosh, sympy_extras_core::functions::elementary::inverse::acosh);
 unary!(atanh, sympy_extras_core::functions::elementary::inverse::atanh);
 unary!(acoth, sympy_extras_core::functions::elementary::inverse::acoth);
@@ -2035,6 +2042,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(asec, m)?)?;
     m.add_function(wrap_pyfunction!(acsc, m)?)?;
     m.add_function(wrap_pyfunction!(asinh, m)?)?;
+    m.add_function(wrap_pyfunction!(floor, m)?)?;
+    m.add_function(wrap_pyfunction!(ceiling, m)?)?;
+    m.add_function(wrap_pyfunction!(frac, m)?)?;
     m.add_function(wrap_pyfunction!(acosh, m)?)?;
     m.add_function(wrap_pyfunction!(atanh, m)?)?;
     m.add_function(wrap_pyfunction!(acoth, m)?)?;

@@ -3,8 +3,7 @@ against ``sympy_extras.polys.cad.cylindrical``: the docstring examples and
 random formulas of ``test_cad_qe_agree`` in two variables, compared by
 structure for ``cylindrical_formula``, ``cylindrical_set`` and
 ``cylindrical_cases`` (partial and full decompositions). The cases where
-the Rust core raises ``NotImplementedError`` (a branch of a power which
-needs ``floor``) are skipped."""
+the Rust core raises ``NotImplementedError`` are skipped."""
 
 from __future__ import annotations
 
@@ -63,6 +62,6 @@ def test_cylindrical(rust: Any, seed: int) -> None:
     ]
     for got_call, expected_call in calls:
         got = outcome(got_call)
-        # a branch of a power the core does not take yet (floor): skipped
+        # what the Rust core does not take yet: skipped
         if got != 'SKIP':
             assert got == outcome(expected_call), (formula, gens, partial)
