@@ -141,3 +141,30 @@ def test_systems() -> None:
     for family in families:
         for e in (x*z - y, x - y*z):
             assert zero_truth(e.subs(family)) is True
+
+
+def test_the_cube_roots_keep_sympys_form() -> None:
+    # the roots of (k + m)**3 = k**3/(-1)**k came out with the root of unity
+    # distributed, -k*w/2 - sqrt(3)*k*I*w/2 - k with w = (k**3/(-1)**k)**(1/3),
+    # at which the assumptions took 8.75 s to (not) decide a residual (the
+    # README example x*log(sin(x)) over (0, pi/2) then ran out of time);
+    # SymPy writes k*(-1/2 - sqrt(3)*I/2)*((-1)**(-k))**(1/3) - k
+    k = Symbol('k', integer=True, positive=True)
+    m = Symbol('m')
+    found = solve_equation((-1)**k/(4*k**3) - 1/(4*(k + m)**3), m)
+    assert found is not None and len(found) == 3
+    assert str(found[1]) == 'k*(-1/2 - sqrt(3)*I/2)*((-1)**(-k))**(1/3) - k'
+    for value in found:
+        assert _residual_is_small((-1)**k/(4*k**3) - 1/(4*(k + m)**3), m, value, {k: Rational(3)})
+
+
+def test_quadratic_roots_with_parameters_are_distributed() -> None:
+    # (-k*sqrt(c) - k)/sqrt(c) took the assumptions 3.9 s at the points of a
+    # solution set; SymPy's roots_quadratic writes -k - k/sqrt(c)
+    from sympy_extras.core import Eq
+    from sympy_extras.sets import Complexes
+    from sympy_extras.solvers.solveset import solveset
+    k = Symbol('k', integer=True, positive=True)
+    m = Symbol('m')
+    found = solveset(Eq(2/(k + m)**2 - 2*cos(k*pi/2)/k**2, 0), m, Complexes)
+    assert str(found) == '{-k - k/sqrt(cos(pi*k/2)), -k + k/sqrt(cos(pi*k/2))}'

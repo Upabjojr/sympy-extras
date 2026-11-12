@@ -107,9 +107,23 @@ def _expanded_numbers(found: list[Expr]) -> list[Expr]:
     of Ferrari put a square root on its branch cut, where a numerical
     evaluation picks either branch."""
     if any(r.free_symbols for r in found):
-        return found
+        return [_distributed(r) if r.as_numer_denom()[1] != _ONE else r for r in found]
     from sympy_extras.core.function import expand_complex
     return [expand_complex(r) for r in found]
+
+
+def _distributed(r: Expr) -> Expr:
+    """A root with parameters with its quotient distributed when that is
+    shorter, as SymPy's ``roots_quadratic`` writes it:
+    ``-k - k/sqrt(c)`` for ``(-k*sqrt(c) - k)/sqrt(c)`` (the assumptions
+    decide the short form much faster at the points of a solution set)."""
+    from sympy_extras.core.function import count_ops, expand_mul
+    candidate = expand_mul(r)
+    shorter = count_ops(candidate)
+    longer = count_ops(r)
+    if isinstance(shorter, Integer) and isinstance(longer, Integer) and shorter.p < longer.p:
+        return candidate
+    return r
 
 
 # ---------------------------------------------------------------------------

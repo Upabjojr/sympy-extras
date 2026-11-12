@@ -77,7 +77,7 @@ from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.function import Application, expand
-from sympy_extras.core.mul import Mul
+from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import Integer, Rational
 from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.sorting import default_sort_key
@@ -670,14 +670,40 @@ def _nth_roots(base: Expr, r: Expr, n: int, x: Symbol, depth: int) -> Optional[l
     unity = roots(pow(w, Integer(n)) - 1, w, multiple=True)
     if not isinstance(unity, list) or len(unity) != n:
         return None
-    principal = pow(r, Rational(1, n))
+    principal = _principal_root(r, n)
+    from sympy_extras.core.function import diff
+    slope = diff(base, x)
+    linear = slope != _ZERO and not slope.has(x)
+    offset = _subs(base, x, _ZERO) if linear else _ZERO
     result: list[Expr] = []
     for u in unity:
+        if linear:
+            # a*x + b = r**(1/n)*w kept in SymPy's form k*w*r**(1/n) - b: a
+            # residual with the root of unity distributed takes the
+            # assumptions seconds to decide at each solution
+            result.append((principal*u - offset)/slope if slope != _ONE else principal*u - offset)
+            continue
         found = _solve(base - principal*u, x, depth + 1)
         if found is None:
             return None
         result.extend(found)
     return result
+
+
+def _principal_root(r: Expr, n: int) -> Expr:
+    """``r**(1/n)`` with the positive factors of a product taken out
+    (``(k**3*c)**(1/3)`` is ``k*c**(1/3)`` for a positive ``k``), as SymPy's
+    ``Pow`` writes it."""
+    if not isinstance(r, Mul):
+        return pow(r, Rational(1, n))
+    outside: list[Expr] = []
+    inside: list[Expr] = []
+    for f in r.args:
+        factor_ = _expr(f)
+        (outside if factor_.is_positive is True else inside).append(factor_)
+    if not outside:
+        return pow(r, Rational(1, n))
+    return mul(*[pow(f, Rational(1, n)) for f in outside]) * pow(mul(*inside), Rational(1, n))
 
 
 # ---------------------------------------------------------------------------
