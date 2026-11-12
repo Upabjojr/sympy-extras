@@ -25,6 +25,89 @@ remove public functions. Breaking changes are listed here when they happen.
   (the native module leaves those integrals undone). The private helpers
   (`_rational_parameters`, `_root_components`, `_hermite_index_n`, ...)
   take native objects.
+- **Breaking**: `solvers.inequalities.solve_inequality` no longer loads
+  SymPy at run time: a relational which is not rational in the variable
+  is solved by the native `solve_transcendental` (absolute values by
+  cases, then the kernels) in place of SymPy's
+  `solve_univariate_inequality`, and raises `NotImplementedError` (as
+  SymPy did) when the solutions are not a union of intervals and points.
+  The module `solvers.inequalities_sympy` (only the route
+  `solve_inequality_of_core`) is removed. `solve_transcendental` solves
+  the formulas which the absolute values leave rational in the unknown
+  (`1/Abs(c) > 1`), which gave `None`.
+- The cases of the isolated values of the parameters of the native sums
+  (`concrete.karr`, `creative`, `zeilberger`, `qhyper`, `rational`) no
+  longer load SymPy at run time (internal change, same API): the
+  summation rules of `karr_sympy.with_sum_special_values` (no case where
+  the summand is undefined or has a pole in the range, the powers of `0`
+  summed by their values, the numerical check against the sum term by
+  term) are written on the core over the native
+  `_special_values.with_special_values`; the route
+  `karr_sympy.sum_special_values_of_core` is gone.
+- The last resort of the convergence tests for terms without parameters
+  (`concrete.convergence`) no longer loads SymPy at run time (internal
+  change, same API): the integral of the integral test comes from a
+  native antiderivative (the transcendental Risch algorithm, then the
+  heuristic one, checked by differentiation) and the native limits, and
+  SymPy's `Sum.is_convergent` is ported (its `False` still counts as "not
+  shown"); the routes `convergence_sympy.improper_integral_of_core` and
+  `is_convergent_of_core` are gone. The native `ask` no longer prepares
+  SymPy's tables for the CAD of its MetiTarski bounds (a time limit
+  without `native=True` loaded SymPy).
+- The power series of Ramanujan's master theorem and the method of
+  brackets (`integrals.brackets`, and `integrals.series` through
+  `taylor_coefficient`) no longer load SymPy at run time (internal change,
+  same API): the new `brackets.formal_series_terms` finds the coefficients
+  of a single residue class as a hypergeometric term, its ratio guessed
+  from the native series (`concrete.guess.guess_recurrence`) and proved by
+  the differential equation it implies, checked on the function (in place
+  of SymPy's `fps`; the Bessel function `besselj(0, x)`, which `fps` did
+  not expand, now has its series), and the strip of convergence comes
+  from the order at 0 and the behaviour at infinity (powers with
+  logarithms, decays faster than every power, and oscillations
+  `x**q sin(a x**p)` by Dirichlet's test) in place of the strip of SymPy's
+  `mellin_transform`. The routes `brackets_sympy.fps_of_core` and
+  `mellin_strip_of_core` are gone.
+- The periods of the periodic formulas of `assumptions.solve` and of the
+  periodic rule of `integrals.laplace` no longer load SymPy at run time
+  (internal change, same API): SymPy's `periodicity` and `lcim` are
+  ported to the core as the new `sympy_extras.calculus.util` (the periods
+  of the trigonometric functions of linear arguments and the
+  decomposition of compositions written down there), and the routes
+  `solve_sympy.periodicity_of_core` and `laplace_sympy.periodicity_of_core`
+  are gone.
+- The limits of sequences (`assumptions.limits.limit_seq`, and the
+  convergence tests through it) no longer load SymPy at run time
+  (internal change, same API): SymPy's `limit_seq` is ported to the core
+  as the new `sympy_extras.series.limitseq` (`limit_seq`,
+  `difference_delta`, `dominant`), and the route
+  `limits_sympy.limit_seq_of_core` is gone. The core gains the rules it
+  needed from SymPy: the power of a negative number to an even or odd
+  symbol takes the sign out (`(-2)**n` is `-2**n` for an odd `n`), the
+  tractable forms of the limit algorithm for `gamma`, `binomial`, the
+  rising and falling factorials and `harmonic` (and the intractable one of
+  `loggamma`), and the asymptotic series of `polygamma`. Without SymPy the
+  core's `limit(exp(x)/gamma(x), x, oo)` gave `oo` (the tractable form of
+  `gamma` was SymPy's rule only, silently skipped); it is `0`.
+- The signs of the functions which are not rational
+  (`assumptions.analysis.sign_on`, and through it `ask`, `refine`, `solve`,
+  `solvers.isolation`, the convergence tests) no longer load SymPy at run
+  time (internal change, same API): the continuity on a set is checked
+  natively on the subexpressions (the functions of SymPy's
+  `continuous_domain`: powers, `exp`, `log`, `Abs`, the trigonometric and
+  hyperbolic functions and their inverses, each continuous where the
+  signs of its argument allow), the zeros are those of the native
+  `solve_transcendental` factor by factor of the common factors, the
+  periodic families listed on bounded sets, and the intersections of the
+  CAD's solution sets with other intervals are made by certified
+  comparisons of their ends. The routes `analysis_sympy.continuous_on_of_core`,
+  `finite_zeros_of_core`, `has_discrete_zeros_of_core`,
+  `intersection_of_core` and `isolation_sympy.continuous_on_of_core` are
+  gone. `solve_transcendental` takes `lambert=False` to skip the Lambert W
+  candidates of SymPy's `solve`, reduces `x` outside the roots of a
+  linear argument (`x = sqrt(x + 2)`), and no longer rewrites a power of a
+  negative base as an exponential: `(-1)**x = 1` gave `{0}` and
+  `(-2)**x = 4` no solution; both give `None` now.
 - **Breaking**: the transcendental Risch package `sympy_extras.integrals.risch`
   (`risch.py`, `rde.py`, `prde.py`, `cde.py`, `polymatrix.py`) is native on
   the typed core: its functions take and return objects of

@@ -18,12 +18,13 @@ of a regular chain with the native polynomials, and the candidates are
 checked natively. The steps which are not ported go through SymPy at run
 time (the face holds them, the functions ending in ``_of_core``): SymPy's
 ``solveset`` (the other equations and the inequalities in one unknown),
-``nonlinsolve``, ``periodicity`` and the evaluation of an intersection of
+``nonlinsolve`` and the evaluation of an intersection of
 sets which is not ported (with ``Range``, ...), the exact points of
 the zero-dimensional regular chains (SymPy's ``CRootOf``, through
 :mod:`sympy_extras.polys.regularchains_sympy`). The transcendental
 equations (:mod:`sympy_extras.solvers.transcendental`, whose Lambert W
-candidates go through SymPy's ``solve``), the reliable numerical values
+candidates go through SymPy's ``solve``), the periods of the periodic
+formulas (:func:`sympy_extras.calculus.util.periodicity`), the reliable numerical values
 of :mod:`sympy_extras._numeric`, the cylindrical algebraic decomposition
 (:mod:`sympy_extras.polys.cad.qe`: ``solution_set``;
 :mod:`sympy_extras.polys.cad.cylindrical`: ``cylindrical_set``,
@@ -441,7 +442,7 @@ def _univariate(formula: Boolean, x: Symbol, facts: Facts, domain: Optional[Set]
 def _period(formula: Boolean, x: Symbol) -> Optional[Expr]:
     """The common period of the relations of a formula in one unknown, or
     ``None`` when one of them is not periodic."""
-    from .solve_sympy import periodicity_of_core
+    from sympy_extras.calculus.util import periodicity
     period: Optional[Expr] = None
     for atom in formula.atoms(Relational):
         if not isinstance(atom, Relational):
@@ -449,7 +450,7 @@ def _period(formula: Boolean, x: Symbol) -> Optional[Expr]:
         difference = as_expr(atom.lhs - atom.rhs)
         if x not in difference.free_symbols:
             continue
-        value = periodicity_of_core(difference, x)
+        value = attempt(lambda: periodicity(difference, x), settings.timeout, native=True)
         if value is None or value.is_positive is not True or value.is_finite is not True:
             return None
         if value.free_symbols:

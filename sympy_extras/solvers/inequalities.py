@@ -5,11 +5,11 @@ in the variable is solved here (the coefficient divided out when its sign
 is known, the conditions at the infinities added), and so is a
 relational rational in the variable with rational coefficients (SymPy's
 ``reduce_rational_inequalities``: the set of the cylindrical algebraic
-decomposition, :mod:`sympy_extras.polys.cad.qe`, as a relational). The
-module imports no SymPy: a relational with other coefficients, or not
-rational in the variable, goes through SymPy for that relational only, at
-run time (``solve_univariate_inequality`` is not ported;
-:mod:`sympy_extras.solvers.inequalities_sympy` holds the step).
+decomposition, :mod:`sympy_extras.polys.cad.qe`, as a relational). A
+relational which is not rational in the variable is solved by the native
+transcendental solver (:mod:`sympy_extras.solvers.transcendental`, in
+place of SymPy's ``solve_univariate_inequality``); the module imports no
+SymPy and goes through it at no step.
 
 Examples
 ========
@@ -29,7 +29,7 @@ Examples
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; linearity is read from the expanded terms (our Poly
 # does not take every coefficient domain); the rational case by the CAD;
-# the other nonlinear cases go through SymPy.
+# the other nonlinear cases by the native transcendental solver.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -118,6 +118,28 @@ def _coefficients(e: Expr, s: Symbol) -> Optional[list[Expr]]:
     return found
 
 
+def _transcendental_set(ie: Relational, s: Symbol) -> Set:
+    """The real ``s`` where a relational which is not rational in ``s``
+    holds (SymPy's ``solve_univariate_inequality``), by the native
+    :func:`~sympy_extras.solvers.transcendental.solve_transcendental`
+    (absolute values by cases, exponentials, logarithms, trigonometric
+    functions and roots through kernels); ``NotImplementedError``, as
+    SymPy's, when it is not a union of intervals and points."""
+    from sympy_extras.assumptions.analysis import _native_solver
+    from sympy_extras.sets.sets import EmptySetClass, FiniteSet, Interval, Union
+    from .transcendental import solve_transcendental
+    solved = solve_transcendental(ie, s, solver=_native_solver, lambert=False)
+
+    def plain(t: Basic) -> bool:
+        if isinstance(t, (EmptySetClass, FiniteSet, Interval)):
+            return True
+        return isinstance(t, Union) and all(plain(a) for a in t.args)
+
+    if solved is None or not plain(solved):
+        raise NotImplementedError("The inequality %s cannot be solved for %s" % (ie, s))
+    return solved
+
+
 # PORTED FROM SYMPY: sympy/solvers/inequalities.py:_solve_inequality
 def _nonlinear(ie: Relational, s: Symbol) -> Boolean:
     """The nonlinear case of SymPy's ``_solve_inequality``: the set of
@@ -125,8 +147,7 @@ def _nonlinear(ie: Relational, s: Symbol) -> Boolean:
     restrictions at the infinities which the relational does not have."""
     solved = _rational_set(ie, s)
     if solved is None:
-        from .inequalities_sympy import solve_inequality_of_core
-        return solve_inequality_of_core(ie, s)
+        solved = _transcendental_set(ie, s)
     rv = solved.as_relational(s)
     okoo = _classify(ie, s, oo)
     if okoo is true and _classify(rv, s, oo) is false:
@@ -170,7 +191,8 @@ def _denominators(b: Basic) -> set[Expr]:
 def solve_inequality(ie: Boolean, s: Symbol) -> Boolean:
     """``ie`` solved for ``s``: ``s < c``, ``s >= c``, ..., with the
     conditions SymPy adds (a relational not rational in ``s`` with
-    rational coefficients is solved by SymPy)."""
+    rational coefficients by the transcendental solver;
+    ``NotImplementedError`` when it is not solved)."""
     from sympy_extras.core.exprtools import factor_terms
     from sympy_extras.core.function import expand
     if not isinstance(ie, Relational) or s not in ie.free_symbols:

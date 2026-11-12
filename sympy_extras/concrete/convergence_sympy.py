@@ -1,19 +1,11 @@
 """The SymPy face of the convergence tests of series and products
-(:mod:`sympy_extras.concrete.convergence`), and the steps which are not
-ported.
+(:mod:`sympy_extras.concrete.convergence`).
 
 :func:`sum_convergence`, :func:`product_convergence` and
 :func:`is_convergent` take and return SymPy objects (expressions,
 symbols, and assumptions written with SymPy's relations and the
 memberships of :mod:`sympy_extras.assumptions.facts_sympy`), converted by
 :mod:`sympy_extras.interop` around the native functions.
-
-The steps of the native functions which stay written on SymPy are called
-from them at run time (the functions ending in ``_of_core``, which take
-and return objects of the core), both in the last resort for terms
-without parameters: SymPy's ``integrate`` of the integral test
-(:func:`improper_integral_of_core`) and SymPy's ``Sum.is_convergent``
-(:func:`is_convergent_of_core`).
 
 Examples
 ========
@@ -37,49 +29,15 @@ from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
-from sympy_extras._timeout import attempt
-from sympy_extras.settings import settings
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions, sympy_boolean
-from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr
+from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_assumptions, sympy_boolean
+from sympy_extras.assumptions.intervals_sympy import core_expr
 
 from . import convergence as native
 
-__all__ = ['sum_convergence', 'product_convergence', 'is_convergent', 'Condition', 'improper_integral_of_core',
-           'is_convergent_of_core']
+__all__ = ['sum_convergence', 'product_convergence', 'is_convergent', 'Condition']
 
 #: a condition on the parameters (``None`` when undecided)
 Condition = Optional[Boolean]
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native functions which stay on SymPy
-
-def improper_integral_of_core(term: CoreExpr, n: CoreSymbol, lower: CoreExpr) -> Optional[CoreExpr]:
-    """SymPy's ``integrate(term, (n, lower, oo))`` under the time limit of
-    the settings: ``None`` when it does not finish or leaves an
-    ``Integral``."""
-    from sympy.core.numbers import oo
-    from sympy.integrals.integrals import Integral, integrate
-    integrand, variable, start = sympy_expr(term), _sympy_symbol(n), sympy_expr(lower)
-    value = attempt(lambda: integrate(integrand, (variable, start, oo)), settings.timeout)
-    if value is None or not isinstance(value, Expr) or value.has(Integral):
-        return None
-    return core_expr(value)
-
-
-def is_convergent_of_core(term: CoreExpr, n: CoreSymbol, lower: CoreExpr) -> Optional[bool]:
-    """SymPy's ``Sum(term, (n, lower, oo)).is_convergent()`` under the time
-    limit of the settings (``None`` when it does not finish). Its
-    ``False`` means "not shown" (sympy-extras#41)."""
-    from sympy.concrete.summations import Sum
-    from sympy.core.numbers import oo
-    summand, variable, start = sympy_expr(term), _sympy_symbol(n), sympy_expr(lower)
-    value = attempt(lambda: Sum(summand, (variable, start, oo)).is_convergent(), settings.timeout)
-    if value is None:
-        return None
-    return bool(value)
 
 
 # ---------------------------------------------------------------------------

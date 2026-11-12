@@ -136,6 +136,59 @@ def _log_tractable(e: Basic) -> bool:
     return isinstance(e, (Asin, Acos, Atan, Acot, Asec, Acsc, Asinh, Acosh, Atanh, Acoth, Asech, Acsch))
 
 
+def _tractable_special(e: Expr, args: tuple[Basic, ...], limitvar: Optional[Symbol]) -> Optional[Basic]:
+    """SymPy's ``_eval_rewrite_as_tractable`` of the gamma function and
+    of the factorials written with it (``args`` already rewritten),
+    ``None`` for the other nodes."""
+    from sympy_extras.functions.combinatorial.factorials import Binomial, FallingFactorial, RisingFactorial
+    from sympy_extras.functions.elementary.exponential import exp
+    from sympy_extras.functions.special.gamma_functions import Gamma, gamma, loggamma
+    from .expr import as_expr
+    from .numbers import Infinity, Integer, NegativeInfinity
+    from .power import pow
+
+    def tractable(b: Basic, var: Optional[Symbol]) -> Expr:
+        return as_expr(rewrite_tractable(b, var))
+
+    if isinstance(e, Gamma) and isinstance(args[0], Expr):
+        # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:gamma._eval_rewrite_as_tractable
+        return exp(loggamma(args[0]))
+    if isinstance(e, (RisingFactorial, FallingFactorial)) and isinstance(args[0], Expr) \
+            and isinstance(args[1], Expr):
+        # PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:RisingFactorial._eval_rewrite_as_tractable,
+        # FallingFactorial._eval_rewrite_as_tractable
+        x, k = args[0], args[1]
+        rising = isinstance(e, RisingFactorial)
+        if limitvar is not None:
+            k_lim = k.subs(limitvar, Infinity())
+            if isinstance(k_lim, Infinity):
+                if rising:
+                    return tractable(gamma(x + k), limitvar) / gamma(x)
+                return pow(Integer(-1), k) * tractable(gamma(k - x), limitvar) / gamma(-x)
+            if isinstance(k_lim, NegativeInfinity):
+                if rising:
+                    return pow(Integer(-1), k) * gamma(1 - x) / tractable(gamma(-k - x + 1), limitvar)
+                return gamma(x + 1) / tractable(gamma(x - k + 1), limitvar)
+        return rewrite_tractable(_rewrite(e._evaluated(args), (), Gamma, RewriteHints()), limitvar)
+    if isinstance(e, Binomial):
+        # PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:binomial._eval_rewrite_as_tractable
+        return rewrite_tractable(_rewrite(e._evaluated(args), (), Gamma, RewriteHints()), None)
+    from sympy_extras.functions.combinatorial.numbers import Harmonic
+    if isinstance(e, Harmonic) and all(isinstance(a, Expr) for a in args):
+        # PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:harmonic._eval_rewrite_as_tractable
+        # (through harmonic._eval_rewrite_as_polygamma, for a positive integer order)
+        from sympy_extras.functions.special.gamma_functions import polygamma
+        from .numbers import EulerGamma
+        n = as_expr(args[0])
+        m = as_expr(args[1]) if len(args) > 1 else Integer(1)
+        if m == 1:
+            return rewrite_tractable(polygamma(Integer(0), n + 1) + EulerGamma, limitvar)
+        if m.is_integer is True and m.is_positive is True:
+            return rewrite_tractable(pow(Integer(-1), m)*(polygamma(m - 1, Integer(1)) - polygamma(m - 1, n + 1))
+                                     / gamma(m), limitvar)
+    return None
+
+
 # PORTED FROM SYMPY: sympy/core/basic.py:Basic._rewrite (with the rule names 'tractable', 'intractable')
 def rewrite_tractable(e: Basic, limitvar: Optional[Symbol], intractable: bool = False) -> Basic:
     """``e.rewrite('tractable', deep=True, limitvar=...)`` of SymPy (the
@@ -155,6 +208,15 @@ def rewrite_tractable(e: Basic, limitvar: Optional[Symbol], intractable: bool = 
                     return rewritten
         elif _log_tractable(e):
             return _rewrite(e._evaluated(args), (), Log, RewriteHints())
+        gamma_form = _tractable_special(e, args, limitvar)
+        if gamma_form is not None:
+            return gamma_form
+    if intractable and isinstance(e, Expr):
+        from sympy_extras.functions.special.gamma_functions import LogGamma, gamma
+        if isinstance(e, LogGamma) and isinstance(args[0], Expr):
+            # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:loggamma._eval_rewrite_as_intractable
+            from sympy_extras.functions.elementary.exponential import log
+            return log(gamma(args[0]))
     name = 'intractable' if intractable else 'tractable'
     if e.args and (e._is_foreign_node() or type(e).__name__ in _SYMPY_NAMED_RULES[name]):
         # the classes with a rule of that name in SymPy, not ported: SymPy's

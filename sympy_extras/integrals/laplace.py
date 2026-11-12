@@ -29,8 +29,9 @@ transforms of the pieces are computed by
 :func:`~sympy_extras.integrals.definite.definite_integral`, which is still
 written on SymPy, through the functions of
 :mod:`sympy_extras.integrals.laplace_sympy` (``definite_integral_of_core``,
-``conditional_integral_of_core``), and so is SymPy's ``periodicity``
-(``periodicity_of_core``): SymPy is loaded on those paths only. The
+``conditional_integral_of_core``): SymPy is loaded on those paths only.
+The periods of the periodic rule are native
+(:func:`sympy_extras.calculus.util.periodicity`). The
 ``Integral`` of the convolution rule is SymPy's, wrapped in a node of the
 core (the core has no class of its own). The functions on SymPy objects
 are in :mod:`.laplace_sympy`.
@@ -271,12 +272,11 @@ def _exponential_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) -> 
 
 def _periodic_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:
     """``L[f](s) = Integral(f exp(-s t), (t, 0, T)) / (1 - exp(-s T))`` for
-    a period ``T`` (SymPy's ``periodicity``, through
-    :func:`sympy_extras.integrals.laplace_sympy.periodicity_of_core`)."""
+    a period ``T`` (:func:`sympy_extras.calculus.util.periodicity`)."""
     if f.has(Exp, Heaviside) or has_integral(f):
         return None
-    from .laplace_sympy import periodicity_of_core
-    found = periodicity_of_core(f, t, settings.timeout)
+    from sympy_extras.calculus.util import periodicity
+    found = attempt(lambda: periodicity(f, t), settings.timeout, native=True)
     if found is None or found == 0 or found.has(t):
         return None
     period: Expr = found

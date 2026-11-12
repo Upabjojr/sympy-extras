@@ -177,8 +177,8 @@ sympy_extras/
         intervals.py         rigorous interval arithmetic: evaluate, signs_on_box, corner_signs, isolate_signs (native)
         intervals_sympy.py   the SymPy face of intervals
         analysis.py          signs beyond polynomials: certified_sign, sign_on, domain_of, decide_relational (native;
-                             the native CAD; continuous_domain/solveset of non-rational expressions through analysis_sympy)
-        analysis_sympy.py    the SymPy face of analysis, and the steps which stay on SymPy (the *_of_core functions)
+                             the native CAD, continuity and transcendental zeros; no SymPy at run time)
+        analysis_sympy.py    the SymPy face of analysis
         ask.py               ask(): the core's ask first, then the CAD (native, with the native CAD and virtual
                              substitution, the native structure theorem, sample points and reliable values)
         ask_sympy.py         the SymPy face of ask
@@ -194,10 +194,11 @@ sympy_extras/
                              native SAT solver (native, PORTED FROM SYMPY satask, sathandlers, ask_generated)
         solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains, parametric cases
                              and transcendental equations; solveset, nonlinsolve through solve_sympy)
-        solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
+        solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions;
+                             the periods by the native calculus.util.periodicity)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
-                             Gruntz and series, the native reliable values; SymPy's limit_seq through limits_sympy)
-        limits_sympy.py      the SymPy face of limits, and the steps which stay on SymPy (the *_of_core functions)
+                             Gruntz and series, the native reliable values, series.limitseq)
+        limits_sympy.py      the SymPy face of limits
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
         elementary/
@@ -236,7 +237,8 @@ sympy_extras/
                              of any SymPy object; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
-        karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation (native)
+        karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation, the cases of the
+                             isolated values of the parameters of sums (_sum_special_values_native) (native)
         karr_sympy.py        the SymPy face of karr: karr_sum, karr_term, summation, with_sum_special_values
         creative.py          creative telescoping in PiSigma-fields: creative_telescoping, definite_sum (native)
         guess.py             guess_recurrence, guess_differential_equation, guess_algebraic_equation, guess_closed_form: equations from the first terms (native)
@@ -246,8 +248,9 @@ sympy_extras/
         qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
         convergence.py       sum_convergence, product_convergence, is_convergent: the conditions on the parameters for
                              convergence by the ratio, Raabe, Bertrand, root, power, Leibniz, Dirichlet and integral
-                             tests (native; SymPy's integrate and Sum.is_convergent through convergence_sympy)
-        convergence_sympy.py the SymPy face of convergence, and improper_integral_of_core, is_convergent_of_core
+                             tests (native: the integral test by the native Risch and heuristic integrators, a port of
+                             SymPy's Sum.is_convergent), PORTED FROM SYMPY (is_convergent, is_decreasing)
+        convergence_sympy.py the SymPy face of convergence
         tests/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of
@@ -296,9 +299,9 @@ sympy_extras/
         parametric_sympy.py  the SymPy face of parametric, used by definite; DefiniteIntegrator, antiderivative_of_core
         laplace.py           laplace_rules, laplace_integral, laplace_of_convolution, transform, real_arguments: the
                              operational rules of the Laplace transform (native; the transforms of the pieces by
-                             definite and SymPy's periodicity through laplace_sympy)
+                             definite through laplace_sympy; the periods by calculus.util.periodicity)
         laplace_sympy.py     the SymPy face of laplace, used by definite, and definite_integral_of_core,
-                             conditional_integral_of_core (also for summability, transformations), periodicity_of_core
+                             conditional_integral_of_core (also for summability, transformations)
         transformations.py   frullani, glasser, transformation_integral: Frullani's theorem, Glasser's master theorem
                              (native: the native limits and partial fractions; the transformed integral by definite)
         transformations_sympy.py the SymPy face of transformations, used by definite
@@ -310,10 +313,10 @@ sympy_extras/
         antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series, and integrate_of_core,
                              verified_antiderivative_of_core
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
-                             (native: the native series, limits, summation, gammasimp, hyperexpand; SymPy's fps and
-                             the strip of its mellin_transform through brackets_sympy)
-        brackets_sympy.py    the SymPy face of brackets (SeriesCoefficient on SymPy objects, used by series), and
-                             fps_of_core, mellin_strip_of_core
+                             (native: the native series, limits, summation, guessing, gammasimp, hyperexpand;
+                             formal_series_terms: hypergeometric coefficients guessed and proved by their ODE; the
+                             strips from the orders at 0 and infinity, oscillations by Dirichlet's test)
+        brackets_sympy.py    the SymPy face of brackets (SeriesCoefficient on SymPy objects, used by series)
         periodic.py          mean_value_integral, laurent_coefficient, to_laurent: integrals over whole periods as the
                              constant Laurent coefficient in exp(I x) (native: the native summation and simplify, the
                              series of exp, sin, cos, sinh, cosh written down; other series by brackets' fps)
@@ -403,17 +406,17 @@ sympy_extras/
         tests/
     solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
-                             exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)
-        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), the *_of_core functions
+                             exp-log functions (native; SymPy's real_roots with CRootOf through isolation_sympy)
+        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), and
+                             real_roots_of_core
         transcendental.py    solve_transcendental, polynomialize, Reduction: transcendental equations and inequalities
                              reduced to polynomial ones through kernels (native; SymPy's solveset of the non-rational
-                             polynomial relations, the Lambert W candidates of its solve and _numeric through
-                             transcendental_sympy)
+                             polynomial relations, the Lambert W candidates of its solve (lambert=False skips them)
+                             and _numeric through transcendental_sympy)
         transcendental_sympy.py the SymPy face of transcendental, and solveset_of_core, solve_of_core,
                              reliable_form_of_core, reliable_value_of_core
         inequalities.py      solve_inequality: a relational solved for one variable (native, the rational case by
-                             the CAD; the others through inequalities_sympy), PORTED FROM SYMPY
-        inequalities_sympy.py solve_inequality_of_core (SymPy's _solve_inequality)
+                             the CAD, the others by the native transcendental solver), PORTED FROM SYMPY
         integers.py          linear Diophantine systems (Hermite), Contejean-Devie, Cooper's algorithm (native;
                              SymPy's simplify_logic through integers_sympy)
         integers_sympy.py    the SymPy face of integers, and simplify_logic_of_core (from virtual_substitution_sympy)
@@ -514,7 +517,8 @@ sympy_extras/
                              model in a deterministic order (native, PORTED FROM SYMPY logic/algorithms/dpll2)
         tests/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
-    series/                  residue (ported from SymPy)
+    calculus/                periodicity, lcim (util.py): the period of a function (ported from SymPy)
+    series/                  residue; limit_seq, difference_delta, dominant (limitseq.py) (ported from SymPy)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
                              Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)

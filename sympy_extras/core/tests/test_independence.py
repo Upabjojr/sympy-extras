@@ -87,14 +87,21 @@ assert str(zeilberger_sum(binomial(n, k)**2, (k, 0, n))) == 'binomial(2*n, n)'
 assert str(zeilberger_sum(1/k, (k, 1, n))) == 'harmonic(n)'
 assert str(zeilberger_sum(binomial(2*n, k), (k, 0, n))) == '4**n/2 + factorial(2*n)/(2*factorial(n)**2)'
 assert wz_prove(binomial(n, k), 2**n, n, k) is True
+# the cases of the isolated values of a parameter (SymPy's
+# with_sum_special_values, through karr_sympy, before)
+from sympy_extras.concrete.karr import karr_sum
+y = symbols('y')
+assert str(karr_sum(y**k, (k, 0, n))) == 'Piecewise((n + 1, Eq(y, 1)), ((y*y**n - 1)/(y - 1), True))'
+assert str(karr_sum(k*y**k, (k, 0, n))).startswith('Piecewise((n*(n + 1)/2, Eq(y, 1)),')
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
 def test_native_zeilberger_does_not_load_sympy() -> None:
     """:mod:`sympy_extras.concrete.zeilberger` on a summand without
-    parameters (the cases of the parameters are the only step through
-    SymPy) does not load SymPy."""
+    parameters does not load SymPy, nor do the cases of the isolated values
+    of the parameters of a sum (SymPy's ``with_sum_special_values``
+    before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ZEILBERGER], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -185,6 +192,16 @@ assert sign_on((x - 1)/(x**2 + 1), x, Reals) == frozenset([-1, 0, 1])
 assert sign_on(1/x, x, Interval(-1, 1, True, True)) is None
 assert decide_relational(x**2 > 1, Facts([x > 2])) is True
 assert decide_relational(1/(x - 3) < 0, Facts([x > 0, x < 2])) is True
+# continuity and zeros of functions which are not rational (SymPy's
+# continuous_domain and solveset before)
+from sympy_extras.functions import tan, cos, asin
+from sympy_extras.assumptions.analysis import _continuous_on, _finite_zeros, _has_discrete_zeros
+assert sign_on(sin(x), x, Interval(0, pi, True, True)) == frozenset([1])
+assert sorted(sign_on(exp(x) - 2, x, Reals)) == [-1, 0, 1]
+assert _continuous_on(log(x) + sqrt(x - 1), x, Interval(1, 2)) and not _continuous_on(tan(x), x, Interval(0, 2))
+assert _continuous_on(asin(x/2), x, Interval(-2, 2)) and not _continuous_on(log(x), x, Interval(0, 1))
+assert str(_finite_zeros(exp(x)*sin(x) + exp(x)*cos(x), x, Interval(0, 5, True, True))) == '[3*pi/4]'
+assert str(_finite_zeros(exp(x) - 2, x, Reals)) == '[log(2)]' and _has_discrete_zeros(sin(x), x, Reals)
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -192,8 +209,9 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 def test_native_analysis_does_not_load_sympy() -> None:
     """:mod:`sympy_extras.assumptions.intervals` and
     :mod:`sympy_extras.assumptions.analysis` on rational functions,
-    boxes and constants do not load SymPy (``continuous_domain`` and
-    ``solveset`` of the other expressions and the CAD go through it)."""
+    boxes and constants do not load SymPy, nor do the continuity and the
+    zeros of the other expressions (SymPy's ``continuous_domain`` and
+    ``solveset`` before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ANALYSIS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -236,6 +254,11 @@ assert 'sympy' not in sys.modules
 x, a = symbols('x a')
 assert str(solve(x**2 + 1, x)) == '{-I, I}' and str(solve(x**2 - 2, x)) == '{-sqrt(2), sqrt(2)}'
 assert str(solve(a*x - 1, x, a > 0)) == '{1/a}'
+# a periodic inequality: the period was SymPy's periodicity
+from sympy_extras.functions import sin, Abs
+from sympy_extras.calculus.util import periodicity
+assert str(solve(sin(x) > 0, x, (x > 0) & (x < 10))) == 'Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))'
+assert str(periodicity(Abs(sin(x)), x)) == 'pi'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -255,9 +278,8 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 
 def test_native_solve_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.assumptions.solve` does not load SymPy,
-    nor do the rational equations over the complex numbers (``solveset``,
-    the CAD and the triangular decompositions go through SymPy at run
-    time)."""
+    nor do the rational equations over the complex numbers and the
+    periodic inequalities (their periods were SymPy's ``periodicity``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -300,6 +322,20 @@ a, x = symbols('a x')
 assert limit(sin(x)/x, x, Integer(0)) == 1 and limit(exp(a*x), x, oo, assumptions=a < 0) == 0
 assert limit(x**a, x, oo, assumptions=a > 0) == oo
 assert str(series(sqrt(a**2 + x), x, 0, 2, assumptions=a > 0)) == 'x/(2*a) + a + O(x**2)'
+# limits of sequences (SymPy's limit_seq before)
+from sympy_extras.core import EulerGamma, Rational
+from sympy_extras.core.accumbounds import accum_bounds
+from sympy_extras.functions import binomial, factorial, harmonic, log
+n = symbols('n')
+assert limit_seq(a**n, n, assumptions=a > 1) == oo and limit_seq((-1)**n, n) == accum_bounds(-1, 1)
+assert limit_seq(harmonic(n) - log(n), n) == EulerGamma and limit_seq(binomial(2*n, n)/4**n, n) == 0
+assert limit_seq((-2)**n, n) == accum_bounds(-oo, oo)
+# the core's limit of a gamma function: its tractable form exp(loggamma)
+# was SymPy's rule only, and without SymPy exp(x)/gamma(x) came out oo
+from sympy_extras.core.limits import limit as core_limit
+from sympy_extras.functions import gamma
+assert core_limit(exp(x)/gamma(x), x, oo) == 0 and core_limit(2**x/gamma(x + 1), x, oo) == 0
+assert limit_seq(2**n/factorial(n), n) == 0
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -317,9 +353,8 @@ def test_native_structure_does_not_load_sympy() -> None:
 def test_native_limits_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.assumptions.limits` does not load
     SymPy, nor do the limits and series whose parameters have signs
-    decided by the predicates (SymPy's ``limit_seq``, the reliable
-    numerical values, and the SAT and CAD of the case distinctions go
-    through SymPy at run time)."""
+    decided by the predicates, the limits of sequences (SymPy's
+    ``limit_seq`` before) and the core's limits of gamma functions."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_LIMITS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -369,6 +404,11 @@ assert minimal_nonnegative_solutions([[3, 5]], [22]) == ([[4, 2]], [])
 assert str(cooper((x > y) & (x < y + 2), x)) == 'True' and is_presburger(Eq(Mod(x, 3), 1), {x})
 assert str(with_sides(x - y > 0)) == 'x > y'
 assert radical_form(x) is None and in_radicals(finite_set(1, 2)) == finite_set(1, 2)
+# a function which is not rational: its continuity was SymPy's continuous_domain
+from sympy_extras.functions import sin, log
+roots = isolate_real_roots(exp(x)*sin(x) - 1, x, interval(0, 5))
+assert roots is not None and len(roots) == 2 and compare_points(roots[0], roots[1]) == -1
+assert str(isolate_real_roots(log(x) - 1, x, interval(0, oo, True, True))) == '[E]'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -388,10 +428,9 @@ def test_native_isolation_integers_roots_do_not_load_sympy() -> None:
     :mod:`sympy_extras.solvers.integers` and :mod:`sympy_extras.polys.roots`
     does not load SymPy, nor do the polynomial and rational roots, the root
     objects, the Diophantine systems and the eliminations which need no
-    simplification (SymPy's ``real_roots`` with ``CRootOf``,
-    ``continuous_domain``, ``solveset`` of the transcendental functions,
-    ``simplify_logic`` and ``roots`` over ``EX`` go through it at run
-    time)."""
+    simplification, nor the roots of the functions which are not rational
+    (SymPy's ``real_roots`` with ``CRootOf``, ``simplify_logic`` and
+    ``roots`` over ``EX`` go through it at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ISOLATION], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -1141,6 +1180,9 @@ assert str(solve_transcendental(Eq(tan(x), 1), x)).startswith('Union(ImageSet(La
 assert str(polynomialize(Eq(exp(x/2) + exp(x), 6), x)) == 'Reduction(Eq(_t**2 + _t - 6, 0), _t = exp(x/2))'
 assert str(solve_inequality(x**2 - 4 < 0, x)) == '(-2 < x) & (x < 2)'
 assert str(solve_inequality(x < x*(2/x - 1), x)) == '(x < 1) & Ne(x, 0)'
+# relationals which are not rational (SymPy's _solve_inequality before)
+assert str(solve_inequality(exp(x) > 2, x)) == 'log(2) < x'
+assert str(solve_inequality(1/Abs(x) > 1, x)) == '(x > -1) & (x < 1) & Ne(x, 0)'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -1203,11 +1245,10 @@ def test_native_transcendental_and_inequalities_do_not_load_sympy() -> None:
     :mod:`sympy_extras.solvers.inequalities` does not load SymPy, nor do
     the equations and inequalities in exponentials, logarithms, sines and
     cosines, roots and absolute values whose reduced polynomial formulas
-    are rational or linear, and the relationals rational in the variable
-    (SymPy's ``solveset`` of the other polynomial relations, the Lambert
-    W candidates of its ``solve``, the reliable numerical values and
-    SymPy's ``_solve_inequality`` of the other relationals go through it
-    at run time)."""
+    are rational or linear, and the relationals solved for a variable,
+    rational in it or not (SymPy's ``solveset`` of the other polynomial
+    relations, the Lambert W candidates of its ``solve`` and the reliable
+    numerical values go through it at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_TRANSCENDENTAL], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -1450,6 +1491,15 @@ c = SeriesCoefficient((Integer(-1)/4)**j/(rf(Rational(3, 2), j)*factorial(j)), j
 assert str(c.phi()) == 'sqrt(pi)/(2*2**(2*_j)*gamma(_j + 3/2))'
 assert str(_factors(3*x**2*exp(-x)*sin(2*x), x)) == '(3, 2, [(exp(-_y), 1, 1), (sin(_y), 2, 1)])'
 assert (_order_at_infinity(1/(1 + x)**2, x), _order_at_infinity(atan(x), x)) == (2, 0)
+# the power series and the strips (SymPy's fps and mellin_transform before)
+from sympy_extras.integrals.brackets import ramanujan_master_theorem, taylor_coefficient
+from sympy_extras.functions import cos, log, sqrt
+s = symbols('s')
+assert str(ramanujan_master_theorem(exp(-x), x, s)) == 'MellinTransform(gamma(s), (0, oo))'
+assert str(ramanujan_master_theorem(cos(sqrt(x)), x, s).strip) == '(0, 1/2)'
+assert str(ramanujan_master_theorem(log(1 + x), x, s).strip) == '(-1, 0)'
+c = taylor_coefficient(sin(x), x)
+assert c is not None and (c.period, c.offset) == (2, 1)
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -1473,9 +1523,10 @@ def test_native_brackets_and_dirichlet_do_not_load_sympy() -> None:
     :mod:`sympy_extras.integrals.dirichlet` does not load SymPy, nor do the
     Dirichlet integrals (the product formulas, the native ``ask``,
     ``simplify`` and ``logcombine``) and the steps of the method of
-    brackets after the formal power series (the coefficient function,
-    the factors, the decay at infinity by the native series); SymPy's
-    ``fps`` is reached through the face only when a series is needed."""
+    brackets (the coefficient function, the factors, the decay at
+    infinity by the native series), nor the power series and the strips of
+    Ramanujan's master theorem (SymPy's ``fps`` and ``mellin_transform``
+    before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_BRACKETS_DIRICHLET], capture_output=True, text=True,
                          timeout=600)
     assert out.returncode == 0, out.stderr
@@ -1496,6 +1547,14 @@ assert str(sum_convergence((sin(n) + 3)/(n**2 + 1), n)) == 'True'
 assert str(sum_convergence(2**(-n), n)) == 'True'
 assert str(product_convergence(1, n)) == 'True' and str(product_convergence(1 + 1/n**2, n)) == 'True'
 assert is_convergent(1/(n**2 + 1), n) is True
+# the integral test and the port of SymPy's Sum.is_convergent (SymPy's
+# integrate and is_convergent before)
+from sympy_extras.core import Integer
+from sympy_extras.functions import log, factorial
+from sympy_extras.concrete.convergence import _is_convergent_native
+assert str(sum_convergence(1/(n*log(n)), n, lower=Integer(2))) == 'False'
+assert str(sum_convergence(1/(n*log(n)**2), n, lower=Integer(2))) == 'True'
+assert _is_convergent_native(2**n/factorial(n), n, Integer(1)) is True
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -1541,9 +1600,9 @@ def test_native_convergence_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.concrete.convergence` does not load
     SymPy, nor do the comparison with a rational majorant, the term test
     and the ratio and Raabe tests on series without parameters, and the
-    products reduced to them (SymPy's ``integrate`` of the integral test,
-    its ``Sum.is_convergent`` and the steps of the native assumptions which
-    stay on SymPy go through the faces at run time)."""
+    products reduced to them, nor the integral test and the port of SymPy's
+    ``Sum.is_convergent`` (SymPy's ``integrate`` and ``is_convergent``
+    before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_CONVERGENCE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

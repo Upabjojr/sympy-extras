@@ -206,7 +206,9 @@ def _rewrite(e: Expr, x: Symbol) -> Expr:
         return isinstance(a, (Sinh, Cosh, Tanh, Coth)) and a.has(x)
 
     def general_power(a: Basic) -> bool:
-        return isinstance(a, Pow) and a.exp.has(x) and not a.base.has(x)
+        # a negative base is not exp(u*log(b)) with a real logarithm:
+        # (-1)**x is 1 at every even integer, not only at 0
+        return isinstance(a, Pow) and a.exp.has(x) and not a.base.has(x) and a.base.is_positive is True
 
     def as_exponential(a: Basic) -> Basic:
         if not isinstance(a, Pow):
@@ -381,7 +383,16 @@ def _polynomialize_roots(formula: Boolean, kernels: list[Expr], x: Symbol) -> Op
             replacements[k] = pow(y, int(k.exp.p)*q//int(k.exp.q))
     reduced = _xreplace(formula, replacements)
     if reduced.has(x):
-        return None
+        # x outside the roots of a linear u = a*x + b (x - sqrt(x)) is
+        # (y**q - b)/a
+        linear = _coefficients(u, x)
+        if linear is None or set(linear) != {0, 1} and set(linear) != {1} or \
+                not all(isinstance(c, Rational) for c in linear.values()):
+            return None
+        a, b = linear[1], linear.get(0, Integer(0))
+        reduced = _xreplace(reduced, {x: (pow(y, q) - b)/a})
+        if reduced.has(x):
+            return None
     return _clear(reduced, y, 'root', u, order=q)
 
 
@@ -457,10 +468,11 @@ def _positive_denominator(d: Expr, variable: Symbol, family: str) -> bool:
 # inverse images
 
 class _Context:
-    def __init__(self, solver: Optional[Solver], decide: Optional[Decider], depth: int) -> None:
+    def __init__(self, solver: Optional[Solver], decide: Optional[Decider], depth: int, lambert: bool = True) -> None:
         self.solver: Final[Optional[Solver]] = solver
         self.decide: Final[Optional[Decider]] = decide
         self.depth: Final[int] = depth
+        self.lambert: Final[bool] = lambert
 
     def truth(self, condition: Boolean) -> Truth:
         if isinstance(condition, BooleanTrue):
@@ -472,7 +484,7 @@ class _Context:
         return None
 
     def deeper(self) -> _Context:
-        return _Context(self.solver, self.decide, self.depth + 1)
+        return _Context(self.solver, self.decide, self.depth + 1, self.lambert)
 
 
 #: a set of values together with the condition under which they are
@@ -755,7 +767,7 @@ def _lambert(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     or logarithm (``x*exp(x) = 1``, ``x + log(x) = 2``): SymPy's ``solve``
     has the Lambert W patterns; its candidates are checked on the
     equation and kept only when real."""
-    if not isinstance(formula, Relational) or formula.rel_op != '==':
+    if not ctx.lambert or not isinstance(formula, Relational) or formula.rel_op != '==':
         return None
     e = formula.lhs - formula.rhs
     if e.free_symbols - {x}:
@@ -837,7 +849,7 @@ def _without_abs(formula: Boolean, x: Symbol) -> Boolean:
 
 
 def solve_transcendental(formula: Boolean, x: Symbol, solver: Optional[Solver] = None,
-                         decide: Optional[Decider] = None) -> Optional[Set]:
+                         decide: Optional[Decider] = None, lambert: bool = True) -> Optional[Set]:
     """The real solutions of a transcendental formula in ``x``, or
     ``None`` when the formula is not reducible to a polynomial one.
 
@@ -857,6 +869,11 @@ def solve_transcendental(formula: Boolean, x: Symbol, solver: Optional[Solver] =
         Decides the conditions on the parameters met when inverting the
         kernels (``v > 0`` for ``exp(u) = v``); undecided conditions are
         kept in :class:`~sympy_extras.sets.conditionset.ConditionSet`.
+    lambert : bool, optional
+        Whether the equations with the unknown inside and outside an
+        exponential or a logarithm are tried with the Lambert W candidates
+        of SymPy's ``solve`` (the only step which loads SymPy when a
+        ``solver`` is given); ``False`` gives ``None`` for them.
 
     Examples
     ========
@@ -872,13 +889,43 @@ def solve_transcendental(formula: Boolean, x: Symbol, solver: Optional[Solver] =
     >>> solve_transcendental(exp(x) < 2, x)
     Interval.open(-oo, log(2))
     """
-    return _solve_transcendental(formula, x, _Context(solver, decide, 0))
+    return _solve_transcendental(formula, x, _Context(solver, decide, 0, lambert))
+
+
+def _cleared(formula: Boolean, x: Symbol) -> Optional[Boolean]:
+    """A formula rational in ``x`` with rational coefficients as a
+    polynomial one: each relation ``p/q op 0`` as ``p*q op 0`` with
+    ``q != 0``; ``None`` when an atom is not rational so."""
+    from sympy_extras.polys.rationaltools import together
+
+    def rational(e: Expr) -> bool:
+        coefficients = _coefficients(e, x)
+        return coefficients is not None and all(c.is_rational is True for c in coefficients.values())
+
+    cleared: dict[Basic, Basic] = {}
+    for atom in _atoms(formula):
+        numerator, denominator = together(atom.lhs - atom.rhs).as_numer_denom()
+        if not rational(numerator) or not rational(denominator):
+            return None
+        relation = _relation(atom.rel_op, expand(numerator*denominator), Integer(0))
+        cleared[atom] = and_(relation, ne(denominator, 0)) if denominator.has(x) else relation
+    return _xreplace(formula, cleared)
 
 
 def _solve_transcendental(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     formula = _without_abs(formula, x)
+    # the relations evaluated: Eq(exp(x) + 2, 0) is False for a real x
+    formula = _map_atoms(formula, lambda a: _relation(a.rel_op, a.lhs, a.rhs))
+    if isinstance(formula, BooleanFalse):
+        return EmptySet
+    if isinstance(formula, BooleanTrue):
+        return Reals
     if _polynomial(formula, x):
         return in_radicals(solution_set(formula, x))
+    rational = _cleared(formula, x)
+    if rational is not None and _polynomial(rational, x):
+        # a rational formula (after the absolute values): 1/c > 1
+        return in_radicals(solution_set(rational, x))
     reduction = polynomialize(formula, x)
     if reduction is None:
         return _lambert(formula, x, ctx)

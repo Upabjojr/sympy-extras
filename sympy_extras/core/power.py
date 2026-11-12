@@ -460,6 +460,15 @@ def pow(b: ExprLike, e: ExprLike) -> Expr:
                 return Integer(1)
             if exp.p == 1 and exp.q == 1:
                 return base
+    if exp.is_Symbol and exp.is_integer is True and \
+            (isinstance(base, Number) or (isinstance(base, Mul) and base.is_number)) and \
+            base.could_extract_minus_sign() and not (isinstance(base, Integer) and base.p == -1):
+        # PORTED FROM SYMPY: sympy/core/power.py:Pow.__new__ (a number
+        # base to an even or odd symbol: (-2)**n is -2**n for an odd n)
+        if exp.is_even is True:
+            return pow(mul(Integer(-1), base), exp)
+        if exp.is_odd is True:
+            return mul(Integer(-1), pow(mul(Integer(-1), base), exp))
     if isinstance(base, Number):
         if isinstance(base, NaN):
             return nan

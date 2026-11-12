@@ -253,6 +253,44 @@ class PolyGamma(DefinedFunction):
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:polygamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series at an argument going to ``oo`` of a
+        nonnegative integer order (Abramowitz & Stegun 6.3.18, 6.4.10)."""
+        from sympy_extras.core.numbers import oo
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.numbers import bernoulli
+        order_, z = self.args
+        assert isinstance(order_, Expr) and isinstance(z, Expr)
+        if args0[1] != oo or not (isinstance(order_, Integer) and order_.p >= 0):
+            return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+        N = order_
+        if N.p == 0:
+            # the digamma function
+            r = log(z) - 1/(2*z)
+            if n < 2:
+                o = order(1/z, x)
+            else:
+                m = (n + 1)//2
+                r = r - add(*[bernoulli(Integer(2*k)) / (2*k*z**(2*k)) for k in range(1, m)])
+                o = order(1/z**n, x)
+            return r._eval_nseries(x, n, logx, Integer(0)) + o
+        # the proper polygamma functions; terms beyond O(x**n) on purpose
+        fac = gamma(N)
+        e0 = fac + N*fac/(2*z)
+        m = (n + 1)//2
+        for k in range(1, m):
+            fac = fac*(2*k + N - 1)*(2*k + N - 2) / ((2*k)*(2*k - 1))
+            e0 = e0 + bernoulli(Integer(2*k))*fac/z**(2*k)
+        o = order(1/z**(2*m), x)
+        if n == 0:
+            o = order(1/z, x)
+        elif n == 1:
+            o = order(1/z**2, x)
+        # SymPy expands e0 in z first: a finite sum in 1/z already
+        r = e0 + o
+        return (-1 * (-1/z)**N * r)._eval_nseries(x, n, logx, Integer(0))
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         n, z = args

@@ -120,6 +120,48 @@ def test_unreducible_native() -> None:
     assert solve_transcendental(Eq(log(x) + log(x + 1), 1), x) is None
 
 
+def test_negative_bases_are_not_exponentials() -> None:
+    # (-1)**x was rewritten exp(x*log(-1)) = exp(I*pi*x): the solutions of
+    # (-1)**x = 1 came out as {0}, without 2, 4, ..., and (-2)**x = 4 had
+    # none (x = 2 is one); a power of a negative base is not reduced
+    assert solve_transcendental(Eq((-1)**x - 1, 0), x) is None
+    assert solve_transcendental(Eq((-2)**x - 4, 0), x) is None
+    assert solve_transcendental(Eq(2**x - 4, 0), x) == finite_set(Integer(2))
+
+
+def test_unknown_outside_a_root_of_a_linear_argument() -> None:
+    # x - sqrt(x) = 0 was not reduced (x outside the root): None; x is
+    # y**2 for y = sqrt(x); x = sqrt(x + 2) has the root 2 only (-1 is
+    # extraneous), and x + 1 = x**(1/3) none (the principal root)
+    assert solve_transcendental(Eq(x - sqrt(x), 0), x) == finite_set(Integer(0), Integer(1))
+    assert solve_transcendental(Eq(x - sqrt(x + 2), 0), x) == finite_set(Integer(2))
+    assert solve_transcendental(Eq(x + 1 - cbrt(x), 0), x) == EmptySet
+
+
+def test_rational_after_the_absolute_values() -> None:
+    # 1/Abs(x) > 1 is rational in x once the absolute value is split: it
+    # gave None (no kernel), the set is (-1, 0) U (0, 1)
+    found = solve_transcendental(1/Abs(x) > 1, x)
+    assert found is not None
+    for inside in (Rational(-1, 2), Rational(1, 2), Rational(9, 10)):
+        assert found.contains(inside) is true
+    for outside in (Integer(-1), Integer(0), Integer(1), Integer(2)):
+        assert found.contains(outside) is not true
+
+
+def test_relations_decided_by_the_assumptions() -> None:
+    # Eq(exp(v) + 2, 0) evaluates to False for a real v: the reduction
+    # found no kernel in False and gave None, the set is empty
+    v = Symbol('v', real=True)
+    assert solve_transcendental(Eq(exp(v) + 2, 0), v) == EmptySet
+    assert solve_transcendental(exp(v) + 2 > 0, v) == interval(-oo, oo)
+
+
+def test_lambert_can_be_disabled() -> None:
+    # without the Lambert W candidates (SymPy's solve) nothing is found
+    assert solve_transcendental(Eq(x*exp(x), 1), x, lambert=False) is None
+
+
 def test_lambert_native() -> None:
     # the candidates come from SymPy's solve (through the face); the
     # branch -1 gives the second real root of x*exp(-x) = 1/4

@@ -30,8 +30,13 @@ def test_taylor_coefficient() -> None:
     # phi(j) = (-1)^j j! c(j) of the master theorem
     phi = c.phi()
     assert phi is not None and phi.subs(c.index, 3) == -2
+    # the series of besselj(0, x) (SymPy's fps did not find it: None)
+    c = taylor_coefficient(besselj(0, x), x)
+    assert c is not None and (c.period, c.offset) == (2, 0)
+    assert [c.coefficient.subs(c.index, k) for k in range(3)] == [1, -Rational(1, 4), Rational(1, 64)]
     # no single closed form (two residue classes), and no series at all
-    assert taylor_coefficient(besselj(0, x), x) is None
+    assert taylor_coefficient(exp(x) + sin(x), x) is None
+    assert taylor_coefficient(log(x), x) is None
     c = taylor_coefficient(exp(x), x)
     assert c is not None and c.phi() is None
 
