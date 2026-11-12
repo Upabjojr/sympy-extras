@@ -539,6 +539,26 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The definite integrals from an antiderivative are native
+  (**breaking**): `sympy_extras.integrals.antiderivative`
+  (`antiderivative`, `antiderivative_integral`,
+  `principal_value_integral`, `finite_part_integral`, `discontinuities`,
+  `one_sided_limit`, `select_branch`, `quick_shape`, `by_parts_shape`)
+  takes and returns objects of the core and imports no SymPy: the
+  singularities by a port of SymPy's `singularities` on the native solve
+  under the assumptions on the range (the new `singularities`, a list of
+  points), their placement by the native ask, the native limits under
+  assumptions and series. The antiderivative is a typed step
+  (`AntiderivativeStep`, the new `step` argument of the integrals): by
+  default the native table of quadratic radicals, then SymPy's
+  `integrate` and the verified methods of `indefinite` (not ported yet)
+  through the face (`antiderivative_sympy.integrate_of_core`,
+  `verified_antiderivative_of_core`), which loads SymPy on that path
+  only; a native antiderivative (the native `ratint`) runs the whole
+  method without SymPy. `_real_logarithms` and `_elementary_polynomial`
+  are public as `real_logarithms` and `elementary_polynomial`. The old
+  API on SymPy objects is in `sympy_extras.integrals.antiderivative_sympy`,
+  used by `definite`, `series` and the tests.
 - The rationalising substitutions for algebraic integrands and the
   canonical forms and substitutions before integration are native
   (**breaking**): `sympy_extras.integrals.algebraic`

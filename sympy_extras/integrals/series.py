@@ -382,7 +382,7 @@ def _computed_expansion(g: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assum
         # a harmonic in g resonates with the basis at one index, where
         # the formula computed for the symbolic index is wrong
         return None
-    from .antiderivative import antiderivative_integral
+    from .antiderivative_sympy import antiderivative_integral
     from .definite import conditional_integral
     length = as_expr(b - a)
     k = Dummy('k', integer=True, positive=True)

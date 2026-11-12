@@ -2165,3 +2165,49 @@ def test_native_rewriting_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_REWRITING], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ANTIDERIVATIVE = r'''
+import sys
+from sympy_extras.core import Integer, Rational, S, Symbol, oo, pi
+from sympy_extras.functions import Piecewise, atan, log, sin
+from sympy_extras.integrals.antiderivative import (antiderivative_integral, by_parts_shape, discontinuities,
+                                                   elementary_polynomial, finite_part_integral, one_sided_limit,
+                                                   principal_value_integral, quick_shape, real_logarithms,
+                                                   select_branch, singularities)
+from sympy_extras.integrals.risch.rationaltools import ratint
+assert 'sympy' not in sys.modules
+x, t = Symbol('x'), Symbol('t')
+a = Symbol('a', positive=True)
+def step(f, x, assumptions, late):
+    return ratint(f, x) if f.is_rational_function(x) else None
+assert str(antiderivative_integral(1/(1 + x**2), x, -oo, oo, step=step)) == 'ConditionalValue(pi)'
+assert str(antiderivative_integral(1/x**2, x, -S.One, S.One, step=step)) == 'ConditionalValue(oo)'
+assert antiderivative_integral(1/x, x, -S.One, Integer(2), step=step) is None
+assert str(antiderivative_integral(1/x, x, Integer(-3), -S.One, step=step)) == 'ConditionalValue(-log(3))'
+assert antiderivative_integral(1/(x**2 + a**2), x, S.Zero, oo, a > 0, step=step) is not None
+assert str(principal_value_integral(1/x, x, -S.One, Integer(2), step=step)) == 'ConditionalValue(log(2))'
+assert str(finite_part_integral(1/x**2, x, -S.One, S.One, step=step)) == 'ConditionalValue(-2)'
+assert str(finite_part_integral(1/(x - 1)**3, x, S.Zero, Integer(3), step=step)) == 'ConditionalValue(3/8)'
+assert singularities(1/(x**2 - 1), x, [x > 0]) == [1]
+assert discontinuities(log(x - 1) + atan(1/(x - 2)), x, S.Zero, Integer(3)) == [1, 2]
+assert one_sided_limit(-1/x, x, S.Zero, '+') == -oo and one_sided_limit(atan(x), x, oo, '-') == pi/2
+assert select_branch(Piecewise((t**2, t > 1), (t**3, True)), t, S.Zero, S.One) == t**3
+assert str(real_logarithms(log(x - 1), x)) == 'log(Abs(x - 1))'
+assert elementary_polynomial(sin(pi*t/4 + pi/4)**3, t) and not elementary_polynomial(sin(t)/t, t)
+assert not by_parts_shape(x*log(x), x) and not quick_shape(sin(x)/x, x)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_antiderivative_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.antiderivative` does not load
+    SymPy, nor does the whole method (the singularities by the native
+    solve, their placement by the native ask, the one-sided limits, the
+    branches, the principal values and finite parts) with a native
+    antiderivative step (the native ``ratint``); only the default step,
+    SymPy's ``integrate`` and the methods of ``indefinite``, reaches
+    SymPy through the face."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ANTIDERIVATIVE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

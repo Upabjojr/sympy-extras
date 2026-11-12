@@ -414,6 +414,12 @@ The driver tries, after the Mellin method and the residues:
   limits under the assumptions; an infinite limit of one sign exposes a
   divergence, reported as `oo` or `-oo` (`1/x` over `(0, 1)`), while
   infinities of both signs and oscillations leave the integral unevaluated.
+  The module is native, on the core (the antiderivative is a step of its
+  own, by default the native radical table, then SymPy's `integrate` and
+  the verified methods of `indefinite` through the face; a native one,
+  such as the native `ratint`, keeps SymPy out);
+  `sympy_extras.integrals.antiderivative_sympy` is its face on SymPy
+  objects.
   The same verdict is read off the leading term of the integrand at an
   end of the range before any method runs (`c*(x - end)**p` with `p <= -1`
   and a real `c` of known sign: `-sin(x)*tan(x)*csc(x - 1)` over `(0, 1)`
