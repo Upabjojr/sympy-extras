@@ -2568,3 +2568,28 @@ def test_native_simplify_of_a_relation_does_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+
+_NATIVE_EX_ROOTS = r"""
+import sys
+from sympy_extras.core import symbols, pi, expand
+from sympy_extras.polys.polyroots import ex_roots, roots
+from sympy_extras.polys.polytools import Poly
+from sympy_extras._special_values import _real_roots
+x, a = symbols('x a')
+assert str(ex_roots(x**2 - pi, x)) == '[-sqrt(pi), sqrt(pi)]'
+assert sum(roots(Poly(expand((x**2 + x)**3 - 2), x)).values()) == 6
+assert roots(Poly(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, x)) == {}
+assert str(_real_roots(a**2 - pi, a)) == '[-sqrt(pi), sqrt(pi)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_roots_over_ex_do_not_load_sympy() -> None:
+    """The roots of the components of a decomposition over ``EX`` and of
+    polynomials with coefficients like ``pi`` are native (they went
+    through SymPy's ``roots``, ``roots_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EX_ROOTS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

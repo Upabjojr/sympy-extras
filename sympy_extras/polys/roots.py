@@ -17,11 +17,11 @@ the roots in radicals are those of the native
 ``CRootOf``, which is not ported: they reach the core as wrapped foreign
 nodes (``ComplexRootOf(polynomial, index)``), recognised here by their
 name, and their numerical values come from SymPy through the bridge of
-the core (:mod:`sympy_extras.core.bridge`) when one is registered. One
-step goes through SymPy at run time (the face holds it,
-:func:`~sympy_extras.polys.roots_sympy.roots_of_core`): SymPy's ``roots``
-of a polynomial whose components need its algebraic domain ``EX``, which
-the native :func:`~sympy_extras.polys.polyroots.roots` does not port.
+the core (:mod:`sympy_extras.core.bridge`) when one is registered. The
+components of a decomposition which need SymPy's domain ``EX`` are solved
+by the formulas over ``EX`` of :mod:`~sympy_extras.polys.polyroots`
+(linear and quadratic; a cubic or a quartic over ``EX`` gives no radical
+form).
 The trivial roots of a root object follow SymPy's
 ``ComplexRootOf._roots_trivial`` (``sympy/polys/rootoftools.py``), ported.
 """
@@ -142,10 +142,9 @@ def radical_form(root: Expr) -> Optional[Expr]:
     try:
         listed = roots(poly)
     except NotImplementedError:
-        # the roots over SymPy's algebraic domain EX (after a
-        # decomposition) are not ported: SymPy's roots, through the face
-        from .roots_sympy import roots_of_core
-        listed = roots_of_core(poly.as_expr(), poly.gen)
+        # a cubic or a quartic component over EX (after a decomposition):
+        # its formulas are not ported, no radical form is given
+        return None
     if not isinstance(listed, dict):
         return None
     candidates = [r for r, m in listed.items() for _ in range(m)]

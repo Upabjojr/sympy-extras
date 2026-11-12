@@ -155,8 +155,8 @@ sympy_extras/
     _numeric_sympy.py        the SymPy face of _numeric
     _special_values.py       with_special_values, special_points, condition_point, defined_problem, ...: the cases of
                              the isolated values of the parameters at which a closed form fails (native; the real roots
-                             of polynomials with irrational coefficients and the transcendental factors the native
-                             solver does not reduce through roots_sympy and transcendental_sympy)
+                             of polynomials with irrational coefficients by polyroots.ex_roots; the transcendental
+                             factors the native solver does not reduce through transcendental_sympy)
     _special_values_sympy.py the SymPy face of _special_values (used by integrals/definite, indefinite, concrete/karr_sympy;
                              not the solvers/_special_values_sympy of the ODE cases)
     _timeout.py              attempt, time_limit, remaining_time, prepare_sympy: time limits (no SymPy imported; SymPy's
@@ -534,8 +534,8 @@ sympy_extras/
         rootoftools.py       RootSum (node), root_sum: sums of a function over the roots of a polynomial (the rational
                              case by the trace, doit, diff, numerical values; native), PORTED FROM SYMPY
         polyroots.py         roots: linear, quadratic, binomial, cyclotomic, cubic, quartic, decomposition, factoring (ported from SymPy; no EX/simplify)
-        roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; SymPy's roots over EX through roots_sympy)
-        roots_sympy.py       the SymPy face of roots, and roots_of_core
+        roots.py             radical_form, in_radicals: SymPy's CRootOf (wrapped foreign nodes) in radicals (native; the components over EX by polyroots.ex_roots)
+        roots_sympy.py       the SymPy face of roots
         subresultants.py     dup_psc (over a Domain[T], towers for several variables), psc (on rings.PolyRing): principal
                              subresultant coefficients (native)
         subresultants_sympy.py the SymPy face of subresultants: dup_psc, dmp_psc on SymPy's dense representation, psc on SymPy's rings

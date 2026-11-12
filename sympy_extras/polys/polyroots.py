@@ -784,7 +784,81 @@ def _ex_heuristics(e: Expr, x: Expr) -> list[Expr]:
         return [Integer(0)] * n
     if len(coefficients) == 2 and 0 in coefficients and n >= 2:
         return _binomial(n, coefficients[n], coefficients[0])
-    raise NotImplementedError('roots over the algebraic domain EX need simplify (not ported yet)')
+    return _ex_formulas([coefficients.get(k, Integer(0)) for k in range(n, -1, -1)])
+
+
+def ex_roots(e: Expr, x: Symbol) -> list[Expr]:
+    """The roots, with repetitions, of a polynomial in ``x`` whose
+    coefficients are expressions of any kind (SymPy's ``roots`` over ``EX``
+    or a composite domain): a monomial, a binomial, and by the formulas of
+    :func:`_ex_formulas` (``NotImplementedError`` for a cubic or a quartic,
+    nothing from a degree five or more).
+
+    >>> from sympy_extras.core import Symbol, pi
+    >>> from sympy_extras.polys.polyroots import ex_roots
+    >>> x = Symbol('x')
+    >>> ex_roots(x**2 - pi, x), ex_roots(pi*x - 1, x)
+    ([-sqrt(pi), sqrt(pi)], [1/pi])
+    """
+    return _ex_heuristics(e, x)
+
+
+def _ex_zero(e: Expr) -> bool:
+    from .domains.expressiondomain import EX
+    return EX.is_zero(EX.normal(e))
+
+
+# PORTED FROM SYMPY: sympy/polys/polyroots.py:roots._try_heuristics, roots_linear, roots_quadratic (over EX)
+def _ex_formulas(c: list[Expr]) -> list[Expr]:
+    """The roots by the formulas of SymPy's ``_try_heuristics`` over ``EX``
+    (coefficients ``c``, highest degree first): a root ``-1`` or ``1``
+    divided out, then a linear or a quadratic factor (``simplify`` and
+    ``cancel`` of the formulas, as for a domain which is not numerical),
+    nothing more from a factor of degree five or more (no quintics);
+    ``NotImplementedError`` for a cubic or a quartic over ``EX``, whose
+    formulas are not ported for it."""
+    from sympy_extras.simplify.simplify import simplify
+    from .domains.expressiondomain import EX
+    result: list[Expr] = []
+    for i in (-1, 1):
+        value = add(*[mul(ci, pow(Integer(i), Integer(len(c) - 1 - k))) for k, ci in enumerate(c)])
+        if _ex_zero(value):
+            # the synthetic division by x - i
+            quotient: list[Expr] = []
+            carry: Expr = Integer(0)
+            for ci in c[:-1]:
+                carry = EX.normal(add(ci, mul(Integer(i), carry)))
+                quotient.append(carry)
+            c = quotient
+            result.append(Integer(i))
+            break
+    n = len(c) - 1
+    if n == 1:
+        a, b = c
+        return result + [cancel(mul(Integer(-1), b, pow(a, Integer(-1))))]
+    if n >= 5 or n <= 0:
+        # no quintics by default, and is_cyclotomic is False over EX
+        return result
+    if n != 2:
+        raise NotImplementedError('the formulas of degree %d over EX are not ported' % n)
+    a, b, cc = c
+    if _ex_zero(cc):
+        r0: Expr = Integer(0)
+        r1 = simplify(mul(Integer(-1), b, pow(a, Integer(-1))))
+    elif _ex_zero(b):
+        R = _sqrt(simplify(mul(Integer(-1), cc, pow(a, Integer(-1)))))
+        r0, r1 = mul(Integer(-1), R), R
+    else:
+        d = simplify(add(pow(b, Integer(2)), mul(Integer(-4), a, cc)))
+        A = mul(Integer(2), a)
+        B = simplify(mul(Integer(-1), b, pow(A, Integer(-1))))
+        D = factor_terms(mul(_sqrt(d), pow(A, Integer(-1))))
+        r0, r1 = add(B, mul(Integer(-1), D)), add(B, D)
+        if a.is_negative is True:
+            r0, r1 = r1, r0
+        else:
+            r0, r1 = _expand_2arg(r0), _expand_2arg(r1)
+    return result + [cancel(r0), cancel(r1)]
 
 
 def _try_heuristics(f: Poly, cubics: bool, quartics: bool) -> list[Expr]:

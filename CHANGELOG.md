@@ -10,6 +10,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: `polys.roots_sympy.roots_of_core` is removed: the new
+  `polys.polyroots.ex_roots` gives the roots of a polynomial with
+  coefficients of any kind by SymPy's formulas over `EX` (a root `-1` or
+  `1` divided out, then the linear and quadratic formulas with `simplify`;
+  nothing from a degree five or more, as SymPy without quintics), which
+  the native `roots` now uses for the components of a decomposition and
+  `_special_values` for the real roots of `a**2 - pi`; a cubic or a quartic
+  over `EX` is not ported (`radical_form` then gives no radical form,
+  `_special_values` no candidate).
 - **Breaking**: `assumptions.refine_sympy.factor_list_of_core` is removed (the
   native factorisation raises `CoercionFailed`, never `NotImplementedError`,
   for coefficients which are not rational, so the route was not reached);
