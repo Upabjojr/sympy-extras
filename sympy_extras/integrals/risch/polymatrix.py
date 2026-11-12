@@ -1,379 +1,277 @@
+"""Matrices over the field of the Risch algorithm: :class:`FieldMatrix`, an
+immutable dense matrix of :class:`~sympy_extras.integrals.risch.tower.
+RationalFunction` elements with the operations the parametric problems use
+(joins, products, the reduced row echelon form and the nullspace by
+Gauss–Jordan elimination over the field).
+
+It takes the place of SymPy's ``PolyMatrix`` (``sympy.polys.polymatrix``),
+whose entries were polynomials of the tower: an element of ``k[t]`` is an
+element of the field here.
+
+Examples
+========
+
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.integrals.risch.polymatrix import FieldMatrix
+>>> from sympy_extras.integrals.risch.tower import RationalFunction
+>>> x = symbols('x')
+>>> X = RationalFunction.from_expr(x)
+>>> M = FieldMatrix.from_rows([[X, X**2], [1, X]])
+>>> M.rref()
+(FieldMatrix([[1, x], [0, 0]]), (0,))
+>>> M.nullspace()
+[FieldMatrix([[-x], [1]])]
+"""
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/polys/polymatrix.py (SymPy 1.14 and Aaron Meurer's pull requests)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: imports only, so that the subpackage runs on the released SymPy.
+# Changes: rewritten as an immutable typed matrix over the field of the
+# tower (RationalFunction entries); the interface of PolyMatrix kept.
 # ---------------------------------------------------------------------
-# Ported from SymPy (sympy.polys.polymatrix) and from Aaron Meurer's pull
-# requests to SymPy: sympy/sympy#30180 and #30221 ("Risch: Implement most
-# remaining exp-log cases from Bronstein", branch risch-rde-cancellation
-# @d7dafa43) and #30292 ("Hypertangent cases in the Risch algorithm", branch
-# risch-hypertangent @66bc72d6, the version taken here), by Claude Fable 5.1
-# for sympy-extras. The algorithm is Bronstein's (Symbolic Integration I:
-# Transcendental Functions, 2nd edition, Springer 2005) as implemented by
-# Aaron Meurer; only the imports were changed, so that the subpackage is
-# self-contained on the released SymPy. SymPy's licence (BSD 3-clause,
-# copyright the SymPy Development Team) applies to this file: see
-# LICENSE-SymPy in this directory.
-# Type annotations for sympy-extras (strict mypy), after Aaron Meurer's branch
-# risch-typing, sympy/sympy#30282 (the overloads of __getitem__).
 from __future__ import annotations
 
-from typing import Callable, Iterator, Sequence, Union, overload
+from typing import Callable, Final, Iterator, Sequence, Union, overload
 
-from sympy.core.expr import Expr
-from sympy.core.symbol import Dummy
-from sympy.core.sympify import _sympify
-from sympy.matrices.dense import MutableDenseMatrix
+from .tower import RationalFunction
 
-from sympy.polys.polyerrors import CoercionFailed
-from sympy.polys.polytools import Poly, parallel_poly_from_expr
-from sympy.polys.domains import QQ
-from sympy.polys.domains.domain import Domain
-from sympy.polys.domains.polynomialring import PolynomialRing
-from sympy.polys.rings import PolyElement
+__all__ = ['FieldMatrix', 'Entry']
 
-from sympy.polys.matrices import DomainMatrix
-from sympy.polys.matrices.domainscalar import DomainScalar
+#: what the constructors take as an entry
+Entry = Union[RationalFunction, int]
 
 
-class MutablePolyDenseMatrix:
-    """
-    A mutable matrix of objects from poly module or to operate with them.
+def _entry(e: Entry) -> RationalFunction:
+    if isinstance(e, int):
+        return RationalFunction.from_int(e)
+    return e
 
-    Examples
-    ========
 
-    >>> from sympy.polys.polymatrix import PolyMatrix
-    >>> from sympy import Symbol, Poly
-    >>> x = Symbol('x')
-    >>> pm1 = PolyMatrix([[Poly(x**2, x), Poly(-x, x)], [Poly(x**3, x), Poly(-1 + x, x)]])
-    >>> v1 = PolyMatrix([[1, 0], [-1, 0]], x)
-    >>> pm1*v1
-    PolyMatrix([
-    [    x**2 + x, 0],
-    [x**3 - x + 1, 0]], ring=QQ[x])
+_ZERO = RationalFunction.from_int(0)
+_ONE = RationalFunction.from_int(1)
 
-    >>> pm1.ring
-    ZZ[x]
 
-    >>> v1*pm1
-    PolyMatrix([
-    [ x**2, -x],
-    [-x**2,  x]], ring=QQ[x])
+class FieldMatrix:
+    """An immutable ``rows x cols`` matrix over the field of the tower,
+    stored row by row."""
 
-    >>> pm2 = PolyMatrix([[Poly(x**2, x, domain='QQ'), Poly(0, x, domain='QQ'), Poly(1, x, domain='QQ'), \
-            Poly(x**3, x, domain='QQ'), Poly(0, x, domain='QQ'), Poly(-x**3, x, domain='QQ')]])
-    >>> v2 = PolyMatrix([1, 0, 0, 0, 0, 0], x)
-    >>> v2.ring
-    QQ[x]
-    >>> pm2*v2
-    PolyMatrix([[x**2]], ring=QQ[x])
+    __slots__ = ('rows', 'cols', '_entries')
 
-    """
+    def __init__(self, rows: int, cols: int, entries: Sequence[Entry]) -> None:
+        if len(entries) != rows*cols:
+            raise ValueError('%d entries for a %dx%d matrix' % (len(entries), rows, cols))
+        self.rows: Final[int] = rows
+        self.cols: Final[int] = cols
+        self._entries: Final[tuple[RationalFunction, ...]] = tuple(_entry(e) for e in entries)
 
-    #: the matrix over the polynomial ring
-    _dm: DomainMatrix
-    #: the polynomial ring K[gens]
-    ring: PolynomialRing
-    #: the ground domain K
-    domain: Domain
-    #: the generators
-    gens: tuple[Expr, ...]
+    # -- construction
 
-    def __new__(cls, *args: object, ring: Union[Domain, str, None] = None) -> MutablePolyDenseMatrix:
+    @staticmethod
+    def from_function(rows: int, cols: int, f: Callable[[int, int], Entry]) -> FieldMatrix:
+        return FieldMatrix(rows, cols, [f(i, j) for i in range(rows) for j in range(cols)])
 
-        rows: int
-        cols: int
-        items: list[object]
-        gens: Sequence[object]
-        if not args:
-            # PolyMatrix(ring=QQ[x])
-            if ring is None:
-                raise TypeError("The ring needs to be specified for an empty PolyMatrix")
-            rows, cols, items, gens = 0, 0, [], ()
-        elif isinstance(args[0], list):
-            elements, gens = args[0], args[1:]
-            if not elements:
-                # PolyMatrix([])
-                rows, cols, items = 0, 0, []
-            elif isinstance(elements[0], (list, tuple)):
-                # PolyMatrix([[1, 2]], x)
-                rows, cols = len(elements), len(elements[0])
-                items = [e for row in elements for e in row]
-            else:
-                # PolyMatrix([1, 2], x)
-                rows, cols = len(elements), 1
-                items = list(elements)
-        elif len(args) >= 3 and isinstance(args[0], int) and isinstance(args[1], int) \
-                and isinstance(args[2], list):
-            # PolyMatrix(2, 2, [1, 2, 3, 4], x)
-            rows, cols, items, gens = args[0], args[1], args[2], args[3:]
-        elif len(args) >= 3 and isinstance(args[0], int) and isinstance(args[1], int) \
-                and callable(args[2]):
-            # PolyMatrix(2, 2, lambda i, j: i+j, x)
-            rows, cols, func, gens = args[0], args[1], args[2], args[3:]
-            items = [func(i, j) for i in range(rows) for j in range(cols)]
-        else:
-            raise TypeError("Invalid arguments")
+    @staticmethod
+    def from_rows(rows: Sequence[Sequence[Entry]], cols: int = 0) -> FieldMatrix:
+        """The matrix of a list of rows (``cols`` for an empty list)."""
+        if not rows:
+            return FieldMatrix(0, cols, [])
+        n = len(rows[0])
+        if any(len(r) != n for r in rows):
+            raise ValueError('rows of different lengths')
+        return FieldMatrix(len(rows), n, [e for r in rows for e in r])
 
-        # PolyMatrix([[1]], x, y) vs PolyMatrix([[1]], (x, y))
-        if len(gens) == 1 and isinstance(gens[0], tuple):
-            gens = gens[0]
-            # gens is now a tuple (x, y)
+    @staticmethod
+    def row_vector(entries: Sequence[Entry]) -> FieldMatrix:
+        return FieldMatrix(1, len(entries), entries)
 
-        return cls.from_list(rows, cols, items, gens, ring)
+    @staticmethod
+    def column(entries: Sequence[Entry]) -> FieldMatrix:
+        return FieldMatrix(len(entries), 1, entries)
 
-    @classmethod
-    def from_list(cls, rows: int, cols: int, items: Sequence[object], gens: Sequence[object],
-                  ring: Union[Domain, str, None]) -> MutablePolyDenseMatrix:
+    @staticmethod
+    def zeros(m: int, n: int) -> FieldMatrix:
+        return FieldMatrix(m, n, [_ZERO]*(m*n))
 
-        # items can be Expr, Poly, or a mix of Expr and Poly
-        sympified = [_sympify(item) for item in items]
-        if sympified and all(isinstance(item, Poly) for item in sympified):
-            polys = True
-        else:
-            polys = False
+    @staticmethod
+    def eye(n: int) -> FieldMatrix:
+        return FieldMatrix(n, n, [_ONE if i == j else _ZERO for i in range(n) for j in range(n)])
 
-        # Identify the ring for the polys
-        found: Domain
-        if ring is not None:
-            # Parse a domain string like 'QQ[x]'
-            if isinstance(ring, str):
-                found = Poly(0, Dummy(), domain=ring).domain
-            else:
-                found = ring
-        elif polys:
-            p = sympified[0]
-            for p2 in sympified[1:]:
-                p, _ = p.unify(p2)
-            found = p.domain[p.gens]
-        else:
-            sympified, info = parallel_poly_from_expr(sympified, gens, field=True)
-            found = info['domain'][info['gens']]
-            polys = True
-        if not isinstance(found, PolynomialRing):
-            raise TypeError("a polynomial ring is expected, got %s" % (found,))
-        the_ring: PolynomialRing = found
-
-        # Efficiently convert when all elements are Poly
-        if polys:
-            p_ring = Poly(0, the_ring.symbols, domain=the_ring.domain)
-            to_ring = the_ring.ring.from_list
-            elements = [to_ring(p.unify(p_ring)[0].rep.to_list()) for p in sympified]
-        else:
-            convert_expr = the_ring.from_sympy
-            elements = [convert_expr(e.as_expr()) for e in sympified]
-
-        # Convert to domain elements and construct DomainMatrix
-        elements_lol = [[elements[i*cols + j] for j in range(cols)] for i in range(rows)]
-        dm = DomainMatrix(elements_lol, (rows, cols), the_ring)
-        return cls.from_dm(dm)
-
-    @classmethod
-    def from_dm(cls, dm: DomainMatrix) -> MutablePolyDenseMatrix:
-        obj = super().__new__(cls)
-        dm = dm.to_sparse()
-        R = dm.domain
-        if not isinstance(R, PolynomialRing):
-            raise TypeError("a matrix over a polynomial ring is expected, got %s" % (R,))
-        obj._dm = dm
-        obj.ring = R
-        ground = R.domain
-        symbols = R.symbols
-        if not isinstance(ground, Domain) or not isinstance(symbols, tuple):
-            raise TypeError("a polynomial ring over a domain is expected, got %s" % (R,))
-        obj.domain = ground
-        obj.gens = tuple(symbols)
-        return obj
-
-    def to_Matrix(self) -> MutableDenseMatrix:
-        matrix = self._dm.to_Matrix()
-        if not isinstance(matrix, MutableDenseMatrix):
-            raise TypeError("a dense matrix is expected, got %s" % type(matrix))
-        return matrix
-
-    @classmethod
-    def from_Matrix(cls, other: MutableDenseMatrix, *gens: object,
-                    ring: Union[Domain, str, None] = None) -> MutablePolyDenseMatrix:
-        return cls(*other.shape, other.flat(), *gens, ring=ring)
-
-    def set_gens(self, gens: object) -> MutablePolyDenseMatrix:
-        return self.from_Matrix(self.to_Matrix(), gens)
-
-    def __repr__(self) -> str:
-        if self.rows * self.cols:
-            return 'Poly' + repr(self.to_Matrix())[:-1] + f', ring={self.ring})'
-        else:
-            return f'PolyMatrix({self.rows}, {self.cols}, [], ring={self.ring})'
+    # -- access
 
     @property
     def shape(self) -> tuple[int, int]:
-        rows, cols = self._dm.shape
-        return int(rows), int(cols)
-
-    @property
-    def rows(self) -> int:
-        return self.shape[0]
-
-    @property
-    def cols(self) -> int:
-        return self.shape[1]
+        return (self.rows, self.cols)
 
     def __len__(self) -> int:
-        return self.rows * self.cols
+        return self.rows*self.cols
 
-    def __iter__(self) -> Iterator[Poly]:
-        for k in range(len(self)):
-            yield self[k]
+    def __iter__(self) -> Iterator[RationalFunction]:
+        return iter(self._entries)
 
-    def _to_poly(self, v: PolyElement) -> Poly:
-        ground = self.ring.domain
-        gens = self.ring.symbols
-        return Poly(v.to_dict(), gens, domain=ground)
+    def flat(self) -> list[RationalFunction]:
+        return list(self._entries)
+
+    def entry(self, i: int, j: int) -> RationalFunction:
+        if i < 0:
+            i += self.rows
+        if j < 0:
+            j += self.cols
+        if not (0 <= i < self.rows and 0 <= j < self.cols):
+            raise IndexError('index (%d, %d) out of range' % (i, j))
+        return self._entries[i*self.cols + j]
+
+    def element(self, k: int) -> RationalFunction:
+        """The ``k``-th entry in the order of the rows."""
+        return self._entries[k]
+
+    def elements(self, key: slice) -> list[RationalFunction]:
+        """The entries of a slice, in the order of the rows."""
+        return list(self._entries[key])
 
     @overload
-    def __getitem__(self, key: slice) -> list[Poly]: ...
-
+    def __getitem__(self, key: tuple[int, int]) -> RationalFunction: ...
     @overload
-    def __getitem__(self, key: Union[int, tuple[int, int]]) -> Poly: ...
-
+    def __getitem__(self, key: tuple[Union[int, slice], slice]) -> FieldMatrix: ...
     @overload
-    def __getitem__(self, key: Union[tuple[Union[int, slice], slice],
-                                     tuple[slice, Union[int, slice]]]) -> MutablePolyDenseMatrix: ...
+    def __getitem__(self, key: tuple[slice, Union[int, slice]]) -> FieldMatrix: ...
 
-    def __getitem__(self, key: Union[slice, int, tuple[Union[int, slice], Union[int, slice]]]
-                    ) -> Union[list[Poly], Poly, MutablePolyDenseMatrix]:
-        dm = self._dm
-
-        if isinstance(key, slice):
-            items = dm.flat()[key]
-            return [self._to_poly(item) for item in items]
-        elif isinstance(key, int):
-            row, col = divmod(key, self.cols)
-            e = dm[row, col]
-            return self._to_poly(e.element)
-
+    def __getitem__(self, key: tuple[Union[int, slice], Union[int, slice]]
+                    ) -> Union[RationalFunction, FieldMatrix]:
         i, j = key
         if isinstance(i, int) and isinstance(j, int):
-            return self._to_poly(dm[i, j].element)
-        else:
-            return self.from_dm(dm[i, j])
+            return self.entry(i, j)
+        rows = range(self.rows)[i] if isinstance(i, slice) else [range(self.rows)[i]]
+        cols = range(self.cols)[j] if isinstance(j, slice) else [range(self.cols)[j]]
+        return FieldMatrix(len(rows), len(cols), [self._entries[r*self.cols + c] for r in rows for c in cols])
+
+    def row(self, i: int) -> FieldMatrix:
+        return self[i, :]
+
+    def col(self, j: int) -> FieldMatrix:
+        return self[:, j]
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, MutablePolyDenseMatrix):
+        if not isinstance(other, FieldMatrix):
             return NotImplemented
-        return bool(self._dm == other._dm)
+        return self.shape == other.shape and self._entries == other._entries
 
     def __hash__(self) -> int:
-        return hash((self.shape, self.ring))
+        return hash((self.shape, self._entries))
 
-    def __add__(self, other: object) -> MutablePolyDenseMatrix:
-        if isinstance(other, MutablePolyDenseMatrix):
-            return self.from_dm(self._dm + other._dm)
-        return NotImplemented
+    def __repr__(self) -> str:
+        rows = [[str(self.entry(i, j)) for j in range(self.cols)] for i in range(self.rows)]
+        if not rows:
+            return 'FieldMatrix(%d, %d, [])' % (self.rows, self.cols)
+        return 'FieldMatrix([%s])' % ', '.join('[%s]' % ', '.join(r) for r in rows)
 
-    def __sub__(self, other: object) -> MutablePolyDenseMatrix:
-        if isinstance(other, MutablePolyDenseMatrix):
-            return self.from_dm(self._dm - other._dm)
-        return NotImplemented
+    __str__ = __repr__
 
-    def __mul__(self, other: object) -> MutablePolyDenseMatrix:
-        if isinstance(other, MutablePolyDenseMatrix):
-            return self.from_dm(self._dm * other._dm)
-        elif isinstance(other, int):
-            other = _sympify(other)
-        if isinstance(other, Expr):
-            Kx = self.ring
-            try:
-                other_ds = DomainScalar(Kx.from_sympy(other), Kx)
-            except (CoercionFailed, ValueError):
-                other_ds = DomainScalar.from_sympy(other)
-            dm = self._dm * other_ds
-            if not dm.domain.is_PolynomialRing:
-                # a fallback scalar over a ground domain (e.g. EX) can
-                # drag the product's domain below a polynomial ring,
-                # which from_dm cannot represent
-                dm = dm.convert_to(dm.domain[self.gens])
-            return self.from_dm(dm)
-        return NotImplemented
+    # -- arithmetic
 
-    def __rmul__(self, other: object) -> MutablePolyDenseMatrix:
-        if isinstance(other, int):
-            other = _sympify(other)
-        if isinstance(other, Expr):
-            other_ds = DomainScalar.from_sympy(other)
-            dm = other_ds * self._dm
-            if not dm.domain.is_PolynomialRing:
-                dm = dm.convert_to(dm.domain[self.gens])
-            return self.from_dm(dm)
-        return NotImplemented
+    def __neg__(self) -> FieldMatrix:
+        return FieldMatrix(self.rows, self.cols, [-e for e in self._entries])
 
-    def __truediv__(self, other: object) -> MutablePolyDenseMatrix:
+    def __add__(self, other: FieldMatrix) -> FieldMatrix:
+        if self.shape != other.shape:
+            raise ValueError('matrices of shapes %s and %s' % (self.shape, other.shape))
+        return FieldMatrix(self.rows, self.cols, [a + b for a, b in zip(self._entries, other._entries)])
 
-        if isinstance(other, Poly):
-            other = other.as_expr()
-        elif isinstance(other, int):
-            other = _sympify(other)
-        if not isinstance(other, Expr):
-            return NotImplemented
+    def __sub__(self, other: FieldMatrix) -> FieldMatrix:
+        if self.shape != other.shape:
+            raise ValueError('matrices of shapes %s and %s' % (self.shape, other.shape))
+        return FieldMatrix(self.rows, self.cols, [a - b for a, b in zip(self._entries, other._entries)])
 
-        element = self.domain.from_sympy(other)
-        inverse = self.ring.convert_from(1/element, self.domain)
-        scalar = DomainScalar(inverse, self.ring)
-        dm = self._dm * scalar
-        return self.from_dm(dm)
+    def __mul__(self, other: Union[FieldMatrix, Entry]) -> FieldMatrix:
+        if isinstance(other, FieldMatrix):
+            if self.cols != other.rows:
+                raise ValueError('matrices of shapes %s and %s' % (self.shape, other.shape))
+            entries: list[RationalFunction] = []
+            for i in range(self.rows):
+                for j in range(other.cols):
+                    total = _ZERO
+                    for k in range(self.cols):
+                        a = self._entries[i*self.cols + k]
+                        if a:
+                            b = other._entries[k*other.cols + j]
+                            if b:
+                                total = total + a*b
+                    entries.append(total)
+            return FieldMatrix(self.rows, other.cols, entries)
+        c = _entry(other)
+        return FieldMatrix(self.rows, self.cols, [e*c for e in self._entries])
 
-    def __neg__(self) -> MutablePolyDenseMatrix:
-        return self.from_dm(-self._dm)
+    def __rmul__(self, other: Entry) -> FieldMatrix:
+        return self*other
 
-    def transpose(self) -> MutablePolyDenseMatrix:
-        return self.from_dm(self._dm.transpose())
+    def __truediv__(self, other: Entry) -> FieldMatrix:
+        inverse = _entry(other).invert()
+        return self*inverse
 
-    def row_join(self, other: MutablePolyDenseMatrix) -> MutablePolyDenseMatrix:
-        dm = DomainMatrix.hstack(self._dm, other._dm)
-        return self.from_dm(dm)
+    def row_join(self, other: FieldMatrix) -> FieldMatrix:
+        if self.rows != other.rows:
+            if not len(self) and not self.cols:
+                return other
+            raise ValueError('row_join of %s and %s' % (self.shape, other.shape))
+        entries: list[RationalFunction] = []
+        for i in range(self.rows):
+            entries.extend(self._entries[i*self.cols:(i + 1)*self.cols])
+            entries.extend(other._entries[i*other.cols:(i + 1)*other.cols])
+        return FieldMatrix(self.rows, self.cols + other.cols, entries)
 
-    def col_join(self, other: MutablePolyDenseMatrix) -> MutablePolyDenseMatrix:
-        dm = DomainMatrix.vstack(self._dm, other._dm)
-        return self.from_dm(dm)
+    def col_join(self, other: FieldMatrix) -> FieldMatrix:
+        if self.cols != other.cols:
+            if not len(self) and not self.rows:
+                return other
+            raise ValueError('col_join of %s and %s' % (self.shape, other.shape))
+        return FieldMatrix(self.rows + other.rows, self.cols, list(self._entries) + list(other._entries))
 
-    def applyfunc(self, func: Callable[[Expr], Expr]) -> MutablePolyDenseMatrix:
-        M = self.to_Matrix().applyfunc(func)
-        return self.from_Matrix(M, self.gens)
+    def applyfunc(self, f: Callable[[RationalFunction], RationalFunction]) -> FieldMatrix:
+        return FieldMatrix(self.rows, self.cols, [f(e) for e in self._entries])
 
-    @classmethod
-    def eye(cls, n: int, gens: object) -> MutablePolyDenseMatrix:
-        return cls.from_dm(DomainMatrix.eye(n, QQ[gens]))
+    def transpose(self) -> FieldMatrix:
+        return FieldMatrix(self.cols, self.rows, [self.entry(i, j) for j in range(self.cols) for i in range(self.rows)])
 
-    @classmethod
-    def zeros(cls, m: int, n: int, gens: object) -> MutablePolyDenseMatrix:
-        return cls.from_dm(DomainMatrix.zeros((m, n), QQ[gens]))
+    # -- linear algebra over the field
 
-    def rref(self, simplify: str = 'ignore',
-             normalize_last: str = 'ignore') -> tuple[MutablePolyDenseMatrix, tuple[int, ...]]:
-        # If this is K[x] then computes RREF in ground field K.
-        if not (self.domain.is_Field and all(p.is_ground for p in self)):
-            raise ValueError("PolyMatrix rref is only for ground field elements")
-        dm = self._dm
-        dm_ground = dm.convert_to(self.domain)
-        dm_rref, pivots = dm_ground.rref()
-        dm_rref = dm_rref.convert_to(dm.domain)
-        return self.from_dm(dm_rref), tuple(int(p) for p in pivots)
+    def rref(self) -> tuple[FieldMatrix, tuple[int, ...]]:
+        """The reduced row echelon form and the pivot columns (Gauss–Jordan
+        elimination over the field)."""
+        rows = [list(self._entries[i*self.cols:(i + 1)*self.cols]) for i in range(self.rows)]
+        pivots: list[int] = []
+        r = 0
+        for c in range(self.cols):
+            if r >= self.rows:
+                break
+            p = next((i for i in range(r, self.rows) if rows[i][c]), None)
+            if p is None:
+                continue
+            rows[r], rows[p] = rows[p], rows[r]
+            inverse = rows[r][c].invert()
+            rows[r] = [e*inverse if e else e for e in rows[r]]
+            for i in range(self.rows):
+                if i != r and rows[i][c]:
+                    factor = rows[i][c]
+                    rows[i] = [a - factor*b if b else a for a, b in zip(rows[i], rows[r])]
+            pivots.append(c)
+            r += 1
+        return FieldMatrix(self.rows, self.cols, [e for row in rows for e in row]), tuple(pivots)
 
-    def nullspace(self) -> list[MutablePolyDenseMatrix]:
-        # If this is K[x] then computes nullspace in ground field K.
-        if not (self.domain.is_Field and all(p.is_ground for p in self)):
-            raise ValueError("PolyMatrix nullspace is only for ground field elements")
-        dm = self._dm
-        K, Kx = self.domain, self.ring
-        dm_null_rows = dm.convert_to(K).nullspace(divide_last=True).convert_to(Kx)
-        dm_null = dm_null_rows.transpose()
-        dm_basis = [dm_null[:,i] for i in range(dm_null.shape[1])]
-        return [self.from_dm(dmvec) for dmvec in dm_basis]
+    def nullspace(self) -> list[FieldMatrix]:
+        """A basis of the column vectors ``v`` with ``M v = 0``: one for
+        each column without a pivot, ``1`` there (SymPy's basis)."""
+        R, pivots = self.rref()
+        basis: list[FieldMatrix] = []
+        for free in range(self.cols):
+            if free in pivots:
+                continue
+            v = [_ZERO]*self.cols
+            v[free] = _ONE
+            for k, c in enumerate(pivots):
+                value = R.entry(k, free)
+                if value:
+                    v[c] = -value
+            basis.append(FieldMatrix.column(v))
+        return basis
 
     def rank(self) -> int:
-        return self.cols - len(self.nullspace())
-
-MutablePolyMatrix = MutablePolyDenseMatrix
-PolyMatrix = MutablePolyDenseMatrix
+        return len(self.rref()[1])

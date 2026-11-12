@@ -1,20 +1,3 @@
-# ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/integrals/cde.py (SymPy 1.14 and Aaron Meurer's pull requests)
-# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
-# see sympy_extras/LICENSE-SymPy.
-# Changes: imports only, so that the subpackage runs on the released SymPy.
-# ---------------------------------------------------------------------
-# Ported from SymPy (sympy.integrals.cde) and from Aaron Meurer's pull
-# requests to SymPy: sympy/sympy#30180 and #30221 ("Risch: Implement most
-# remaining exp-log cases from Bronstein", branch risch-rde-cancellation
-# @d7dafa43) and #30292 ("Hypertangent cases in the Risch algorithm", branch
-# risch-hypertangent @66bc72d6, the version taken here), by Claude Fable 5.1
-# for sympy-extras. The algorithm is Bronstein's (Symbolic Integration I:
-# Transcendental Functions, 2nd edition, Springer 2005) as implemented by
-# Aaron Meurer; only the imports were changed, so that the subpackage is
-# self-contained on the released SymPy. SymPy's licence (BSD 3-clause,
-# copyright the SymPy Development Team) applies to this file: see
-# LICENSE-SymPy in this directory.
 """
 Algorithms for solving the Coupled Differential System.
 
@@ -51,56 +34,112 @@ a == -1: the book states Sections 8.1 and 8.2 for a general constant
 a with sqrt(a) not in k(t), but the integration algorithm only ever
 generates a == -1, and the hypertangent case of Section 8.4 requires
 it.
+
+Ported from SymPy (Aaron Meurer's pull request sympy/sympy#30292, see the
+notice below) on the polynomials of :mod:`sympy_extras.integrals.risch.tower`:
+``sqrt(-1)`` is the generator ``I`` of the field, and the real and imaginary
+parts are taken by the substitution ``I -> -I``.
+
+Examples
+========
+
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.integrals.risch.risch import DifferentialExtension
+>>> from sympy_extras.integrals.risch.cde import coupled_DE_system
+>>> from sympy_extras.integrals.risch.tower import TowerPoly
+>>> x = symbols('x')
+>>> DE = DifferentialExtension.manual([TowerPoly.from_expr(1, x)])
+>>> P = lambda e: (TowerPoly.from_expr(e, x), TowerPoly.from_expr(1, x))
+>>> coupled_DE_system(P(1), P(-1), P(-2*x), P(-2*(x + 1)), DE)
+((TowerPoly(0, x), TowerPoly(1, x)), (TowerPoly(-2*x, x), TowerPoly(1, x)))
 """
-# Type annotations for sympy-extras (strict mypy).
+
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/integrals/cde.py (SymPy 1.14 and Aaron Meurer's pull requests)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: the typed core and the polynomials of integrals.risch.tower
+# instead of SymPy's Poly; I as a generator of the field of the tower.
+# ---------------------------------------------------------------------
+# Ported from SymPy (sympy.integrals.cde) and from Aaron Meurer's pull
+# requests to SymPy: sympy/sympy#30180 and #30221 ("Risch: Implement most
+# remaining exp-log cases from Bronstein", branch risch-rde-cancellation
+# @d7dafa43) and #30292 ("Hypertangent cases in the Risch algorithm", branch
+# risch-hypertangent @66bc72d6, the version taken here), by Claude Fable 5.1
+# for sympy-extras; rewritten on the typed core by Claude Opus 5.5. The
+# algorithm is Bronstein's (Symbolic Integration I: Transcendental
+# Functions, 2nd edition, Springer 2005) as implemented by Aaron Meurer.
+# SymPy's licence (BSD 3-clause, copyright the SymPy Development Team)
+# applies to this file: see LICENSE-SymPy in this directory.
 from __future__ import annotations
 
-from sympy.core.expr import Expr
-from sympy.core.numbers import I, oo
-from .polymatrix import PolyMatrix as Matrix
-from sympy.polys.polytools import Poly, cancel
-
+from sympy_extras.core.numbers import I
+from .polymatrix import FieldMatrix
 from .prde import (is_deriv_in_field, is_log_deriv_k_t_radical_in_field,
     parametric_log_deriv, param_rischDE, real_imag)
-from .rde import rischDE, Degree
+from .rde import rischDE, Degree, is_oo
 from .risch import (DecrementLevel, NonElementaryIntegralException,
     DifferentialExtension, derivation, frac_in)
+from .tower import RationalFunction, TowerPoly
+
+__all__ = ['conjugate_element', 'real_imag_element', 'coupled_DE_system', 'param_coupled_DE_system',
+           'coupled_DE_cancel_prim', 'coupled_DE_cancel_exp', 'coupled_DE_cancel_tan']
+
+#: a fraction of the tower (numerator, denominator)
+Fraction2 = tuple[TowerPoly, TowerPoly]
+
+_I = RationalFunction.from_expr(I)
 
 
-def conjugate_expr(e: Expr) -> Expr:
+def _el(f: Fraction2) -> RationalFunction:
+    return f[0].as_element()/f[1].as_element()
+
+
+def _in_t(p: TowerPoly, DE: DifferentialExtension) -> TowerPoly:
+    return p if p.gen == DE.t else p.as_poly_strict(DE.t)
+
+
+def conjugate_element(e: RationalFunction) -> RationalFunction:
     """
-    The complex conjugate of ``e``, an expression whose only nonreal
-    subexpression is an explicit ``I``.
+    The complex conjugate of ``e``, an element whose only nonreal
+    generator is ``I``.
 
     Explanation
     ===========
 
     Elements of the differential fields handled by this module are
     real (sqrt(-1) is not in k(t)), so an element of k(sqrt(-1)) is
-    conjugated by substituting ``I -> -I``; no other subexpression is
-    touched, unlike conjugate(), which would introduce conjugate()
-    objects around the symbols.
+    conjugated by substituting ``I -> -I``; no other generator is
+    touched.
+
+    >>> from sympy_extras.core import symbols, I
+    >>> from sympy_extras.integrals.risch.cde import conjugate_element
+    >>> from sympy_extras.integrals.risch.tower import RationalFunction
+    >>> x = symbols('x')
+    >>> conjugate_element(RationalFunction.from_expr(1/(x + I)))
+    (x + I)/(x**2 + 1)
     """
-    return e.subs(I, -I)
+    return e.conjugate_i()
 
 
-def real_imag_expr(e: Expr) -> tuple[Expr, Expr]:
+def real_imag_element(e: RationalFunction) -> tuple[RationalFunction, RationalFunction]:
     """
-    The real and imaginary parts of ``e``, an expression whose only
-    nonreal subexpression is an explicit ``I``.
+    The real and imaginary parts of ``e``, an element whose only nonreal
+    generator is ``I`` (see conjugate_element()).
 
-    Explanation
-    ===========
-
-    See conjugate_expr() for why this cannot be as_real_imag() (which
-    would also split the real symbols into real and imaginary parts).
+    >>> from sympy_extras.core import symbols, I
+    >>> from sympy_extras.integrals.risch.cde import real_imag_element
+    >>> from sympy_extras.integrals.risch.tower import RationalFunction
+    >>> x = symbols('x')
+    >>> real_imag_element(RationalFunction.from_expr(1/(x + I)))
+    (x/(x**2 + 1), -1/(x**2 + 1))
     """
-    conj = conjugate_expr(e)
-    return (cancel((e + conj)/2), cancel((e - conj)/(2*I)))
+    conj = conjugate_element(e)
+    return ((e + conj)/2, (e - conj)/(_I*2))
 
 
-def coupled_DE_system(f1: tuple[Poly, Poly], f2: tuple[Poly, Poly], g1: tuple[Poly, Poly], g2: tuple[Poly, Poly],
-                      DE: DifferentialExtension) -> tuple[tuple[Poly, Poly], tuple[Poly, Poly]]:
+def coupled_DE_system(f1: Fraction2, f2: Fraction2, g1: Fraction2, g2: Fraction2,
+                      DE: DifferentialExtension) -> tuple[Fraction2, Fraction2]:
     """
     Solve a Coupled Differential System: Dy1 + f1*y1 - f2*y2 == g1,
     Dy2 + f2*y1 + f1*y2 == g2.
@@ -109,10 +148,10 @@ def coupled_DE_system(f1: tuple[Poly, Poly], f2: tuple[Poly, Poly], g1: tuple[Po
     ===========
 
     Given a derivation D on k(t) with sqrt(-1) not in k(t) and f1,
-    f2, g1, g2 in k(t), each given as a tuple (fa, fd) of Polys in
+    f2, g1, g2 in k(t), each given as a tuple (fa, fd) of TowerPolys in
     DE.t, either raise NonElementaryIntegralException, in which case
     the system has no solution in k(t) x k(t), or return a solution
-    (y1, y2), each again a tuple of Polys in DE.t.
+    (y1, y2), each again a tuple of TowerPolys in DE.t.
 
     This solves the system through the equivalent Risch differential
     equation Dy + (f1 + f2*sqrt(-1))*y == g1 + g2*sqrt(-1) over
@@ -124,21 +163,15 @@ def coupled_DE_system(f1: tuple[Poly, Poly], f2: tuple[Poly, Poly], g1: tuple[Po
     cancellation algorithms of Sections 8.1-8.4, which the Risch
     differential equation code does not call yet.
     """
-    f1a, f1d = frac_in(f1, DE.t)
-    f2a, f2d = frac_in(f2, DE.t)
-    g1a, g1d = frac_in(g1, DE.t)
-    g2a, g2d = frac_in(g2, DE.t)
-    fa, fd = frac_in(f1a.as_expr()/f1d.as_expr() +
-        I*f2a.as_expr()/f2d.as_expr(), DE.t, cancel=True)
-    ga, gd = frac_in(g1a.as_expr()/g1d.as_expr() +
-        I*g2a.as_expr()/g2d.as_expr(), DE.t, cancel=True)
+    fa, fd = frac_in(_el(f1) + _I*_el(f2), DE.t, cancel=True)
+    ga, gd = frac_in(_el(g1) + _I*_el(g2), DE.t, cancel=True)
     ya, yd = rischDE(fa, fd, ga, gd, DE)
-    y1, y2 = real_imag_expr(ya.as_expr()/yd.as_expr())
+    y1, y2 = real_imag_element(ya.as_element()/yd.as_element())
     return (frac_in(y1, DE.t, cancel=True), frac_in(y2, DE.t, cancel=True))
 
 
-def param_coupled_DE_system(f1: tuple[Poly, Poly], f2: tuple[Poly, Poly], G: list[tuple[tuple[Poly, Poly], tuple[Poly, Poly]]],
-                            DE: DifferentialExtension) -> tuple[list[tuple[tuple[Poly, Poly], tuple[Poly, Poly]]], Matrix]:
+def param_coupled_DE_system(f1: Fraction2, f2: Fraction2, G: list[tuple[Fraction2, Fraction2]],
+                            DE: DifferentialExtension) -> tuple[list[tuple[Fraction2, Fraction2]], FieldMatrix]:
     """
     Solve a Parametric Coupled Differential System.
 
@@ -146,10 +179,10 @@ def param_coupled_DE_system(f1: tuple[Poly, Poly], f2: tuple[Poly, Poly], G: lis
     ===========
 
     Given a derivation D on k(t) with sqrt(-1) not in k(t), f1, f2 in
-    k(t), each given as a tuple (fa, fd) of Polys in DE.t, and G =
+    k(t), each given as a tuple (fa, fd) of TowerPolys in DE.t, and G =
     [(g11, g21), ..., (g1m, g2m)] a list of pairs of such tuples,
     return H = [(u1, v1), ..., (ur, vr)], a list of pairs of tuples of
-    Polys in DE.t, and a matrix A with m + 2*r' columns (r == 2*r')
+    TowerPolys in DE.t, and a matrix A with m + 2*r' columns (r == 2*r')
     and constant entries, such that
 
         Du + f1*u - f2*v == Sum(ci*g1i, (i, 1, m))
@@ -173,47 +206,36 @@ def param_coupled_DE_system(f1: tuple[Poly, Poly], f2: tuple[Poly, Poly], G: lis
     (c, d1's, d2's), using that the ci are real.  There is no
     counterpart in Bronstein's book.
     """
-    f1a, f1d = frac_in(f1, DE.t)
-    f2a, f2d = frac_in(f2, DE.t)
-    fa, fd = frac_in(f1a.as_expr()/f1d.as_expr() +
-        I*f2a.as_expr()/f2d.as_expr(), DE.t, cancel=True)
-    Gc = []
-    for g1, g2 in G:
-        g1a, g1d = frac_in(g1, DE.t)
-        g2a, g2d = frac_in(g2, DE.t)
-        Gc.append(frac_in(g1a.as_expr()/g1d.as_expr() +
-            I*g2a.as_expr()/g2d.as_expr(), DE.t, cancel=True))
+    fa, fd = frac_in(_el(f1) + _I*_el(f2), DE.t, cancel=True)
+    Gc = [frac_in(_el(g1) + _I*_el(g2), DE.t, cancel=True) for g1, g2 in G]
     h, A = param_rischDE(fa, fd, Gc, DE)
 
     m = len(G)
     rc = len(h)
-    H = []
-    for ya, yd in h:
-        y1, y2 = real_imag_expr(ya.as_expr()/yd.as_expr())
-        H.append((frac_in(y1, DE.t, cancel=True),
-            frac_in(y2, DE.t, cancel=True)))
-    for ya, yd in h:
-        y1, y2 = real_imag_expr(ya.as_expr()/yd.as_expr())
-        H.append((frac_in(-y2, DE.t, cancel=True),
-            frac_in(y1, DE.t, cancel=True)))
+    parts = [real_imag_element(ya.as_element()/yd.as_element()) for ya, yd in h]
+    H: list[tuple[Fraction2, Fraction2]] = []
+    for y1, y2 in parts:
+        H.append((frac_in(y1, DE.t, cancel=True), frac_in(y2, DE.t, cancel=True)))
+    for y1, y2 in parts:
+        H.append((frac_in(-y2, DE.t, cancel=True), frac_in(y1, DE.t, cancel=True)))
 
-    def entry(i: int, j: int) -> Expr:
+    def entry(i: int, j: int) -> RationalFunction:
         if i < A.rows:
             # Real part of row i: A1c*c + A1d*d1 - A2d*d2 == 0.
             if j < m + rc:
-                return real_imag_expr(A[i, j].as_expr())[0]
-            return -real_imag_expr(A[i, j - rc].as_expr())[1]
+                return real_imag_element(A[i, j])[0]
+            return -real_imag_element(A[i, j - rc])[1]
         # Imaginary part of row i: A2c*c + A2d*d1 + A1d*d2 == 0.
         i -= A.rows
         if j < m + rc:
-            return real_imag_expr(A[i, j].as_expr())[1]
-        return real_imag_expr(A[i, j - rc].as_expr())[0]
+            return real_imag_element(A[i, j])[1]
+        return real_imag_element(A[i, j - rc])[0]
 
-    return (H, Matrix(2*A.rows, m + 2*rc, entry, DE.t))
+    return (H, FieldMatrix.from_function(2*A.rows, m + 2*rc, entry))
 
 
-def coupled_DE_cancel_prim(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: DifferentialExtension,
-                           n: Degree) -> tuple[Poly, Poly]:
+def coupled_DE_cancel_prim(b1: TowerPoly, b2: TowerPoly, c1: TowerPoly, c2: TowerPoly, DE: DifferentialExtension,
+                           n: Degree) -> tuple[TowerPoly, TowerPoly]:
     """
     Coupled Differential System - Cancellation: Primitive case.
 
@@ -230,14 +252,15 @@ def coupled_DE_cancel_prim(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Different
 
     has no solution with both degrees at most n in k[t], or return a
     solution (q1, q2) of this system with deg(q1) <= n and
-    deg(q2) <= n.  ``b1`` and ``b2`` are Polys in DE.t (of degree 0);
-    ``c1`` and ``c2`` are Polys in DE.t.
+    deg(q2) <= n.  ``b1`` and ``b2`` are TowerPolys in DE.t (of degree 0);
+    ``c1`` and ``c2`` are TowerPolys in DE.t.
 
     This is ``CoupledDECancelPrim`` from Section 8.1 of Bronstein's
     book, specialized to a == -1.
     """
+    b1, b2, c1, c2 = _in_t(b1, DE), _in_t(b2, DE), _in_t(c1, DE), _in_t(c2, DE)
     with DecrementLevel(DE):
-        ba, bd = frac_in(b1.as_expr() + I*b2.as_expr(), DE.t, cancel=True)
+        ba, bd = frac_in(b1.as_element() + _I*b2.as_element(), DE.t, cancel=True)
         A = is_log_deriv_k_t_radical_in_field(ba, bd, DE)
 
     if A is not None:
@@ -249,10 +272,10 @@ def coupled_DE_cancel_prim(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Different
             # parts of Dp == z*c are the two integration problems
             # D(p1) == z1*c1 - z2*c2 and D(p2) == z2*c1 + z1*c2 in
             # k[t], and q is recovered as p*conj(z)/(z1**2 + z2**2).
-            z1, z2 = real_imag_expr(z)
-            p = []
-            for rhs in [z1*c1.as_expr() - z2*c2.as_expr(),
-                    z2*c1.as_expr() + z1*c2.as_expr()]:
+            z1, z2 = real_imag_element(z)
+            p: list[RationalFunction] = []
+            ce1, ce2 = c1.as_element(), c2.as_element()
+            for rhs in [z1*ce1 - z2*ce2, z2*ce1 + z1*ce2]:
                 pa, pd = frac_in(rhs, DE.t, cancel=True)
                 B = is_deriv_in_field(pa, pd, DE)
                 if B is None:
@@ -265,11 +288,11 @@ def coupled_DE_cancel_prim(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Different
                 # poles), and any additive constants C1, C2 keep
                 # q + (C1 + C2*sqrt(-1))/z in k[t] x k[t] and solve
                 # the homogeneous system, so any choice of p will do.
-                p.append(va.as_expr()/vd.as_expr())
+                p.append(va.as_element()/vd.as_element())
             p1, p2 = p
             zz = z1**2 + z2**2
-            q1 = cancel((z1*p1 + z2*p2)/zz).as_poly(DE.t)
-            q2 = cancel((z1*p2 - z2*p1)/zz).as_poly(DE.t)
+            q1 = TowerPoly.from_element((z1*p1 + z2*p2)/zz, DE.t)
+            q2 = TowerPoly.from_element((z1*p2 - z2*p1)/zz, DE.t)
             if q1 is None or q2 is None:
                 raise NonElementaryIntegralException("p/z is not in k[t] "
                     "in coupled_DE_cancel_prim().")
@@ -285,32 +308,30 @@ def coupled_DE_cancel_prim(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Different
         raise NonElementaryIntegralException("n < deg(c) in "
             "coupled_DE_cancel_prim().")
 
-    q1 = Poly(0, DE.t)
-    q2 = Poly(0, DE.t)
+    r1 = TowerPoly.zero(DE.t)
+    r2 = TowerPoly.zero(DE.t)
     while not (c1.is_zero and c2.is_zero):
         m = max(c1.degree(DE.t), c2.degree(DE.t))
         if n < m:
             raise NonElementaryIntegralException("n < deg(c) in "
                 "coupled_DE_cancel_prim().")
         with DecrementLevel(DE):
-            s1, s2 = coupled_DE_system(frac_in(b1.as_expr(), DE.t),
-                frac_in(b2.as_expr(), DE.t), frac_in(c1.nth(m), DE.t),
+            s1, s2 = coupled_DE_system(frac_in(b1.as_element(), DE.t),
+                frac_in(b2.as_element(), DE.t), frac_in(c1.nth(m), DE.t),
                 frac_in(c2.nth(m), DE.t), DE)
-        s1tm = Poly(s1[0].as_expr()/s1[1].as_expr()*DE.t**m, DE.t,
-            expand=False)
-        s2tm = Poly(s2[0].as_expr()/s2[1].as_expr()*DE.t**m, DE.t,
-            expand=False)
-        q1 += s1tm
-        q2 += s2tm
+        s1tm = TowerPoly.monomial(DE.t, m, _el(s1))
+        s2tm = TowerPoly.monomial(DE.t, m, _el(s2))
+        r1 += s1tm
+        r2 += s2tm
         n = m - 1
         c1 -= derivation(s1tm, DE) + b1*s1tm - b2*s2tm
         c2 -= derivation(s2tm, DE) + b2*s1tm + b1*s2tm
 
-    return (q1, q2)
+    return (r1, r2)
 
 
-def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: DifferentialExtension,
-                          n: Degree) -> tuple[Poly, Poly]:
+def coupled_DE_cancel_exp(b1: TowerPoly, b2: TowerPoly, c1: TowerPoly, c2: TowerPoly, DE: DifferentialExtension,
+                          n: Degree) -> tuple[TowerPoly, TowerPoly]:
     """
     Coupled Differential System - Cancellation: Hyperexponential case.
 
@@ -327,8 +348,8 @@ def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
 
     has no solution with both degrees at most n in k[t], or return a
     solution (q1, q2) of this system with deg(q1) <= n and
-    deg(q2) <= n.  ``b1`` and ``b2`` are Polys in DE.t (of degree 0);
-    ``c1`` and ``c2`` are Polys in DE.t.
+    deg(q2) <= n.  ``b1`` and ``b2`` are TowerPolys in DE.t (of degree 0);
+    ``c1`` and ``c2`` are TowerPolys in DE.t.
 
     This is ``CoupledDECancelExp`` from Section 8.2 of Bronstein's
     book, specialized to a == -1.  The book's final degree condition
@@ -336,16 +357,17 @@ def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
     deg(q2) (the two coincide only when m == 0 and z is constant); it
     is checked here alongside deg(q1) <= n.
     """
-    eta = DE.d.quo(Poly(DE.t, DE.t)).as_expr()
+    b1, b2, c1, c2 = _in_t(b1, DE), _in_t(b2, DE), _in_t(c1, DE), _in_t(c2, DE)
+    eta = DE.d.quo(TowerPoly.monomial(DE.t, 1)).as_element()
 
     with DecrementLevel(DE):
         etaa, etad = frac_in(eta, DE.t)
-        ba, bd = frac_in(b1.as_expr() + I*b2.as_expr(), DE.t, cancel=True)
+        ba, bd = frac_in(b1.as_element() + _I*b2.as_element(), DE.t, cancel=True)
         A = parametric_log_deriv(ba, bd, etaa, etad, DE)
 
+    tf = RationalFunction.generator(DE.t)
     if A is not None:
-        a, m, z_found = A
-        z = z_found.as_expr() if isinstance(z_found, Poly) else z_found
+        a, m, z = A
         if a == 1:
             # b1 + b2*sqrt(-1) == Dz/z + m*Dt/t, so
             # D(z*t**m*q) == z*t**m*(Dq + b*q) for
@@ -357,10 +379,10 @@ def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
             # D(p2) == (z2*c1 + z1*c2)*t**m in k<t>, and q is
             # recovered as p*conj(z)*t**(-m)/(z1**2 + z2**2), which
             # must be in k[t] x k[t] with degrees at most n.
-            z1, z2 = real_imag_expr(z)
-            p = []
-            for rhs in [(z1*c1.as_expr() - z2*c2.as_expr())*DE.t**m,
-                    (z2*c1.as_expr() + z1*c2.as_expr())*DE.t**m]:
+            z1, z2 = real_imag_element(z)
+            p: list[RationalFunction] = []
+            ce1, ce2 = c1.as_element(), c2.as_element()
+            for rhs in [(z1*ce1 - z2*ce2)*tf**m, (z2*ce1 + z1*ce2)*tf**m]:
                 pa, pd = frac_in(rhs, DE.t, cancel=True)
                 B = is_deriv_in_field(pa, pd, DE)
                 if B is None:
@@ -368,22 +390,23 @@ def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
                         "the derivative of an element of k(t) in "
                         "coupled_DE_cancel_exp().")
                 va, vd = B
-                pj = cancel(va.as_expr()/vd.as_expr())
+                pj = va.as_element()/vd.as_element()
                 if m > 0:
                     # p is determined only up to an additive constant.
                     # For m > 0 the true p == z*t**m*q has no t-free
                     # term (all its monomials have degree >= m), while
                     # a constant term would make p*t**(-m)/z
                     # non-polynomial, so remove it.
-                    pj -= pj.subs(DE.t, 0)
+                    pj -= pj.subs(DE.t, RationalFunction.from_int(0))
                 p.append(pj)
             p1, p2 = p
             zz = z1**2 + z2**2
-            q1 = cancel((z1*p1 + z2*p2)/(zz*DE.t**m)).as_poly(DE.t)
-            q2 = cancel((z1*p2 - z2*p1)/(zz*DE.t**m)).as_poly(DE.t)
-            if q1 is None or q2 is None:
+            f1 = TowerPoly.from_element((z1*p1 + z2*p2)/(zz*tf**m), DE.t)
+            f2 = TowerPoly.from_element((z1*p2 - z2*p1)/(zz*tf**m), DE.t)
+            if f1 is None or f2 is None:
                 raise NonElementaryIntegralException("p/(z*t**m) is not in "
                     "k[t] in coupled_DE_cancel_exp().")
+            q1, q2 = f1, f2
             if max(q1.degree(DE.t), q2.degree(DE.t)) > n:
                 if m < 0 and max(q1.degree(DE.t), q2.degree(DE.t)) == -m:
                     # The homogeneous solutions are
@@ -392,10 +415,10 @@ def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
                     # adjustable by the constants of integration
                     # exactly when z*(q1 + q2*sqrt(-1))'s t**(-m)
                     # coefficient is constant.
-                    cc = cancel(z*(q1.nth(-m) + I*q2.nth(-m)))
+                    cc = z*(q1.nth(-m) + _I*q2.nth(-m))
                     if not cc.has(*DE.T):
-                        q1 = q1 - Poly(q1.nth(-m)*DE.t**(-m), DE.t)
-                        q2 = q2 - Poly(q2.nth(-m)*DE.t**(-m), DE.t)
+                        q1 = q1 - TowerPoly.monomial(DE.t, -m, q1.nth(-m))
+                        q2 = q2 - TowerPoly.monomial(DE.t, -m, q2.nth(-m))
                 if max(q1.degree(DE.t), q2.degree(DE.t)) > n:
                     raise NonElementaryIntegralException(
                         "deg(p/(z*t**m)) > n in coupled_DE_cancel_exp().")
@@ -408,8 +431,8 @@ def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
         raise NonElementaryIntegralException("n < deg(c) in "
             "coupled_DE_cancel_exp().")
 
-    q1 = Poly(0, DE.t)
-    q2 = Poly(0, DE.t)
+    r1 = TowerPoly.zero(DE.t)
+    r2 = TowerPoly.zero(DE.t)
     while not (c1.is_zero and c2.is_zero):
         m = max(c1.degree(DE.t), c2.degree(DE.t))
         if n < m:
@@ -418,27 +441,25 @@ def coupled_DE_cancel_exp(b1: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
         # The system for the t**m coefficients has b1 + m*Dt/t in
         # place of b1.
         with DecrementLevel(DE):
-            b1a, b1d = frac_in(b1.as_expr(), DE.t)
-            b1a = b1a*etad + etaa*b1d*Poly(m, DE.t)
+            b1a, b1d = frac_in(b1.as_element(), DE.t)
+            b1a = b1a*etad + (etaa*b1d).mul_ground(m)
             b1d = b1d*etad
             s1, s2 = coupled_DE_system((b1a, b1d),
-                frac_in(b2.as_expr(), DE.t), frac_in(c1.nth(m), DE.t),
+                frac_in(b2.as_element(), DE.t), frac_in(c1.nth(m), DE.t),
                 frac_in(c2.nth(m), DE.t), DE)
-        s1tm = Poly(s1[0].as_expr()/s1[1].as_expr()*DE.t**m, DE.t,
-            expand=False)
-        s2tm = Poly(s2[0].as_expr()/s2[1].as_expr()*DE.t**m, DE.t,
-            expand=False)
-        q1 += s1tm
-        q2 += s2tm
+        s1tm = TowerPoly.monomial(DE.t, m, _el(s1))
+        s2tm = TowerPoly.monomial(DE.t, m, _el(s2))
+        r1 += s1tm
+        r2 += s2tm
         n = m - 1
         c1 -= derivation(s1tm, DE) + b1*s1tm - b2*s2tm
         c2 -= derivation(s2tm, DE) + b2*s1tm + b1*s2tm
 
-    return (q1, q2)
+    return (r1, r2)
 
 
-def coupled_DE_cancel_tan(b0: Poly, b2: Poly, c1: Poly, c2: Poly, DE: DifferentialExtension,
-                          n: Degree) -> tuple[Poly, Poly]:
+def coupled_DE_cancel_tan(b0: TowerPoly, b2: TowerPoly, c1: TowerPoly, c2: TowerPoly, DE: DifferentialExtension,
+                          n: Degree) -> tuple[TowerPoly, TowerPoly]:
     """
     Coupled Differential System - Cancellation: Hypertangent case.
 
@@ -455,8 +476,8 @@ def coupled_DE_cancel_tan(b0: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
 
     has no solution with both degrees at most n in k[t], or return a
     solution (q1, q2) of this system with deg(q1) <= n and
-    deg(q2) <= n.  ``b0`` and ``b2`` are Polys in DE.t (of degree 0);
-    ``c1`` and ``c2`` are Polys in DE.t.
+    deg(q2) <= n.  ``b0`` and ``b2`` are TowerPolys in DE.t (of degree 0);
+    ``c1`` and ``c2`` are TowerPolys in DE.t.
 
     Unlike the primitive and hyperexponential cases, ``n`` must be an
     integer: the recursion descends from n to 0 one step at a time,
@@ -471,12 +492,13 @@ def coupled_DE_cancel_tan(b0: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
     matrix has equal diagonal entries, as in equation (8.4) and in
     the book's own worked Example 8.4.1).
     """
-    if n == oo:
+    if is_oo(n):
         raise ValueError("n must be a finite integer in "
             "coupled_DE_cancel_tan().")
+    b0, b2, c1, c2 = _in_t(b0, DE), _in_t(b2, DE), _in_t(c1, DE), _in_t(c2, DE)
     if n < 0:
         if c1.is_zero and c2.is_zero:
-            return (Poly(0, DE.t), Poly(0, DE.t))
+            return (TowerPoly.zero(DE.t), TowerPoly.zero(DE.t))
         raise NonElementaryIntegralException("n < 0 and c != 0 in "
             "coupled_DE_cancel_tan().")
 
@@ -485,30 +507,30 @@ def coupled_DE_cancel_tan(b0: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
             raise NonElementaryIntegralException("deg(c) > 0 == n in "
                 "coupled_DE_cancel_tan().")
         with DecrementLevel(DE):
-            q1, q2 = coupled_DE_system(frac_in(b0.as_expr(), DE.t),
-                frac_in(b2.as_expr(), DE.t), frac_in(c1.nth(0), DE.t),
+            y1, y2 = coupled_DE_system(frac_in(b0.as_element(), DE.t),
+                frac_in(b2.as_element(), DE.t), frac_in(c1.nth(0), DE.t),
                 frac_in(c2.nth(0), DE.t), DE)
-            q1 = q1[0].as_expr()/q1[1].as_expr()
-            q2 = q2[0].as_expr()/q2[1].as_expr()
-        return (Poly(q1, DE.t), Poly(q2, DE.t))
+            e1, e2 = _el(y1), _el(y2)
+        return (TowerPoly.from_element_strict(e1, DE.t), TowerPoly.from_element_strict(e2, DE.t))
 
-    eta = DE.d.exquo(Poly(DE.t**2 + 1, DE.t)).as_expr()
+    p2 = TowerPoly.from_list([1, 0, 1], DE.t)
+    eta = DE.d.exquo(p2).as_element()
 
     # The t**n coefficients of any solution satisfy the coupled
     # system over k obtained by projecting mod t - sqrt(-1) (i.e.
     # evaluating at t == sqrt(-1)):
     # z1 + z2*sqrt(-1) == c1(sqrt(-1)) + c2(sqrt(-1))*sqrt(-1).
-    A1, B1, _ = real_imag(c1, Poly(1, DE.t), DE.t)
-    A2, B2, _ = real_imag(c2, Poly(1, DE.t), DE.t)
-    z1 = A1.as_expr() - B2.as_expr()
-    z2 = B1.as_expr() + A2.as_expr()
+    one = TowerPoly.one(DE.t)
+    A1, B1, _ = real_imag(c1, one, DE.t)
+    A2, B2, _ = real_imag(c2, one, DE.t)
+    z1 = A1.as_element() - B2.as_element()
+    z2 = B1.as_element() + A2.as_element()
 
     with DecrementLevel(DE):
-        s1, s2 = coupled_DE_system(frac_in(b0.as_expr(), DE.t),
-            frac_in(b2.as_expr() - n*eta, DE.t), frac_in(z1, DE.t),
+        f1, f2 = coupled_DE_system(frac_in(b0.as_element(), DE.t),
+            frac_in(b2.as_element() - eta*n, DE.t), frac_in(z1, DE.t),
             frac_in(z2, DE.t), DE)
-        s1 = s1[0].as_expr()/s1[1].as_expr()
-        s2 = s2[0].as_expr()/s2[1].as_expr()
+        s1, s2 = _el(f1), _el(f2)
 
     # With r == s1 + s2*sqrt(-1), h == (q - r)/(t - sqrt(-1)) solves
     # the same kind of system with b2 + eta in place of b2 and a
@@ -516,15 +538,17 @@ def coupled_DE_cancel_tan(b0: Poly, b2: Poly, c1: Poly, c2: Poly, DE: Differenti
     # is the exact quotient (N1 + N2*sqrt(-1))/(t - sqrt(-1)),
     # computed via the conjugate: d1 == (N1*t - N2)/(t**2 + 1) and
     # d2 == (N2*t + N1)/(t**2 + 1).
-    N1 = c1 - Poly(z1, DE.t) + Poly(n*eta*(s1*DE.t + s2), DE.t)
-    N2 = c2 - Poly(z2, DE.t) + Poly(n*eta*(s2*DE.t - s1), DE.t)
-    tp = Poly(DE.t, DE.t)
-    p2 = Poly(DE.t**2 + 1, DE.t)
+    tf = RationalFunction.generator(DE.t)
+
+    def P(e: RationalFunction) -> TowerPoly:
+        return TowerPoly.from_element_strict(e, DE.t)
+    N1 = c1 - P(z1) + P(eta*n*(s1*tf + s2))
+    N2 = c2 - P(z2) + P(eta*n*(s2*tf - s1))
+    tp = TowerPoly.monomial(DE.t, 1)
     d1 = (N1*tp - N2).exquo(p2)
     d2 = (N2*tp + N1).exquo(p2)
 
-    h1, h2 = coupled_DE_cancel_tan(b0, b2 + Poly(eta, DE.t), d1, d2, DE,
-        n - 1)
+    h1, h2 = coupled_DE_cancel_tan(b0, b2 + P(eta), d1, d2, DE, n - 1)
 
     # q == h*(t - sqrt(-1)) + r
-    return (h1*tp + h2 + Poly(s1, DE.t), h2*tp - h1 + Poly(s2, DE.t))
+    return (h1*tp + h2 + P(s1), h2*tp - h1 + P(s2))

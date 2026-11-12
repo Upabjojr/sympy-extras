@@ -583,9 +583,14 @@ unimplemented); `is_nonelementary` is the decision. Parameters may
 appear in the constant field: a symbolic coefficient in the solution of
 a structure equation means a new monomial (`x**v` for a symbolic `v`),
 and the rational roots of a polynomial with parameters in its
-coefficients are found by `roots`. The ported modules are strictly
-typed like the rest of the package, with the annotations of Aaron
-Meurer's branch `risch-typing` (sympy/sympy#30282) as the starting point.
+coefficients are found by `roots`. The modules are native on the typed core: the polynomials of the tower
+are `TowerPoly` (`risch/tower.py`) over the field of `RationalFunction`
+elements (exact canonical fractions over `ZZ` in the generators, with
+`I` and the square roots of integers reduced and taken out of the
+denominators), the matrices of the parametric problems `FieldMatrix`;
+`risch/risch_sympy.py` is the face on SymPy objects
+(`risch_integrate`, `risch_antiderivative`, `is_nonelementary`,
+`rational_risch_de`).
 
 ```python
 >>> from sympy import symbols, tan, exp, log

@@ -528,6 +528,10 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         # factor, already preprocessed) and function gives the same node
         return sympy.RootSum(sympy.Poly(to_sympy(e.expr), to_sympy(e.variable)),
                              sympy.Lambda(tuple(to_sympy(v) for v in e.fun.variables), to_sympy(e.fun.expr, evaluate)))
+    from sympy_extras.integrals.risch.risch import NonElementaryIntegral
+    if isinstance(e, NonElementaryIntegral):
+        from sympy_extras.integrals.risch.risch_sympy import NonElementaryIntegral as SymPyNonElementaryIntegral
+        return SymPyNonElementaryIntegral(to_sympy(e.function, evaluate), to_sympy(e.variable))
     args = [to_sympy(a, evaluate) for a in e.args]
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)
@@ -804,6 +808,13 @@ def _from_sympy(e: SymPyBasic) -> Basic:
     from sympy_extras.polys.cad.indexedroot_sympy import IndexedRoot as SymPyIndexedRoot, native_indexed_root
     if isinstance(e, SymPyIndexedRoot):
         return native_indexed_root(e)
+    from sympy_extras.integrals.risch.risch_sympy import NonElementaryIntegral as SymPyNonElementaryIntegral
+    if isinstance(e, SymPyNonElementaryIntegral) and len(e.limits) == 1 and len(e.limits[0]) == 1:
+        from sympy_extras.integrals.risch.risch import NonElementaryIntegral
+        function, variable = from_sympy(e.function), from_sympy(e.limits[0][0])
+        if not (isinstance(function, Expr) and isinstance(variable, Symbol)):
+            raise TypeError("cannot convert %s" % (e,))
+        return NonElementaryIntegral(function, variable)
     if isinstance(e, sympy.RootSum):
         from sympy_extras.polys.rootoftools import RootSum
         # SymPy's arguments: the expression of the polynomial, the
