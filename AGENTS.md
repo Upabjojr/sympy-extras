@@ -255,6 +255,8 @@ sympy_extras/
         summations.py        summation, sum_doit, eval_sum, eval_sum_hyper, eval_sum_residue: SymPy's Sum.doit (native,
                              PORTED FROM SYMPY; the residues at CRootOf poles by the formula of a pole of order m, the
                              roots over EX by ex_roots, the equations by solvers.solvers.solve_equation)
+        delta.py             deltasummation, deltaproduct: sums and products of Kronecker deltas (native, PORTED FROM SYMPY;
+                             the equations by linsolve, assumptions.solve, solve_equation and solve_system)
         tests/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of

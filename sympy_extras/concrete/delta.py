@@ -4,12 +4,14 @@ solution, as a ``Piecewise`` on the solution lying in the range.
 
 Ported from SymPy's ``sympy.concrete.delta``. The equation of a delta in
 the index is solved natively (by
-:mod:`~sympy_extras.solvers.linsolve` and
-:func:`~sympy_extras.assumptions.solve.solve`), through SymPy's ``solve``
-when they do not list its solutions; the systems of several deltas (and
-the equation of one delta solved for all its symbols) go through SymPy's
-``solve(..., dict=True)`` unless they are linear with rational
-coefficients and a unique solution; the rest is native.
+:mod:`~sympy_extras.solvers.linsolve`,
+:func:`~sympy_extras.assumptions.solve.solve` and the port of SymPy's
+``solve``, :func:`~sympy_extras.solvers.solvers.solve_equation`); the
+systems of several deltas (and the equation of one delta solved for all
+its symbols) by :mod:`~sympy_extras.solvers.linsolve` when they are
+linear with rational coefficients and a unique solution, by
+:func:`~sympy_extras.solvers.solvers.solve_system` otherwise. The module
+loads no SymPy.
 
 Examples
 ========
@@ -71,7 +73,9 @@ def _solve(e: Expr, v: Symbol) -> list[Expr]:
     equations whose solutions over the complex numbers the native
     :func:`~sympy_extras.assumptions.solve.solve` lists (a finite set; the
     assumptions of ``v``, an integer index say, are honoured as SymPy's
-    ``solve`` does), through SymPy otherwise."""
+    ``solve`` does), and by the native port of SymPy's ``solve``
+    (:func:`~sympy_extras.solvers.solvers.solve_equation`) otherwise;
+    ``NotImplementedError``, as SymPy raises, when none lists them."""
     from sympy_extras.solvers.linsolve import solve_one
     known = solve_one(e, v)
     if known is not None:
@@ -79,9 +83,11 @@ def _solve(e: Expr, v: Symbol) -> list[Expr]:
     listed = _finite_solutions(e, v)
     if listed is not None:
         return listed
-    import sympy
-    from sympy_extras.interop import expr_from_sympy, to_sympy
-    return [expr_from_sympy(s) for s in sympy.solve(to_sympy(e), to_sympy(v))]
+    from sympy_extras.solvers.solvers import solve_equation
+    found = solve_equation(e, v)
+    if found is None:
+        raise NotImplementedError('no native method solves %s = 0 for %s' % (e, v))
+    return found
 
 
 def _finite_solutions(e: Expr, v: Symbol) -> Optional[list[Expr]]:
@@ -107,18 +113,22 @@ def _finite_solutions(e: Expr, v: Symbol) -> Optional[list[Expr]]:
 
 
 def _solve_dicts(eqs: list[Expr]) -> list[dict[Expr, Expr]]:
-    """SymPy's ``solve(eqs, dict=True)``: native for a linear system with
-    rational coefficients and a unique solution, through SymPy otherwise."""
+    """SymPy's ``solve(eqs, dict=True)`` for all the symbols of the
+    equations (in SymPy's canonical order): a linear system with rational
+    coefficients and a unique solution directly, the others by the native
+    :func:`~sympy_extras.solvers.solvers.solve_system`;
+    ``NotImplementedError``, as SymPy raises, when it cannot solve them."""
+    from sympy_extras.core.sorting import ordered
     from sympy_extras.solvers.linsolve import numeric_linear_solution
+    from sympy_extras.solvers.solvers import solve_system
     solution = numeric_linear_solution(eqs)
     if solution is not None:
         return [dict(solution.items())]
-    import sympy
-    from sympy_extras.interop import expr_from_sympy, to_sympy
-    out: list[dict[Expr, Expr]] = []
-    for sol in sympy.solve([to_sympy(e) for e in eqs], dict=True):
-        out.append({expr_from_sympy(k): expr_from_sympy(v) for k, v in sol.items()})
-    return out
+    symbols = [s for s in ordered(list(set().union(*[e.free_symbols for e in eqs]))) if isinstance(s, Symbol)]
+    found = solve_system(eqs, symbols)
+    if found is None:
+        raise NotImplementedError('no native method solves %s' % (eqs,))
+    return [dict(sol.items()) for sol in found]
 
 
 def _decided_true(b: Basic) -> bool:

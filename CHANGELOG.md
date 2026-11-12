@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `concrete.delta` loads no SymPy at run time: the equation of a delta
+  the linear and finite solvers do not list goes to the native
+  `solve_equation`, and the systems of several deltas which are not
+  linear with a unique solution to the native `solve_system` (for the
+  symbols in SymPy's canonical order), instead of SymPy's `solve`;
+  `NotImplementedError` when they have no method, as SymPy raises.
 - `concrete.summations` loads no SymPy at run time: the residue method
   takes the poles SymPy writes as `CRootOf` by the residue of a pole of
   order `m` at an algebraic point (SymPy's series there gives

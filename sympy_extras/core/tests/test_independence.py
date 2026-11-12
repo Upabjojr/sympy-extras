@@ -3050,3 +3050,31 @@ def test_native_summation_routes_do_not_load_sympy() -> None:
                          timeout=900)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DELTA_ROUTES = r'''
+import sys
+from sympy_extras.core import Symbol
+from sympy_extras.functions import exp
+from sympy_extras.functions.special.tensor_functions import KroneckerDelta
+from sympy_extras.concrete.delta import _solve, _solve_dicts, deltaproduct
+i, j, k, n = (Symbol(s, integer=True) for s in 'ijkn')
+x, y = Symbol('x'), Symbol('y')
+assert str(_solve(x*exp(x) - 1, x)) == '[LambertW(1)]'
+assert str(_solve_dicts([x*y - 1, x - y])) == '[{x: -1, y: -1}, {x: 1, y: 1}]'
+# two deltas: an underdetermined system (it went to SymPy's solve(..., dict=True))
+assert str(deltaproduct(KroneckerDelta(i, k)*KroneckerDelta(j, k), (k, 1, n))) == \
+    'KroneckerDelta(0, n) + KroneckerDelta(1, i)*KroneckerDelta(1, j)*KroneckerDelta(1, n)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_delta_routes_do_not_load_sympy() -> None:
+    """The equations of the deltas which neither the linear solver nor the
+    finite solutions of ``assumptions.solve`` give, and the systems of
+    several deltas, are solved by the native ``solve_equation`` and
+    ``solve_system`` (they went to SymPy's ``solve``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DELTA_ROUTES], capture_output=True, text=True,
+                         timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
