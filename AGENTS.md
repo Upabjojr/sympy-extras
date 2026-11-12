@@ -187,9 +187,11 @@ sympy_extras/
         resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD, virtual
                              substitution, Cooper and comprehensive Groebner systems)
         resolve_sympy.py     the SymPy face of resolve
-        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native, with the native CAD
-                             and Hermite's count; SymPy's SAT solver and predicates_consistent through sat_sympy)
-        sat_sympy.py         the SymPy face of sat, and the steps which stay on SymPy (the *_of_core functions)
+        sat.py               satisfiable(), tautology(), find_instance(): SAT + theory check (native, with the native CAD,
+                             Hermite's count, logic.dpll2 and satask; no SymPy at run time)
+        sat_sympy.py         the SymPy face of sat
+        satask.py            predicates_consistent: predicates against SymPy's known number facts and class facts by the
+                             native SAT solver (native, PORTED FROM SYMPY satask, sathandlers, ask_generated)
         solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains, parametric cases
                              and transcendental equations; solveset, nonlinsolve through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions)
@@ -490,6 +492,12 @@ sympy_extras/
         powsimp.py           powsimp, powdenest, multiplicity, _denest_pow (ported from SymPy)
         simplify.py          simplify, logcombine, posify, nsimplify, collect_abs, nc_simplify, besselsimp (ported from SymPy)
         hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
+        tests/
+    logic/                   propositional logic on the core's Booleans (exports nothing: import the modules)
+        cnf.py               to_clauses, conjunction, Clauses: conjunctive normal forms encoded with integers (native,
+                             PORTED FROM SYMPY assumptions/cnf)
+        dpll2.py             SATSolver, propositional_models, is_satisfiable: DPLL with watched literals and VSIDS, every
+                             model in a deterministic order (native, PORTED FROM SYMPY logic/algorithms/dpll2)
         tests/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
     series/                  residue (ported from SymPy)

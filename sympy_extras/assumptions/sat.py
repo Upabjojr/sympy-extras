@@ -28,19 +28,16 @@ conclusive when the variables are known to be real.
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.sat_sympy` is its face on SymPy objects.
-The abstraction, the theory check, the search for integer points and the
-evaluation of the candidates are native; the steps which are not ported
-go through SymPy at run time (the face holds them, the functions ending
-in ``_of_core``): SymPy's SAT solver
-(:func:`sympy.logic.inference.satisfiable`) on the propositional
-abstraction, the consistency of predicates with SymPy's known facts
-(:func:`~sympy_extras.assumptions.facts_sympy.predicates_consistent`)
-and the floor and the comparison of SymPy's ``CRootOf`` (not ported).
-The sample points and the solution sets of the cylindrical algebraic
-decomposition are native (:mod:`sympy_extras.polys.cad.qe`), and so are
-the floor and the comparison of the real algebraic numbers they give and
-the count of real solutions by Hermite's form
-(:mod:`sympy_extras.polys.hermite`).
+Everything is native: the abstraction, the SAT solver on it (a port of
+SymPy's DPLL2, :mod:`sympy_extras.logic.dpll2`, on the conjunctive
+normal form of :mod:`sympy_extras.logic.cnf`), the consistency of the
+predicates with the known facts (:mod:`sympy_extras.assumptions.satask`),
+the theory check, the search for integer points and the evaluation of
+the candidates; the sample points and the solution sets of the
+cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad.qe`),
+the floor and the comparison of the real algebraic numbers they give
+(:mod:`sympy_extras.polys.cad.samplepoints`) and the count of real
+solutions by Hermite's form (:mod:`sympy_extras.polys.hermite`).
 """
 from __future__ import annotations
 
@@ -53,10 +50,13 @@ from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.logic import (Boolean, BooleanFalse, BooleanLike, BooleanTrue, Not, and_, false, not_,
     to_boolean, true)
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.power import Pow
 from sympy_extras.core.numbers import Integer, NegativeInfinity, Infinity, Rational
 from sympy_extras.core.relational import Eq, Ne, Relational
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.sets.sets import Contains, FiniteSet, Interval, Reals, RealsClass, Set, Union as SetUnion
+from sympy_extras.polys.numberfields.qqbar import Algebraic
 from sympy_extras._timeout import attempt
 
 from .ask import Assumptions, _facts
@@ -100,7 +100,7 @@ def _abstract(formula: Boolean) -> tuple[Boolean, dict[Basic, Boolean]]:
     return to_boolean(formula._xreplace_evaluated(mapping)), atoms
 
 
-def _literals(model: dict[Basic, bool], atoms: dict[Basic, Boolean]) -> list[Boolean]:
+def _literals(model: dict[Boolean, bool], atoms: dict[Basic, Boolean]) -> list[Boolean]:
     """The theory literals selected by a propositional model."""
     literals: list[Boolean] = []
     for symbol, value in model.items():
@@ -113,17 +113,40 @@ def _literals(model: dict[Basic, bool], atoms: dict[Basic, Boolean]) -> list[Boo
     return literals
 
 
+def _real_algebraic(a: Expr) -> Algebraic:
+    """A real algebraic number given as a rational number, a real
+    :class:`~sympy_extras.polys.cad.indexedroot.IndexedRoot` with rational
+    coefficients or a product or an integer power of them, as a native
+    one (``ValueError`` for any other expression)."""
+    from sympy_extras.polys.cad.indexedroot import algebraic_of
+    from sympy_extras.polys.cad.samplepoints import scaled_real
+    number = algebraic_of(a)
+    if number is not None:
+        return number
+    if isinstance(a, Mul):
+        c = Fraction(1)
+        result: Optional[Algebraic] = None
+        for f in a.args:
+            if isinstance(f, Rational):
+                c *= Fraction(f.p, f.q)
+                continue
+            factor = _real_algebraic(f)
+            result = factor if result is None else result*factor
+        if result is None:
+            return Algebraic.from_rational(c)
+        return result if c == 1 else scaled_real(result, c)
+    if isinstance(a, Pow) and isinstance(a.exp, Integer):
+        base = _real_algebraic(a.base)
+        return base**a.exp.p if a.exp.p >= 0 else (base**(-a.exp.p)).inverse()
+    raise ValueError("%s is not a rational number, a real algebraic root or a product or power of them" % (a,))
+
+
 def _floor(a: Expr) -> int:
     """The floor of a real algebraic number."""
     if isinstance(a, Rational):
         return a.p // a.q
-    from sympy_extras.polys.cad.indexedroot import algebraic_of
     from sympy_extras.polys.cad.samplepoints import floor_scaled
-    number = algebraic_of(a)
-    if number is not None:
-        return floor_scaled(number, 0)
-    from .sat_sympy import floor_of_core
-    return floor_of_core(a)
+    return floor_scaled(_real_algebraic(a), 0)
 
 
 def _compare(a: Expr, b: Expr) -> int:
@@ -131,13 +154,8 @@ def _compare(a: Expr, b: Expr) -> int:
     if isinstance(a, Rational) and isinstance(b, Rational):
         d = Fraction(a.p, a.q) - Fraction(b.p, b.q)
         return (d > 0) - (d < 0)
-    from sympy_extras.polys.cad.indexedroot import algebraic_of
     from sympy_extras.polys.cad.samplepoints import compare_real
-    first, second = algebraic_of(a), algebraic_of(b)
-    if first is not None and second is not None:
-        return compare_real(first, second)
-    from .sat_sympy import compare_real_of_core
-    return compare_real_of_core(a, b)
+    return compare_real(_real_algebraic(a), _real_algebraic(b))
 
 
 def _integer_in(sets: Set) -> Optional[Expr]:
@@ -244,7 +262,7 @@ def _theory_check(literals: Sequence[Boolean], facts: Facts) -> Union[Witness, b
     decided.
     """
     from sympy_extras.polys.cad.qe import sample_points
-    from .sat_sympy import predicates_consistent_of_core
+    from .satask import predicates_consistent
     predicates: list[Boolean] = []
     for lit in literals:
         p = to_predicates(lit)
@@ -253,7 +271,7 @@ def _theory_check(literals: Sequence[Boolean], facts: Facts) -> Union[Witness, b
         if _is_atom(lit):
             predicates.extend(_consequences(lit))
     predicates.append(facts.predicates)
-    if not predicates_consistent_of_core(and_(*predicates)):
+    if not predicates_consistent(and_(*predicates)):
         return False
 
     # variables which are real by an inequality literal or a membership
@@ -393,10 +411,11 @@ def satisfiable(formula: BooleanLike, assumptions: Assumptions = None, domain: O
         return [] if all_models else False
     if isinstance(abstract, BooleanTrue):
         return [{}] if all_models else {}
-    from .sat_sympy import propositional_models_of_core
+    from sympy_extras.logic.cnf import to_clauses
+    from sympy_extras.logic.dpll2 import propositional_models
     results: list[Model] = []
     unknown = False
-    for model in propositional_models_of_core(abstract):
+    for model in propositional_models(to_clauses(abstract)):
         literals = _literals(model, atoms)
         result = _theory_check(literals, facts)
         if result is None:

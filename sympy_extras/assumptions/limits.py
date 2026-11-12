@@ -46,7 +46,7 @@ from sympy_extras.functions.elementary.complexes import Sign
 from sympy_extras.functions.elementary.exponential import Log, exp, log
 from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
 from sympy_extras.sets.sets import Reals, Set
-from sympy_extras._timeout import attempt
+from sympy_extras._timeout import attempt, prepare_sympy
 from sympy_extras.settings import settings
 
 from .ask import Assumptions, _evaluate, _facts
@@ -236,8 +236,10 @@ def _continuous(x0: Expr, direction: str) -> Engine:
 
 def _sequence(e: Expr, n: Symbol) -> Expr:
     """SymPy's ``limit_seq`` as an engine (an unevaluated ``Limit`` when
-    it gives up)."""
+    it gives up); called under native time limits, it prepares SymPy's
+    tables first."""
     from .limits_sympy import limit_seq_of_core
+    prepare_sympy()
     value = limit_seq_of_core(e, n)
     if value is None:
         # the limit of the function of a real variable, when it exists,
@@ -345,7 +347,7 @@ def _engine_value(engine: Engine, instance: Expr, x: Symbol) -> Optional[Expr]:
     """The engine's limit of an instance within the time limit; ``None``
     when it fails, gives up or returns bounds."""
     try:
-        value = attempt(lambda: engine(instance, x), settings.timeout)
+        value = attempt(lambda: engine(instance, x), settings.timeout, native=True)
     except (NotImplementedError, ValueError, TypeError, PoleError):
         return None
     if value is None or isinstance(value, Limit) or value.has(AccumBounds):
@@ -377,7 +379,7 @@ def _same_limit(first: Expr, second: Expr) -> Optional[bool]:
         return True
     if first.is_infinite or second.is_infinite:
         return first == second
-    difference = attempt(lambda: simplify(first - second), settings.timeout)
+    difference = attempt(lambda: simplify(first - second), settings.timeout, native=True)
     if difference is None:
         return None
     if difference == 0:
@@ -568,7 +570,7 @@ def _condition(formula: Boolean) -> Boolean:
     """A condition on the parameters simplified over the reals when it is
     polynomial (``(a > 0) & (a > 1)`` is ``a > 1``)."""
     from .resolve import resolve
-    simplified = attempt(lambda: resolve(formula), settings.timeout)
+    simplified = attempt(lambda: resolve(formula), settings.timeout, native=True)
     return simplified if isinstance(simplified, Boolean) else formula
 
 

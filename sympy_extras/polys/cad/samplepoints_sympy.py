@@ -101,23 +101,11 @@ def core_real(r: Union[ExprLike, Algebraic]) -> Algebraic:
         poly = Poly(expr, *sorted(free_symbols(expr), key=str))
         coefficients = [int(as_expr(a)) for a in poly.all_coeffs()]
         base = native.real_roots_of(coefficients)[int(as_expr(root.args[1]))]
-        result = base if c == 1 else _scaled(base, c)
+        result = base if c == 1 else native.scaled_real(base, c)
     if len(_to_core) > _KEPT:
         _to_core.clear()
     _to_core[e] = result
     return result
-
-
-def _scaled(a: Algebraic, c: Fraction) -> Algebraic:
-    """``c a`` for a rational ``c`` (nonzero) and an irrational ``a``."""
-    m = a.minpoly
-    d = len(m) - 1
-    # m(x/c) c**d with c = p/q, times q**d: sum m_i p**i q**(d-i) x**(d-i)
-    p, q = c.numerator, c.denominator
-    scaled = native._normalised([coefficient*p**i*q**(d - i) for i, coefficient in enumerate(m)])
-    lo, hi = a.real_interval()
-    bounds = (c*lo, c*hi) if c > 0 else (c*hi, c*lo)
-    return Algebraic(scaled, bounds, None)
 
 
 def sympy_real(a: Algebraic, gen: Basic) -> Expr:
