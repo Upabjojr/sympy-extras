@@ -408,9 +408,12 @@ def _linear(coefficients: list[Expr], b: Expr, f: AppliedUndef, taken: set[Symbo
     or particular solution is found."""
     x = _variable(f)
     n = len(coefficients) - 1
-    basis = linear_basis(coefficients, x)
-    if basis is None or len(basis) != n:
+    found_basis = linear_basis(coefficients, x)
+    if found_basis is None or len(found_basis) != n:
         return None
+    # a basis is defined up to constant factors: the numbers are left out
+    # of the solutions, as SymPy's are (C2*erf(z/2), not sqrt(pi)*C2*erf(z/2))
+    basis = [_without_number(b, x) for b in found_basis]
     particular: Expr = _ZERO
     if b != _ZERO:
         from .factorization import variation_of_parameters
@@ -439,6 +442,17 @@ def _ops(e: Expr) -> int:
     from sympy_extras.core.function import count_ops
     found = count_ops(e)
     return int(found) if isinstance(found, Integer) else 0
+
+
+def _without_number(b: Expr, x: Symbol) -> Expr:
+    """``b`` without a constant factor which is a nonzero number."""
+    if not isinstance(b, Mul):
+        return b
+    numbers = [f for f in b.args if isinstance(f, Expr) and not f.free_symbols]
+    if not numbers:
+        return b
+    rest = [f for f in b.args if isinstance(f, Expr) and f.free_symbols]
+    return mul(*rest) if rest else b
 
 
 def _tidy(e: Expr, x: Symbol) -> Expr:
@@ -477,7 +491,11 @@ def _invert(g: Expr, y: Symbol, value: Expr) -> list[Expr]:
         if not base.has(y):
             return _invert(exponent, y, log(value)/log(base))
     elif isinstance(g, Exp):
-        return _invert(g.args[0], y, log(value))
+        argument = g.args[0]
+        if isinstance(argument, Expr) and argument.could_extract_minus_sign():
+            # SymPy's form: exp(-y) = v gives y = log(1/v)
+            return _invert(-argument, y, log(_normal(1/value)))
+        return _invert(argument, y, log(value))
     elif isinstance(g, Log):
         return _invert(g.args[0], y, exp(value))
     # a polynomial of degree two in y
@@ -507,8 +525,7 @@ def _separated(R: Expr, x: Symbol, u: Symbol) -> Optional[tuple[Expr, Expr]]:
     separate."""
     if not R.has(u):
         return R, _ONE
-    if not R.has(x):
-        return _ONE, R
+    # the constant factors go with g, as in SymPy: C1 exp(y) is g = C1, h = exp(y)
     candidates = [R]
     try:
         factored = factor(R)

@@ -476,8 +476,8 @@ def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
     f), G(x, f))`` or the right-hand side alone) solves the ordinary
     differential equation, as SymPy's ``checkodesol`` decides it: an
     implicit relation is solved for ``f`` first (by SymPy's ``solve``,
-    within ``timeout`` seconds; ``False`` when it gives up, where
-    ``checkodesol`` raises), and every solution must be checked; the
+    within ``timeout`` seconds; the relation itself is checked when it
+    gives up, where ``checkodesol`` raises), and every solution must be checked; the
     solution is substituted and the residual simplified, else the
     derivatives of the relation are substituted (when ``solve`` finds no
     solution). ``False`` when nothing proves it.
@@ -519,9 +519,10 @@ def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Op
     solved = sol_lhs == func and not sol_rhs.has(func)
     if solve_for_func and not solved:
         values = _solved_for(sol_lhs - sol_rhs, func, timeout)
-        if values is None:
-            # SymPy's solve gives up: so does checkodesol
-            return False
+        # SymPy's solve gives up (values is None; checkodesol raises then):
+        # the relation is checked by its derivatives below, as when solve
+        # finds no solution (the implicit erfi(y/sqrt(2)) = C1 x + C2 of
+        # y'' + y y'**2 = 0, which SymPy's dsolve wrote with an Integral)
         if values:
             return all(_checkodesol(ode, Eq(func, value), func, timeout, False) for value in values)
     if sol_lhs.has(Order) or sol_rhs.has(Order):
