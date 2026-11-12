@@ -216,6 +216,31 @@ def linear_coefficients(equation: Basic, f: AppliedUndef) -> Optional[tuple[list
     return coefficients, -rest
 
 
+def _cleared(p: list[Expr]) -> list[Expr]:
+    """The coefficients times the product of their distinct denominators,
+    polynomial in the parameters (the native ``Poly`` takes no fractions
+    of the parameters as coefficients)."""
+    denominators: list[Expr] = []
+    for c in p:
+        d = _normal(c).as_numer_denom()[1]
+        if d != _ONE and not any(expand(d - e) == _ZERO for e in denominators):
+            denominators.append(d)
+    if not denominators:
+        return p
+    common = mul(*denominators)
+    return [_normal(c*common) for c in p]
+
+
+def _cleared_polynomial(e: Expr, m: Symbol) -> Expr:
+    """``e``, a polynomial in ``m``, with the denominators of its
+    coefficients cleared."""
+    from .kovacic import _coefficients
+    terms = _coefficients(e, m)
+    degree = max(terms) if terms else 0
+    cleared = _cleared([terms.get(i, _ZERO) for i in range(degree + 1)])
+    return expand(_sum([mul(c, m**i) for i, c in enumerate(cleared)]))
+
+
 def _characteristic_roots(p: list[Expr]) -> Optional[list[tuple[Expr, int]]]:
     """The roots of ``sum p_i m**i`` with their multiplicities, ``None``
     when they are not all found in radicals."""
@@ -305,7 +330,7 @@ def linear_basis(coefficients: Sequence[Expr], x: Symbol, general: bool = True) 
     if n == 0:
         return []
     if all(not c.has(x) for c in p):
-        pairs = _characteristic_roots(p)
+        pairs = _characteristic_roots(_cleared(p))
         return None if pairs is None else _root_basis(pairs, x, x)
     scaled = [_normal(c*x**(n - i)) for i, c in enumerate(p)]
     if all(not c.has(x) for c in scaled):
@@ -319,7 +344,7 @@ def linear_basis(coefficients: Sequence[Expr], x: Symbol, general: bool = True) 
             indicial = indicial + c*falling
         from sympy_extras.polys.polyroots import roots
         try:
-            found = roots(expand(indicial), m)
+            found = roots(_cleared_polynomial(indicial, m), m)
         except _FAILURES:
             found = {}
         if isinstance(found, dict):

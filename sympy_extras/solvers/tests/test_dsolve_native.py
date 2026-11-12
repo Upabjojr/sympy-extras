@@ -68,6 +68,10 @@ def test_constant_coefficients() -> None:
     _check_general(y.diff(x, 3) - 3*y.diff(x, 2) + 3*y.diff(x) - y, 3)
     a = Symbol('a')
     _check_general(y.diff(x, 2) - a**2*y, 2)
+    # the characteristic polynomial m**2 + m/k: the native Poly took no
+    # 1/k as a coefficient and no solution was found
+    k = Symbol('k')
+    _check_general(k*y.diff(x, 2) + y.diff(x), 2)
 
 
 def test_euler_equations() -> None:
