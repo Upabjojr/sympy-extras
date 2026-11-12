@@ -632,15 +632,15 @@ sympy_extras/
             tests/           test_differential_native.py on the core; the other tests on the face
         differential_sympy.py the SymPy face of differential (the old API on SymPy objects, SymPy's QQ(p, x) and
                              ZZ[p, x] coefficients, the chains of regularchains_sympy)
-        regularchains/       triangular decompositions of polynomial systems (native; the exact solutions of a chain,
-                             SymPy's CRootOf, through regularchains_sympy)
+        regularchains/       triangular decompositions of polynomial systems (native)
             recursive.py     polynomials of rings.PolyRing over ZZ in their main variable: initial, lazy pseudo-division,
                              subresultant chains (prem, subresultants ported from SymPy)
             operations.py    Chain, Decomposer: regularize, regular_gcd, intersect, extend, triangularize (Lazard, Kalkbrener)
             regularchain.py  RegularChain, triangularize, regular_gcd (the public interface on core expressions)
+            solutions.py     exact_solutions: the points of a chain without free variables (IndexedRoot, the native
+                             CRootOf, radicals), PORTED FROM SYMPY (Poly.nroots)
             tests/           oracle.py checks the decompositions of the face with Gröbner bases
-        regularchains_sympy/ the SymPy face of regularchains (RegularChain, triangularize, regular_gcd on SymPy objects),
-                             and exact_solutions_of_core
+        regularchains_sympy/ the SymPy face of regularchains (RegularChain, triangularize, regular_gcd on SymPy objects)
             solutions.py     exact_solutions: the points of a chain without free variables (CRootOf, radicals)
 docs/                        longer documentation per module
 .github/workflows/           tests.yml (CI), release.yml (PyPI publishing on tags)

@@ -2132,9 +2132,7 @@ def test_native_residues_does_not_load_sympy() -> None:
     (the branch of the logarithm as a symbol in the derivatives at a
     multiple pole), the rational functions of sines and cosines over a
     period (the poles over ``ZZ_I``), and a pole placed at a sample of the
-    parameters with its value verified by the native quadratures; SymPy
-    is reached through the face only for the ``CRootOf`` of a numerical
-    denominator whose radicals are unwieldy."""
+    parameters with its value verified by the native quadratures."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_RESIDUES], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -2685,5 +2683,71 @@ def test_native_roots_over_ex_do_not_load_sympy() -> None:
     polynomials with coefficients like ``pi`` are native (they went
     through SymPy's ``roots``, ``roots_of_core``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_EX_ROOTS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_COMPLEX_ROOTS = r'''
+import sys
+from sympy_extras.core import Symbol, symbols, oo
+from sympy_extras.polys.complexrootof import ComplexRootOf, rootof, all_roots, real_roots
+from sympy_extras.polys.numberfields.minpoly import minimal_polynomial
+from sympy_extras.polys.roots import radical_form
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+r = rootof(x**5 - x - 1, 2)
+assert str(r) == 'CRootOf(x**5 - x - 1, 2)' and str(r.evalf(10)) == '-0.7648844336 + 0.352471546*I'
+assert str(all_roots((x**2 + 4)*(x**2 + 1), radicals=False)) == \
+    '[CRootOf(x**2 + 1, 0), CRootOf(x**2 + 1, 1), CRootOf(x**2 + 4, 0), CRootOf(x**2 + 4, 1)]'
+assert str(minimal_polynomial(r**2, y)) == 'y**5 - 2*y**3 + y - 1' and radical_form(r) is None
+assert r.is_real is False and ComplexRootOf(x**5 - x - 1, 0).is_positive
+# the residues at numerical poles without short radicals: the native CRootOf
+from sympy_extras.integrals.residues import poles, rational_function, residue_integral
+found = poles(rational_function(1/(x**5 - x - 1), x).denominator)
+assert found is not None and all(p.numeric for p in found) and isinstance(found[1].point, ComplexRootOf)
+assert residue_integral(1/(x**6 + x + 1), x, -oo, oo) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_complex_roots_and_residues_do_not_load_sympy() -> None:
+    """The native ``CRootOf`` (:mod:`sympy_extras.polys.complexrootof`):
+    its order, values, minimal polynomials and facts load no SymPy, nor
+    do the numerical poles of the residue integrator whose radicals are
+    unwieldy (they came from SymPy's ``CRootOf`` through
+    ``residues_sympy.complex_roots_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_COMPLEX_ROOTS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EXACT_SOLUTIONS = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.rur import rur
+from sympy_extras.polys.regularchains import triangularize
+assert 'sympy' not in sys.modules
+t, x, y = symbols('t x y')
+assert str(rur([x**2 - 2, y - x**3], x, y, t=t).solutions()) == '[{x: -sqrt(2), y: -2*sqrt(2)}, {x: sqrt(2), y: 2*sqrt(2)}]'
+R = rur([x**3 - x - 1, y - x**2], x, y, t=t)
+assert str(R.solutions(real=True)) == '[{x: IndexedRoot(t**3 - t - 1, t, 0), y: IndexedRoot(t**3 - t - 1, t, 0)**2}]'
+assert len(R.solutions()) == 3 and 'CRootOf(t**3 - t - 1, 1)' in str(R.solutions()[1])
+[chain] = triangularize([y**3 - y - 1, x**2 - y], x, y)
+points = chain.solutions()
+assert len(points) == 6 and str(points[2][x]) == 'CRootOf(x**6 - x**2 - 1, 3)'
+assert len(chain.solutions(real=True)) == 2
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_exact_solutions_do_not_load_sympy() -> None:
+    """The exact solutions of a rational univariate representation
+    (``RationalUnivariateRepresentation.solutions``, which went through
+    ``rur_sympy.solutions_of_core``) and of a regular chain
+    (``RegularChain.solutions``, through
+    ``regularchains_sympy.exact_solutions_of_core``) load no SymPy: the
+    roots are radicals, ``IndexedRoot`` and the native ``CRootOf``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EXACT_SOLUTIONS], capture_output=True, text=True,
+                         timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

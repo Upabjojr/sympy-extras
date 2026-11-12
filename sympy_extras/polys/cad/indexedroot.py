@@ -231,7 +231,9 @@ class IndexedRoot(Expr):
 
     def _sympystr(self, printer: StrPrinter) -> str:
         shown = Symbol(self._variable.name)
-        return "IndexedRoot(%s, %s, %s)" % (printer.doprint(self._polynomial.xreplace({self._variable: shown})),
+        # evaluated: the terms in the printing order of the plain symbol
+        # (x**3 - 2*x**2 + x - 1 was printed -1 + x**3 - 2*x**2 + x)
+        return "IndexedRoot(%s, %s, %s)" % (printer.doprint(self._polynomial._xreplace_evaluated({self._variable: shown})),
                                             printer.doprint(shown), self._index)
 
 
