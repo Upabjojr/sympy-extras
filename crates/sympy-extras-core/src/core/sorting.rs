@@ -139,6 +139,8 @@ pub fn class_key(e: &Basic) -> ClassKey {
         Head::Pow => (3, 2, name),
         Head::Function(f) => (4, f.rank(), f.name().to_string()),
         Head::Undefined(u) => (4, 0, u.name.clone()),
+        Head::Relational(op) => (5, 0, op.sympy_name().to_string()),
+        _ if super::logic::is_boolean(e) => (5, 0, name),
         _ if e.is_atom() => (2, 0, name),
         _ => (5, 0, name),
     }
@@ -169,6 +171,21 @@ fn one_key() -> SortKey {
 
 /// The canonical key of an expression (`default_sort_key`).
 pub fn sort_key(e: &Basic) -> SortKey {
+    if super::logic::is_boolean(e) {
+        // Basic._compute_sort_key (a boolean is not an expression); true
+        // and false: their names (BooleanAtom)
+        let args: (usize, ArgsItems) = if e.is_atom() {
+            (1, ArgsItems::Name(e.to_string()))
+        } else {
+            (e.args().len(), ArgsItems::Keys(e.args().iter().map(sort_key).collect()))
+        };
+        return SortKey {
+            class: class_key(e),
+            args,
+            exp: None,
+            coefficient: rat(1, 1),
+        };
+    }
     if e.is_number_node() {
         return SortKey {
             class: class_key(e),

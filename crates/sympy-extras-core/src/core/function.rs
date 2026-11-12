@@ -28,6 +28,14 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
             diff(&args[0], &counts)
         }
         Head::Subs => substituted(&args[0], args[1].args(), args[2].args()),
+        Head::And => Ok(super::logic::and_(&args)),
+        Head::Or => Ok(super::logic::or_(&args)),
+        Head::Not => Ok(super::logic::not_(&args[0])),
+        Head::Xor => Ok(super::logic::xor(&args)),
+        Head::Implies => Ok(super::logic::implies(&args[0], &args[1])),
+        Head::Equivalent => Ok(super::logic::equivalent(&args)),
+        Head::Ite => Ok(super::logic::ite(&args[0], &args[1], &args[2])),
+        Head::Relational(op) => super::relational::evaluate_relation(*op, &args[0], &args[1]),
         Head::IndexedRoot => {
             let k: usize = args[2]
                 .as_rational()

@@ -18,6 +18,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 
 use sympy_extras_core::core::assumptions::{facts_of, is_number, Predicate};
+use sympy_extras_core::core::basic::RelOp;
 use sympy_extras_core::core::evalf::{numeric_value, parts, Real};
 use sympy_extras_core::core::{self as rust_core, Basic, Dummy, Function, Head, Symbol};
 use sympy_extras_core::functions::elementary::{complexes, exponential, hyperbolic, trigonometric};
@@ -108,6 +109,22 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
             });
             node.0
         }
+        "BooleanTrue" => sympy_extras_core::core::logic::true_(),
+        "BooleanFalse" => sympy_extras_core::core::logic::false_(),
+        "bool" => sympy_extras_core::core::logic::boolean(ob.extract::<bool>()?),
+        "And" => Basic::new(Head::And, args()?),
+        "Or" => Basic::new(Head::Or, args()?),
+        "Not" => Basic::new(Head::Not, args()?),
+        "Xor" => Basic::new(Head::Xor, args()?),
+        "Implies" => Basic::new(Head::Implies, args()?),
+        "Equivalent" => Basic::new(Head::Equivalent, args()?),
+        "ITE" => Basic::new(Head::Ite, args()?),
+        "Eq" | "Equality" => Basic::new(Head::Relational(RelOp::Eq), args()?),
+        "Ne" | "Unequality" => Basic::new(Head::Relational(RelOp::Ne), args()?),
+        "Lt" | "StrictLessThan" => Basic::new(Head::Relational(RelOp::Lt), args()?),
+        "Le" | "LessThan" => Basic::new(Head::Relational(RelOp::Le), args()?),
+        "Gt" | "StrictGreaterThan" => Basic::new(Head::Relational(RelOp::Gt), args()?),
+        "Ge" | "GreaterThan" => Basic::new(Head::Relational(RelOp::Ge), args()?),
         "Add" => Basic::new(Head::Add, args()?),
         "Mul" => Basic::new(Head::Mul, args()?),
         "Pow" => Basic::new(Head::Pow, args()?),
@@ -259,6 +276,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         }
         Head::Derivative => rebuilt("Derivative", "function")?,
         Head::Subs => rebuilt("Subs", "function")?,
+        Head::BooleanTrue => class("logic", "true")?,
+        Head::BooleanFalse => class("logic", "false")?,
+        Head::And | Head::Or | Head::Not | Head::Xor | Head::Implies | Head::Equivalent | Head::Ite => {
+            rebuilt(e.class_name(), "logic")?
+        }
+        Head::Relational(op) => rebuilt(op.class_name(), "relational")?,
         Head::IndexedRoot => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.polys.cad.indexedroot")?
@@ -1693,6 +1716,38 @@ fn indexed_root<'py>(
     to_python(py, &value.map_err(crate::convert::err)?)
 }
 
+/// The functions of `core.logic` and `core.relational` by name.
+#[pyfunction]
+fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) -> PyResult<Bound<'py, PyAny>> {
+    use sympy_extras_core::core::{logic as lg, relational as rl};
+    let a: Vec<Basic> = args.iter().map(from_python).collect::<PyResult<_>>()?;
+    let e = crate::convert::err;
+    let value: Basic = match name {
+        "and_" => lg::and_(&a),
+        "or_" => lg::or_(&a),
+        "not_" => lg::not_(&a[0]),
+        "xor" => lg::xor(&a),
+        "implies" => lg::implies(&a[0], &a[1]),
+        "equivalent" => lg::equivalent(&a),
+        "ite" => lg::ite(&a[0], &a[1], &a[2]),
+        "Nand" => lg::nand(&a),
+        "Nor" => lg::nor(&a),
+        "Xnor" => lg::xnor(&a),
+        "eq" => rl::eq(&a[0], &a[1]).map_err(e)?,
+        "ne" => rl::ne(&a[0], &a[1]).map_err(e)?,
+        "lt" => rl::lt(&a[0], &a[1]).map_err(e)?,
+        "le" => rl::le(&a[0], &a[1]).map_err(e)?,
+        "gt" => rl::gt(&a[0], &a[1]).map_err(e)?,
+        "ge" => rl::ge(&a[0], &a[1]).map_err(e)?,
+        "reversed" => rl::reversed(&a[0]),
+        "negated" => rl::negated(&a[0]),
+        "reversedsign" => rl::reversedsign(&a[0]).map_err(e)?,
+        "canonical" => rl::canonical(&a[0]).map_err(e)?,
+        _ => return Err(PyTypeError::new_err(format!("unknown logic function {}", name))),
+    };
+    to_python(py, &value)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1746,6 +1801,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(samplepoint_report, m)?)?;
     m.add_function(wrap_pyfunction!(cad_report, m)?)?;
     m.add_function(wrap_pyfunction!(indexed_root, m)?)?;
+    m.add_function(wrap_pyfunction!(logic_call, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;

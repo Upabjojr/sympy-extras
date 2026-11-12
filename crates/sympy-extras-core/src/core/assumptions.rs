@@ -1273,6 +1273,8 @@ fn eval_facts(e: &Basic) -> FactList {
         }
         Head::Tuple => FactList::new(),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
+        // a boolean is not an expression: no facts
+        _ if super::logic::is_boolean(e) => FactList::new(),
         _ => constant_facts(e),
     }
 }

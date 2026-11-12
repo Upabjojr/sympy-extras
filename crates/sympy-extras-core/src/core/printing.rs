@@ -22,6 +22,17 @@ pub const PREC_ADD: i32 = 40;
 pub const PREC_MUL: i32 = 50;
 pub const PREC_POW: i32 = 60;
 pub const PREC_ATOM: i32 = 1000;
+pub const PREC_XOR: i32 = 10;
+pub const PREC_IMPLIES: i32 = 10;
+pub const PREC_OR: i32 = 20;
+pub const PREC_AND: i32 = 30;
+pub const PREC_RELATIONAL: i32 = 35;
+pub const PREC_FUNC: i32 = 70;
+pub const PREC_NOT: i32 = 100;
+/// The arguments of `|`, `^` and `&` are parenthesized below these.
+pub const PREC_OR_ARGS: i32 = 36;
+pub const PREC_XOR_ARGS: i32 = 37;
+pub const PREC_AND_ARGS: i32 = 38;
 
 /// Python's `NumberSymbol`: the named constants.
 fn is_number_symbol(e: &Basic) -> bool {
@@ -65,6 +76,18 @@ pub fn precedence(e: &Basic) -> i32 {
             }
         }
         Head::Pow => PREC_POW,
+        Head::Relational(op) => {
+            if matches!(op, super::basic::RelOp::Eq | super::basic::RelOp::Ne) {
+                PREC_FUNC
+            } else {
+                PREC_RELATIONAL
+            }
+        }
+        Head::And => PREC_AND,
+        Head::Or => PREC_OR,
+        Head::Xor => PREC_XOR,
+        Head::Implies | Head::Equivalent => PREC_IMPLIES,
+        Head::Not => PREC_NOT,
         Head::Rational { value, .. } => {
             if rat_is_negative(value) {
                 PREC_ADD
@@ -319,6 +342,35 @@ impl StrPrinter {
                     }
                 }
                 format!("Derivative({})", parts.join(", "))
+            }
+            Head::BooleanTrue => "True".to_string(),
+            Head::BooleanFalse => "False".to_string(),
+            Head::And | Head::Or | Head::Xor => {
+                let (separator, level) = match e.head() {
+                    Head::And => (" & ", PREC_AND_ARGS),
+                    Head::Or => (" | ", PREC_OR_ARGS),
+                    _ => (" ^ ", PREC_XOR_ARGS),
+                };
+                let parts: Vec<String> = e.args().iter().map(|a| self.parenthesize(a, level, false)).collect();
+                parts.join(separator)
+            }
+            Head::Not => format!("~{}", self.parenthesize(&e.args()[0], PREC_FUNC, false)),
+            Head::Implies | Head::Equivalent | Head::Ite => {
+                let parts: Vec<String> = e.args().iter().map(|a| self.doprint(a)).collect();
+                format!("{}({})", e.class_name(), parts.join(", "))
+            }
+            Head::Relational(op) => {
+                let (lhs, rhs) = (&e.args()[0], &e.args()[1]);
+                if matches!(op, super::basic::RelOp::Eq | super::basic::RelOp::Ne) {
+                    format!("{}({}, {})", op.class_name(), self.doprint(lhs), self.doprint(rhs))
+                } else {
+                    format!(
+                        "{} {} {}",
+                        self.parenthesize(lhs, PREC_RELATIONAL, false),
+                        op.symbol(),
+                        self.parenthesize(rhs, PREC_RELATIONAL, false)
+                    )
+                }
             }
             Head::IndexedRoot => {
                 let (f, t, k) = crate::polys::cad::indexedroot::shown_parts(e);
