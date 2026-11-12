@@ -30,8 +30,15 @@ def test_taylor_coefficient() -> None:
     assert c is not None and c.coefficient.subs(c.index, Integer(2)) == -S.Half
     phi = c.phi()
     assert phi is not None and phi.subs(c.index, Integer(3)) == -2
+    # the series of besselj(0, x), sum (-1/4)**j/j!**2 x**(2j), which
+    # SymPy's fps did not find (it was None)
+    c = taylor_coefficient(besselj(Integer(0), x), x)
+    assert c is not None and (c.period, c.offset) == (2, 0)
+    assert [c.coefficient.subs(c.index, Integer(k)) for k in range(4)] == \
+        [1, -Rational(1, 4), Rational(1, 64), -Rational(1, 2304)]
     # two residue classes, no series at all, a polynomial
-    assert taylor_coefficient(besselj(Integer(0), x), x) is None
+    assert taylor_coefficient(exp(x) + sin(x), x) is None
+    assert taylor_coefficient(log(x), x) is None
     assert taylor_coefficient(x**2 + 1, x) is None
     c = taylor_coefficient(exp(x), x)
     assert c is not None and c.phi() is None
