@@ -279,3 +279,12 @@ def test_airy_series_at_infinity_raises_pole_error() -> None:
     raises(PoleError, lambda: node._eval_nseries(w, 2, None, Integer(0)))
     sw, sa = s.symbols('w a', positive=True)
     raises(s.PoleError, lambda: s.airyai(-sa / sw**s.Rational(2, 3))._eval_nseries(sw, 2, None, 0))
+
+
+def test_sign_rewrites_as_abs_natively() -> None:
+    # sign._eval_rewrite_as_Abs is ported (it went to SymPy through the
+    # bridge); checked against SymPy's
+    from sympy_extras.functions.elementary.complexes import Abs
+    b, c = s.symbols('b c')
+    for e in [s.sign(x), s.sign(s.sqrt(x**2 + y**2)), s.sign((b + 2*c*x)/c), s.sign(x) + s.sign(y)**2]:
+        assert str(to_sympy(expr_from_sympy(e).rewrite(Abs), evaluate=False)) == str(e.rewrite(s.Abs)), e

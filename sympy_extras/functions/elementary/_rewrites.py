@@ -6,6 +6,7 @@
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py,
 # sympy/functions/elementary/hyperbolic.py, sympy/functions/elementary/exponential.py,
+# sympy/functions/elementary/complexes.py (sign._eval_rewrite_as_Abs),
 # sympy/core/power.py (the _eval_rewrite_as_exp, _eval_rewrite_as_cos and _eval_rewrite_as_sin
 # methods) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
@@ -295,7 +296,18 @@ def rules() -> dict[tuple[type, type], Rule]:
         (Exp, t.Cos): _exp_cos, (Pow, Exp): _pow_exp, (Pow, t.Cos): _pow_cos}
     table.update(_log_rules())
     table.update(_sin_rules())
+    from .complexes import Abs, Sign
+    table[(Sign, Abs)] = _sign_abs
     return table
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:sign._eval_rewrite_as_Abs
+def _sign_abs(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.core.relational import eq
+    from .complexes import abs_
+    from .piecewise import piecewise
+    arg = args[0]
+    return piecewise((Integer(0), eq(arg, Integer(0))), (mul(arg, _inv(abs_(arg))), True))
 
 
 __all__ = ['rules', 'Rule']
