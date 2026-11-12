@@ -47,12 +47,15 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Acsch) => elementary::inverse::inverse_fdiff(g, x),
         Function::Atan2 => elementary::argument::atan2_fdiff(e, argindex),
         g @ (Function::DiracDelta | Function::Heaviside) => special::delta_functions::delta_fdiff(g, e),
+        g @ (Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma) => {
+            special::gamma_functions::gamma_fdiff(g, e, argindex)
+        }
         Function::Factorial
         | Function::Binomial
         | Function::RisingFactorial
         | Function::FallingFactorial
         | Function::Subfactorial
-        | Function::Factorial2 => combinatorial::factorials::combinatorial_derivative(),
+        | Function::Factorial2 => combinatorial::factorials::combinatorial_derivative(f, e, argindex),
         Function::Re
         | Function::Im
         | Function::Conjugate
@@ -151,6 +154,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if special::gamma_functions::is_gamma_function(f) {
+        return special::gamma_functions::gamma_function(f, args);
+    }
     if combinatorial::factorials::is_combinatorial(f) {
         return combinatorial::factorials::combinatorial(f, args);
     }
@@ -199,5 +205,8 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::FallingFactorial
         | Function::Subfactorial
         | Function::Factorial2 => unreachable!("evaluated above with all their arguments"),
+        Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
+            unreachable!("evaluated above with all their arguments")
+        }
     }
 }

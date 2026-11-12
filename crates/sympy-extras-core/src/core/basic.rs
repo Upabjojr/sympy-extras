@@ -258,6 +258,11 @@ pub enum Function {
     FallingFactorial,
     Subfactorial,
     Factorial2,
+    Gamma,
+    LogGamma,
+    PolyGamma,
+    DiGamma,
+    TriGamma,
 }
 
 impl Function {
@@ -310,6 +315,11 @@ impl Function {
             Function::FallingFactorial => "FallingFactorial",
             Function::Subfactorial => "subfactorial",
             Function::Factorial2 => "factorial2",
+            Function::Gamma => "gamma",
+            Function::LogGamma => "loggamma",
+            Function::PolyGamma => "polygamma",
+            Function::DiGamma => "digamma",
+            Function::TriGamma => "trigamma",
         }
     }
 
@@ -362,6 +372,11 @@ impl Function {
             Function::FallingFactorial => "FallingFactorial",
             Function::Subfactorial => "Subfactorial",
             Function::Factorial2 => "Factorial2",
+            Function::Gamma => "Gamma",
+            Function::LogGamma => "LogGamma",
+            Function::PolyGamma => "PolyGamma",
+            Function::DiGamma => "DiGamma",
+            Function::TriGamma => "TriGamma",
         }
     }
 
@@ -383,6 +398,9 @@ impl Function {
             | Function::FallingFactorial
             | Function::Subfactorial
             | Function::Factorial2 => 10000,
+            Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
+                10000
+            }
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,

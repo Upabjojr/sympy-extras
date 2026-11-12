@@ -198,6 +198,11 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "FallingFactorial" => Basic::new(Head::Function(Function::FallingFactorial), args()?),
         "Subfactorial" => Basic::new(Head::Function(Function::Subfactorial), args()?),
         "Factorial2" => Basic::new(Head::Function(Function::Factorial2), args()?),
+        "Gamma" => Basic::new(Head::Function(Function::Gamma), args()?),
+        "LogGamma" => Basic::new(Head::Function(Function::LogGamma), args()?),
+        "PolyGamma" => Basic::new(Head::Function(Function::PolyGamma), args()?),
+        "DiGamma" => Basic::new(Head::Function(Function::DiGamma), args()?),
+        "TriGamma" => Basic::new(Head::Function(Function::TriGamma), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -352,6 +357,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 Function::Max | Function::Min => "miscellaneous",
                 Function::Floor | Function::Ceiling | Function::Frac => "integers",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
+                Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
+                    "gamma_functions"
+                }
                 Function::Factorial
                 | Function::Binomial
                 | Function::RisingFactorial
@@ -365,7 +373,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 }
                 _ => "complexes",
             };
-            let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside) {
+            let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside)
+                || sympy_extras_core::functions::special::gamma_functions::is_gamma_function(*f)
+            {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f) {
                 "combinatorial"
@@ -2026,6 +2036,17 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         "ab_contains" => {
             let v: bool = sympy_extras_core::core::accumbounds::contains(&a[0], &a[1]).map_err(e)?;
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
+        }
+        "gamma" | "loggamma" | "polygamma" | "digamma" | "trigamma" => {
+            use sympy_extras_core::functions::special::gamma_functions as gf;
+            match name {
+                "gamma" => gf::gamma(&a[0]),
+                "loggamma" => gf::loggamma(&a[0]),
+                "polygamma" => gf::polygamma(&a[0], &a[1]),
+                "digamma" => gf::digamma(&a[0]),
+                _ => gf::trigamma(&a[0]),
+            }
+            .map_err(e)?
         }
         "factorial" | "binomial" | "rf" | "ff" | "subfactorial" | "factorial2" => {
             use sympy_extras_core::functions::combinatorial::factorials as fc;

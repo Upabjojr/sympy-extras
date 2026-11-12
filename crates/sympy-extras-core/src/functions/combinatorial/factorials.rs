@@ -150,7 +150,15 @@ fn binomial_eval(n: &Basic, k: &Basic) -> PolyResult<Basic> {
         return Ok(Basic::zoo());
     }
     if crate::core::assumptions::is_number(k) {
-        return Err(not_ported("the gamma form of binomial (gamma_functions)"));
+        use crate::functions::special::gamma_functions::gamma;
+        let denominator: Basic = mul(&[
+            gamma(&add(&[k.clone(), Basic::one()])?)?,
+            gamma(&add(&[d.clone(), Basic::one()])?)?,
+        ])?;
+        return mul(&[
+            gamma(&add(&[n.clone(), Basic::one()])?)?,
+            pow(&denominator, &Basic::negative_one())?,
+        ]);
     }
     Ok(node(Function::Binomial, vec![n.clone(), k.clone()]))
 }
@@ -327,9 +335,41 @@ pub fn factorial2(n: &Basic) -> PolyResult<Basic> {
     combinatorial(Function::Factorial2, std::slice::from_ref(n))
 }
 
-/// The derivatives need `polygamma` (not ported).
-pub fn combinatorial_derivative() -> PolyResult<Basic> {
-    Err(not_ported("polygamma (the derivatives of the factorials)"))
+/// The derivative in the argument `argindex` (from 1, `fdiff`): by
+/// `polygamma` for the factorial and the binomial, the generic
+/// `Derivative(f(x), x)` of `DefinedFunction.fdiff` for the others.
+pub fn combinatorial_derivative(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
+    use crate::functions::special::gamma_functions::{gamma, polygamma};
+    let args: &[Basic] = e.args();
+    let one: Basic = Basic::one();
+    match f {
+        Function::Factorial => {
+            let n: Basic = add(&[args[0].clone(), one])?;
+            mul(&[gamma(&n)?, polygamma(&Basic::zero(), &n)?])
+        }
+        Function::Binomial => {
+            let (n, k) = (&args[0], &args[1]);
+            let psi = |x: Basic| polygamma(&Basic::zero(), &x);
+            let n_k1: Basic = add(&[sub(n, k)?, one.clone()])?;
+            let difference: Basic = if argindex == 1 {
+                sub(&psi(add(&[n.clone(), one.clone()])?)?, &psi(n_k1)?)?
+            } else {
+                sub(&psi(n_k1)?, &psi(add(&[k.clone(), one.clone()])?)?)?
+            };
+            mul(&[binomial(n, k)?, difference])
+        }
+        _ => {
+            let a: &Basic = &args[argindex - 1];
+            let elsewhere: bool = args
+                .iter()
+                .enumerate()
+                .any(|(i, v)| i != argindex - 1 && v.free_symbols().contains(a));
+            if a.is_symbol() && !elsewhere {
+                return Ok(crate::core::function::derivative_node(e, &[(a.clone(), 1)]));
+            }
+            Err(not_ported("the derivative of a factorial as a Subs"))
+        }
+    }
 }
 
 fn known(a: &Facts, p: Predicate) -> Option<bool> {

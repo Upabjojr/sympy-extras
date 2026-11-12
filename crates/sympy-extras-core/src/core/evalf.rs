@@ -271,6 +271,19 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::elementary::argument::argument_value(*g, &values, wp)
         }
         Head::Function(
+            g @ (super::basic::Function::Gamma
+            | super::basic::Function::LogGamma
+            | super::basic::Function::PolyGamma
+            | super::basic::Function::DiGamma
+            | super::basic::Function::TriGamma),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Factorial
             | super::basic::Function::Binomial
             | super::basic::Function::RisingFactorial
@@ -419,7 +432,12 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::RisingFactorial
                 | super::basic::Function::FallingFactorial
                 | super::basic::Function::Subfactorial
-                | super::basic::Function::Factorial2 => {
+                | super::basic::Function::Factorial2
+                | super::basic::Function::Gamma
+                | super::basic::Function::LogGamma
+                | super::basic::Function::PolyGamma
+                | super::basic::Function::DiGamma
+                | super::basic::Function::TriGamma => {
                     unreachable!("evaluated above with all their arguments")
                 }
                 g
