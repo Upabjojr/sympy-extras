@@ -271,6 +271,8 @@ pub enum Function {
     Stieltjes,
     /// `Mod(p, q)` (`core.mod`).
     Mod,
+    KroneckerDelta,
+    LeviCivita,
 }
 
 impl Function {
@@ -335,6 +337,8 @@ impl Function {
             Function::RiemannXi => "riemann_xi",
             Function::Stieltjes => "stieltjes",
             Function::Mod => "Mod",
+            Function::KroneckerDelta => "KroneckerDelta",
+            Function::LeviCivita => "LeviCivita",
         }
     }
 
@@ -399,6 +403,8 @@ impl Function {
             Function::RiemannXi => "RiemannXi",
             Function::Stieltjes => "Stieltjes",
             Function::Mod => "Mod",
+            Function::KroneckerDelta => "KroneckerDeltaNode",
+            Function::LeviCivita => "LeviCivitaNode",
         }
     }
 
@@ -427,6 +433,8 @@ impl Function {
             | Function::RiemannXi
             | Function::Stieltjes
             | Function::Mod
+            | Function::KroneckerDelta
+            | Function::LeviCivita
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma

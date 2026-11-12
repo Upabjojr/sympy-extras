@@ -1325,6 +1325,9 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::PolyGamma
         | super::basic::Function::DiGamma
         | super::basic::Function::TriGamma) => crate::functions::special::gamma_functions::gamma_facts(g, e.args()),
+        super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
+            crate::functions::special::tensor_functions::tensor_facts()
+        }
         super::basic::Function::Mod => super::modulo::modulo_facts(e.args()),
         g @ (super::basic::Function::Zeta
         | super::basic::Function::DirichletEta

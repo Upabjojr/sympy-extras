@@ -210,6 +210,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "RiemannXi" => Basic::new(Head::Function(Function::RiemannXi), args()?),
         "Stieltjes" => Basic::new(Head::Function(Function::Stieltjes), args()?),
         "Mod" => Basic::new(Head::Function(Function::Mod), args()?),
+        "KroneckerDeltaNode" => Basic::new(Head::Function(Function::KroneckerDelta), args()?),
+        "LeviCivitaNode" => Basic::new(Head::Function(Function::LeviCivita), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -355,6 +357,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::Function(Function::Mod) => rebuilt("Mod", "mod")?,
+        Head::Function(f @ (Function::KroneckerDelta | Function::LeviCivita)) => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.functions.special.tensor_functions")?
+                .getattr(f.class_name())?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             let module: &str = match f {
@@ -2053,6 +2061,10 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
         }
         "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
+        "KroneckerDelta" => {
+            sympy_extras_core::functions::special::tensor_functions::kronecker_delta(&a[0], &a[1]).map_err(e)?
+        }
+        "LeviCivita" => sympy_extras_core::functions::special::tensor_functions::levi_civita(&a).map_err(e)?,
         "zeta" | "dirichlet_eta" | "polylog" | "lerchphi" | "riemann_xi" | "stieltjes" => {
             use sympy_extras_core::functions::special::zeta_functions as zf;
             match name {

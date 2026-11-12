@@ -53,7 +53,9 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::LerchPhi
         | Function::RiemannXi
         | Function::Stieltjes) => special::zeta_functions::zeta_fdiff(g, e, argindex),
-        Function::Mod => crate::core::modulo::modulo_fdiff(e, argindex),
+        Function::Mod | Function::KroneckerDelta | Function::LeviCivita => {
+            crate::core::modulo::modulo_fdiff(e, argindex)
+        }
         g @ (Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma) => {
             special::gamma_functions::gamma_fdiff(g, e, argindex)
         }
@@ -161,6 +163,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if matches!(f, Function::KroneckerDelta | Function::LeviCivita) {
+        return special::tensor_functions::tensor_function(f, args);
+    }
     if f == Function::Mod {
         return crate::core::modulo::modulo(&args[0], &args[1]);
     }
@@ -224,7 +229,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::LerchPhi
         | Function::RiemannXi
         | Function::Stieltjes
-        | Function::Mod => unreachable!("evaluated above with all their arguments"),
+        | Function::Mod
+        | Function::KroneckerDelta
+        | Function::LeviCivita => unreachable!("evaluated above with all their arguments"),
         Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
             unreachable!("evaluated above with all their arguments")
         }

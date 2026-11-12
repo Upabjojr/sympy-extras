@@ -461,7 +461,9 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                     unreachable!("evaluated above with all their arguments")
                 }
                 // no value of its own (Python asks SymPy)
-                super::basic::Function::Mod => {
+                super::basic::Function::Mod
+                | super::basic::Function::KroneckerDelta
+                | super::basic::Function::LeviCivita => {
                     return None;
                 }
                 g
