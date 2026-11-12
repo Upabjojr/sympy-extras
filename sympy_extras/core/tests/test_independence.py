@@ -3018,3 +3018,214 @@ def test_native_systems_and_intersections_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SUMMATION_ROUTES = r'''
+import sys
+from sympy_extras.core import Symbol, oo, pi
+from sympy_extras.functions import exp
+from sympy_extras.concrete.summations import summation, _solve
+i, s, a, x = Symbol('i', integer=True), Symbol('s'), Symbol('a'), Symbol('x')
+# the poles of the residue method as CRootOf (SymPy's own sum is 0)
+r = summation(1/(i**4 + i + 1), (i, -oo, oo))
+assert r.has(pi) and abs(complex(r.evalf(20)) - 2.4919745015915575) < 1e-12, r
+# coefficients our Poly does not take
+assert str(summation(1/(i**2 + pi), (i, -oo, oo))) == 'sqrt(pi)/tanh(pi**(3/2))'
+# the Hurwitz zeta function of Sum.doit
+assert str(summation((2*i + a)**(-s), (i, 1, oo))) == \
+    'Piecewise((zeta(s, a/2 + 1)/2**s, (re(s) > 1) & ~Contains(-a/2 - 1, Naturals0)), (Sum((a + 2*i)**(-s), (i, 1, oo)), True))'
+# SymPy's solve of an equation the linear and finite solvers do not list
+assert str(_solve(x*exp(x) - 1, x)) == '[LambertW(1)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_summation_routes_do_not_load_sympy() -> None:
+    """The residue method at poles SymPy writes as ``CRootOf`` and with
+    coefficients our Poly does not take, the zeta function match of
+    ``Sum.doit`` and the equations the linear and finite solvers do not
+    list load no SymPy (they went through SymPy's ``eval_sum_residue``,
+    ``Sum.doit`` and ``solve``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SUMMATION_ROUTES], capture_output=True, text=True,
+                         timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DELTA_ROUTES = r'''
+import sys
+from sympy_extras.core import Symbol
+from sympy_extras.functions import exp
+from sympy_extras.functions.special.tensor_functions import KroneckerDelta
+from sympy_extras.concrete.delta import _solve, _solve_dicts, deltaproduct
+i, j, k, n = (Symbol(s, integer=True) for s in 'ijkn')
+x, y = Symbol('x'), Symbol('y')
+assert str(_solve(x*exp(x) - 1, x)) == '[LambertW(1)]'
+assert str(_solve_dicts([x*y - 1, x - y])) == '[{x: -1, y: -1}, {x: 1, y: 1}]'
+# two deltas: an underdetermined system (it went to SymPy's solve(..., dict=True))
+assert str(deltaproduct(KroneckerDelta(i, k)*KroneckerDelta(j, k), (k, 1, n))) == \
+    'KroneckerDelta(0, n) + KroneckerDelta(1, i)*KroneckerDelta(1, j)*KroneckerDelta(1, n)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_delta_routes_do_not_load_sympy() -> None:
+    """The equations of the deltas which neither the linear solver nor the
+    finite solutions of ``assumptions.solve`` give, and the systems of
+    several deltas, are solved by the native ``solve_equation`` and
+    ``solve_system`` (they went to SymPy's ``solve``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DELTA_ROUTES], capture_output=True, text=True,
+                         timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EULERSUMS_INTEGRAL = r'''
+import sys
+from sympy_extras.core import Symbol
+from sympy_extras.functions import polygamma
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.concrete.eulersums import polygamma_integral_representation
+n, s = Symbol('n'), Symbol('s')
+r = polygamma_integral_representation(polygamma(0, n)/n**s, n)
+assert r is not None and r.has(Integral), r
+assert str(r) == '-EulerGamma*zeta(s) + Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1))', r
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_eulersums_integral_does_not_load_sympy() -> None:
+    """The integral representation of a polygamma series is the core's
+    ``Integral`` (it was SymPy's, wrapped)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EULERSUMS_INTEGRAL], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PRODUCT_OVER_EX = r'''
+import sys
+from sympy_extras.core import Symbol, I, sqrt, pi
+from sympy_extras.concrete.products import product
+k, n = Symbol('k', integer=True), Symbol('n', integer=True, positive=True)
+assert str(product(k + I, (k, 1, n))) == 'RisingFactorial(1 + I, n)'
+assert str(product(sqrt(2)*k + 1, (k, 1, n))) == '2**(n/2)*RisingFactorial(sqrt(2)/2 + 1, n)'
+assert str(product(k**2 + pi, (k, 1, n))) == \
+    'RisingFactorial(1 - I*sqrt(pi), n)*RisingFactorial(1 + I*sqrt(pi), n)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_product_over_ex_does_not_load_sympy() -> None:
+    """The product of a polynomial whose coefficients our Poly does not
+    take (SymPy's ``EX``) is native, by the roots of ``ex_roots`` (the
+    whole product went to SymPy's ``Product.doit``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PRODUCT_OVER_EX], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EXPR_WITH_LIMITS_DOIT = r'''
+import sys
+from sympy_extras.core import Symbol, Integer
+from sympy_extras.concrete.expr_with_limits import ExprWithLimits, Sum
+from sympy_extras.concrete.summations import summation
+i, n = Symbol('i', integer=True), Symbol('n', integer=True)
+e = ExprWithLimits(summation(i, (i, 1, n)) + Sum(i, (i, 1, n)), (n, Integer(1), Integer(2)))
+assert str(e.doit()) == 'ExprWithLimits(n**2 + n, (n, 1, 2))', e.doit()
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_expr_with_limits_doit_does_not_load_sympy() -> None:
+    """``ExprWithLimits.doit`` (the base class: ``Sum`` and ``Product``
+    have their own) evaluates its function and bounds as SymPy's
+    ``Basic.doit`` (it went through SymPy)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EXPR_WITH_LIMITS_DOIT], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_RATSIMP_DOMAINS = r'''
+import sys
+from sympy_extras.core import Symbol, I, Float
+from sympy_extras.simplify.ratsimp import ratsimp
+x, y = Symbol('x'), Symbol('y')
+assert str(ratsimp((x**2 + I)/(x + 1))) == 'x - 1 + (1 + I)/(x + 1)'
+assert str(ratsimp((I*x**3 + 2*x + 1)/(x**2 + I))) == 'I*x + (3*x + 1)/(x**2 + I)'
+assert str(ratsimp((x**2 + Float(0.5))/(x + 1))) == '1.0*x - 1.0 + 1.5/(1.0*x + 1.0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ratsimp_domains_do_not_load_sympy() -> None:
+    """``ratsimp`` divides over ``QQ_I`` and ``EX`` natively (Gaussian and
+    float coefficients went to SymPy's ``ratsimp``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RATSIMP_DOMAINS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_HYPER_ASYMPTOTIC_SERIES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer
+from sympy_extras.core.coreerrors import PoleError
+from sympy_extras.functions import exp, log
+from sympy_extras.functions.special.hyper import Hyper, hyper, meijerg
+x, L = Symbol('x'), Symbol('L')
+for e in (hyper([1, 2], [3], 1/x), meijerg([], [], [0], [], 1/x)):
+    try:
+        e._eval_nseries(x, 3, None, Integer(0))
+    except PoleError:
+        pass
+    else:
+        raise AssertionError('SymPy raises PoleError: no asymptotic expansion of %s' % e)
+s = Hyper([1], [2], log(x) + x)._eval_nseries(x, 2, L, Integer(0))
+# hyper([1], [2], w) = (exp(w) - 1)/w at w = L + x: f(L) + x*f'(L)
+expected = (exp(L) - 1)/L + x*(exp(L)/L - (exp(L) - 1)/L**2)
+assert (s.removeO() - expected).expand() == 0, s
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_hyper_asymptotic_series_do_not_load_sympy() -> None:
+    """The series of ``hyper`` and ``meijerg`` at an argument going to an
+    infinity follow SymPy's generic branch natively: ``PoleError`` when
+    the leading term goes to an infinity, the expansion around the
+    logarithmic term otherwise (they went through SymPy's
+    ``_eval_nseries``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HYPER_ASYMPTOTIC_SERIES], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PIECEWISE_RELATIONAL_CONDITIONS = r'''
+import sys
+from sympy_extras.core import Symbol, sqrt, Ne
+from sympy_extras.functions import log
+from sympy_extras.functions.elementary.piecewise import _simplify_condition
+x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
+assert str(_simplify_condition(Ne(log(y), 0))) == 'Ne(log(y), 0)'
+assert str(_simplify_condition(x < -sqrt(5)/5)) == 'x < -sqrt(5)/5'
+assert str(_simplify_condition(2*x + 4 > 6*y)) == 'x - 3*y > -2'
+from sympy_extras.core.logic import and_, or_, not_
+assert str(_simplify_condition(and_(x < y, Ne(x, y)))) == 'x < y'
+assert str(_simplify_condition(or_(x > 1, x > 2, x < 0))) == '(x > 1) | (x < 0)'
+assert str(_simplify_condition(not_(and_(x > 0, x < 1)))) == '(x >= 1) | (x <= 0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_piecewise_relational_conditions_do_not_load_sympy() -> None:
+    """The conditions of ``piecewise_simplify_arguments``, relations and
+    compound formulas, are simplified by the native port of SymPy's
+    ``simplify`` of Booleans (:mod:`sympy_extras.logic.boolsimp`; they
+    went to SymPy's ``simplify``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PIECEWISE_RELATIONAL_CONDITIONS], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

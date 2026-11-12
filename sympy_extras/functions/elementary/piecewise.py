@@ -670,11 +670,14 @@ def piecewise_intervals(pw: Piecewise, sym: Symbol,
 
 
 def _simplify_condition(c: Boolean) -> Boolean:
-    """SymPy's ``simplify`` of a condition (through SymPy: the
-    simplification of the relations and the logic is not ported); ``True``
-    and ``False`` are left as they are, as SymPy does, without it."""
-    if isinstance(c, (BooleanTrue, BooleanFalse)):
-        return c
+    """SymPy's ``simplify`` of a condition, natively
+    (:func:`~sympy_extras.logic.boolsimp.simplify_boolean`); a condition
+    with an ``Xor`` (whose simplification by the algebraic normal form is
+    not ported) through SymPy."""
+    from sympy_extras.core.logic import Xor
+    from sympy_extras.logic.boolsimp import simplify_boolean
+    if not c.has(Xor):
+        return simplify_boolean(c)
     import sympy
     from sympy_extras.interop import from_sympy, to_sympy
     r = from_sympy(sympy.simplify(to_sympy(c)))

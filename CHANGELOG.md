@@ -10,6 +10,59 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `piecewise_simplify_arguments` simplifies its conditions natively by
+  the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
+  `simplify` of Boolean formulas (`BooleanFunction._eval_simplify`,
+  `And._eval_simplify`, `Or._eval_simplify`, `simplify_univariate`, the
+  two- and three-term patterns of the relations, `simplify_logic` with
+  its relations simplified first), instead of SymPy's `simplify`; only a
+  condition with an `Xor` still goes to SymPy (`Xor._eval_simplify`, by
+  the algebraic normal form, is not ported). The endpoints of the
+  intervals of `simplify_univariate` are decided on the formula, where
+  SymPy decides them on the relation of the previous interval:
+  SymPy's `simplify(~((x > 0) & (x < 1)))` is `(x >= 1) | (x < 0)`, false
+  at `x = 0`.
+- The series of `Hyper` and `MeijerG` at an argument going to an infinity
+  follow SymPy's generic branch of `Function._eval_nseries` natively
+  (ported): `PoleError` when the leading term goes to an infinity (these
+  classes have no `_eval_aseries`, as in SymPy), the expansion around the
+  logarithmic term otherwise; they went through SymPy's `_eval_nseries`.
+- `simplify.ratsimp` loads no SymPy at run time: the division of the
+  numerator by the denominator runs over the typed domains `QQ`, `QQ_I`
+  (Gaussian coefficients) and `EX` (floats and the other numbers),
+  instead of sending those to SymPy's `ratsimp`.
+- `ExprWithLimits.doit` (the base class of `Sum` and `Product`, which
+  have their own) evaluates its function and bounds natively, as SymPy's
+  `Basic.doit`, instead of going through SymPy.
+- `concrete.products` loads no SymPy at run time: the product of a
+  polynomial whose coefficients our `Poly` does not take (`I`, `sqrt(2)`,
+  `pi`, floats) is taken by the closed forms of its roots (the native
+  `ex_roots`) instead of sending the whole product to SymPy's
+  `Product.doit`; it stays unevaluated when they are not found (a cubic
+  or quartic over `EX`, where SymPy has formulas, and degree five or more,
+  where SymPy's recursion on the cofactor does not end).
+- `concrete.eulersums.polygamma_integral_representation` returns the
+  core's unevaluated `Integral` (`integrals.integral`) instead of SymPy's
+  `Integral` wrapped, and loads no SymPy; it prints in SymPy's order
+  (`-EulerGamma*zeta(s) + Integral(...)`).
+- `concrete.delta` loads no SymPy at run time: the equation of a delta
+  the linear and finite solvers do not list goes to the native
+  `solve_equation`, and the systems of several deltas which are not
+  linear with a unique solution to the native `solve_system` (for the
+  symbols in SymPy's canonical order), instead of SymPy's `solve`;
+  `NotImplementedError` when they have no method, as SymPy raises.
+- `concrete.summations` loads no SymPy at run time: the residue method
+  takes the poles SymPy writes as `CRootOf` by the residue of a pole of
+  order `m` at an algebraic point (SymPy's series there gives
+  `Sum(1/(i**4 + i + 1), (i, -oo, oo))` as `0`; the sum is about
+  `2.4920`) and the coefficients our `Poly` does not take (`I`, `pi`,
+  `sqrt(2)`) by the closed forms of the native `ex_roots` (SymPy raised
+  `NotImplementedError` for the sorted roots over `EX`); the Hurwitz zeta
+  function of `Sum.doit` is the port of SymPy's `Sum.eval_zeta_function`;
+  the equations of the denominators are solved by the native
+  `solve_equation` (`NotImplementedError` when it has no method), and a
+  convergence condition the native solver does not decide is not taken
+  for empty (it went to SymPy's `as_set`).
 - `assumptions.solve` loads no SymPy at run time: the systems which the
   regular chains do not solve go to the native `solve_system` (the
   substitution method of SymPy's `nonlinsolve`, the unknowns left free

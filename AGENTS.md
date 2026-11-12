@@ -252,6 +252,13 @@ sympy_extras/
                              tests (native: the integral test by the native Risch and heuristic integrators, a port of
                              SymPy's Sum.is_convergent), PORTED FROM SYMPY (is_convergent, is_decreasing)
         convergence_sympy.py the SymPy face of convergence
+        summations.py        summation, sum_doit, eval_sum, eval_sum_hyper, eval_sum_residue: SymPy's Sum.doit (native,
+                             PORTED FROM SYMPY; the residues at CRootOf poles by the formula of a pole of order m, the
+                             roots over EX by ex_roots, the equations by solvers.solvers.solve_equation)
+        delta.py             deltasummation, deltaproduct: sums and products of Kronecker deltas (native, PORTED FROM SYMPY;
+                             the equations by linsolve, assumptions.solve, solve_equation and solve_system)
+        products.py          product, product_doit, eval_product: SymPy's Product.doit (native, PORTED FROM SYMPY; the
+                             polynomials over EX by ex_roots)
         tests/
     integrals/               definite integration extending sympy.integrals (exports nothing: import the modules)
         mellin.py            Mellin transforms as gamma quotients (GammaQuotient), the table of kernels, the matching of
@@ -523,7 +530,7 @@ sympy_extras/
         radsimp.py           fraction, numer, denom, collect, collect_dict, rcollect, radsimp, rad_rationalize, split_surds (ported from SymPy)
         sqrtdenest.py        sqrtdenest, sqrt_depth, is_algebraic (ported from SymPy)
         gammasimp.py         gammasimp, combsimp (ported from SymPy)
-        ratsimp.py           ratsimp (ported from SymPy)
+        ratsimp.py           ratsimp: the division over QQ, QQ_I and EX (ported from SymPy; no SymPy at run time)
         trigsimp.py          trigsimp (matching, fu), futrig, exptrigsimp (ported from SymPy)
         fu.py                fu and its TR rules (TR0-TR22, TRmorrie, TRpower), greedy strategies, hyper_as_trig (ported from SymPy)
         powsimp.py           powsimp, powdenest, multiplicity, _denest_pow (ported from SymPy)
@@ -533,6 +540,9 @@ sympy_extras/
     logic/                   propositional logic on the core's Booleans (exports nothing: import the modules)
         boolalg.py           simplify_logic, SOPform, POSform: minimal two-level forms by Quine-McCluskey (native,
                              PORTED FROM SYMPY logic/boolalg)
+        boolsimp.py          simplify_boolean, simplify_univariate: SymPy's simplify of Boolean formulas (the intervals of
+                             one variable, the patterns of the relations of And and Or) (native, PORTED FROM SYMPY
+                             logic/boolalg; no Xor)
         cnf.py               to_clauses, conjunction, Clauses: conjunctive normal forms encoded with integers (native,
                              PORTED FROM SYMPY assumptions/cnf)
         dpll2.py             SATSolver, propositional_models, is_satisfiable: DPLL with watched literals and VSIDS, every

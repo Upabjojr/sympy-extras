@@ -30,7 +30,8 @@ Examples
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/special/hyper.py (hyper, meijerg, _prep_tuple,
-# TupleParametersBase._eval_derivative) (SymPy 1.14)
+# TupleParametersBase._eval_derivative), sympy/core/function.py
+# (Function._eval_nseries, the asymptotic branch) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed expression nodes with the parameter lists as fields,
@@ -41,7 +42,7 @@ Examples
 from __future__ import annotations
 
 from collections import Counter
-from typing import Final, Optional, Sequence, Union
+from typing import Callable, Final, Optional, Sequence, Union
 
 import mpmath
 
@@ -98,6 +99,50 @@ def _numeric_list(parameters: Sequence[Expr], prec: int) -> Optional[list[mpmath
     return values
 
 
+# PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries (the branch of an argument going to an infinity)
+def _asymptotic_nseries(name: str, parameters: Sequence[Expr], z: Expr, rebuild: Callable[[Expr], Expr],
+                        x: Symbol, n: int, logx: Optional[Expr]) -> Expr:
+    """SymPy's generic expansion of ``hyper`` and ``meijerg`` (``rebuild``
+    puts the argument back) when an argument goes to an infinity: the
+    leading terms going to an infinity call ``_eval_aseries``, which these
+    classes do not have (``PoleError``, as SymPy raises); otherwise (the
+    argument grows like ``log(x)``, ``logx`` standing for it) the
+    expansion around the logarithmic term, ``f(a0 + p)`` expanded in ``p``
+    with ``p`` the rest of the series of the argument."""
+    from sympy_extras.core.coreerrors import PoleError
+    from sympy_extras.core.limits import limit
+    from sympy_extras.core.numbers import NaN
+    from sympy_extras.core.order import Order, order
+    from sympy_extras.core.symbol import Dummy
+    zero = Integer(0)
+    args = list(parameters) + [z]
+    a0 = [limit(a.as_leading_term(x, logx=logx), x, zero) for a in args]
+    if any(t.has(Infinity, NegativeInfinity, ComplexInfinity, NaN) or isinstance(t, (Infinity, NegativeInfinity,
+                                                                                     ComplexInfinity, NaN))
+           for t in a0):
+        points = ', '.join(str(limit(a, x, zero)) for a in args)
+        raise PoleError('Asymptotic expansion of %s around [%s] is not implemented.' % (name, points))
+    if any(x in a.free_symbols for a in parameters):
+        # SymPy expands in one argument only
+        raise NotImplementedError('the parameters of %s depend on %s' % (name, x))
+    series = z._eval_nseries(x, n, logx, zero)
+    rest = series - a0[-1]
+    if not rest.has(x):
+        return rebuild(a0[-1])
+    p = Dummy('p')
+    s = rebuild(a0[-1] + p)._eval_nseries(p, n, logx, zero)
+    o = s.getO()
+    terms = s.removeO()
+    expanded = terms.subs(p, rest)
+    assert isinstance(expanded, Expr)
+    if o is None:
+        return expanded.expand()
+    assert isinstance(o, Order)
+    big = o.expr.subs(p, rest)
+    assert isinstance(big, Expr)
+    return expanded.expand() + order(big, x)
+
+
 # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper
 class Hyper(Expr):
     """The generalised hypergeometric function ``hyper(ap, bq, z)``, the
@@ -122,7 +167,6 @@ class Hyper(Expr):
         """The power series in the argument when it is ``x`` itself, else
         the generic expansion of functions, hyperexpanded."""
         from sympy_extras.core.function import _generic_function_nseries
-        from sympy_extras.interop import nseries_node_through_sympy
         from sympy_extras.core.limits import limit
         from sympy_extras.core.order import order
         from sympy_extras.functions.combinatorial.factorials import factorial, rf
@@ -132,8 +176,8 @@ class Hyper(Expr):
         if not (arg == x and x0 == 0):
             generic = _generic_function_nseries(self, x, n, logx)
             if generic is None:
-                # SymPy's asymptotic branch of the generic expansion is not ported
-                return nseries_node_through_sympy(self, x, n, logx, cdir)
+                ap, bq = self.ap, self.bq
+                generic = _asymptotic_nseries('hyper', ap + bq, arg, lambda w: Hyper(ap, bq, w), x, n, logx)
             return hyperexpand(generic)
         terms: list[Expr] = []
         for i in range(n):
@@ -347,10 +391,11 @@ class MeijerG(Expr):
     # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries (meijerg has none of its own)
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         from sympy_extras.core.function import _generic_function_nseries
-        from sympy_extras.interop import nseries_node_through_sympy
         generic = _generic_function_nseries(self, x, n, logx)
         if generic is None:
-            return nseries_node_through_sympy(self, x, n, logx, cdir)
+            an, aother, bm, bother = self.an, self.aother, self.bm, self.bother
+            return _asymptotic_nseries('meijerg', an + aother + bm + bother, self.argument,
+                                       lambda w: MeijerG(an, aother, bm, bother, w), x, n, logx)
         return generic
 
     # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg._eval_as_leading_term

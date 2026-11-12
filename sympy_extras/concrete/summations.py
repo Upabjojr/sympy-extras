@@ -5,12 +5,15 @@ polynomials and harmonic numbers, geometric sums), then Gosper's
 algorithm, the hypergeometric and the residue methods.
 
 Ported from SymPy's ``sympy.concrete.summations`` (Gosper's algorithm
-in :mod:`~sympy_extras.concrete.gosper`). The residue method with poles
-which SymPy writes as ``CRootOf``, the zeta function match of
-``Sum.doit`` and the equations which neither
-:mod:`~sympy_extras.solvers.linsolve` nor the native
-:func:`~sympy_extras.assumptions.solve.solve` solve (SymPy's ``solve``)
-go through SymPy for that call (not ported yet).
+in :mod:`~sympy_extras.concrete.gosper`); the module loads no SymPy. The
+residue method takes the poles SymPy writes as ``CRootOf`` by the
+residue of a pole of order ``m`` at an algebraic point (SymPy's series
+there does not simplify: its ``Sum(1/(i**4 + i + 1), (i, -oo, oo))`` is
+``0``) and the coefficients our Poly does not take by the closed forms of
+the native ``ex_roots`` (SymPy raises ``NotImplementedError`` for the
+sorted roots over ``EX``); the equations of the denominators and the
+deltas are solved by the native port of SymPy's ``solve``
+(:func:`~sympy_extras.solvers.solvers.solve_equation`).
 
 Examples
 ========
@@ -26,12 +29,13 @@ Examples
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/concrete/summations.py (Sum.doit, summation,
 # telescopic_direct, telescopic, eval_sum, eval_sum_direct,
-# eval_sum_symbolic, _dummy_with_inherited_properties_concrete)
+# eval_sum_symbolic, eval_sum_hyper, eval_sum_residue,
+# Sum.eval_zeta_function, _dummy_with_inherited_properties_concrete)
 # (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; eval_sum_residue (CRootOf poles), the zeta function match and
-# the equations the native solvers do not solve go through SymPy.
+# Changes: typed; the residues at CRootOf poles by the formula of a pole of
+# order m; the roots over EX by the native ex_roots.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -46,6 +50,7 @@ from sympy_extras.core.numbers import Infinity, Integer, NaN, NegativeInfinity, 
 from sympy_extras.core.symbol import Dummy, Symbol, Wild
 
 from .expr_with_limits import LimitLike, Limits, Sum, sum_
+from .gosper import _UPoly
 
 __all__ = ['summation', 'sum_doit', 'eval_sum', 'eval_sum_direct', 'eval_sum_symbolic', 'telescopic']
 
@@ -70,47 +75,23 @@ def _two_terms(e: Expr) -> tuple[Expr, Expr]:
 
 
 # ---------------------------------------------------------------------
-# the steps going through SymPy
-
-
-def _sympy_eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
-    """SymPy's ``sympy.concrete.summations.eval_sum_residue(f, limits)``,
-    ``None`` kept."""
-    from sympy.concrete.summations import eval_sum_residue as sympy_eval_sum_residue
-    from sympy_extras.interop import expr_from_sympy, to_sympy
-    i, a, b = limits
-    r = sympy_eval_sum_residue(to_sympy(f), (to_sympy(i), to_sympy(a), to_sympy(b)))
-    if r is None:
-        return None
-    return expr_from_sympy(r)
+# the solutions of equations
 
 
 def _solve(e: Expr, v: Symbol) -> list[Expr]:
-    """SymPy's ``solve(e, v)``: native for an equation free of ``v`` or
-    linear in it with a rational coefficient
-    (:func:`~sympy_extras.solvers.linsolve.solve_one`) and for the
-    equations whose finitely many solutions the native
-    :func:`~sympy_extras.assumptions.solve.solve` lists, through SymPy
-    otherwise."""
-    from sympy_extras.solvers.linsolve import solve_one
-    from .delta import _finite_solutions
-    known = solve_one(e, v)
-    if known is not None:
-        return known
-    listed = _finite_solutions(e, v)
-    if listed is not None:
-        return listed
-    import sympy
-    from sympy_extras.interop import expr_from_sympy, to_sympy
-    return [expr_from_sympy(s) for s in sympy.solve(to_sympy(e), to_sympy(v))]
+    """SymPy's ``solve(e, v)``, natively
+    (:func:`sympy_extras.concrete.delta._solve`): ``NotImplementedError``
+    when no native method lists the solutions."""
+    from .delta import _solve as solve_natively
+    return solve_natively(e, v)
 
 
 def _shift_candidates(e: Expr, m: Symbol) -> list[Expr]:
     """The solutions of ``e = 0`` for ``m`` among which :func:`telescopic`
     looks for the integer shift (it keeps the integers it checks, so their
-    order does not matter): natively for an equation rational in ``m``
-    (SymPy's ``solveset``, the excluded points removed), through SymPy's
-    ``solve`` otherwise."""
+    order does not matter): for an equation rational in ``m`` SymPy's
+    ``solveset`` (the excluded points removed), SymPy's ``solve``
+    otherwise (both native)."""
     from sympy_extras.polys.rationalsolve import solveset_rational
     found = solveset_rational(e, m)
     if found is None:
@@ -509,10 +490,11 @@ def eval_sum_hyper(f: Expr, limits: Limits) -> Optional[Expr]:
 
 
 def _as_set_is_empty(cond: Boolean) -> bool:
-    """SymPy's ``cond.as_set() == S.EmptySet``: natively by the native
+    """SymPy's ``cond.as_set() == S.EmptySet``: by the native
     :func:`~sympy_extras.assumptions.solve.solve` over the reals for a
-    condition in one symbol, through SymPy when it leaves a condition set
-    (``as_set`` takes no other conditions: ``False`` for them)."""
+    condition in one symbol; ``False`` (not known to be empty) when it
+    leaves a condition set or for other conditions (``as_set`` takes
+    none)."""
     from sympy_extras.core.logic import BooleanFalse, BooleanTrue
     from sympy_extras.sets.conditionset import ConditionSet
     from sympy_extras.sets.sets import EmptySetClass, Reals
@@ -532,19 +514,88 @@ def _as_set_is_empty(cond: Boolean) -> bool:
     found = attempt(lambda: solve(relaxed, plain, domain=Reals), settings.timeout, native=True)
     if found is not None and not isinstance(found, ConditionSet) and not found.has(ConditionSet):
         return isinstance(found, EmptySetClass)
-    import sympy
-    from sympy_extras.interop import to_sympy
-    try:
-        sympy_cond = to_sympy(cond)
-        assert isinstance(sympy_cond, sympy.logic.boolalg.Boolean)
-        return bool(sympy_cond.as_set() == sympy.S.EmptySet)
-    except NotImplementedError:
-        return False
+    # undecided: the sum is kept on the condition (SymPy's as_set raises
+    # NotImplementedError, or leaves a condition set, on the conditions
+    # the native solver does not decide)
+    return False
 
 
-class _NotPorted(Exception):
-    """A case of eval_sum_residue the native code does not take (SymPy's
-    CRootOf poles, a coefficient domain our Poly lacks)."""
+def _rational_coefficients(p: _UPoly) -> bool:
+    from sympy_extras.core.numbers import Rational
+    return all(isinstance(c, Rational) for c in p.c)
+
+
+def _distinct_roots(denom: _UPoly, i: Symbol) -> list[Expr]:
+    """SymPy's ``denom.sqf_part().all_roots()``: with rational coefficients
+    the roots in SymPy's order (radicals for the factors of degree two and
+    the binomials, ``CRootOf`` otherwise); with others the closed forms of
+    the native ``ex_roots`` (``NotImplementedError``, as SymPy raises for
+    the sorted roots over such a domain, when it has none)."""
+    from sympy_extras.polys.complexrootof import all_roots
+    from sympy_extras.polys.polyroots import ex_roots
+    if _rational_coefficients(denom):
+        found = all_roots(denom.as_expr(i), i)
+    else:
+        sqf = denom
+        if denom.degree() > 2:
+            sqf = denom.quo(denom.gcd(denom.diff()))
+        found = ex_roots(sqf.as_expr(i), i)
+        if len(found) != sqf.degree():
+            raise NotImplementedError('sorted roots of %s are not supported' % (denom.as_expr(i),))
+    distinct: list[Expr] = []
+    for r in found:
+        if r not in distinct:
+            distinct.append(r)
+    return distinct
+
+
+def _multiplicity(denom: _UPoly, r: Expr) -> int:
+    """The multiplicity of the root ``r`` (a ``CRootOf``, whose polynomial
+    is irreducible) of ``denom``, a polynomial with rational
+    coefficients."""
+    from sympy_extras.polys.complexrootof import ComplexRootOf
+    assert isinstance(r, ComplexRootOf)
+    minimal = _UPoly.of(r.expr, r.variable)
+    k = 0
+    p = denom
+    while True:
+        q, remainder = p.divmod(minimal)
+        if not remainder.is_zero():
+            return k
+        k += 1
+        p = q
+
+
+def _algebraic_residue(numer: _UPoly, denom: _UPoly, kernel: Expr, z: Dummy, r: Expr, m: int) -> Expr:
+    """The residue of ``numer/denom*kernel(z)`` at the root ``r`` of
+    multiplicity ``m`` of ``denom``, ``kernel`` analytic there: with
+    ``denom = (z - r)**m*R`` (``R`` by the division by ``z - t``, the
+    remainders zero at ``t = r``), the coefficient
+    ``(numer*kernel/R)**(m - 1)(r)/(m - 1)!``; ``numer(r)*kernel(r)/
+    denom'(r)`` for a simple pole. It takes the roots SymPy writes as
+    ``CRootOf``, at which the series of :func:`~sympy_extras.series.residues.residue`
+    does not simplify."""
+    from sympy_extras.functions.combinatorial.factorials import factorial
+    if m == 1:
+        value = numer.as_expr(r) * _e(kernel.subs(z, r)) / denom.diff().as_expr(r)
+        return value
+    t = Dummy('t')
+    quotient = list(denom.c)
+    for _ in range(m):
+        # synthetic division by z - t, the remainder dropped
+        top = len(quotient) - 1
+        out: list[Expr] = [ZERO] * top
+        carry: Expr = ZERO
+        for k in range(top, 0, -1):
+            carry = quotient[k] + carry * t
+            out[k - 1] = carry
+        quotient = out
+    reduced = add(*[c * z**k for k, c in enumerate(quotient)])
+    g = numer.as_expr(z) * kernel / reduced
+    for _ in range(m - 1):
+        g = g.diff(z)
+    value = _e(g.subs(z, t)) / factorial(Integer(m - 1))
+    return _e(value.subs(t, r))
 
 
 # PORTED FROM SYMPY: sympy/concrete/summations.py:eval_sum_residue
@@ -552,68 +603,46 @@ def eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
     """An infinite sum of a rational function (or ``(-1)**i`` times one) by
     the residues of ``f*pi*cot(pi*z)`` (``csc`` when alternating) at its
     poles; ``None`` when the method does not apply."""
-    try:
-        return _eval_sum_residue(f, limits)
-    except _NotPorted:
-        return _sympy_eval_sum_residue(f, limits)
-
-
-def _eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
     from sympy_extras.core.numbers import pi
     from sympy_extras.functions.elementary.trigonometric import cot, csc
-    from sympy_extras.polys.polyerrors import CoercionFailed, PolynomialError
-    from sympy_extras.polys.polyroots import roots
-    from sympy_extras.polys.polytools import Poly
+    from sympy_extras.polys.complexrootof import ComplexRootOf
     from sympy_extras.series.residues import residue
+    from .gosper import _UPoly
     i, a, b = limits
     if a.is_comparable and b.is_comparable and _is_true(a > b):
-        return _eval_sum_residue(f, (i, b + ONE, a - ONE))
+        return eval_sum_residue(f, (i, b + ONE, a - ONE))
 
-    def poly(e: Expr) -> Poly:
-        try:
-            return Poly(e, i)
-        except (CoercionFailed, NotImplementedError) as exc:
-            raise _NotPorted() from exc
-
-    def is_even_function(numer: Poly, denom: Poly) -> bool:
-        nm = [m[0] for m in numer.monoms()]
-        dm = [m[0] for m in denom.monoms()]
+    def is_even_function(numer: _UPoly, denom: _UPoly) -> bool:
+        nm = [k for k, c in enumerate(numer.c) if c != 0]
+        dm = [k for k, c in enumerate(denom.c) if c != 0]
         return (all(k % 2 == 0 for k in nm) and all(k % 2 == 0 for k in dm)) or \
             (all(k % 2 == 1 for k in nm) and all(k % 2 == 1 for k in dm))
 
-    def match_rational(g: Expr) -> Optional[tuple[Poly, Poly]]:
+    def match_rational(g: Expr) -> Optional[tuple[_UPoly, _UPoly]]:
         numer, denom = g.as_numer_denom()
         try:
-            return poly(numer), poly(denom)
-        except PolynomialError:
+            return _UPoly.of(numer, i), _UPoly.of(denom, i)
+        except ValueError:
             return None
 
-    def get_poles(denom: Poly) -> Optional[tuple[list[Expr], list[Expr]]]:
-        # SymPy's denom.sqf_part().all_roots(): closed forms for the factors
-        # of degree at most 2 and the binomials, CRootOf otherwise
-        _, factors = denom.factor_list()
-        found: list[Expr] = []
-        for fac, _ in factors:
-            if fac.degree() > 2 and fac.length() != 2:
-                raise _NotPorted()
-            rs = roots(fac.as_expr(), i)
-            if not isinstance(rs, dict) or sum(rs.values()) != fac.degree():
-                raise _NotPorted()
-            found.extend(rs)
+    def get_poles(denom: _UPoly) -> Optional[tuple[list[Expr], list[Expr]]]:
+        found = _distinct_roots(denom, i)
         if any(r.is_integer is None for r in found):
             return None
         return [r for r in found if r.is_integer is True], [r for r in found if r.is_integer is False]
 
-    def shifted(p: Poly, by: Expr) -> Poly:
-        moved = p.as_expr().subs(i, i + by)
-        assert isinstance(moved, Expr)
-        return poly(moved.expand())
-
     z = Dummy('z')
 
-    def residue_factor(numer: Poly, denom: Poly, alternating: bool) -> Expr:
-        g = _e((numer.as_expr() / denom.as_expr()).subs(i, z))
-        return g * (csc(pi * z) if alternating else cot(pi * z))
+    def residues(numer: _UPoly, denom: _UPoly, alternating: bool, poles: list[Expr]) -> list[Expr]:
+        kernel = csc(pi * z) if alternating else cot(pi * z)
+        g = _e((numer.as_expr(i) / denom.as_expr(i)).subs(i, z))
+        out: list[Expr] = []
+        for root in poles:
+            if isinstance(root, ComplexRootOf):
+                out.append(_algebraic_residue(numer, denom, kernel, z, root, _multiplicity(denom, root)))
+            else:
+                out.append(residue(g * kernel, z, root))
+        return out
 
     if f.free_symbols - {i}:
         return None
@@ -638,25 +667,22 @@ def _eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
         int_roots, nonint_roots = poles
         if int_roots:
             return None
-        factor_ = residue_factor(numer, denom, alternating)
-        return -pi * add(*[residue(factor_, z, root) for root in nonint_roots])
+        return -pi * add(*residues(numer, denom, alternating, nonint_roots))
     if not (a.is_finite is True and isinstance(b, Infinity)):
         return None
     if not is_even_function(numer, denom):
         n = denom.degree()
-        lead = denom.coeff_monomial((n,))
-        nxt = denom.coeff_monomial((n - 1,))
-        shift = -nxt / lead / n
+        shift = -denom.nth(n - 1) / denom.nth(n) / n
         if not isinstance(shift, Integer) or shift == 0:
             return None
-        numer, denom = shifted(numer, shift), shifted(denom, shift)
+        numer, denom = numer.shift(shift), denom.shift(shift)
         if not is_even_function(numer, denom):
             return None
         if alternating:
-            g = Integer(-1)**i * (Integer(-1)**shift * numer.as_expr() / denom.as_expr())
+            g = Integer(-1)**i * (Integer(-1)**shift * numer.as_expr(i) / denom.as_expr(i))
         else:
-            g = numer.as_expr() / denom.as_expr()
-        return _eval_sum_residue(g, (i, a - shift, b - shift))
+            g = numer.as_expr(i) / denom.as_expr(i)
+        return eval_sum_residue(g, (i, a - shift, b - shift))
     poles = get_poles(denom)
     if poles is None:
         return None
@@ -668,8 +694,7 @@ def _eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
             return None
         if a.p <= max(ints):
             return None
-    factor_ = residue_factor(numer, denom, alternating)
-    full_sum = -pi * add(*[residue(factor_, z, root) for root in list(int_roots) + list(nonint_roots)])
+    full_sum = -pi * add(*residues(numer, denom, alternating, list(int_roots) + list(nonint_roots)))
     if not ints:
         # SymPy's xreplace re-evaluates: the values of the terms
         half_sum = (full_sum + _e(f.subs(i, ZERO))) / 2
@@ -706,16 +731,31 @@ def _dummy_with_inherited_properties(limits: Limits) -> Optional[Dummy]:
     return None
 
 
-def _zeta_match(f: Expr, limits: Limits) -> bool:
-    """Whether SymPy's ``eval_zeta_function`` applies (``(w*i + y)**(-z)``
-    summed to ``oo``)."""
+# PORTED FROM SYMPY: sympy/concrete/summations.py:Sum.eval_zeta_function
+def _eval_zeta_function(s: Sum, f: Expr, limits: Limits) -> Optional[Expr]:
+    """``(w*i + y)**(-z)`` summed from ``a`` to ``oo`` as the Hurwitz zeta
+    function ``zeta(z, q)/w**z``, ``q = y/w + a``, on the condition that
+    ``-q`` is not a nonnegative integer and ``re(z) > 1`` (the sum ``s``
+    kept otherwise); ``None`` for another summand."""
+    from sympy_extras.core.logic import and_, not_
+    from sympy_extras.functions.elementary.complexes import re
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    from sympy_extras.functions.special.zeta_functions import zeta
+    from sympy_extras.sets.fancysets import Naturals0
+    from sympy_extras.sets.sets import contains
     i, a, b = limits
     if a.is_comparable and b.is_comparable and _is_true(a > b):
-        return _zeta_match(f, (i, b + ONE, a - ONE))
+        return _eval_zeta_function(s, f, (i, b + ONE, a - ONE))
     if not isinstance(b, Infinity):
-        return False
+        return None
     w, y, z = Wild('w', exclude=[i]), Wild('y', exclude=[i]), Wild('z', exclude=[i])
-    return bool(f.match((w * i + y)**(-z)))
+    result = f.match((w * i + y)**(-z))
+    if not result:
+        return None
+    rw, ry, rz = _e(result[w]), _e(result[y]), _e(result[z])
+    coeff = 1 / rw**rz
+    q = ry / rw + a
+    return piecewise((coeff * zeta(rz, q), and_(not_(contains(-q, Naturals0)), re(rz) > ONE)), (s, true))
 
 
 # PORTED FROM SYMPY: sympy/concrete/summations.py:Sum.doit
@@ -745,9 +785,9 @@ def sum_doit(s: Sum, deep: bool = True) -> Expr:
         newf = eval_sum(f, (i, a, b))
         if newf is None:
             if f == s.function:
-                if _zeta_match(f, (i, a, b)):
-                    from sympy_extras.interop import expr_through_sympy
-                    return expr_through_sympy(s, lambda t: t.doit(deep=False))
+                zeta_function = _eval_zeta_function(s, f, (i, a, b))
+                if zeta_function is not None:
+                    return zeta_function
                 return s
             return sum_(f, *s.limits[n:])
         f = newf

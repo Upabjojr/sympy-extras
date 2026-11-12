@@ -7,7 +7,9 @@ the variables kept and the others folded).
 Ported from SymPy's ``sympy.concrete.expr_with_limits``,
 ``sympy.concrete.summations`` and ``sympy.concrete.products``: the bound
 variables (``free_symbols``, substitution), the printing. The
-evaluation (``doit``) goes through SymPy for the node.
+evaluation (``doit``) is native: ``Sum`` and ``Product`` by
+:mod:`~sympy_extras.concrete.summations` and
+:mod:`~sympy_extras.concrete.products`.
 
 Examples
 ========
@@ -29,7 +31,7 @@ Examples
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; the limits are (variable, lower, upper) triples (Sum and
 # Product require them); the classes are unevaluated and sum_/product_
-# construct as SymPy's __new__; doit goes through SymPy.
+# construct as SymPy's __new__; doit is native.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -174,10 +176,12 @@ class ExprWithLimits(Expr):
         new_limits: list[LimitLike] = [Tuple(*lim) for lim in limits]
         return type(self)(func, *new_limits)
 
+    # PORTED FROM SYMPY: sympy/core/basic.py:Basic.doit
     def doit(self) -> Expr:
-        """The node evaluated (through SymPy)."""
-        from sympy_extras.interop import expr_through_sympy
-        return expr_through_sympy(self, lambda s: s.doit())
+        """The node with its function and bounds evaluated (SymPy's
+        ``Basic.doit``: ``Sum`` and ``Product`` evaluate themselves)."""
+        limits: list[LimitLike] = [(v, a.doit(), b.doit()) for v, a, b in self._limits]
+        return type(self)(self._function.doit(), *limits)
 
 
 # PORTED FROM SYMPY: sympy/concrete/summations.py:Sum
