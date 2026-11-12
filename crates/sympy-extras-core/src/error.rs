@@ -20,6 +20,9 @@ pub enum PolyError {
     /// `NotImplementedError`: a case which needs a part of the Python core
     /// which is not ported yet (a function class, `Float`, `Order`).
     NotImplemented(String),
+    /// `TypeError`: an operation on the wrong kind of object (a comparison
+    /// of non-real numbers, a boolean where an expression is expected).
+    Type(String),
     /// One of the exceptions of `polys.polyerrors` (`PolynomialError`,
     /// `GeneratorsNeeded`, `CoercionFailed`, ...).
     Polys(PolysErrorKind, String),
@@ -73,6 +76,7 @@ impl fmt::Display for PolyError {
             PolyError::HeuristicGCDFailed(message) => write!(f, "{}", message),
             PolyError::Arithmetic(message) => write!(f, "{}", message),
             PolyError::Polys(_, message) => write!(f, "{}", message),
+            PolyError::Type(message) => write!(f, "{}", message),
             PolyError::NotImplemented(message) => write!(f, "{}", message),
         }
     }

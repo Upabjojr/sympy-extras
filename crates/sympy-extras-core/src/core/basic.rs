@@ -64,6 +64,104 @@ pub enum Head {
     /// `IndexedRoot(f, t, k)`: the `k`-th distinct real root of `f` in the
     /// bound variable `t` (`polys.cad.indexedroot`).
     IndexedRoot,
+    /// `true` and `false` (`BooleanTrue`, `BooleanFalse`).
+    BooleanTrue,
+    BooleanFalse,
+    /// The connectives, unevaluated (`core.logic`).
+    And,
+    Or,
+    Not,
+    Xor,
+    Implies,
+    Equivalent,
+    Ite,
+    /// A relation between two expressions (`Eq(a, b)`, `Lt(a, b)`, ...).
+    Relational(RelOp),
+    /// The sets of `sets.sets` (`EmptySet`, `UniversalSet`, `Reals` are
+    /// atoms), and the boolean `Contains(x, s)`.
+    EmptySet,
+    UniversalSet,
+    Reals,
+    Interval,
+    FiniteSet,
+    Union,
+    Intersection,
+    Complement,
+    Contains,
+    ProductSet,
+    PointSet,
+}
+
+/// The relations of `core.relational`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum RelOp {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+impl RelOp {
+    /// The name of the Python class.
+    pub fn class_name(self) -> &'static str {
+        match self {
+            RelOp::Eq => "Eq",
+            RelOp::Ne => "Ne",
+            RelOp::Lt => "Lt",
+            RelOp::Le => "Le",
+            RelOp::Gt => "Gt",
+            RelOp::Ge => "Ge",
+        }
+    }
+
+    /// SymPy's class name (`Equality`, `StrictLessThan`, ...).
+    pub fn sympy_name(self) -> &'static str {
+        match self {
+            RelOp::Eq => "Equality",
+            RelOp::Ne => "Unequality",
+            RelOp::Lt => "StrictLessThan",
+            RelOp::Le => "LessThan",
+            RelOp::Gt => "StrictGreaterThan",
+            RelOp::Ge => "GreaterThan",
+        }
+    }
+
+    /// The operator printed (`rel_op`).
+    pub fn symbol(self) -> &'static str {
+        match self {
+            RelOp::Eq => "==",
+            RelOp::Ne => "!=",
+            RelOp::Lt => "<",
+            RelOp::Le => "<=",
+            RelOp::Gt => ">",
+            RelOp::Ge => ">=",
+        }
+    }
+
+    /// The relation with the sides exchanged (`_REVERSED`).
+    pub fn reversed(self) -> RelOp {
+        match self {
+            RelOp::Lt => RelOp::Gt,
+            RelOp::Gt => RelOp::Lt,
+            RelOp::Le => RelOp::Ge,
+            RelOp::Ge => RelOp::Le,
+            other => other,
+        }
+    }
+
+    /// The relation of the opposite meaning (`_NEGATED`).
+    pub fn negated(self) -> RelOp {
+        match self {
+            RelOp::Eq => RelOp::Ne,
+            RelOp::Ne => RelOp::Eq,
+            RelOp::Lt => RelOp::Ge,
+            RelOp::Ge => RelOp::Lt,
+            RelOp::Le => RelOp::Gt,
+            RelOp::Gt => RelOp::Le,
+        }
+    }
 }
 
 /// An undefined function (`UndefinedFunction`): its name, numbers of
@@ -144,6 +242,8 @@ pub enum Function {
     Acsch,
     Arg,
     Atan2,
+    Max,
+    Min,
 }
 
 impl Function {
@@ -183,6 +283,8 @@ impl Function {
             Function::Acsch => "acsch",
             Function::Arg => "arg",
             Function::Atan2 => "atan2",
+            Function::Max => "Max",
+            Function::Min => "Min",
         }
     }
 
@@ -222,6 +324,8 @@ impl Function {
             Function::Acsch => "Acsch",
             Function::Arg => "Arg",
             Function::Atan2 => "Atan2",
+            Function::Max => "Max",
+            Function::Min => "Min",
         }
     }
 
@@ -234,7 +338,7 @@ impl Function {
             Function::Re => 41,
             Function::Im => 42,
             Function::Arg => 43,
-            Function::Atan2 => 10000,
+            Function::Atan2 | Function::Max | Function::Min => 10000,
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,
@@ -293,6 +397,27 @@ impl Head {
             Head::Derivative => "Derivative",
             Head::Subs => "Subs",
             Head::IndexedRoot => "IndexedRoot",
+            Head::BooleanTrue => "BooleanTrue",
+            Head::BooleanFalse => "BooleanFalse",
+            Head::And => "And",
+            Head::Or => "Or",
+            Head::Not => "Not",
+            Head::Xor => "Xor",
+            Head::Implies => "Implies",
+            Head::Equivalent => "Equivalent",
+            Head::Ite => "ITE",
+            Head::Relational(op) => op.class_name(),
+            Head::EmptySet => "EmptySetClass",
+            Head::UniversalSet => "UniversalSetClass",
+            Head::Reals => "RealsClass",
+            Head::Interval => "Interval",
+            Head::FiniteSet => "FiniteSet",
+            Head::Union => "Union",
+            Head::Intersection => "Intersection",
+            Head::Complement => "Complement",
+            Head::Contains => "Contains",
+            Head::ProductSet => "ProductSet",
+            Head::PointSet => "PointSet",
         }
     }
 
@@ -321,6 +446,7 @@ impl Head {
             Head::GoldenRatio => "GoldenRatio",
             Head::TribonacciConstant => "TribonacciConstant",
             Head::Function(f) => f.name(),
+            Head::Relational(op) => op.sympy_name(),
             Head::Undefined(u) => {
                 // the compare name is the function's name, a String: leaked
                 // once per distinct name so that the key stays 'static
@@ -343,7 +469,30 @@ impl Head {
                 | Head::Derivative
                 | Head::Subs
                 | Head::IndexedRoot
+                | Head::And
+                | Head::Or
+                | Head::Not
+                | Head::Xor
+                | Head::Implies
+                | Head::Equivalent
+                | Head::Ite
+                | Head::Relational(_)
+                | Head::Interval
+                | Head::FiniteSet
+                | Head::Union
+                | Head::Intersection
+                | Head::Complement
+                | Head::Contains
+                | Head::ProductSet
+                | Head::PointSet
         )
+    }
+
+    /// Whether two nodes are equal for the same set of arguments in any
+    /// order (`LatticeOp`, and the hashable content of `Xor` and
+    /// `Equivalent`).
+    pub fn args_are_a_set(&self) -> bool {
+        matches!(self, Head::And | Head::Or | Head::Xor | Head::Equivalent)
     }
 
     fn same(&self, other: &Head) -> bool {
@@ -355,6 +504,7 @@ impl Head {
             (Head::Wild(a), Head::Wild(b)) => a.same(b),
             (Head::Function(a), Head::Function(b)) => a == b,
             (Head::Undefined(a), Head::Undefined(b)) => a == b,
+            (Head::Relational(a), Head::Relational(b)) => a == b,
             (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
         }
     }
@@ -362,6 +512,7 @@ impl Head {
     fn hash_into<H: Hasher>(&self, state: &mut H) {
         std::mem::discriminant(self).hash(state);
         match self {
+            Head::Relational(op) => op.hash(state),
             Head::Rational { value, .. } => {
                 value.numerator().hash(state);
                 value.denominator().hash(state);
@@ -422,10 +573,22 @@ impl Basic {
     pub fn new(head: Head, args: Vec<Basic>) -> Basic {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         head.hash_into(&mut hasher);
-        for a in &args {
-            a.0.hash.hash(&mut hasher);
+        if head.args_are_a_set() {
+            // And, Or, Xor, Equivalent: equal for the same set of arguments
+            let mut hashes: Vec<u64> = args.iter().map(|a| a.0.hash).collect();
+            hashes.sort_unstable();
+            hashes.dedup();
+            hashes.hash(&mut hasher);
+        } else {
+            for a in &args {
+                a.0.hash.hash(&mut hasher);
+            }
         }
-        let hash: u64 = hasher.finish();
+        let mut hash: u64 = hasher.finish();
+        if matches!(head, Head::Reals) {
+            // Reals equals Interval(-oo, oo, True, True), with its hash
+            hash = crate::sets::sets::whole_line().0.hash;
+        }
         Basic(Arc::new(Node {
             head,
             args,
@@ -684,7 +847,31 @@ impl PartialEq for Basic {
         if Arc::ptr_eq(&self.0, &other.0) {
             return true;
         }
-        self.0.hash == other.0.hash && self.0.head.same(&other.0.head) && self.0.args == other.0.args
+        if self.0.hash != other.0.hash {
+            return false;
+        }
+        if !self.0.head.same(&other.0.head) {
+            // Reals and Interval(-oo, oo, True, True)
+            let whole = |x: &Basic| matches!(x.head(), Head::Reals) || crate::sets::sets::is_whole_line(x);
+            return matches!(self.head(), Head::Reals | Head::Interval)
+                && matches!(other.head(), Head::Reals | Head::Interval)
+                && whole(self)
+                && whole(other);
+        }
+        if self.0.head.args_are_a_set() {
+            let unique = |args: &[Basic]| -> Vec<Basic> {
+                let mut out: Vec<Basic> = Vec::new();
+                for a in args {
+                    if !out.contains(a) {
+                        out.push(a.clone());
+                    }
+                }
+                out
+            };
+            let (a, b) = (unique(&self.0.args), unique(&other.0.args));
+            return a.len() == b.len() && a.iter().all(|x| b.contains(x));
+        }
+        self.0.args == other.0.args
     }
 }
 

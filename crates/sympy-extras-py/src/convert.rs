@@ -25,6 +25,7 @@ pub fn err(e: PolyError) -> PyErr {
         PolyError::Arithmetic(message) => pyo3::exceptions::PyArithmeticError::new_err(message),
         PolyError::NotImplemented(message) => pyo3::exceptions::PyNotImplementedError::new_err(message),
         PolyError::Polys(kind, message) => crate::polyerrors::polys_error(kind, message),
+        PolyError::Type(message) => pyo3::exceptions::PyTypeError::new_err(message),
     }
 }
 
