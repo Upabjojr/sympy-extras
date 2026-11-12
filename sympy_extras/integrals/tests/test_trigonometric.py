@@ -8,7 +8,7 @@ from sympy.logic.boolalg import Boolean
 
 from sympy_extras._typing import as_expr
 from sympy_extras.integrals.conditions_sympy import numerically_equal
-from sympy_extras.integrals.trigonometric import trigonometric_antiderivative, _sin_cos, _sinh_cosh
+from sympy_extras.integrals.trigonometric_sympy import trigonometric_antiderivative, _sin_cos, _sinh_cosh
 
 x = symbols('x')
 a, b = symbols('a b', positive=True)
@@ -125,7 +125,7 @@ def test_inverse_functions() -> None:
 def test_every_result_is_verified() -> None:
     # the check by differentiation refuses a wrong candidate: a Piecewise
     # whose special branch does not check keeps the generic one only
-    from sympy_extras.integrals.trigonometric import _verified
+    from sympy_extras.integrals.trigonometric_sympy import _verified
     assert _verified(-cos(x), sin(x), x) and not _verified(cos(x), sin(x), x)
     assert not _verified(x * asin(x), asin(x), x)
 

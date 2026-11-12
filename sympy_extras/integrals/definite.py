@@ -1744,7 +1744,7 @@ class _Integrator:
         of radicals the cells of a region leave (the bug: the slices of
         the cylinders reached the antiderivative route, the last one, with
         no time left)."""
-        from .radicals import quadratic_radical_antiderivative
+        from .radicals_sympy import quadratic_radical_antiderivative
         if a.has(x) or b.has(x) or quadratic_radical_antiderivative(f, x) is None:
             return None
         # under a quarter of the time limit: the Euler substitutions give

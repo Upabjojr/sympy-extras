@@ -5,7 +5,7 @@ from __future__ import annotations
 from sympy import symbols, sin, cos, tan, sinh, cosh, tanh, exp, log, asin, atan, sqrt, simplify, pi, N, Integral, Expr, S
 
 from sympy_extras._typing import as_expr
-from sympy_extras.integrals.trigonometric import trigonometric_antiderivative
+from sympy_extras.integrals.trigonometric_sympy import trigonometric_antiderivative
 
 x = symbols('x')
 a, b = symbols('a b', positive=True)

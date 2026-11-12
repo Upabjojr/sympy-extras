@@ -122,7 +122,7 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
     that checks for a general ``n``). With ``late`` the heuristic methods
     are tried instead, under a quarter of the time limit (the second pass
     of the definite driver, after its slow methods)."""
-    from .radicals import quadratic_radical_antiderivative
+    from .radicals_sympy import quadratic_radical_antiderivative
     found = quadratic_radical_antiderivative(f, x)
     if found is not None:
         # a real form (SymPy writes the arcsine of sqrt(1 - x**2) as a

@@ -252,9 +252,13 @@ sympy_extras/
         curves.py            Trager's algorithm on an arbitrary curve: several or nested radicals through a primitive element, the change of variable x = N + 1/z, Hermite reduction in a normal integral basis, residues by Puiseux expansions, the logarithmic part by linear algebra
         summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
         axisymmetric.py      region integrals with a rotational symmetry (bodies and surfaces of revolution) reduced to their profile
-        radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions
+        radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic (Gradshteyn-Ryzhik 2.26), for the slices of regions,
+                             and the Euler substitutions (native; SymPy's ratint through radicals_sympy)
+        radicals_sympy.py    the SymPy face of radicals, and ratint_of_core (the rational integrator of risch/rationaltools)
         indefinite.py        indefinite_integral: the typed methods in turn, then SymPy's, each antiderivative checked by differentiation
         trigonometric.py     powers, products and rational functions of trigonometric and hyperbolic functions, inverse functions by parts
+                             (native; the rational functions through radicals_sympy.ratint_of_core)
+        trigonometric_sympy.py the SymPy face of trigonometric, which indefinite uses
         heurisch.py          typed port of SymPy's heuristic Risch integrator (BSD, see risch/LICENSE-SymPy), every result verified
         rewriting.py         canonical forms (exponentials, logarithms of inverse hyperbolic functions) and substitutions x = t**k, u = exp(c x), x = exp(t)
         exponential.py       x**(v-1) exp(a x**n + b) by the incomplete gamma function in real forms, completed squares, rational functions of exp(c x)

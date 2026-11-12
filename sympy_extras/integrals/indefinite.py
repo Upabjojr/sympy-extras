@@ -382,7 +382,7 @@ def _rational(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 
 
 def _radicals(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .radicals import quadratic_radical_antiderivative
+    from .radicals_sympy import quadratic_radical_antiderivative
     return attempt(lambda: quadratic_radical_antiderivative(f, x, assumptions), _budget())
 
 
@@ -392,7 +392,7 @@ def _exponential(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]
 
 
 def _trigonometric(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .trigonometric import trigonometric_antiderivative
+    from .trigonometric_sympy import trigonometric_antiderivative
     return attempt(lambda: trigonometric_antiderivative(f, x), _budget())
 
 

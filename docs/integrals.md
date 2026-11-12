@@ -448,7 +448,8 @@ The driver tries, after the Mellin method and the residues:
   is kept only when the limit is finite and free of the regulator, so
   `sin(x)**2` over `(0, oo)` has none, and a convergent integral keeps its
   value (Hardy, *Divergent series*, ch. 4-5).
-- **Radicals of quadratics** (`sympy_extras.integrals.radicals`): the
+- **Radicals of quadratics** (`sympy_extras.integrals.radicals`, native on
+  the core; its SymPy face `sympy_extras.integrals.radicals_sympy`): the
   real antiderivatives of `x**n * Q**(m/2)`, `Q` a quadratic and `m` odd,
   by the reduction formulas of Gradshteyn–Ryzhik 2.26, in arcsines and
   hyperbolic arcsines where SymPy writes complex logarithms (whose limits
@@ -605,7 +606,8 @@ functions of an exponential, `x = exp(t)` for rational functions of a
 logarithm; the heuristic Risch integrator comes to the forms only
 after it failed on the integrand itself, except to the exponentials of
 hyperbolic functions, which it tries after the substitutions. The trigonometric integrator
-(`sympy_extras.integrals.trigonometric`, `trigonometric_antiderivative`)
+(`sympy_extras.integrals.trigonometric`, `trigonometric_antiderivative`, native
+on the core; its SymPy face `sympy_extras.integrals.trigonometric_sympy`)
 covers the products of powers of trigonometric and hyperbolic functions
 by the raising and lowering formulas, rational functions of `sin` and
 `cos` by `t = tan(x/2)` and of `sinh` and `cosh` by `u = exp(x)`

@@ -4,7 +4,7 @@ from __future__ import annotations
 from sympy import symbols, sqrt, Rational, asin, asinh, log, simplify, diff, S, N, Integral
 
 from sympy_extras._typing import as_expr
-from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
+from sympy_extras.integrals.radicals_sympy import quadratic_radical_antiderivative
 
 x = symbols('x')
 
@@ -113,7 +113,7 @@ def test_euler_substitutions_for_rational_functions_of_a_radical() -> None:
     # not of the form x**n*Q**(m/2): the Euler substitutions make the
     # integrand a rational function (Maxima's rtest_integrate 854, FriCAS's
     # in1186a and in143a, a linear radical)
-    from sympy_extras.integrals.radicals import euler_substitution_antiderivative
+    from sympy_extras.integrals.radicals_sympy import euler_substitution_antiderivative
     for f in (1 / ((x + 3) * sqrt(x**2 - 1)), sqrt(x**2 + x) / (x**2 + 1)**2, sqrt(x + 1) / (x**2 + 1),
               1 / ((x + 2) * sqrt(1 - x**2)), sqrt(x**2 + 1) / (x - 1)):
         F = euler_substitution_antiderivative(as_expr(f), x)
@@ -133,7 +133,7 @@ def test_odd_powers_of_a_quadratic_under_the_root() -> None:
     # for the odd powers of sqrt(Q) (Maxima's rtestint with symbolic
     # coefficients)
     from sympy_extras.integrals.indefinite import is_antiderivative, verified_antiderivative
-    from sympy_extras.integrals.radicals import _odd_power
+    from sympy_extras.integrals.radicals_sympy import _odd_power
     a, b, c = symbols('a b c')
     Q = as_expr(a + b * x + c * x**2)
     assert _odd_power(as_expr(Q**3), x) == (Q, 3)
