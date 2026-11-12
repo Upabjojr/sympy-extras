@@ -353,7 +353,7 @@ def reduce_order(ode: Equation, y: AppliedUndef, symmetry: Symmetry,
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate and solve (the *_of_core functions)
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
     >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.solvers.ode import reduce_order
     >>> from sympy_extras.solvers.lie import JetSpace, Symmetry

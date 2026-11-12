@@ -734,7 +734,7 @@ def rectify_symmetries(Phi: Expr, x: Symbol, y: Symbol, p: Symbol, f: AppliedUnd
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate and solve (the *_of_core functions)
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
     >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.solvers.second_order import rectify_symmetries
     >>> x, y, p = symbols('x y p')

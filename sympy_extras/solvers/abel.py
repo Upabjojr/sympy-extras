@@ -590,7 +590,7 @@ def air_solution(coefficients: CoefficientsLike, x: Symbol, f: AppliedUndef, Q: 
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate and solve (the *_of_core functions)
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.abel import air_solution
     >>> x = Symbol('x')
@@ -686,7 +686,7 @@ def abel_by_invariants(equation: Basic, f: AppliedUndef,
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate and solve (the *_of_core functions)
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.abel import abel_by_invariants
     >>> x = Symbol('x')
