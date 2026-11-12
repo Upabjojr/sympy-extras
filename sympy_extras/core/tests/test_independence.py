@@ -3293,3 +3293,22 @@ def test_native_equals_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_EQUALS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ORDER_POINT = r'''
+import sys
+from sympy_extras.core import Dummy
+from sympy_extras.functions import exp
+from sympy_extras.core.order import _solve_for
+k, d = Dummy('k'), Dummy('d')
+assert str(_solve_for(k - exp(-d), d)) == '-log(_k)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_order_point_does_not_load_sympy() -> None:
+    """The point of a substituted ``Order`` is solved by the native
+    ``solveset`` (it went to SymPy's through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ORDER_POINT], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

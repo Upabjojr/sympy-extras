@@ -39,6 +39,12 @@ remove public functions. Breaking changes are listed here when they happen.
   decided by its minimal polynomial; a difference with polar numbers
   (`exp_polar(0) - 1`, which SymPy does not take for zero) or wrapped
   SymPy objects, and the undecided ones, still go to SymPy.
+- The point of an `Order` moved by a substitution (`O(x).subs(x,
+  exp(-y))` and the asymptotic series) is solved by the native
+  `solveset` (the first solution: a single element, a complement of
+  finite sets, an image of the integers at `n = 0`); SymPy's `solveset`
+  is asked only when the native one gives another set. The native solver
+  also solves `exp(1/d) = k`, where SymPy's gives a `ConditionSet`.
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
