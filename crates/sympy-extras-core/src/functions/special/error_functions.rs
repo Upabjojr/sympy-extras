@@ -320,7 +320,7 @@ pub fn error_conjugate(f: Function, e: &Basic) -> PolyResult<Option<Basic>> {
     match f {
         Function::Erf | Function::Erfc | Function::Erfi => Ok(Some(error_function(f, &[conjugate(&e.args()[0])?])?)),
         Function::Erf2 => Ok(Some(erf2(&conjugate(&e.args()[0])?, &conjugate(&e.args()[1])?)?)),
-        _ => Ok(None),
+        _ => default_conjugate(e),
     }
 }
 
@@ -570,4 +570,446 @@ pub fn error_value(f: Function, values: &[Complex], prec: usize) -> Option<Compl
         _ => return None,
     };
     Some(finish(&value, prec, real))
+}
+
+// ---------------------------------------------------------------------
+// part 2: the exponential, trigonometric and logarithmic integrals and the
+// Fresnel integrals (without the polar arguments: the Rust core has no
+// polar numbers, so the branch factors of SymPy are always trivial)
+
+/// The heads of part 2.
+pub fn is_integral_function(f: Function) -> bool {
+    matches!(
+        f,
+        Function::Expint
+            | Function::Ei
+            | Function::Si
+            | Function::Ci
+            | Function::Shi
+            | Function::Chi
+            | Function::LogIntegral
+            | Function::OffsetLogIntegral
+            | Function::FresnelS
+            | Function::FresnelC
+    )
+}
+
+fn odd_integral(f: Function) -> bool {
+    matches!(f, Function::Si | Function::Shi)
+}
+
+/// `TrigonometricIntegral.eval` (Si, Ci, Shi, Chi).
+fn trigonometric_integral_eval(f: Function, z: &Basic) -> PolyResult<Basic> {
+    let i: Basic = Basic::imaginary_unit();
+    let pi: Basic = Basic::pi();
+    let half: Basic = Basic::half();
+    if is_true(z, Predicate::zero) {
+        return Ok(match f {
+            Function::Si | Function::Shi => Basic::zero(),
+            _ => Basic::zoo(),
+        });
+    }
+    if matches!(z.head(), Head::Infinity) {
+        return match f {
+            Function::Si => mul(&[pi, half]),
+            Function::Ci => Ok(Basic::zero()),
+            _ => Ok(Basic::oo()),
+        };
+    }
+    if matches!(z.head(), Head::NegativeInfinity) {
+        return match f {
+            Function::Si => mul(&[Basic::negative_one(), pi, half]),
+            Function::Ci => mul(&[i, pi]),
+            Function::Shi => Ok(Basic::negative_oo()),
+            _ => Ok(Basic::oo()),
+        };
+    }
+    if odd_integral(f) {
+        if let Some(nz) = extract_multiplicatively(z, &i)? {
+            // i_factor(nz, 1)
+            let other: Basic = if f == Function::Si {
+                integral(Function::Shi, &nz)?
+            } else {
+                integral(Function::Si, &nz)?
+            };
+            return mul(&[i, other, Basic::one()]);
+        }
+        if let Some(nz) = extract_multiplicatively(z, &Basic::negative_one())? {
+            return minus(&integral(f, &nz)?);
+        }
+    }
+    Ok(node(f, vec![z.clone()]))
+}
+
+fn integral(f: Function, z: &Basic) -> PolyResult<Basic> {
+    integral_function(f, std::slice::from_ref(z))
+}
+
+fn fresnel_eval(f: Function, z: &Basic) -> PolyResult<Basic> {
+    if matches!(z.head(), Head::Infinity) {
+        return Ok(Basic::half());
+    }
+    if is_true(z, Predicate::zero) {
+        return Ok(Basic::zero());
+    }
+    let sign: i64 = if f == Function::FresnelS { -1 } else { 1 };
+    let mut prefactor: Basic = Basic::one();
+    let mut argument: Basic = z.clone();
+    let mut changed: bool = false;
+    if let Some(negated) = extract_multiplicatively(&argument, &Basic::negative_one())? {
+        prefactor = minus(&prefactor)?;
+        argument = negated;
+        changed = true;
+    }
+    if let Some(rotated) = extract_multiplicatively(&argument, &Basic::imaginary_unit())? {
+        prefactor = mul(&[int(sign), Basic::imaginary_unit(), prefactor])?;
+        argument = rotated;
+        changed = true;
+    }
+    if changed {
+        return mul(&[prefactor, integral(f, &argument)?]);
+    }
+    Ok(node(f, vec![z.clone()]))
+}
+
+fn part2_eval(f: Function, args: &[Basic]) -> PolyResult<Basic> {
+    match f {
+        Function::Expint => {
+            let (nu, _z) = (&args[0], &args[1]);
+            let integer: bool = nu.as_rational().is_some_and(|v| crate::numbers::denom(v) == Int::ONE);
+            let half_integer: bool = !integer
+                && nu
+                    .as_rational()
+                    .is_some_and(|v| crate::numbers::denom(v) == Int::from(2));
+            if (integer && is_true(nu, Predicate::nonpositive)) || half_integer {
+                return Err(crate::error::not_ported(
+                    "uppergamma (expint of a nonpositive integer or half-integer order)",
+                ));
+            }
+            Ok(node(f, args.to_vec()))
+        }
+        Function::Ei => {
+            let z: &Basic = &args[0];
+            if is_true(z, Predicate::zero) {
+                return Ok(Basic::negative_oo());
+            }
+            match z.head() {
+                Head::Infinity => Ok(Basic::oo()),
+                Head::NegativeInfinity => Ok(Basic::zero()),
+                _ => Ok(node(f, args.to_vec())),
+            }
+        }
+        Function::Si | Function::Ci | Function::Shi | Function::Chi => trigonometric_integral_eval(f, &args[0]),
+        Function::LogIntegral => {
+            let z: &Basic = &args[0];
+            if is_true(z, Predicate::zero) {
+                return Ok(Basic::zero());
+            }
+            if *z == Basic::one() {
+                return Ok(Basic::negative_oo());
+            }
+            if matches!(z.head(), Head::Infinity) {
+                return Ok(Basic::oo());
+            }
+            Ok(node(f, args.to_vec()))
+        }
+        Function::OffsetLogIntegral => {
+            let z: &Basic = &args[0];
+            if matches!(z.head(), Head::Infinity) {
+                return Ok(Basic::oo());
+            }
+            if *z == int(2) {
+                return Ok(Basic::zero());
+            }
+            Ok(node(f, args.to_vec()))
+        }
+        _ => fresnel_eval(f, &args[0]),
+    }
+}
+
+/// The evaluating function of part 2.
+pub fn integral_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
+    if !evaluate() {
+        return Ok(node(f, args.to_vec()));
+    }
+    part2_eval(f, args)
+}
+
+/// The derivative in the argument `argindex` (from 1, `fdiff`).
+pub fn integral_fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
+    use crate::functions::elementary::exponential::log;
+    use crate::functions::elementary::hyperbolic::{cosh, sinh};
+    use crate::functions::elementary::trigonometric::{cos, sin};
+    let args: &[Basic] = e.args();
+    let z: &Basic = args.last().expect("an argument");
+    match f {
+        Function::Expint => {
+            if argindex == 2 {
+                return minus(&integral_function(
+                    Function::Expint,
+                    &[sub(&args[0], &Basic::one())?, z.clone()],
+                )?);
+            }
+            let a: &Basic = &args[0];
+            if a.is_symbol() && !z.free_symbols().contains(a) {
+                return Ok(crate::core::function::derivative_node(e, &[(a.clone(), 1)]));
+            }
+            Err(crate::error::not_ported("a derivative as a Subs"))
+        }
+        Function::Ei => div(&exp(z)?, z),
+        Function::Si => div(&sin(z)?, z),
+        Function::Ci => div(&cos(z)?, z),
+        Function::Shi => div(&sinh(z)?, z),
+        Function::Chi => div(&cosh(z)?, z),
+        Function::LogIntegral | Function::OffsetLogIntegral => div(&Basic::one(), &log(z)?),
+        _ => {
+            let w: Basic = mul(&[Basic::half(), Basic::pi(), pow(z, &int(2))?])?;
+            if f == Function::FresnelS {
+                sin(&w)
+            } else {
+                cos(&w)
+            }
+        }
+    }
+}
+
+/// The conjugate (`_eval_conjugate`); `None` for the default rule.
+pub fn integral_conjugate(f: Function, e: &Basic) -> PolyResult<Option<Basic>> {
+    use crate::functions::elementary::complexes::conjugate;
+    let z: &Basic = &e.args()[0];
+    match f {
+        Function::LogIntegral => {
+            if is_true(z, Predicate::extended_negative) {
+                // the branch cut (-oo, 0): Python's override gives no rule
+                return Ok(None);
+            }
+            Ok(Some(integral(f, &conjugate(z)?)?))
+        }
+        Function::FresnelS | Function::FresnelC => Ok(Some(integral(f, &conjugate(z)?)?)),
+        _ => default_conjugate(e),
+    }
+}
+
+/// The facts (`_eval_facts`).
+pub fn integral_facts(f: Function, args: &[Basic]) -> FactList {
+    use Predicate as P;
+    let mut facts: FactList = FactList::new();
+    facts.set(P::commutative, true);
+    let z: &Basic = args.last().expect("an argument");
+    match f {
+        Function::Si | Function::Shi | Function::LogIntegral => {
+            if is_true(z, P::zero) {
+                facts.set(P::zero, true);
+            }
+        }
+        Function::FresnelS | Function::FresnelC => {
+            let a = facts_of(z);
+            for p in [P::extended_real, P::zero] {
+                if let Some(v) = a.get(&p) {
+                    facts.set(p, *v);
+                }
+            }
+        }
+        _ => {}
+    }
+    facts
+}
+
+fn ln(z: &Complex) -> Complex {
+    z.ln()
+}
+
+fn euler(wp: usize) -> Complex {
+    complex_real(crate::core::evalf::euler_gamma(wp), wp)
+}
+
+/// `sum_{k >= 1} sign**k z**(step*k + offset)/(k-scaled)` helpers: the
+/// series of the exponential and trigonometric integrals.
+fn ei_series(z: &Complex, wp: usize) -> Complex {
+    // sum z**k/(k*k!)
+    let mut term: Complex = c_int(1, wp);
+    let mut total: Complex = c_int(0, wp);
+    let mut k: i64 = 1;
+    loop {
+        term = &(&term * z) / &c_int(k, wp);
+        let t: Complex = &term / &c_int(k, wp);
+        total = &total + &t;
+        let size: f64 = modulus(&t);
+        if size == 0.0 || (k > 2 && size.log2() < -((wp + 10) as f64)) || k > 400_000 {
+            break;
+        }
+        k += 1;
+    }
+    total
+}
+
+/// `sum_k (sign)**k z**(2k + offset)/((2k + offset)*(2k + offset)!)`
+/// (offset 1: Si, Shi; offset 0 from k = 1: Ci, Chi).
+fn trig_series(z: &Complex, wp: usize, alternating: bool, odd: bool) -> Complex {
+    let z2: Complex = z * z;
+    let mut power: Complex = if odd { z.clone() } else { c_int(1, wp) };
+    let mut total: Complex = if odd { z.clone() } else { c_int(0, wp) };
+    let mut n: i64 = if odd { 1 } else { 0 };
+    loop {
+        // power = z**n/n!, from n to n + 2
+        power = &(&power * &z2) / &c_int((n + 1) * (n + 2), wp);
+        if alternating {
+            power = -&power;
+        }
+        n += 2;
+        let t: Complex = &power / &c_int(n, wp);
+        total = &total + &t;
+        let size: f64 = modulus(&t);
+        if size == 0.0 || (n > 4 && size.log2() < -((wp + 10) as f64)) || n > 400_000 {
+            break;
+        }
+    }
+    total
+}
+
+fn bits_for(z: &Complex, factor: f64) -> usize {
+    (modulus(z) * factor * 1.443) as usize + 20
+}
+
+fn raise(z: &Complex, wp: usize) -> Complex {
+    let (re, im) = parts(z);
+    complex(re.with_precision(wp).value(), im.with_precision(wp).value())
+}
+
+fn is_zero_value(z: &Complex) -> bool {
+    let (re, im) = parts(z);
+    re == Real::ZERO && im == Real::ZERO
+}
+
+/// mpmath's `ei(z) = EulerGamma + (log(z) - log(1/z))/2 + sum z**k/(k*k!)`.
+fn ei_value(z: &Complex, wp: usize) -> Option<Complex> {
+    if is_zero_value(z) || modulus(z) > 2000.0 {
+        return None;
+    }
+    let wp: usize = wp + bits_for(z, 1.0);
+    let z: Complex = raise(z, wp);
+    let half: Complex = &c_int(1, wp) / &c_int(2, wp);
+    let logs: Complex = &(&ln(&z) - &ln(&(&c_int(1, wp) / &z))) * &half;
+    Some(&(&euler(wp) + &logs) + &ei_series(&z, wp))
+}
+
+/// `E_n(z)` for an integer `n >= 0`: `E_1 = -EulerGamma - log(z) -
+/// sum (-z)**k/(k*k!)`, `E_0 = exp(-z)/z`, `E_{n+1} = (exp(-z) - z*E_n)/n`.
+fn expint_value(n: i64, z: &Complex, wp: usize) -> Option<Complex> {
+    if is_zero_value(z) {
+        // E_n(0) = 1/(n - 1) for n >= 2, a pole otherwise
+        if n >= 2 {
+            return Some(&c_int(1, wp) / &c_int(n - 1, wp));
+        }
+        return None;
+    }
+    if modulus(z) > 2000.0 {
+        return None;
+    }
+    let wp: usize = wp + bits_for(z, 1.0) + 2 * n as usize;
+    let z: Complex = raise(z, wp);
+    let minus_z: Complex = -&z;
+    let e_minus: Complex = minus_z.exp();
+    if n == 0 {
+        return Some(&e_minus / &z);
+    }
+    let mut value: Complex = &(&(-&euler(wp)) - &ln(&z)) - &ei_series(&minus_z, wp);
+    for k in 1..n {
+        value = &(&e_minus - &(&z * &value)) / &c_int(k, wp);
+    }
+    Some(value)
+}
+
+/// The value (`numeric`) of part 2.
+pub fn integral_value(f: Function, values: &[Complex], prec: usize) -> Option<Complex> {
+    let wp: usize = prec + 20;
+    let z: &Complex = values.last().expect("an argument");
+    let real: bool = parts(z).1 == Real::ZERO;
+    let positive: bool = real && parts(z).0 > Real::ZERO;
+    let value: Complex = match f {
+        Function::Expint => {
+            let (nr, ni) = parts(&values[0]);
+            if ni != Real::ZERO || nr.clone() != nr.floor() || nr < Real::ZERO {
+                return None;
+            }
+            let n: i64 = nr.to_int().value().try_into().ok()?;
+            let v: Complex = expint_value(n.min(10_000), z, wp)?;
+            return Some(finish(&v, prec, positive));
+        }
+        Function::Ei => {
+            let v: Complex = ei_value(z, wp)?;
+            return Some(finish(&v, prec, real));
+        }
+        Function::Si | Function::Shi => {
+            let w: usize = wp + bits_for(z, 1.0);
+            trig_series(&raise(z, w), w, f == Function::Si, true)
+        }
+        Function::Ci | Function::Chi => {
+            if is_zero_value(z) {
+                return None;
+            }
+            let w: usize = wp + bits_for(z, 1.0);
+            let zz: Complex = raise(z, w);
+            let series: Complex = trig_series(&zz, w, f == Function::Ci, false);
+            let v: Complex = &(&euler(w) + &ln(&zz)) + &series;
+            return Some(finish(&v, prec, positive));
+        }
+        Function::LogIntegral | Function::OffsetLogIntegral => {
+            let one: Complex = c_int(1, wp + 20);
+            if is_zero_value(&(z - &one)) {
+                return None;
+            }
+            let mut v: Complex = if is_zero_value(z) {
+                c_int(0, wp)
+            } else {
+                ei_value(&raise(z, wp + 20).ln(), wp)?
+            };
+            if f == Function::OffsetLogIntegral {
+                v = &v - &ei_value(&c_int(2, wp + 20).ln(), wp)?;
+            }
+            return Some(finish(&v, prec, positive));
+        }
+        _ => {
+            // fresnels: sum (-1)**n (pi/2)**(2n+1) z**(4n+3)/((2n+1)!(4n+3))
+            // fresnelc: sum (-1)**n (pi/2)**(2n) z**(4n+1)/((2n)!(4n+1))
+            let size: f64 = modulus(z);
+            if size > 60.0 {
+                return None;
+            }
+            let w: usize = wp + (size * size * std::f64::consts::FRAC_PI_2 * 1.443) as usize + 20;
+            let zz: Complex = raise(z, w);
+            let a: Complex = &(&complex_real(Real::pi(w), w) / &c_int(2, w)) * &(&zz * &zz);
+            // t_m = a**m/m!, the terms use the odd m (S) or the even m (C)
+            let s: bool = f == Function::FresnelS;
+            let mut m: i64 = if s { 1 } else { 0 };
+            let mut power: Complex = if s { a.clone() } else { c_int(1, w) };
+            let mut total: Complex = c_int(0, w);
+            let mut sign: bool = true;
+            loop {
+                let t: Complex = &power / &c_int(2 * m + 1, w);
+                total = if sign { &total + &t } else { &total - &t };
+                let ts: f64 = modulus(&t);
+                if ts == 0.0 || (m > 4 && ts.log2() < -((w + 10) as f64)) || m > 400_000 {
+                    break;
+                }
+                power = &(&(&power * &a) * &a) / &c_int((m + 1) * (m + 2), w);
+                m += 2;
+                sign = !sign;
+            }
+            &total * &zz
+        }
+    };
+    Some(finish(&value, prec, real))
+}
+
+/// `DefinedFunction._eval_conjugate`: the node for a real value, its
+/// negative for an imaginary one.
+fn default_conjugate(e: &Basic) -> PolyResult<Option<Basic>> {
+    if is_true(e, Predicate::extended_real) {
+        return Ok(Some(e.clone()));
+    }
+    if is_true(e, Predicate::imaginary) {
+        return Ok(Some(minus(e)?));
+    }
+    Ok(None)
 }

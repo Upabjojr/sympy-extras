@@ -284,6 +284,24 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
         }
         Head::Function(
+            g @ (super::basic::Function::Expint
+            | super::basic::Function::Ei
+            | super::basic::Function::Si
+            | super::basic::Function::Ci
+            | super::basic::Function::Shi
+            | super::basic::Function::Chi
+            | super::basic::Function::LogIntegral
+            | super::basic::Function::OffsetLogIntegral
+            | super::basic::Function::FresnelS
+            | super::basic::Function::FresnelC),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::error_functions::integral_value(*g, &values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Erf
             | super::basic::Function::Erfc
             | super::basic::Function::Erfi
@@ -539,7 +557,17 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Erfinv
                 | super::basic::Function::Erfcinv
                 | super::basic::Function::Erf2
-                | super::basic::Function::Erf2inv => {
+                | super::basic::Function::Erf2inv
+                | super::basic::Function::Expint
+                | super::basic::Function::Ei
+                | super::basic::Function::Si
+                | super::basic::Function::Ci
+                | super::basic::Function::Shi
+                | super::basic::Function::Chi
+                | super::basic::Function::LogIntegral
+                | super::basic::Function::OffsetLogIntegral
+                | super::basic::Function::FresnelS
+                | super::basic::Function::FresnelC => {
                     return None;
                 }
                 g

@@ -245,6 +245,16 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Erfcinv" => Basic::new(Head::Function(Function::Erfcinv), args()?),
         "Erf2" => Basic::new(Head::Function(Function::Erf2), args()?),
         "Erf2inv" => Basic::new(Head::Function(Function::Erf2inv), args()?),
+        "Expint" => Basic::new(Head::Function(Function::Expint), args()?),
+        "EiNode" => Basic::new(Head::Function(Function::Ei), args()?),
+        "SiNode" => Basic::new(Head::Function(Function::Si), args()?),
+        "CiNode" => Basic::new(Head::Function(Function::Ci), args()?),
+        "ShiNode" => Basic::new(Head::Function(Function::Shi), args()?),
+        "ChiNode" => Basic::new(Head::Function(Function::Chi), args()?),
+        "LiNode" => Basic::new(Head::Function(Function::LogIntegral), args()?),
+        "OffsetLiNode" => Basic::new(Head::Function(Function::OffsetLogIntegral), args()?),
+        "FresnelS" => Basic::new(Head::Function(Function::FresnelS), args()?),
+        "FresnelC" => Basic::new(Head::Function(Function::FresnelC), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -436,6 +446,16 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::Erfcinv
                 | Function::Erf2
                 | Function::Erf2inv => "error_functions",
+                Function::Expint
+                | Function::Ei
+                | Function::Si
+                | Function::Ci
+                | Function::Shi
+                | Function::Chi
+                | Function::LogIntegral
+                | Function::OffsetLogIntegral
+                | Function::FresnelS
+                | Function::FresnelC => "error_functions",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
                 Function::Zeta
                 | Function::DirichletEta
@@ -464,6 +484,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
+                || sympy_extras_core::functions::special::error_functions::is_integral_function(*f)
             {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
@@ -2131,6 +2152,22 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         }
         "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
         "beta" => sympy_extras_core::functions::special::beta_functions::beta(&a[0], a.get(1)).map_err(e)?,
+        "expint" | "Ei" | "Si" | "Ci" | "Shi" | "Chi" | "li" | "Li" | "fresnels" | "fresnelc" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match name {
+                "expint" => F::Expint,
+                "Ei" => F::Ei,
+                "Si" => F::Si,
+                "Ci" => F::Ci,
+                "Shi" => F::Shi,
+                "Chi" => F::Chi,
+                "li" => F::LogIntegral,
+                "Li" => F::OffsetLogIntegral,
+                "fresnels" => F::FresnelS,
+                _ => F::FresnelC,
+            };
+            sympy_extras_core::functions::special::error_functions::integral_function(f, &a).map_err(e)?
+        }
         "erf" | "erfc" | "erfi" | "erfinv" | "erfcinv" | "erf2" | "erf2inv" => {
             use sympy_extras_core::core::basic::Function as F;
             let f: F = match name {

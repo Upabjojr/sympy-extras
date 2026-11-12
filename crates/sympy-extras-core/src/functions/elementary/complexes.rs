@@ -122,6 +122,16 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Asech
         | Function::Acsch) => super::inverse::inverse_conjugate(e, g),
         Function::Arg | Function::Atan2 => super::argument::argument_conjugate(e, f),
+        g @ (Function::Expint
+        | Function::Ei
+        | Function::Si
+        | Function::Ci
+        | Function::Shi
+        | Function::Chi
+        | Function::LogIntegral
+        | Function::OffsetLogIntegral
+        | Function::FresnelS
+        | Function::FresnelC) => crate::functions::special::error_functions::integral_conjugate(g, e),
         g @ (Function::Erf
         | Function::Erfc
         | Function::Erfi
@@ -574,6 +584,16 @@ fn function_real_imag(
         | Function::Erfcinv
         | Function::Erf2
         | Function::Erf2inv
+        | Function::Expint
+        | Function::Ei
+        | Function::Si
+        | Function::Ci
+        | Function::Shi
+        | Function::Chi
+        | Function::LogIntegral
+        | Function::OffsetLogIntegral
+        | Function::FresnelS
+        | Function::FresnelC
         | Function::Beta
         | Function::BetaInc
         | Function::BetaIncRegularized

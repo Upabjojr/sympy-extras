@@ -1362,6 +1362,16 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::Erfcinv
         | super::basic::Function::Erf2
         | super::basic::Function::Erf2inv) => crate::functions::special::error_functions::error_facts(g, e.args()),
+        g @ (super::basic::Function::Expint
+        | super::basic::Function::Ei
+        | super::basic::Function::Si
+        | super::basic::Function::Ci
+        | super::basic::Function::Shi
+        | super::basic::Function::Chi
+        | super::basic::Function::LogIntegral
+        | super::basic::Function::OffsetLogIntegral
+        | super::basic::Function::FresnelS
+        | super::basic::Function::FresnelC) => crate::functions::special::error_functions::integral_facts(g, e.args()),
         super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
             crate::functions::special::tensor_functions::tensor_facts()
         }

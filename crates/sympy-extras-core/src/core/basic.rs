@@ -306,6 +306,16 @@ pub enum Function {
     Erfcinv,
     Erf2,
     Erf2inv,
+    Expint,
+    Ei,
+    Si,
+    Ci,
+    Shi,
+    Chi,
+    LogIntegral,
+    OffsetLogIntegral,
+    FresnelS,
+    FresnelC,
 }
 
 impl Function {
@@ -405,6 +415,16 @@ impl Function {
             Function::Erfcinv => "erfcinv",
             Function::Erf2 => "erf2",
             Function::Erf2inv => "erf2inv",
+            Function::Expint => "expint",
+            Function::Ei => "Ei",
+            Function::Si => "Si",
+            Function::Ci => "Ci",
+            Function::Shi => "Shi",
+            Function::Chi => "Chi",
+            Function::LogIntegral => "li",
+            Function::OffsetLogIntegral => "Li",
+            Function::FresnelS => "fresnels",
+            Function::FresnelC => "fresnelc",
         }
     }
 
@@ -504,6 +524,16 @@ impl Function {
             Function::Erfcinv => "Erfcinv",
             Function::Erf2 => "Erf2",
             Function::Erf2inv => "Erf2inv",
+            Function::Expint => "Expint",
+            Function::Ei => "EiNode",
+            Function::Si => "SiNode",
+            Function::Ci => "CiNode",
+            Function::Shi => "ShiNode",
+            Function::Chi => "ChiNode",
+            Function::LogIntegral => "LiNode",
+            Function::OffsetLogIntegral => "OffsetLiNode",
+            Function::FresnelS => "FresnelS",
+            Function::FresnelC => "FresnelC",
         }
     }
 
@@ -567,6 +597,16 @@ impl Function {
             | Function::Erfcinv
             | Function::Erf2
             | Function::Erf2inv
+            | Function::Expint
+            | Function::Ei
+            | Function::Si
+            | Function::Ci
+            | Function::Shi
+            | Function::Chi
+            | Function::LogIntegral
+            | Function::OffsetLogIntegral
+            | Function::FresnelS
+            | Function::FresnelC
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma

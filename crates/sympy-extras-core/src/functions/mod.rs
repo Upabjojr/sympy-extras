@@ -53,6 +53,16 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::LerchPhi
         | Function::RiemannXi
         | Function::Stieltjes) => special::zeta_functions::zeta_fdiff(g, e, argindex),
+        g @ (Function::Expint
+        | Function::Ei
+        | Function::Si
+        | Function::Ci
+        | Function::Shi
+        | Function::Chi
+        | Function::LogIntegral
+        | Function::OffsetLogIntegral
+        | Function::FresnelS
+        | Function::FresnelC) => special::error_functions::integral_fdiff(g, e, argindex),
         g @ (Function::Erf
         | Function::Erfc
         | Function::Erfi
@@ -196,6 +206,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if special::error_functions::is_integral_function(f) {
+        return special::error_functions::integral_function(f, args);
+    }
     if special::error_functions::is_error_function(f) {
         return special::error_functions::error_function(f, args);
     }
@@ -266,6 +279,16 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::Erfcinv
         | Function::Erf2
         | Function::Erf2inv => unreachable!("evaluated above with all their arguments"),
+        Function::Expint
+        | Function::Ei
+        | Function::Si
+        | Function::Ci
+        | Function::Shi
+        | Function::Chi
+        | Function::LogIntegral
+        | Function::OffsetLogIntegral
+        | Function::FresnelS
+        | Function::FresnelC => unreachable!("evaluated above with all their arguments"),
         Function::Beta | Function::BetaInc | Function::BetaIncRegularized => {
             unreachable!("evaluated above with all their arguments")
         }
