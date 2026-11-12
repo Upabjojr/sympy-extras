@@ -10,6 +10,26 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The relations in one unknown which `assumptions.solve`, the
+  transcendental solver and `sympy_extras._special_values` solved with
+  SymPy's `solveset` at run time (`assumptions.solve_sympy.solveset_of_core`,
+  `solvers.transcendental_sympy.solveset_of_core`, both removed) are solved
+  by the new native port `sympy_extras.solvers.solveset` (`solveset`,
+  `real_polynomial_solutions`): over the reals the polynomials with
+  irrational coefficients (all their roots, the real ones told apart by
+  reliable values, the signs between them for an inequality), the
+  parametric linear and even binomial inequalities, the transcendental
+  relations through `solve_transcendental`, the equations in exponentials
+  and logarithms by their checked candidates and `g(u(x)) = c` for a sine,
+  a cosine or a tangent; over the complex numbers the rational equations,
+  `g(u(x)) = c` for an exponential, trigonometric or hyperbolic `g` (images
+  of the integers) and the radical equations. What it does not solve is
+  the `ConditionSet` of the relation, as SymPy's answer. The roots which
+  are numbers are written `a + b*I`, as SymPy's `_solve_as_poly` does (the
+  formulas of Ferrari put a square root on its branch cut). The extraneous
+  root `-1` which SymPy's `solveset` gave for `log(x) + log(x - 1) = log(2)`
+  over the reals is not returned.
+
 - The solvers which called SymPy's `solve` at run time through the
   `solve_of_core` functions of the faces (`charpit`, `second_order`,
   `lie`, `abel`, `ode`, `pde`, `factorization`, and the Lambert W

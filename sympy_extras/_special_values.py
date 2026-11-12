@@ -98,10 +98,9 @@ the assumptions at a point decided by the native
 :func:`~sympy_extras.assumptions.sat.satisfiable`; the real roots of a
 polynomial whose coefficients are not rational (``a**2 - pi``) by the
 formulas over ``EX`` of :func:`~sympy_extras.polys.polyroots.ex_roots`.
-One step goes through SymPy at run time when the native code does not
-take it: the solutions of a transcendental factor which the native solver
-does not reduce
-(:func:`~sympy_extras.solvers.transcendental_sympy.solveset_of_core`).
+The solutions of a transcendental factor which the native solver does not
+reduce are those of the native port of SymPy's ``solveset``
+(:func:`~sympy_extras.solvers.solveset.solveset`).
 
 Examples
 ========
@@ -141,7 +140,7 @@ from sympy_extras.integrals.integral import Integral
 from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polyroots import roots
 from sympy_extras.polys.polytools import factor
-from sympy_extras.sets.sets import FiniteSet, Set
+from sympy_extras.sets.sets import FiniteSet, Reals, Set
 from sympy_extras.settings import settings
 
 __all__ = ['Point', 'Compute', 'special_points', 'with_special_values', 'point_condition', 'condition_point',
@@ -457,14 +456,14 @@ def _real_roots(g: Expr, p: Symbol) -> list[Expr]:
 
 def _real_solutions(g: Expr, p: Symbol) -> Optional[Set]:
     """The real solutions of ``g = 0`` in ``p`` (SymPy's ``solveset(g, p,
-    S.Reals)``): by the native transcendental solver, by SymPy's solveset
-    when it does not reduce the equation."""
+    S.Reals)``): by the native transcendental solver, by the native port
+    of SymPy's solveset when it does not reduce the equation."""
     from sympy_extras.solvers.transcendental import solve_transcendental
     found = solve_transcendental(Eq(g, Integer(0)), p)
     if found is not None:
         return found
-    from sympy_extras.solvers.transcendental_sympy import solveset_of_core
-    return solveset_of_core(Eq(g, Integer(0)), p)
+    from sympy_extras.solvers.solveset import solveset
+    return solveset(Eq(g, Integer(0)), p, Reals)
 
 
 def _real_for_real_parameters(v: Expr) -> bool:

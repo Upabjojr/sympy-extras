@@ -223,13 +223,47 @@ def _polynomial_roots(e: Expr, x: Symbol, degree: int) -> Optional[list[Expr]]:
     try:
         listed_ex = ex_roots(expand(e), x)
     except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
-        return None
+        decomposed = _roots_in_power(e, x)
+        if decomposed is None:
+            return None
+        listed_ex = decomposed
     if len(listed_ex) != degree:
         return None
     result: list[Expr] = []
     for r in listed_ex:
         if r not in result:
             result.append(r)
+    return result
+
+
+def _roots_in_power(e: Expr, x: Symbol) -> Optional[list[Expr]]:
+    """The roots, with repetitions, of a polynomial in ``x**g`` (``g``
+    the gcd of the exponents, at least two): the roots ``s`` of the
+    polynomial in ``y = x**g``, then the ``g``-th roots of each."""
+    coefficients = _coefficients(e, x)
+    if coefficients is None:
+        return None
+    g = 0
+    for k in coefficients:
+        g = math.gcd(g, k)
+    if g < 2:
+        return None
+    from sympy_extras.polys.polyerrors import BasePolynomialError
+    from sympy_extras.polys.polyroots import ex_roots, roots
+    y = Dummy('y')
+    reduced = add(*[c*pow(y, Integer(k//g)) for k, c in coefficients.items()])
+    try:
+        inner = ex_roots(expand(reduced), y)
+    except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
+        return None
+    w = Dummy('w')
+    unity = roots(pow(w, Integer(g)) - 1, w, multiple=True)
+    if not isinstance(unity, list) or len(unity) != g:
+        return None
+    result: list[Expr] = []
+    for value in inner:
+        principal = pow(value, Rational(1, g))
+        result.extend(principal*u for u in unity)
     return result
 
 
@@ -490,14 +524,40 @@ def _unrad(numerator: Expr, x: Symbol, depth: int) -> Optional[list[Expr]]:
     if polynomial.is_polynomial(t, x) is not True:
         return None
     defining = base_denominator*pow(t, Integer(q)) - base_numerator
-    try:
-        eliminated = attempt(lambda: resultant(expand(polynomial), expand(defining), t), settings.timeout,
-                             native=True)
-    except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
+    eliminated: Optional[Expr] = None
+    if q == 2:
+        eliminated = _square_eliminated(polynomial, t, base_numerator, base_denominator)
+    if eliminated is None:
+        try:
+            eliminated = attempt(lambda: resultant(expand(polynomial), expand(defining), t), settings.timeout,
+                                 native=True)
+        except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
+            return None
+    if eliminated is None:
         return None
-    if eliminated is None or not eliminated.has(x):
-        return None
+    if not eliminated.has(x):
+        # a nonzero constant: no solution (x - sqrt(x**2 - 1) = 0)
+        return [] if eliminated != _ZERO else None
     return _solve(eliminated, x, depth + 1)
+
+
+def _square_eliminated(polynomial: Expr, t: Symbol, n: Expr, d: Expr) -> Optional[Expr]:
+    """The resultant of ``P(t)`` and ``d*t**2 - n`` in ``t`` for any
+    coefficients (the domains of the native resultant take no ``EX``):
+    ``P = A + B*t`` modulo ``t**2 = n/d`` and ``d**k*(A**2 - B**2*n/d)``."""
+    coefficients = _coefficients(polynomial, t)
+    if coefficients is None:
+        return None
+    even: list[Expr] = []
+    odd: list[Expr] = []
+    top = max(coefficients) if coefficients else 0
+    k = top//2
+    for degree, c in coefficients.items():
+        # t**degree = (n/d)**(degree//2) * t**(degree % 2), times d**k
+        term = c*pow(n, Integer(degree//2))*pow(d, Integer(k - degree//2))
+        (odd if degree % 2 else even).append(term)
+    A, B = add(*even), add(*odd)
+    return expand(d*A**2 - n*B**2)
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +584,9 @@ def _tsolve(numerator: Expr, x: Symbol, depth: int) -> Optional[list[Expr]]:
     elif isinstance(lhs, Pow):
         base, e = lhs.base, lhs.exp
         if isinstance(base, Expr) and isinstance(e, Expr):
+            if isinstance(e, Integer) and e.p >= 2 and rhs != _ZERO and not rhs.has(x):
+                # base**n = r: base is one of the n-th roots of r
+                return _nth_roots(base, rhs, int(e.p), x, depth)
             if isinstance(e, Integer) and lhs - rhs != numerator:
                 return _solve(lhs - rhs, x, depth + 1)
             if rhs == _ZERO and e.has(x) and base.has(x):
@@ -537,6 +600,24 @@ def _tsolve(numerator: Expr, x: Symbol, depth: int) -> Optional[list[Expr]]:
         return _solve(lhs - rhs, x, depth + 1)
     from .bivariate import solve_lambert
     return solve_lambert(lhs - rhs, x)
+
+
+def _nth_roots(base: Expr, r: Expr, n: int, x: Symbol, depth: int) -> Optional[list[Expr]]:
+    """The solutions of ``base**n = r``: ``base = r**(1/n)*w`` for the
+    ``n``-th roots of unity ``w``."""
+    from sympy_extras.polys.polyroots import roots
+    w = Dummy('w')
+    unity = roots(pow(w, Integer(n)) - 1, w, multiple=True)
+    if not isinstance(unity, list) or len(unity) != n:
+        return None
+    principal = pow(r, Rational(1, n))
+    result: list[Expr] = []
+    for u in unity:
+        found = _solve(base - principal*u, x, depth + 1)
+        if found is None:
+            return None
+        result.extend(found)
+    return result
 
 
 # ---------------------------------------------------------------------------

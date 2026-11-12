@@ -28,11 +28,12 @@ relations linear in the unknown with real coefficients are native, and
 so are the Lambert W candidates (the native port of SymPy's ``solve``,
 :mod:`sympy_extras.solvers.solvers` and :mod:`sympy_extras.solvers.bivariate`)
 and the reliable numerical values of :mod:`sympy_extras._numeric` which
-check them. One step goes through SymPy at run time
-(:mod:`sympy_extras.solvers.transcendental_sympy`, its face on SymPy
-objects, holds it, the function ending in ``_of_core``): SymPy's
-``solveset`` of the other relations polynomial in the unknown with
-transcendental or symbolic coefficients when no solver is given.
+check them, and the other relations polynomial in the unknown with
+transcendental or symbolic coefficients, when no solver is given, are
+solved by the native port of SymPy's ``solveset``
+(:mod:`sympy_extras.solvers.solveset`).
+:mod:`sympy_extras.solvers.transcendental_sympy` is its face on SymPy
+objects.
 
 Examples
 ========
@@ -726,8 +727,9 @@ def _linear_solution(relation: Relational, x: Symbol) -> Optional[Set]:
 def _solve_real(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     """The real solutions of a formula in ``x``: by the cylindrical
     algebraic decomposition when polynomial with rational coefficients,
-    by the solver of the context (or SymPy's) when polynomial with other
-    constant coefficients, through the kernels otherwise."""
+    by the solver of the context (or the native port of SymPy's
+    ``solveset``) when polynomial with other constant coefficients, through
+    the kernels otherwise."""
     if isinstance(formula, BooleanTrue):
         return Reals
     if isinstance(formula, BooleanFalse):
@@ -744,11 +746,8 @@ def _solve_real(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
             linear = _linear_solution(formula, x)
             if linear is not None:
                 return linear
-            from .transcendental_sympy import solveset_of_core
-            try:
-                return solveset_of_core(formula, x)
-            except (NotImplementedError, ValueError, TypeError):
-                return None
+            from .solveset import solveset
+            return solveset(formula, x, Reals)
         if isinstance(formula, (And, Or)):
             parts: list[Set] = []
             for a in formula.args:
@@ -863,7 +862,9 @@ def solve_transcendental(formula: Boolean, x: Symbol, solver: Optional[Solver] =
         The real unknown.
     solver : callable, optional
         Solves a formula polynomial in a variable (with parameters or
-        transcendental constants) for it; SymPy's ``solveset`` by default.
+        transcendental constants) for it; the native port of SymPy's
+        ``solveset`` (:func:`~sympy_extras.solvers.solveset.solveset`) by
+        default.
         The formulas with rational coefficients and no parameters are
         always solved by the cylindrical algebraic decomposition.
     decide : callable, optional

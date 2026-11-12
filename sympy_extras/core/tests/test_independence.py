@@ -2868,3 +2868,36 @@ def test_native_solve_equation_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVE_EQUATION], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SOLVESET = r'''
+import sys
+from sympy_extras.core import Eq, I, sqrt, symbols
+from sympy_extras.functions import log, sin, sinh
+from sympy_extras.sets import Complexes, Reals
+from sympy_extras.solvers.solveset import solveset
+from sympy_extras.assumptions.solve import solve
+assert 'sympy' not in sys.modules
+x, y, n = symbols('x y n')
+assert str(solveset(Eq(sinh(x), I), x, Complexes)) == 'ImageSet(Lambda(_n, 2*_n*I*pi + I*pi/2), Integers)'
+assert str(solveset(Eq(sin(3/n), 0), n, Reals)) == \
+    'Union(ImageSet(Lambda(_n, 3/(2*_n*pi)), Integers), ImageSet(Lambda(_n, 3/(pi*(2*_n + 1))), Integers))'
+assert str(solveset(x**2 - 2 > sqrt(2), x, Reals)) == \
+    'Union(Interval.open(-oo, -sqrt(sqrt(2) + 2)), Interval.open(sqrt(sqrt(2) + 2), oo))'
+assert len(solve(y**4 - y**3 - 10*y**2 + 5*y + 24, y, domain=Complexes).args) == 4
+assert str(solve(Eq(log(x) + log(x - 1), log(2)), x, domain=Reals)) == '{2}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_solveset_does_not_load_sympy() -> None:
+    """The native port of SymPy's ``solveset`` (:mod:`sympy_extras.solvers.solveset`)
+    loads no SymPy, nor do the steps which went through the
+    ``solveset_of_core`` functions of ``assumptions.solve_sympy`` and
+    ``solvers.transcendental_sympy``: the images of the integers of
+    ``sinh(x) = I`` and ``sin(3/n) = 0``, a polynomial inequality with
+    irrational coefficients, a quartic over the complex numbers, and a sum
+    of logarithms."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVESET], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

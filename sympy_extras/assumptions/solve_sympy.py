@@ -9,11 +9,12 @@ SymPy's constructors.
 
 The steps of the native ``solve`` which stay written on SymPy are called
 from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): SymPy's ``solveset`` for the equations which
-are not rational and for the inequalities, ``nonlinsolve`` and the
+return objects of the core): ``nonlinsolve`` and the
 intersections of sets which the core does not evaluate (with ``Range``,
 ``ImageSet``, ...).
-The transcendental equations (:mod:`sympy_extras.solvers.transcendental`),
+The equations in one unknown which are not rational and the inequalities
+(the native port of SymPy's ``solveset``,
+:mod:`sympy_extras.solvers.solveset`), the transcendental equations (:mod:`sympy_extras.solvers.transcendental`),
 :func:`sympy_extras._numeric.reliable_value`, the cylindrical
 algebraic decomposition (:mod:`sympy_extras.polys.cad`),
 the radical forms of the roots (:mod:`sympy_extras.polys.roots`), the
@@ -37,17 +38,16 @@ from sympy.sets.sets import FiniteSet, Set
 
 from sympy_extras._typing_sympy import as_set
 from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 from sympy_extras.sets.sets import PointSet as CorePointSet
 from sympy_extras.sets.sets import Set as CoreSet
 
 from . import solve as native
-from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolean, core_domain, sympy_boolean
-from .intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
+from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolean, core_domain
+from .intervals_sympy import core_expr, core_symbol, sympy_expr
 
-__all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core', 'nonlinsolve_of_core']
+__all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'nonlinsolve_of_core']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
 #: relation or a Boolean combination of relations
@@ -78,14 +78,6 @@ def evaluated_set_of_core(s: CoreSet) -> CoreSet:
     intersections the core leaves alone (``Interval`` and ``Integers``,
     ``ImageSet`` and ``Reals``, ...)."""
     return _core_set(to_sympy(s))
-
-
-def solveset_of_core(relation: CoreBoolean, x: CoreSymbol, domain: CoreSet) -> CoreSet:
-    """:func:`sympy.solveset` of one relation (its exceptions go on)."""
-    from sympy.solvers.solveset import solveset
-    return _core_set(solveset(sympy_boolean(relation), _sympy_symbol(x), sympy_set(domain)))
-
-
 
 
 def nonlinsolve_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]) -> Optional[CoreSet]:

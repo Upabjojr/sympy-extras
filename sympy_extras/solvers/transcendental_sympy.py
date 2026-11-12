@@ -1,19 +1,11 @@
 """The SymPy face of the transcendental equations and inequalities
-(:mod:`sympy_extras.solvers.transcendental`), and the steps which stay on
-SymPy.
+(:mod:`sympy_extras.solvers.transcendental`).
 
 :func:`solve_transcendental` and :func:`polynomialize` take and return
 SymPy objects, converted by :mod:`sympy_extras.interop` around the native
 functions; a ``solver`` and a ``decide`` given on SymPy objects are
 called through the conversion too. :class:`Reduction` is the native
 reduction with its formula, variable and argument on SymPy objects.
-
-The steps of the native module which stay written on SymPy are called
-from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): SymPy's ``solveset`` of a relation
-polynomial in the unknown with transcendental or symbolic coefficients
-(when no solver is given). The Lambert W candidates are native
-(:mod:`sympy_extras.solvers.bivariate`).
 
 Examples
 ========
@@ -46,7 +38,7 @@ from sympy_extras.sets.sets import Set as CoreSet
 
 from . import transcendental as native
 
-__all__ = ['solve_transcendental', 'polynomialize', 'Reduction', 'Solver', 'Decider', 'solveset_of_core']
+__all__ = ['solve_transcendental', 'polynomialize', 'Reduction', 'Solver', 'Decider']
 
 #: solves a formula, polynomial in the given variable, for it (``None``
 #: when it cannot)
@@ -69,17 +61,6 @@ def _core_set(s: Basic) -> CoreSet:
     if not isinstance(converted, CoreSet):
         raise TypeError("expected a set, got %s" % (s,))
     return converted
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native module which stay on SymPy
-
-def solveset_of_core(relation: CoreBoolean, x: CoreSymbol) -> CoreSet:
-    """SymPy's ``solveset`` of one relation over the reals (its
-    exceptions go on)."""
-    from sympy.core.singleton import S
-    from sympy.solvers.solveset import solveset
-    return _core_set(solveset(sympy_boolean(relation), _sympy_symbol(x), S.Reals))
 
 
 # ---------------------------------------------------------------------------

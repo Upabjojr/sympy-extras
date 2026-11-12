@@ -16,14 +16,13 @@ the complex numbers are solved by the native
 :func:`~sympy_extras.polys.rationalsolve.solveset_rational`, the families
 of a regular chain with the native polynomials, and the candidates are
 checked natively. The steps which are not ported go through SymPy at run
-time (the face holds them, the functions ending in ``_of_core``): SymPy's
-``solveset`` (the other equations and the inequalities in one unknown),
+time (the face holds them, the functions ending in ``_of_core``):
 ``nonlinsolve`` and the evaluation of an intersection of
-sets which is not ported (with ``Range``, ...), the exact points of
-the zero-dimensional regular chains (SymPy's ``CRootOf``, through
-:mod:`sympy_extras.polys.regularchains_sympy`). The transcendental
-equations (:mod:`sympy_extras.solvers.transcendental`, whose Lambert W
-candidates go through SymPy's ``solve``), the periods of the periodic
+sets which is not ported (with ``Range``, ...). The other equations and
+the inequalities in one unknown (the native port of SymPy's ``solveset``,
+:mod:`sympy_extras.solvers.solveset`), the transcendental
+equations (:mod:`sympy_extras.solvers.transcendental`, with the Lambert W
+candidates of the native port of SymPy's ``solve``), the periods of the periodic
 formulas (:func:`sympy_extras.calculus.util.periodicity`), the reliable numerical values
 of :mod:`sympy_extras._numeric`, the cylindrical algebraic decomposition
 (:mod:`sympy_extras.polys.cad.qe`: ``solution_set``;
@@ -138,8 +137,9 @@ def _domain_set(facts: Facts, symbols: Sequence[Symbol], domain: Optional[Set]) 
 
 def _solveset(formula: Boolean, x: Symbol, domain: Set) -> Set:
     """Solve a Boolean combination of relations in one variable, atom by
-    atom: a rational equation over the complex numbers natively, the
-    others with SymPy's ``solveset``."""
+    atom: a rational equation over the complex numbers by the port of
+    SymPy's ``solveset_rational``, the others by the native port of
+    SymPy's ``solveset`` (:mod:`sympy_extras.solvers.solveset`)."""
     if isinstance(formula, BooleanTrue):
         return domain
     if isinstance(formula, BooleanFalse):
@@ -162,11 +162,8 @@ def _solveset(formula: Boolean, x: Symbol, domain: Set) -> Set:
         rational = _rational_solutions(formula, x, domain)
         if rational is not None:
             return rational
-        from .solve_sympy import solveset_of_core
-        try:
-            return solveset_of_core(formula, x, domain)
-        except (NotImplementedError, ValueError, TypeError):
-            return condition_set(x, formula, domain)
+        from sympy_extras.solvers.solveset import solveset
+        return solveset(formula, x, domain)
     return condition_set(x, formula, domain)
 
 

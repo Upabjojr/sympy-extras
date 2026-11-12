@@ -156,7 +156,7 @@ sympy_extras/
     _special_values.py       with_special_values, special_points, condition_point, defined_problem, ...: the cases of
                              the isolated values of the parameters at which a closed form fails (native; the real roots
                              of polynomials with irrational coefficients by polyroots.ex_roots; the transcendental
-                             factors the native solver does not reduce through transcendental_sympy)
+                             factors the native solver does not reduce by the native solvers.solveset)
     _special_values_sympy.py the SymPy face of _special_values (used by integrals/definite, indefinite, concrete/karr_sympy;
                              not the solvers/_special_values_sympy of the ODE cases)
     _timeout.py              attempt, time_limit, remaining_time, prepare_sympy: time limits (no SymPy imported; SymPy's
@@ -193,8 +193,9 @@ sympy_extras/
         sat_sympy.py         the SymPy face of sat
         satask.py            predicates_consistent: predicates against SymPy's known number facts and class facts by the
                              native SAT solver (native, PORTED FROM SYMPY satask, sathandlers, ask_generated)
-        solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains, parametric cases
-                             and transcendental equations; solveset, nonlinsolve through solve_sympy)
+        solve.py             solve(): Solve under assumptions (native, with the native CAD, regular chains, parametric cases,
+                             transcendental equations and solvers.solveset; nonlinsolve and the intersections not
+                             evaluated by the core through solve_sympy)
         solve_sympy.py       the SymPy face of solve, and the steps which stay on SymPy (the *_of_core functions;
                              the periods by the native calculus.util.periodicity)
         limits.py            limit(), limit_seq(), series() under assumptions, with case distinctions (native; the core's
@@ -419,9 +420,12 @@ sympy_extras/
         isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts)
         transcendental.py    solve_transcendental, polynomialize, Reduction: transcendental equations and inequalities
                              reduced to polynomial ones through kernels (native; the Lambert W candidates by the native
-                             solvers (lambert=False skips them); SymPy's solveset of the non-rational polynomial
-                             relations through transcendental_sympy)
-        transcendental_sympy.py the SymPy face of transcendental, and solveset_of_core
+                             solvers (lambert=False skips them); the non-rational polynomial relations by solveset)
+        transcendental_sympy.py the SymPy face of transcendental
+        solveset.py          solveset, real_polynomial_solutions: SymPy's solveset of one relation over the reals (roots
+                             told apart by reliable values, signs, the transcendental solver) and the complex numbers
+                             (rational equations, images of the integers, radicals) (native, PORTED FROM SYMPY
+                             solvers/solveset)
         solvers.py           solve_equation, solve_system, invert, checksol: SymPy's solve of one equation in one unknown
                              (roots, one generator, radicals of one base, _tsolve) and of polynomial systems (Groebner
                              basis, substitution) (native, PORTED FROM SYMPY solvers/solvers)
