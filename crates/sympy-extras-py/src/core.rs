@@ -174,6 +174,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "PointSet" => Basic::new(Head::PointSet, args()?),
         "ConditionSet" => Basic::new(Head::ConditionSet, args()?),
         "AccumBounds" | "AccumulationBounds" => Basic::new(Head::AccumBounds, args()?),
+        "Piecewise" => Basic::new(Head::Piecewise, args()?),
+        "ExprCondPair" => Basic::new(Head::ExprCondPair, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
@@ -391,6 +393,17 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::AccumBounds => rebuilt("AccumBounds", "accumbounds")?,
+        Head::Piecewise | Head::ExprCondPair => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            let name: &str = if matches!(e.head(), Head::Piecewise) {
+                "Piecewise"
+            } else {
+                "ExprCondPair"
+            };
+            py.import("sympy_extras.functions.elementary.piecewise")?
+                .getattr(name)?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::ConditionSet => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.sets.conditionset")?
@@ -2265,6 +2278,17 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => zf::stieltjes(&a[0], a.get(1)),
             }
             .map_err(e)?
+        }
+        "piecewise" => {
+            sympy_extras_core::functions::elementary::piecewise::piecewise_of_pairs(a.to_vec()).map_err(e)?
+        }
+        "piecewise_fold" | "piecewise_fold_none" | "piecewise_fold_false" => {
+            let evaluate: Option<bool> = match name {
+                "piecewise_fold" => Some(true),
+                "piecewise_fold_none" => None,
+                _ => Some(false),
+            };
+            sympy_extras_core::functions::elementary::piecewise::piecewise_fold(&a[0], evaluate).map_err(e)?
         }
         "SingularityFunction" => {
             sympy_extras_core::functions::special::singularity_functions::singularity_function(&a[0], &a[1], &a[2])

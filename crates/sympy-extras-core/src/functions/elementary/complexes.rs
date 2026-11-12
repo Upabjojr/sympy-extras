@@ -225,6 +225,7 @@ pub fn conjugate_of(e: &Basic) -> PolyResult<Option<Basic>> {
         Head::ComplexInfinity => return Ok(None),
         _ if e.is_number_class() => return Ok(Some(e.clone())),
         Head::Function(f) => return function_conjugate(e, *f),
+        Head::Piecewise => return Ok(Some(super::piecewise::map_expressions(e, &conjugate)?)),
         Head::Add | Head::Mul => {
             let mut parts: Vec<Basic> = Vec::new();
             for t in e.args() {

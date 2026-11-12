@@ -734,6 +734,10 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
         // AccumulationBounds._eval_power
         return super::accumbounds::ab_pow(base, exp);
     }
+    if matches!(base.head(), Head::Piecewise) {
+        // Piecewise._eval_power
+        return crate::functions::elementary::piecewise::piecewise_power(base, exp);
+    }
     if base.is_function(super::basic::Function::KroneckerDelta) {
         if let Some(own) = crate::functions::special::tensor_functions::kronecker_power(base, exp)? {
             return Ok(own);

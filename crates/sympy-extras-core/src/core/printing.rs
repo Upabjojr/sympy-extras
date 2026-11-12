@@ -348,6 +348,15 @@ impl StrPrinter {
             _ if crate::sets::sets::is_set(e) || matches!(e.head(), Head::Contains) => {
                 crate::sets::sets::print_set(e, &|a: &Basic| self.doprint(a))
             }
+            Head::Piecewise => format!(
+                "Piecewise({})",
+                e.args()
+                    .iter()
+                    .map(|p| self.doprint(p))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+            Head::ExprCondPair => format!("({}, {})", self.doprint(&e.args()[0]), self.doprint(&e.args()[1])),
             Head::AccumBounds => format!(
                 "AccumBounds({}, {})",
                 self.doprint(&e.args()[0]),

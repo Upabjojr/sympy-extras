@@ -93,6 +93,10 @@ pub enum Head {
     ConditionSet,
     /// `AccumBounds(min, max)` (`core.accumbounds`).
     AccumBounds,
+    /// `Piecewise(ExprCondPair(e, c), ...)` and its pairs
+    /// (`functions.elementary.piecewise`).
+    Piecewise,
+    ExprCondPair,
 }
 
 /// The relations of `core.relational`.
@@ -709,6 +713,8 @@ impl Head {
             Head::PointSet => "PointSet",
             Head::ConditionSet => "ConditionSet",
             Head::AccumBounds => "AccumBounds",
+            Head::Piecewise => "Piecewise",
+            Head::ExprCondPair => "ExprCondPair",
         }
     }
 
@@ -778,6 +784,8 @@ impl Head {
                 | Head::PointSet
                 | Head::ConditionSet
                 | Head::AccumBounds
+                | Head::Piecewise
+                | Head::ExprCondPair
         )
     }
 

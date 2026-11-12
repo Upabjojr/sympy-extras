@@ -37,6 +37,8 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Ite => Ok(super::logic::ite(&args[0], &args[1], &args[2])),
         Head::Relational(op) => super::relational::evaluate_relation(*op, &args[0], &args[1]),
         Head::AccumBounds => super::accumbounds::accum_bounds(&args[0], &args[1]),
+        Head::Piecewise => crate::functions::elementary::piecewise::piecewise_of_pairs(args),
+        Head::ExprCondPair => crate::functions::elementary::piecewise::checked_pair(&args[0], &args[1]),
         h @ (Head::EmptySet
         | Head::UniversalSet
         | Head::Reals
@@ -930,6 +932,7 @@ pub fn derivative(e: &Basic, s: &Basic) -> PolyResult<Basic> {
             }
             add(&terms)
         }
+        Head::Piecewise => crate::functions::elementary::piecewise::map_expressions(e, &|a: &Basic| derivative(a, s)),
         Head::Derivative => {
             let mut counts: Vec<(Basic, u64)> = derivative_counts(e);
             counts.push((s.clone(), 1));
