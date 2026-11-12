@@ -40,9 +40,11 @@ The order of the methods:
 8. the heuristic Risch integrator (:mod:`.heurisch`), on the integrand
    and then on its canonical forms (on the exponentials of hyperbolic
    functions already in 7, after the substitutions);
-9. SymPy's heuristic Risch integrator, its rule-based
-   ``manualintegrate``, its Meijer G-function route and its
-   ``integrate``.
+9. SymPy's rule-based ``manualintegrate``, its Meijer G-function route
+   and its ``integrate`` (SymPy's heuristic Risch integrator is no longer
+   tried: the native one of 8 is its port, and on the integrals the
+   native methods leave it answered only Piecewise integrands, taking
+   them for constants, with antiderivatives which jump).
 
 The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: the methods 1 to 8, the checks (the native ``cancel``,
@@ -613,11 +615,6 @@ def _substituted(f: Expr, x: Symbol, substitution: Substitution, inner: list[Boo
 # ---------------------------------------------------------------------------
 # SymPy's routes, which have no native counterpart: through the face, last
 
-def _sympy_heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .indefinite_sympy import heurisch_of_core
-    return heurisch_of_core(f, x, _budget())
-
-
 def _manual(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     from .indefinite_sympy import manualintegrate_of_core
     return manualintegrate_of_core(f, x, _long_budget())
@@ -638,10 +635,10 @@ METHODS: list[tuple[str, Method]] = [
     ('rational', _rational), ('radicals', _radicals), ('exponential', _exponential), ('trigonometric', _trigonometric),
     ('risch', _risch), ('trager', _trager), ('binomial', _binomial),
     ('rewriting', _rewriting), ('heurisch', _heurisch), ('rewritten heurisch', _rewritten_heurisch),
-    ('sympy heurisch', _sympy_heurisch), ('manual', _manual), ('meijer', _meijer), ('sympy', _sympy)]
+    ('manual', _manual), ('meijer', _meijer), ('sympy', _sympy)]
 
 #: the methods which load SymPy (through :mod:`.indefinite_sympy`)
-SYMPY_METHODS: Final[tuple[str, ...]] = ('sympy heurisch', 'manual', 'meijer', 'sympy')
+SYMPY_METHODS: Final[tuple[str, ...]] = ('manual', 'meijer', 'sympy')
 
 
 def verified_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions = None,

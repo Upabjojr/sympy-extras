@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from sympy_extras.core import Integer, Symbol, diff, oo
+from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import besselj, cos, erf, exp, log, sin
 from sympy_extras.integrals.dfinite import Annihilator, chyzak, closure, dfinite_ode, normal_form
@@ -69,3 +70,53 @@ def test_equations() -> None:
     assert equation is not None and simplify(equation.rhs + 1/(t**2 + 1)) == 0
     # a boundary value which is not finite: no equation
     assert dfinite_ode(exp(t*x)*besselj(0, x), x, 0, oo, t) is None
+
+
+def _annihilates(L: Annihilator, F: Expr) -> bool:
+    """``L F`` vanishes at two sample points (an independent check of the
+    operator, whatever its form)."""
+    residual = L.apply(F).doit()
+    for point in (Integer(3)/7, Integer(13)/5):
+        values: dict[Basic, Basic] = {x: Integer(11)/9, t: Integer(5)/3, Symbol('n'): Integer(2)/3}
+        values[L.variable] = point
+        value = residual.subs(values).evalf(30)
+        if not (isinstance(value, Expr) and abs(complex(value)) < 1e-20):
+            return False
+    return True
+
+
+def test_native_annihilators() -> None:
+    from sympy_extras.functions import Ei, Si, atan, asin, airyai, besseli, bessely, sqrt
+    from sympy_extras.integrals.dfinite import _minimal_annihilator, annihilators
+    n = Symbol('n')
+    # the annihilators came from SymPy's expr_to_holonomic
+    # (holonomic_of_core); the minimal ones of the closure, by their
+    # orders (SymPy's are of order 3 for besseli and bessely and it has
+    # none for airyai) and by applying them
+    for F, order in [(besseli(0, x), 2), (besseli(n, x), 2), (bessely(n, x), 2), (airyai(x), 2), (Ei(x), 2),
+                     (Si(x), 3), (atan(x), 2), (asin(x), 2), (sqrt(x), 1), (x**n, 1), (exp(1/x), 1),
+                     (log(1 + x), 2), (sin(x) + exp(x), 3), (x**2 + 1, 1)]:
+        found = _minimal_annihilator(F, x, t)
+        assert found is not None and found.order == order, (F, found)
+        assert _annihilates(found, F), F
+    # SymPy's equation of Ei, the first order equation of exp(-t x**2)
+    found = _minimal_annihilator(Ei(x), x, t)
+    assert found is not None and found.coefficients == [0, 1 - x, x]
+    pair = annihilators(exp(-t*x**2), x, t)
+    assert pair is not None and pair[0].coefficients == [2*t*x, 1] and pair[1].coefficients == [x**2, 1]
+    # a scaled argument needs no substitution any more
+    pair = annihilators(exp(-x**2)*besselj(0, t*x), x, t)
+    assert pair is not None and [L.order for L in pair] == [2, 2]
+    assert all(_annihilates(L, exp(-x**2)*besselj(0, t*x)) for L in pair)
+    assert annihilators(exp(exp(x))*t, x, t) is None
+
+
+def test_factors_outside_the_table() -> None:
+    from sympy_extras.functions import besseli
+    # besseli went to SymPy's expr_to_holonomic, which gives a third order
+    # equation: the second order modified Bessel equation now
+    found = closure(besseli(0, x)*exp(-t*x), x, t)
+    assert found is not None and sorted(f.order for f in found[1]) == [1, 2]
+    telescoper = chyzak(exp(-t*x)*besseli(0, x), x, t)
+    assert telescoper is not None and telescoper.check()
+    assert telescoper.coefficients == [t, t**2 - 1]

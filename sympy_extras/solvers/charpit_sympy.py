@@ -1,14 +1,9 @@
 """The SymPy face of Charpit's method
-(:mod:`sympy_extras.solvers.charpit`), and the step of it which stays on
-SymPy.
+(:mod:`sympy_extras.solvers.charpit`).
 
 :func:`complete_integral` and :func:`check_complete_integral` take SymPy
 equations and functions, converted by :mod:`sympy_extras.interop` around
-the native functions. The native module calls one function of this
-module at run time (it takes and returns objects of the core):
-
-* :func:`antiderivative_of_core`, SymPy's ``integrate`` for the
-  integrands which are not sums of powers of the variable.
+the native functions.
 
 Examples
 ========
@@ -29,36 +24,17 @@ from sympy.core.basic import Basic
 from sympy.core.function import AppliedUndef
 from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
-from sympy.integrals.integrals import Integral, integrate
 
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import as_expr
-from sympy_extras.assumptions.analysis_sympy import as_symbol_of
-from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
+from sympy_extras.assumptions.intervals_sympy import core_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
 from sympy_extras.core.relational import Eq as CoreEq
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.settings import settings
 
 from . import charpit as native
 
-__all__ = ['complete_integral', 'check_complete_integral', 'antiderivative_of_core']
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native method which stay on SymPy
-
-def antiderivative_of_core(e: CoreExpr, x: CoreSymbol) -> Optional[CoreExpr]:
-    """An antiderivative of ``e`` in ``x`` by SymPy's ``integrate`` (under
-    the time limit), ``None`` when it is not found."""
-    sympy_e, sympy_x = sympy_expr(e), as_symbol_of(x)
-    integral = attempt(lambda: as_expr(integrate(sympy_e, sympy_x)), settings.timeout)
-    if integral is None or integral.has(Integral):
-        return None
-    return core_expr(integral)
+__all__ = ['complete_integral', 'check_complete_integral']
 
 
 # ---------------------------------------------------------------------------

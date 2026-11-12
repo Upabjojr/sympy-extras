@@ -559,11 +559,16 @@ def _primitive(p: Expr, y: Expr) -> tuple[Expr, Expr]:
     coefficients = _power_coefficients(p, y)
     if coefficients is None:
         raise ValueError('%s is not a polynomial in %s' % (p, y))
-    gens = sorted({s for c in coefficients.values() for s in c.free_symbols if isinstance(s, Symbol)},
-                  key=lambda s: s.sort_key())
-    placeholders = _Placeholders(gens)
+    # the constants which are not polynomials in symbols (sin(y), exp(y),
+    # pi) are placeholders, independent generators as in SymPy's domain
+    # ZZ[y, sin(y)]; the symbols left are the generators of the gcd (the
+    # bug: y was a generator and sin(y) stayed, and Poly refused it, so
+    # that 1/(x + sin(y)) was not integrated)
+    placeholders = _Placeholders([])
     values = [placeholders.abstract(c) for c in coefficients.values()]
-    content = placeholders.restore(gcd_list(values, *gens)) if gens else gcd_list(values)
+    gens = sorted({s for v in values for s in v.free_symbols if isinstance(s, Symbol) and s not in placeholders.back},
+                  key=lambda s: s.sort_key())
+    content = placeholders.restore(gcd_list(values, *gens)) if gens else placeholders.restore(gcd_list(values))
     if content == S.Zero:
         return (S.Zero, p)
     primitive = add(*[cancel(c / content) * y**k for k, c in coefficients.items()])

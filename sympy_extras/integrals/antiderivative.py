@@ -132,8 +132,7 @@ _METHODS: Final[tuple[str, ...]] = ('rational', 'radicals', 'exponential', 'trig
 
 
 #: the heuristic methods, tried late and under a larger budget
-_LATE_METHODS: Final[tuple[str, ...]] = ('heurisch', 'rewriting', 'rewritten heurisch', 'sympy heurisch', 'manual',
-                                         'meijer', 'sympy')
+_LATE_METHODS: Final[tuple[str, ...]] = ('heurisch', 'rewriting', 'rewritten heurisch', 'manual', 'meijer', 'sympy')
 
 #: the classes of the elementary functions of linear arguments which
 #: integrate takes at once, with their evaluating functions

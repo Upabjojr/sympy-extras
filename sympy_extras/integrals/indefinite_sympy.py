@@ -5,9 +5,8 @@ still written on SymPy (:mod:`.definite`) and the users of SymPy objects.
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back. The methods of the native
 module which stay on SymPy are here too, imported by it at run time and
-tried last, when every native method has failed: SymPy's heuristic Risch
-integrator (:func:`heurisch_of_core`), its ``manualintegrate``
-(:func:`manualintegrate_of_core`), its Meijer G-function route
+tried last, when every native method has failed: SymPy's
+``manualintegrate`` (:func:`manualintegrate_of_core`), its Meijer G-function route
 (:func:`meijerint_of_core`) and its ``integrate``
 (:func:`integrate_of_core`).
 
@@ -44,7 +43,7 @@ from sympy_extras.core.symbol import Symbol as CoreSymbol
 from . import indefinite as native
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms',
-           'heurisch_of_core', 'manualintegrate_of_core', 'meijerint_of_core', 'integrate_of_core']
+           'manualintegrate_of_core', 'meijerint_of_core', 'integrate_of_core']
 
 
 def _core(e: ExprLike) -> CoreExpr:
@@ -149,13 +148,11 @@ def _back(found: Optional[Expr]) -> Optional[CoreExpr]:
 
 def _run(route: Callable[[Expr, Symbol], Expr], f: CoreExpr, x: CoreSymbol,
          seconds: Optional[float]) -> Optional[CoreExpr]:
+    """SymPy's ``route(f, x)`` within ``seconds``, on core expressions;
+    ``None`` when it does not finish, leaves an ``Integral`` or its
+    antiderivative cannot be converted."""
     integrand, variable = sympy_expr(f), _sympy_symbol(x)
     return _back(attempt(lambda: as_expr(route(integrand, variable)), seconds))
-
-
-def _heurisch(f: Expr, x: Symbol) -> Expr:
-    from sympy.integrals.heurisch import heurisch_wrapper
-    return as_expr(heurisch_wrapper(f, x))
 
 
 def _manualintegrate(f: Expr, x: Symbol) -> Expr:
@@ -173,13 +170,6 @@ def _integrate(f: Expr, x: Symbol) -> Expr:
     return as_expr(integrate(f, x))
 
 
-def heurisch_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``heurisch_wrapper(f, x)`` within ``seconds``, on core
-    expressions; ``None`` when it does not finish, leaves an ``Integral``
-    or its antiderivative cannot be converted."""
-    return _run(_heurisch, f, x, seconds)
-
-
 def manualintegrate_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
     """SymPy's ``manualintegrate(f, x)`` within ``seconds``, on core
     expressions; ``None`` as :func:`heurisch_of_core`."""
@@ -188,11 +178,11 @@ def manualintegrate_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]
 
 def meijerint_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
     """SymPy's ``integrate(f, x, meijerg=True, risch=False)`` within
-    ``seconds``, on core expressions; ``None`` as :func:`heurisch_of_core`."""
+    ``seconds``, on core expressions; ``None`` as :func:`_run`."""
     return _run(_meijerint, f, x, seconds)
 
 
 def integrate_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
     """SymPy's ``integrate(f, x)`` within ``seconds``, on core expressions;
-    ``None`` as :func:`heurisch_of_core`."""
+    ``None`` as :func:`_run`."""
     return _run(_integrate, f, x, seconds)

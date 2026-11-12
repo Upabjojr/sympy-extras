@@ -7,8 +7,8 @@ the native code and convert the results back (the values of
 :mod:`.conditions_sympy`). The native module asks its definite integrals
 and its numerical checks of a :class:`~sympy_extras.integrals.parametric.ParametricIntegrator`,
 the native :class:`~sympy_extras.integrals.definite.DefiniteIntegrator`;
-its antiderivative in the parameter is SymPy's ``integrate``
-(:func:`antiderivative_of_core`).
+its antiderivative in the parameter is that of the native
+:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`.
 
 Examples
 ========
@@ -30,36 +30,17 @@ from typing import Optional
 
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
-from sympy.integrals.integrals import Integral, integrate
 
-from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr, as_symbol
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
+from sympy_extras._numeric_sympy import core_expr
+from sympy_extras._typing_sympy import ExprLike, as_symbol
+from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_assumptions
 from sympy_extras.interop import to_sympy
 
 from . import parametric as native
 from .conditions_sympy import ConditionalValue
 from .definite import DefiniteIntegrator
 
-__all__ = ['parametric_integral', 'candidate_parameters', 'antiderivative_of_core']
-
-
-def antiderivative_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``integrate(f, x)`` within ``seconds``, on core expressions
-    (the step of :mod:`sympy_extras.integrals.parametric` which stays on
-    SymPy); ``None`` when it does not finish, leaves an ``Integral`` or
-    its antiderivative cannot be converted."""
-    integrand, variable = sympy_expr(f), _sympy_symbol(x)
-    found = attempt(lambda: as_expr(integrate(integrand, variable)), seconds)
-    if found is None or found.has(Integral):
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
+__all__ = ['parametric_integral', 'candidate_parameters']
 
 
 def candidate_parameters(f: ExprLike, x: Symbol) -> list[Symbol]:
@@ -91,7 +72,7 @@ def parametric_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, parame
     >>> x = symbols('x')
     >>> p = symbols('p', positive=True)
     >>> parametric_integral(atan(p*x)/(x*(1 + x**2)), x, 0, oo, p)
-    ConditionalValue(pi*log(2*p + 2)/2 - pi*log(2)/2)
+    ConditionalValue(pi*log(p + 1)/2)
     """
     found = native.parametric_integral(core_expr(sympify(f)), _core_symbol(x), core_expr(sympify(a)),
                                        core_expr(sympify(b)), _core_symbol(parameter),

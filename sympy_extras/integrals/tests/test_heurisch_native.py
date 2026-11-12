@@ -150,3 +150,17 @@ def test_the_face_agrees() -> None:
         face = heurisch_sympy.heurisch_antiderivative(as_sympy_expr(to_sympy(f)), sx)
         assert native is not None and face is not None
         assert from_sympy(face) == native
+
+
+def test_transcendental_constants_of_the_parameters() -> None:
+    # the content of a polynomial in a component took the symbols of its
+    # coefficients as generators, so that sin(y) (a function of the
+    # generator y) was refused by Poly and 1/(x + sin(y)) was not
+    # integrated, which SymPy's heurisch does: sin(y) is a placeholder,
+    # an independent generator as in SymPy's domain ZZ[y, sin(y)]
+    x, y = Symbol('x'), Symbol('y')
+    for f in [1/(x + sin(y)), 1/(x + exp(y)), exp(x)/(exp(x) + sin(y)), log(x)/(x*(log(x) + sin(y)))]:
+        found = heurisch_cases(f, x)
+        assert found is not None, f
+        assert cancel(diff(found, x) - f) == 0, f
+    assert heurisch_cases(1/(x + sin(y)), x) == log(x + sin(y))

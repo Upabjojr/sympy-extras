@@ -24,12 +24,11 @@ The assumptions are statements as described in
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.refine_sympy` is its face on SymPy
 objects. The simplification of a relation is a port of SymPy's
-(:func:`simplify_relational`). Two steps are not ported and go through
-SymPy at run time (the face holds them, the functions ending in
-``_of_core``): SymPy's ``simplify`` of a compound Boolean formula which is
-not polynomial in real variables (``simplify_univariate`` and the patterns
-of the relations of ``And`` and ``Or``), and the proofs of the structure
-theorem (:mod:`sympy_extras.simplify.structure`).
+(:func:`simplify_relational`), and that of a compound Boolean formula
+which is not polynomial in real variables too
+(:mod:`sympy_extras.assumptions.boolsimp`: ``simplify_univariate``,
+``simplify_logic`` and the patterns of the relations of ``And`` and
+``Or``).
 """
 from __future__ import annotations
 
@@ -812,9 +811,9 @@ def _simplify_boolean(formula: Boolean, refiner: _Refiner, assumptions: Assumpti
                       ratio: float, rational: Optional[bool], inverse: bool, doit: bool) -> Boolean:
     """A Boolean formula is minimised by quantifier elimination when it is
     polynomial in real variables, else a relation is simplified by
-    :func:`simplify_relational` and a compound formula by SymPy's
-    ``simplify`` (at run time,
-    :func:`~sympy_extras.assumptions.refine_sympy.simplify_boolean_of_core`)."""
+    :func:`simplify_relational` and a compound formula by the port of
+    SymPy's ``simplify`` of Booleans,
+    :func:`~sympy_extras.assumptions.boolsimp.simplify_boolean`."""
     if formula.has(Quantifier):
         formula = _resolve_quantified(formula, assumptions, domain)
     formula = refiner.refine_boolean(formula)
@@ -827,16 +826,20 @@ def _simplify_boolean(formula: Boolean, refiner: _Refiner, assumptions: Assumpti
         except (NotImplementedError, ValueError):
             pass
 
+    def relation(r: Relational) -> Boolean:
+        return simplify_relational(r, ratio, rational, inverse, doit)
+
     def operation(e: Basic) -> Basic:
         b = to_boolean(e)
         if isinstance(b, Relational):
-            return simplify_relational(b, ratio, rational, inverse, doit)
+            return relation(b)
         if not b.args:
             return b
-        # a compound formula: SymPy's simplify (simplify_univariate, the
-        # patterns of the relations of And and Or) is not ported
-        from .refine_sympy import simplify_boolean_of_core
-        return simplify_boolean_of_core(b, ratio, rational, inverse, doit)
+        # a compound formula: the port of SymPy's simplify of Booleans
+        # (simplify_univariate, simplify_logic, the patterns of the
+        # relations of And and Or)
+        from .boolsimp import simplify_boolean
+        return simplify_boolean(b, relation, _measure, ratio)
     simplified = refiner.through(formula, operation)
     return refiner.refine_boolean(to_boolean(simplified))
 
