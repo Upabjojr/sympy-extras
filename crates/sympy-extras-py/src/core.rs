@@ -1534,6 +1534,97 @@ fn cad_projection_sets<'py>(
         .collect()
 }
 
+/// A report of a CAD sample point (`samplepoints`): the point built from
+/// `coordinates` (each `(dense, index)`: the root of that index of the
+/// polynomial with the rational coefficients `dense`, given as
+/// `(numerator, denominator)` pairs), the signs of `signs` (in all the
+/// generators) and the specializations of `lifts` (in one more), and the
+/// standalone functions on the coordinates.
+#[pyfunction]
+#[allow(clippy::type_complexity)]
+fn samplepoint_report<'py>(
+    py: Python<'py>,
+    coordinates: Vec<(Vec<(Bound<'py, PyAny>, Bound<'py, PyAny>)>, usize)>,
+    signs: Vec<Bound<'py, PyAny>>,
+    lifts: Vec<Bound<'py, PyAny>>,
+    gens: Vec<Bound<'py, PyAny>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    use sympy_extras_core::polys::cad::samplepoints as sp;
+    let e = crate::convert::err;
+    let gens: Vec<Basic> = gens.iter().map(from_python).collect::<PyResult<_>>()?;
+    let out = PyDict::new(py);
+    let mut point = sp::SamplePoint::origin();
+    let mut roots: Vec<sp::Real> = Vec::new();
+    for (dense, index) in coordinates {
+        let mut f: Vec<Rat> = Vec::new();
+        for (p, q) in dense {
+            f.push(rat_from_parts(extract_int(&p)?, extract_int(&q)?));
+        }
+        let found = sp::real_roots_of(&f).map_err(e)?;
+        let reprs: Vec<String> = found.iter().map(|r| r.repr()).collect::<Result<_, _>>().map_err(e)?;
+        out.set_item(format!("roots{}", roots.len()), reprs)?;
+        let r = found[index % found.len().max(1)].clone();
+        roots.push(r.clone());
+        point = point.extend(&r).map_err(e)?;
+    }
+    out.set_item("point", point.repr().map_err(e)?)?;
+    out.set_item("degree", point.degree())?;
+    let n = point.len();
+    let mut sign_values: Vec<String> = Vec::new();
+    for f in &signs {
+        sign_values.push(match point.sign(&from_python(f)?, &gens[..n]) {
+            Ok(s) => s.to_string(),
+            Err(err) => format!("ERROR {}", crate::convert::err(err).get_type(py).name()?),
+        });
+    }
+    out.set_item("signs", sign_values)?;
+    let mut lift_values: Vec<String> = Vec::new();
+    for f in &lifts {
+        lift_values.push(match point.specialization(&from_python(f)?, &gens[..n + 1]) {
+            Ok(s) => {
+                let mut parts: Vec<String> = Vec::new();
+                for (r, m) in &s.roots {
+                    parts.push(format!("({}, {})", r.repr().map_err(e)?, m));
+                }
+                let mut before: Vec<String> = Vec::new();
+                for i in 0..=s.roots.len() {
+                    before.push(s.sign_before(i).map_err(e)?.to_string());
+                }
+                format!(
+                    "{} {} [{}] [{}]",
+                    s.degree,
+                    s.leading_sign,
+                    parts.join(", "),
+                    before.join(", ")
+                )
+            }
+            Err(err) => format!("ERROR {}", crate::convert::err(err).get_type(py).name()?),
+        });
+    }
+    out.set_item("lifts", lift_values)?;
+    let fraction = |q: Rat| format!("{}", q);
+    let mut functions: Vec<String> = Vec::new();
+    for r in &roots {
+        functions.push(format!(
+            "{} {} {} {} {}",
+            sp::floor_scaled(r, 0).map_err(e)?,
+            sp::floor_scaled(r, 5).map_err(e)?,
+            fraction(sp::rational_below(r).map_err(e)?),
+            fraction(sp::rational_above(r).map_err(e)?),
+            sp::compare_real(r, &roots[0]).map_err(e)?
+        ));
+    }
+    for (a, b) in roots.iter().zip(roots.iter().skip(1)) {
+        functions.push(match sp::compare_real(a, b).map_err(e)? {
+            -1 => fraction(sp::rational_between(a, b).map_err(e)?),
+            1 => fraction(sp::rational_between(b, a).map_err(e)?),
+            _ => "equal".to_string(),
+        });
+    }
+    out.set_item("functions", functions)?;
+    Ok(out)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1584,6 +1675,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(polytools_call, m)?)?;
     m.add_function(wrap_pyfunction!(roots, m)?)?;
     m.add_function(wrap_pyfunction!(cad_projection_sets, m)?)?;
+    m.add_function(wrap_pyfunction!(samplepoint_report, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
