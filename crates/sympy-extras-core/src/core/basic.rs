@@ -252,6 +252,53 @@ pub enum Function {
     Frac,
     DiracDelta,
     Heaviside,
+    Factorial,
+    Binomial,
+    RisingFactorial,
+    FallingFactorial,
+    Subfactorial,
+    Factorial2,
+    Gamma,
+    LogGamma,
+    PolyGamma,
+    DiGamma,
+    TriGamma,
+    Zeta,
+    DirichletEta,
+    PolyLog,
+    LerchPhi,
+    RiemannXi,
+    Stieltjes,
+    /// `Mod(p, q)` (`core.mod`).
+    Mod,
+    KroneckerDelta,
+    LeviCivita,
+    Catalan,
+    Fibonacci,
+    Lucas,
+    Harmonic,
+    Bernoulli,
+    Euler,
+    Bell,
+    Genocchi,
+    Partition,
+    Totient,
+    ReducedTotient,
+    DivisorSigma,
+    UDivisorSigma,
+    PrimeNu,
+    PrimeOmega,
+    Mobius,
+    PrimePi,
+    LegendreSymbol,
+    JacobiSymbol,
+    KroneckerSymbol,
+    Tribonacci,
+    Motzkin,
+    Andre,
+    Beta,
+    BetaInc,
+    BetaIncRegularized,
 }
 
 impl Function {
@@ -298,6 +345,52 @@ impl Function {
             Function::Frac => "frac",
             Function::DiracDelta => "DiracDelta",
             Function::Heaviside => "Heaviside",
+            Function::Factorial => "factorial",
+            Function::Binomial => "binomial",
+            Function::RisingFactorial => "RisingFactorial",
+            Function::FallingFactorial => "FallingFactorial",
+            Function::Subfactorial => "subfactorial",
+            Function::Factorial2 => "factorial2",
+            Function::Gamma => "gamma",
+            Function::LogGamma => "loggamma",
+            Function::PolyGamma => "polygamma",
+            Function::DiGamma => "digamma",
+            Function::TriGamma => "trigamma",
+            Function::Zeta => "zeta",
+            Function::DirichletEta => "dirichlet_eta",
+            Function::PolyLog => "polylog",
+            Function::LerchPhi => "lerchphi",
+            Function::RiemannXi => "riemann_xi",
+            Function::Stieltjes => "stieltjes",
+            Function::Mod => "Mod",
+            Function::KroneckerDelta => "KroneckerDelta",
+            Function::LeviCivita => "LeviCivita",
+            Function::Catalan => "catalan",
+            Function::Fibonacci => "fibonacci",
+            Function::Lucas => "lucas",
+            Function::Harmonic => "harmonic",
+            Function::Bernoulli => "bernoulli",
+            Function::Euler => "euler",
+            Function::Bell => "bell",
+            Function::Genocchi => "genocchi",
+            Function::Partition => "partition",
+            Function::Totient => "totient",
+            Function::ReducedTotient => "reduced_totient",
+            Function::DivisorSigma => "divisor_sigma",
+            Function::UDivisorSigma => "udivisor_sigma",
+            Function::PrimeNu => "primenu",
+            Function::PrimeOmega => "primeomega",
+            Function::Mobius => "mobius",
+            Function::PrimePi => "primepi",
+            Function::LegendreSymbol => "legendre_symbol",
+            Function::JacobiSymbol => "jacobi_symbol",
+            Function::KroneckerSymbol => "kronecker_symbol",
+            Function::Tribonacci => "tribonacci",
+            Function::Motzkin => "motzkin",
+            Function::Andre => "andre",
+            Function::Beta => "beta",
+            Function::BetaInc => "betainc",
+            Function::BetaIncRegularized => "betainc_regularized",
         }
     }
 
@@ -344,6 +437,52 @@ impl Function {
             Function::Frac => "Frac",
             Function::DiracDelta => "DiracDelta",
             Function::Heaviside => "Heaviside",
+            Function::Factorial => "Factorial",
+            Function::Binomial => "Binomial",
+            Function::RisingFactorial => "RisingFactorial",
+            Function::FallingFactorial => "FallingFactorial",
+            Function::Subfactorial => "Subfactorial",
+            Function::Factorial2 => "Factorial2",
+            Function::Gamma => "Gamma",
+            Function::LogGamma => "LogGamma",
+            Function::PolyGamma => "PolyGamma",
+            Function::DiGamma => "DiGamma",
+            Function::TriGamma => "TriGamma",
+            Function::Zeta => "Zeta",
+            Function::DirichletEta => "DirichletEta",
+            Function::PolyLog => "PolyLog",
+            Function::LerchPhi => "LerchPhi",
+            Function::RiemannXi => "RiemannXi",
+            Function::Stieltjes => "Stieltjes",
+            Function::Mod => "Mod",
+            Function::KroneckerDelta => "KroneckerDeltaNode",
+            Function::LeviCivita => "LeviCivitaNode",
+            Function::Catalan => "Catalan",
+            Function::Fibonacci => "Fibonacci",
+            Function::Lucas => "Lucas",
+            Function::Harmonic => "Harmonic",
+            Function::Bernoulli => "Bernoulli",
+            Function::Euler => "Euler",
+            Function::Bell => "Bell",
+            Function::Genocchi => "Genocchi",
+            Function::Partition => "Partition",
+            Function::Totient => "Totient",
+            Function::ReducedTotient => "ReducedTotient",
+            Function::DivisorSigma => "DivisorSigma",
+            Function::UDivisorSigma => "UDivisorSigma",
+            Function::PrimeNu => "PrimeNu",
+            Function::PrimeOmega => "PrimeOmega",
+            Function::Mobius => "Mobius",
+            Function::PrimePi => "PrimePi",
+            Function::LegendreSymbol => "LegendreSymbol",
+            Function::JacobiSymbol => "JacobiSymbol",
+            Function::KroneckerSymbol => "KroneckerSymbol",
+            Function::Tribonacci => "Tribonacci",
+            Function::Motzkin => "Motzkin",
+            Function::Andre => "Andre",
+            Function::Beta => "Beta",
+            Function::BetaInc => "BetaInc",
+            Function::BetaIncRegularized => "BetaIncRegularized",
         }
     }
 
@@ -359,6 +498,52 @@ impl Function {
             Function::Atan2 | Function::Max | Function::Min => 10000,
             Function::Floor | Function::Ceiling | Function::Frac => 10000,
             Function::DiracDelta | Function::Heaviside => 10000,
+            Function::Factorial
+            | Function::Binomial
+            | Function::RisingFactorial
+            | Function::FallingFactorial
+            | Function::Subfactorial
+            | Function::Factorial2 => 10000,
+            Function::Zeta
+            | Function::DirichletEta
+            | Function::PolyLog
+            | Function::LerchPhi
+            | Function::RiemannXi
+            | Function::Stieltjes
+            | Function::Mod
+            | Function::KroneckerDelta
+            | Function::LeviCivita
+            | Function::Catalan
+            | Function::Fibonacci
+            | Function::Lucas
+            | Function::Harmonic
+            | Function::Bernoulli
+            | Function::Euler
+            | Function::Bell
+            | Function::Genocchi
+            | Function::Partition
+            | Function::Totient
+            | Function::ReducedTotient
+            | Function::DivisorSigma
+            | Function::UDivisorSigma
+            | Function::PrimeNu
+            | Function::PrimeOmega
+            | Function::Mobius
+            | Function::PrimePi
+            | Function::LegendreSymbol
+            | Function::JacobiSymbol
+            | Function::KroneckerSymbol
+            | Function::Tribonacci
+            | Function::Motzkin
+            | Function::Andre
+            | Function::Beta
+            | Function::BetaInc
+            | Function::BetaIncRegularized
+            | Function::Gamma
+            | Function::LogGamma
+            | Function::PolyGamma
+            | Function::DiGamma
+            | Function::TriGamma => 10000,
             Function::Sin => 20,
             Function::Cos => 21,
             Function::Tan => 22,

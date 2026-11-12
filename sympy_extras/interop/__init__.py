@@ -539,7 +539,10 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         return SymPyNonElementaryIntegral(to_sympy(e.function, evaluate), to_sympy(e.variable))
     from sympy_extras.integrals.integral import Integral as NativeIntegral
     if isinstance(e, NativeIntegral):
-        return sympy.Integral(to_sympy(e.function, evaluate), to_sympy(e.variable))
+        if e.bounds is None:
+            return sympy.Integral(to_sympy(e.function, evaluate), to_sympy(e.variable))
+        return sympy.Integral(to_sympy(e.function, evaluate),
+                              (to_sympy(e.variable), to_sympy(e.bounds[0], evaluate), to_sympy(e.bounds[1], evaluate)))
     args = [to_sympy(a, evaluate) for a in e.args]
     if isinstance(e, Add):
         return sympy.Add(*[_sympy_expr(a) for a in args], evaluate=evaluate)

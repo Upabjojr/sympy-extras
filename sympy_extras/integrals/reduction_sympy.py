@@ -1,6 +1,6 @@
 """The SymPy face of reduction-based creative telescoping
-(:mod:`sympy_extras.integrals.reduction`), for the integrators which are
-still written on SymPy (:mod:`.definite`) and the old interface.
+(:mod:`sympy_extras.integrals.reduction`): the old interface on SymPy
+objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the telescopers of

@@ -11,7 +11,7 @@ from sympy_extras._testing import untyped
 from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.integrals.conditions_sympy import ConditionalValue
-from sympy_extras.integrals.definite import verify_numerically
+from sympy_extras.integrals.definite_sympy import verify_numerically
 from sympy_extras.integrals.elliptic_sympy import (elliptic_integral, radicand, real_roots, legendre_reduction,
                                                    Reduction)
 

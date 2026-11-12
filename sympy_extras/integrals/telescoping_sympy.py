@@ -1,19 +1,11 @@
 """The SymPy face of the Almkvist–Zeilberger algorithm
-(:mod:`sympy_extras.integrals.telescoping`), for the integrators which
-are still written on SymPy (:mod:`.definite`) and the old interface.
+(:mod:`sympy_extras.integrals.telescoping`): the old interface on SymPy
+objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`, the telescopers as :class:`DifferentialTelescoper`
-on SymPy objects). The steps of the native modules
-:mod:`.telescoping`, :mod:`.reduction` and :mod:`.dfinite` which stay on
-SymPy are here too (the functions ending in ``_of_core``, imported by the
-native modules when they are needed): the values of the integral at a
-point by :func:`~sympy_extras.integrals.definite.definite_integral` and
-its numerical check ``verify_numerically``, not ported yet
-(:func:`definite_integral_of_core`, :func:`verify_numerically_of_core`),
-and SymPy's ``dsolve`` of an equation of the integral which the native
-linear solvers leave unsolved (:func:`dsolve_of_core`).
+on SymPy objects).
 
 Examples
 ========
@@ -41,25 +33,21 @@ from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr, free_symbols
+from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions import ask as native_ask
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions, sympy_boolean
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
 from sympy_extras.core.logic import Boolean as CoreBoolean, to_boolean
 from sympy_extras.core.relational import Eq as CoreEq
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.settings import settings
 
 from . import conditions as native_conditions
 from . import telescoping as native
 from .conditions_sympy import ConditionalValue
 
 __all__ = ['DifferentialTelescoper', 'logarithmic_derivative', 'is_hyperexponential', 'almkvist_zeilberger',
-           'holonomic_ode', 'holonomic_integral', 'definite_integral_of_core', 'verify_numerically_of_core',
-           'dsolve_of_core']
+           'holonomic_ode', 'holonomic_integral']
 
 
 def _core_symbol(s: Basic) -> CoreSymbol:
@@ -244,39 +232,6 @@ def _sympy_assumptions(assumptions: native_ask.Assumptions) -> Assumptions:
     return [sympy_boolean(to_boolean(a)) for a in assumptions]
 
 
-def definite_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                              assumptions: native_ask.Assumptions, special_values: bool,
-                              seconds: Optional[float]) -> Optional[CoreExpr]:
-    """:func:`~sympy_extras.integrals.definite.definite_integral` of
-    ``Integral(f, (x, a, b))`` within ``seconds``, on core expressions
-    (not ported yet); ``None`` when it does not finish or its value
-    cannot be converted."""
-    from .definite import definite_integral
-    integrand, variable, lower, upper = sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b)
-    facts = _sympy_assumptions(assumptions)
-    found = attempt(lambda: definite_integral(integrand, (variable, lower, upper), facts,
-                                              special_values=special_values), seconds)
-    if found is None:
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
-
-
-def verify_numerically_of_core(value: CoreExpr, f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                               assumptions: native_ask.Assumptions) -> Optional[bool]:
-    """:func:`sympy_extras.integrals.definite.verify_numerically` of a
-    value of the native modules: ``False`` when it disagrees with the
-    quadratures at samples of the parameters (each branch of a
-    ``Piecewise`` at a sample of its region, the isolated values of the
-    parameters), ``True`` when it agrees, ``None`` when nothing could be
-    checked."""
-    from .definite import verify_numerically
-    return verify_numerically(sympy_expr(value), sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b),
-                              _sympy_assumptions(assumptions))
-
-
 def _sympy_function(f: CoreAppliedUndef) -> AppliedUndef:
     converted = to_sympy(f)
     if not isinstance(converted, AppliedUndef):
@@ -284,20 +239,3 @@ def _sympy_function(f: CoreAppliedUndef) -> AppliedUndef:
     return converted
 
 
-def dsolve_of_core(equation: CoreEq, unknown: CoreAppliedUndef) -> Optional[tuple[CoreExpr, list[CoreSymbol]]]:
-    """The general solution of a linear equation by SymPy's ``dsolve``
-    under the time limit of the settings, on core expressions: the right
-    hand side of the explicit solution and its constants ``C1, C2, ...``
-    in order; ``None`` when it is not found or cannot be converted."""
-    from sympy.solvers.ode import dsolve
-    e, f = _sympy_eq(equation), _sympy_function(unknown)
-    general = attempt(lambda: dsolve(e, f), settings.timeout)
-    if not isinstance(general, Eq) or general.lhs != f:
-        return None
-    solution = as_expr(general.rhs)
-    constants = sorted([s for s in free_symbols(solution) if s.name.startswith('C') and s.name[1:].isdigit()],
-                       key=lambda s: s.name)
-    try:
-        return core_expr(solution), [_core_symbol(c) for c in constants]
-    except (TypeError, ValueError, NotImplementedError):
-        return None

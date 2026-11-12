@@ -1312,6 +1312,59 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         g @ (super::basic::Function::Floor | super::basic::Function::Ceiling | super::basic::Function::Frac) => {
             crate::functions::elementary::integers::rounding_facts(g, &e.args()[0])
         }
+        g @ (super::basic::Function::Factorial
+        | super::basic::Function::Binomial
+        | super::basic::Function::RisingFactorial
+        | super::basic::Function::FallingFactorial
+        | super::basic::Function::Subfactorial
+        | super::basic::Function::Factorial2) => {
+            crate::functions::combinatorial::factorials::combinatorial_facts(g, e.args())
+        }
+        g @ (super::basic::Function::Gamma
+        | super::basic::Function::LogGamma
+        | super::basic::Function::PolyGamma
+        | super::basic::Function::DiGamma
+        | super::basic::Function::TriGamma) => crate::functions::special::gamma_functions::gamma_facts(g, e.args()),
+        g @ (super::basic::Function::Catalan
+        | super::basic::Function::Fibonacci
+        | super::basic::Function::Lucas
+        | super::basic::Function::Harmonic
+        | super::basic::Function::Bernoulli
+        | super::basic::Function::Euler
+        | super::basic::Function::Bell
+        | super::basic::Function::Genocchi
+        | super::basic::Function::Partition) => crate::functions::combinatorial::numbers::number_facts(g, e.args()),
+        g @ (super::basic::Function::Totient
+        | super::basic::Function::ReducedTotient
+        | super::basic::Function::DivisorSigma
+        | super::basic::Function::UDivisorSigma
+        | super::basic::Function::PrimeNu
+        | super::basic::Function::PrimeOmega
+        | super::basic::Function::Mobius
+        | super::basic::Function::PrimePi
+        | super::basic::Function::LegendreSymbol
+        | super::basic::Function::JacobiSymbol
+        | super::basic::Function::KroneckerSymbol
+        | super::basic::Function::Tribonacci
+        | super::basic::Function::Motzkin
+        | super::basic::Function::Andre) => {
+            crate::functions::combinatorial::numbertheory::number_theoretic_facts(g, e.args())
+        }
+        g @ (super::basic::Function::Beta
+        | super::basic::Function::BetaInc
+        | super::basic::Function::BetaIncRegularized) => {
+            crate::functions::special::beta_functions::beta_facts(g, e.args())
+        }
+        super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
+            crate::functions::special::tensor_functions::tensor_facts()
+        }
+        super::basic::Function::Mod => super::modulo::modulo_facts(e.args()),
+        g @ (super::basic::Function::Zeta
+        | super::basic::Function::DirichletEta
+        | super::basic::Function::PolyLog
+        | super::basic::Function::LerchPhi
+        | super::basic::Function::RiemannXi
+        | super::basic::Function::Stieltjes) => crate::functions::special::zeta_functions::zeta_facts(g, e.args()),
         super::basic::Function::DiracDelta | super::basic::Function::Heaviside => {
             crate::functions::special::delta_functions::delta_facts()
         }

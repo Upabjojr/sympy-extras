@@ -121,5 +121,8 @@ def test_dsolve_second_order() -> None:
     # an implicit solution through the quadrature of the first integral
     equation = f.diff(x, 2) + f*f.diff(x)**2
     for solution in dsolve_second_order(equation, f) or []:
-        assert check_ode_solution(equation, solution, f), solution
+        # the relation erfi(y/sqrt(2)) = C1 x + C2 (SymPy's dsolve wrote it
+        # with an Integral, which its solve gives no solution of) is not
+        # solved for y: SymPy's solve gives up on it
+        assert check_ode_solution(equation, solution, f, solve_for_func=False), solution
     assert dsolve_second_order(f.diff(x, 2) - f**2, f) is None

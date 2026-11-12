@@ -99,7 +99,12 @@ def test_dsolve_second_order() -> None:
         assert solutions is not None, equation
         for solution in solutions:
             assert isinstance(solution, Eq)
-            assert checkodesol(equation, solution)[0] is True, (equation, solution)
+            # SymPy's checkodesol raises NotImplementedError when its solve
+            # cannot invert an implicit solution (erfi(y/sqrt(2)) = C1 x + C2,
+            # SymPy 1.14) instead of checking the relation by its derivatives:
+            # an implicit solution is checked without solving it
+            implicit = solution.lhs != f or solution.rhs.has(f)
+            assert checkodesol(equation, solution, solve_for_func=not implicit)[0] is True, (equation, solution)
     [solution] = dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f) or []
     assert isinstance(solution, Eq) and solution.rhs.subs({Symbol('C1'): 0, Symbol('C2'): 0}) == 2/x
     [solution] = dsolve_second_order(f.diff(x, 2) - f.diff(x)**2, f) or []

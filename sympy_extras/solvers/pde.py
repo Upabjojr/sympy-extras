@@ -13,13 +13,13 @@ The module imports no SymPy: the equations, the symmetries and the
 reductions are objects of the core (:mod:`sympy_extras.core`); the
 reduced equation is normalised by the native polynomial factorisation,
 and the solutions are verified by substitution with the native
-:func:`~sympy_extras.simplify.simplify.simplify`, and the equations which
-are not linear in the unknown by the native port of SymPy's ``solve``
-(:func:`~sympy_extras.solvers.solvers.solve_equation`). One step has no
-native counterpart and is taken from SymPy at run time through the face
-:mod:`sympy_extras.solvers.pde_sympy`: SymPy's ``dsolve`` for the
-characteristic equations and the reduced equations (``dsolve_of_core``).
-The face also keeps the old API on SymPy objects.
+:func:`~sympy_extras.simplify.simplify.simplify`, the characteristic
+equations and the reduced equations are solved by the native classical
+hints of :func:`~sympy_extras.solvers.dsolve.dsolve`, and the equations
+which are not linear in the unknown by the native port of SymPy's
+``solve`` (:func:`~sympy_extras.solvers.solvers.solve_equation`). The
+face :mod:`sympy_extras.solvers.pde_sympy` keeps the old API on SymPy
+objects.
 """
 from __future__ import annotations
 
@@ -125,10 +125,11 @@ class Reduction:
 # the steps which stay on SymPy
 
 def _dsolve(equation: Basic, f: AppliedUndef, timeout: Optional[float]) -> Optional[list[Eq]]:
-    """The solutions of an ODE by SymPy's ``dsolve`` under the time limit
+    """The solutions of an ODE by the native classical methods
+    (:func:`~sympy_extras.solvers.dsolve.dsolve`) under the time limit
     (``None`` when it gives up)."""
-    from .pde_sympy import dsolve_of_core
-    return attempt(lambda: dsolve_of_core(equation, f), timeout)
+    from .dsolve import dsolve
+    return attempt(lambda: dsolve(equation, f), timeout, native=True)
 
 
 def _solve(e: Expr, v: Symbol, timeout: Optional[float]) -> list[Expr]:

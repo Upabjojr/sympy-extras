@@ -57,7 +57,7 @@ def test_kummer_series_of_log_gamma() -> None:
     # cosine coefficient of Kummer's series (Mathematica: 0.0833333...
     # numerically, no closed form)
     from sympy import gamma, log, EulerGamma
-    from sympy_extras.integrals.definite import definite_integral
+    from sympy_extras.integrals.definite_sympy import definite_integral
     assert definite_integral(log(gamma(x)) * cos(6 * pi * x), (x, 0, 1)) == Rational(1, 12)
     assert definite_integral(log(gamma(x)) * sin(6 * pi * x), (x, 0, 1)) == (EulerGamma + log(6 * pi)) / (6 * pi)
 

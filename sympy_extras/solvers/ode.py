@@ -16,12 +16,10 @@ native ones, the first order equations go to the native
 :func:`~sympy_extras.solvers.first_order.dsolve_first_order`, and a
 solution is checked by :func:`check_ode_solution`, a port of SymPy's
 ``checkodesol`` (``sympy.solvers.ode.subscheck``) on the core.
-:mod:`sympy_extras.solvers.ode_sympy` is its face on SymPy objects. One
-step has no native counterpart and goes through SymPy at run time (the
-functions ending in ``_of_core`` of the faces): SymPy's ``dsolve`` of the
-reduced equations (:func:`~sympy_extras.solvers.pde_sympy.dsolve_of_core`);
-the canonical coordinates and the implicit solutions are solved by the
-native port of SymPy's ``solve``
+:mod:`sympy_extras.solvers.ode_sympy` is its face on SymPy objects. The
+reduced equations are solved by the native classical hints of
+:func:`~sympy_extras.solvers.dsolve.dsolve`, the canonical coordinates
+and the implicit solutions by the native port of SymPy's ``solve``
 (:func:`~sympy_extras.solvers.solvers.solve_equation`), and the
 quadratures come from the native indefinite integration
 (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
@@ -130,10 +128,11 @@ def _with_limit(f: Callable[[], T], timeout: Optional[float]) -> Optional[T]:
 
 
 def _dsolve(equation: Basic, f: AppliedUndef, timeout: Optional[float]) -> Optional[list[Eq]]:
-    """The solutions ``Eq`` of an ODE by SymPy's ``dsolve`` within the
-    time limit (``None`` when it gives up)."""
-    from .pde_sympy import dsolve_of_core
-    return attempt(lambda: dsolve_of_core(equation, f), timeout)
+    """The solutions ``Eq`` of an ODE by the native classical methods
+    (:func:`~sympy_extras.solvers.dsolve.dsolve`) within the time limit
+    (``None`` when it gives up)."""
+    from .dsolve import dsolve
+    return attempt(lambda: dsolve(equation, f), timeout, native=True)
 
 
 def _solve(e: Expr, v: Symbol, timeout: Optional[float]) -> list[Expr]:
@@ -471,7 +470,7 @@ def _linear_solution(e: Expr, target: Expr) -> Optional[list[Expr]]:
 
 # PORTED FROM SYMPY: sympy/solvers/ode/subscheck.py:checkodesol
 def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
-                       timeout: Optional[float] = DEFAULT_TIMEOUT) -> bool:
+                       timeout: Optional[float] = DEFAULT_TIMEOUT, solve_for_func: bool = True) -> bool:
     """Whether ``solution`` (``Eq(f, rhs)``, an implicit relation ``Eq(F(x,
     f), G(x, f))`` or the right-hand side alone) solves the ordinary
     differential equation, as SymPy's ``checkodesol`` decides it: an
@@ -480,7 +479,9 @@ def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
     ``checkodesol`` raises), and every solution must be checked; the
     solution is substituted and the residual simplified, else the
     derivatives of the relation are substituted (when ``solve`` finds no
-    solution). ``False`` when nothing proves it.
+    solution). ``False`` when nothing proves it. Without
+    ``solve_for_func`` (SymPy's argument of the same name) an implicit
+    relation is checked through its derivatives without being solved.
 
     Examples
     ========
@@ -498,7 +499,7 @@ def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
     True
     """
     limit = _limit(timeout)
-    found = attempt(lambda: _checkodesol(ode, solution, f, limit, True), limit, native=True)
+    found = attempt(lambda: _checkodesol(ode, solution, f, limit, solve_for_func), limit, native=True)
     return found is True
 
 
@@ -693,7 +694,6 @@ def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = Tru
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's dsolve (pde_sympy.dsolve_of_core)
     >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.functions import exp
     >>> from sympy_extras.solvers.ode import solve_ode

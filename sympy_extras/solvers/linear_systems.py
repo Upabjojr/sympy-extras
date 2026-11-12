@@ -89,10 +89,11 @@ ones (``ratint_ratpart`` and ``ratint_logpart`` of
 the trace in Liouville's formula comes from the native indefinite
 integration (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`), the
 quadratures it cannot do are left unevaluated
-(:class:`~sympy_extras.integrals.integral.Integral`), and SymPy's
-``linodesolve``, the last resort for a fundamental matrix, goes through
-SymPy at run time
-(:func:`~sympy_extras.solvers.linear_systems_sympy.linodesolve_of_core`).
+(:class:`~sympy_extras.integrals.integral.Integral`), and the last
+resort for a fundamental matrix, SymPy's ``linodesolve`` of a matrix
+``A = g'(x) M`` with ``M`` constant (its type 3), is native:
+``exp(M g(x))`` by Putzer's algorithm
+(:func:`~sympy_extras.solvers.dae.matrix_exponential`).
 
 References
 ==========
@@ -829,24 +830,44 @@ def _exponential_columns(A: Rows, x: Symbol) -> Rows:
     return [[Phi[i, j] for i in range(n)] for j in range(n)]
 
 
-def _sympy_columns(A: Rows, x: Symbol) -> Rows:
-    """The fundamental solutions given by SymPy's ``linodesolve``
-    (constant coefficients, commuting antiderivatives), each checked."""
-    from .linear_systems_sympy import linodesolve_of_core
-    vector = linodesolve_of_core(_matrix(A), x)
-    if vector is None:
+def _commuting_columns(A: Rows, x: Symbol) -> Rows:
+    """The fundamental solutions ``exp(M g(x))`` of ``Y' = A Y`` when ``A =
+    g'(x) M`` with ``M`` constant (``A`` commutes with its antiderivative:
+    SymPy's ``linodesolve`` of type 3), each checked; none when ``A`` is
+    not of that form, the antiderivative or the eigenvalues of ``M`` are
+    not found."""
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    from .dae import matrix_exponential
+    from .linear_ode import _normal
+    n = len(A)
+    pivots = [e for row in A for e in row if e != _ZERO]
+    if not pivots or all(not e.has(x) for e in pivots):
         return []
-    known: set[Basic] = {s for row in A for e in row for s in e.free_symbols}
-    known.add(x)
-    constants = sorted({s for e in vector for s in e.free_symbols if s not in known and isinstance(s, Symbol)},
-                       key=str)
+    pivot = pivots[0]
+    M = [[_normal(e/pivot) for e in row] for row in A]
+    if any(e.has(x) for row in M for e in row):
+        return []
+    g = closed_antiderivative(pivot, x, closed=True)
+    if g is None:
+        return []
+    s = Dummy('s')
+    try:
+        Phi = matrix_exponential(_matrix(M), s)
+    except NotImplementedError:
+        return []
     columns: Rows = []
-    for c in constants:
-        column = [expand(e).coeff(c) for e in vector]
-        if any(e != _ZERO for e in column) and not any(e.has(*constants) for e in column) \
-                and _verified(A, column, x):
+    for j in range(n):
+        column = [_simplified(_replaced_value(Phi[i, j], s, g)) for i in range(n)]
+        if _verified(A, column, x):
             columns.append(column)
-    return columns if len(columns) == len(A) else []
+    return columns if len(columns) == n else []
+
+
+def _replaced_value(e: Expr, s: Symbol, value: Expr) -> Expr:
+    replaced = e._xreplace_evaluated({s: value})
+    if not isinstance(replaced, Expr):
+        raise TypeError("%s is not an expression" % (replaced,))
+    return replaced
 
 
 def _liouville(A: Rows, determinant_: Expr, x: Symbol) -> Expr:
@@ -960,7 +981,7 @@ def dsolve_system(A: ExprMatrix, x: Symbol, b: Optional[ExprMatrix] = None) -> L
     by rational and hyperexponential solutions, Beke's factorisation,
     Kovacic's algorithm and special functions, see
     :func:`~.dsolve_linear`), then the matrix exponential for constant
-    coefficients and SymPy's ``linodesolve``; a rational particular
+    coefficients and for ``A = g'(x) M``, ``M`` constant; a rational particular
     solution by Barkatou's method on the augmented system, or one by
     variation of constants.
 
@@ -1008,7 +1029,7 @@ def dsolve_system(A: ExprMatrix, x: Symbol, b: Optional[ExprMatrix] = None) -> L
     if len(columns) < n:
         found = _exponential_columns(rows, x) if _is_constant(rows, x) else []
         if len(found) < n:
-            found = _sympy_columns(rows, x)
+            found = _commuting_columns(rows, x)
         if len(found) > len(columns):
             columns = [ExprMatrix.column(c) for c in found]
     fundamental = _columns_matrix(columns, n)

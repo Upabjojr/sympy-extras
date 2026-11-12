@@ -204,8 +204,10 @@ SymPy lacks:
   face is `sympy_extras.solvers.kovacic_sympy`; the antiderivatives
   come from the native verified indefinite integration
   (`sympy_extras.integrals.indefinite.closed_antiderivative`, SymPy's
-  routes its last methods), and SymPy's Riccati solver is called through
-  the face (`riccati_of_core`).
+  routes its last methods), and the rational solutions of the Riccati
+  equation, the fallback of the first case, are the native
+  `kovacic.rational_riccati` (the hyperexponential solutions of
+  `z'' = r z`).
 - **Polynomial, rational and hyperexponential solutions** of equations
   of any order with polynomial coefficients (`polynomial_solutions`,
   `rational_solutions`, `hyperexponential_solutions`): degree bounds
@@ -263,10 +265,12 @@ algebra and simplification); their SymPy faces are `linear_ode_sympy`,
 examples below use. The quadratures come from the native verified
 indefinite integration (`sympy_extras.integrals.indefinite.closed_antiderivative`,
 an integral it cannot do left as the unevaluated
-`sympy_extras.integrals.integral.Integral`); SymPy's `dsolve` (the last
-resort on the reduced equations) and `solve` (the Grassmann–Plücker
-relations of Beke's method) are called through the faces
-(`dsolve_of_core`, `solve_of_core`).
+`sympy_extras.integrals.integral.Integral`); the last resort on the
+reduced equations is the native classical hints of
+`sympy_extras.solvers.dsolve` (constant coefficients, Euler's equations,
+the reduction to the lowest derivative), and the Grassmann–Plücker
+relations of Beke's method are solved by the native port of SymPy's
+`solve` (`sympy_extras.solvers.solvers.solve_system`).
 
 ```python
 >>> from sympy import Matrix, Function
@@ -370,9 +374,9 @@ SymPy matrices. The antiderivatives of rational functions are native
 (`rational_integral`: `ratint_ratpart` and `ratint_logpart` of
 `integrals.risch.rationaltools`, with the native `RootSum` of
 `polys.rootoftools`). SymPy's `integrate` (Liouville's formula, variation
-of constants) and its `linodesolve` (the last resort for a fundamental
-matrix, after the native matrix exponential of a constant system:
-`linodesolve_of_core`) are called through the face.
+of constants) is native too, and so is the last resort for a
+fundamental matrix, SymPy's `linodesolve` of a matrix `A = g'(x) M` with
+`M` constant: `exp(M g(x))` by the native matrix exponential.
 
 - **Cyclic vectors** (`cyclic_reduction`, `cyclic_vector`,
   `system_to_scalar`): for a row vector `c`, `u = c Y` has the derivatives
@@ -871,7 +875,7 @@ the cases off.
 >>> solve_ode(y.diff(x) - k*y - exp(x), y)
 [Eq(y(x), Piecewise(((C1 + x)*exp(x), Eq(k, 1)), (C1*exp(k*x) - exp(x)/(k - 1), True)))]
 >>> solve_ode(y.diff(x, 2) + k**2*y - sin(x), y)
-[Eq(y(x), Piecewise((C2*sin(x) + (C1 - x/2)*cos(x), Eq(k, -1) | Eq(k, 1)), (C1 + C2*x - sin(x), Eq(k, 0)), (C1*exp(-I*k*x) + C2*exp(I*k*x) + sin(x)/(k**2 - 1), True)))]
+[Eq(y(x), Piecewise((C1*sin(x) + C2*cos(x) - x*cos(x)/2, Eq(k, -1) | Eq(k, 1)), (C1 + C2*x - sin(x), Eq(k, 0)), (C1*exp(-I*k*x) + C2*exp(I*k*x) + sin(x)/(k**2 - 1), True)))]
 >>> dsolve_linear(x**2*y.diff(x, 2) + a*x*y.diff(x) + 4*y, y)[1]
 Piecewise((x**2*log(x), Eq(a, -3)), (log(x)/x**2, Eq(a, 5)), (exp(-(a + sqrt(a**2 - 2*a - 15) - 1)*log(x)/2), True))
 

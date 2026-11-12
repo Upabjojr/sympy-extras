@@ -48,7 +48,8 @@ Integrating over `x` gives, for the definite integral
 
 whose right hand side vanishes at natural boundaries. The equation is
 solved by the linear ODE solvers of :mod:`sympy_extras.solvers.linear_ode`
-(SymPy's ``dsolve`` when they do not give a basis) and the constants are
+(the classical hints of :mod:`sympy_extras.solvers.dsolve` when they do
+not give a basis) and the constants are
 fixed by the values of the integral (and its derivatives) at a convenient
 point, computed by
 :func:`~sympy_extras.integrals.definite.definite_integral`. This is the
@@ -63,12 +64,11 @@ The module works on the expressions of the core and imports no SymPy:
 the polynomials in `x` have their coefficients in the field
 `\\mathbb{Q}(i)(t, \\ldots)` of the typed polynomial layer (factored over
 `\\mathbb{Q}` or `\\mathbb{Q}(i)`), the limits at the bounds are the native
-ones. The steps which stay on SymPy are reached through the functions
-ending in ``_of_core`` of :mod:`.telescoping_sympy`, imported when they are
-needed: the values of the integral at a point
-(:func:`~sympy_extras.integrals.definite.definite_integral`, not ported
-yet), its numerical check (``verify_numerically``) and SymPy's ``dsolve``
-of an equation which the native solvers leave unsolved.
+ones; the values of the integral at a point and its numerical check are
+those of the native :func:`~sympy_extras.integrals.definite.definite_integral`
+and :func:`~sympy_extras.integrals.definite.verify_numerically`, and an
+equation which the linear solvers leave unsolved goes to the classical
+hints of the native :func:`~sympy_extras.solvers.dsolve.dsolve`.
 :mod:`.telescoping_sympy` is the old interface on SymPy objects.
 
 Examples
@@ -809,11 +809,12 @@ def _initial_values(F: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, t0: Expr, o
     """``I^(j)(t0)`` for ``j < order`` by integrating ``d^j F/dt^j`` at
     ``t = t0`` (differentiation under the integral sign), or ``None``."""
     from sympy_extras.solvers.linear_ode import has_integral
-    from .telescoping_sympy import definite_integral_of_core
+    from .definite import definite_integral
     values: list[Expr] = []
     for j in range(order):
         integrand = as_expr(diff(F, (t, j)).subs(t, t0))
-        value = definite_integral_of_core(integrand, x, a, b, assumptions, False, settings.timeout)
+        value = attempt(lambda: definite_integral(integrand, (x, a, b), assumptions, special_values=False),
+                        settings.timeout, native=True)
         if value is None or has_integral(value) or value.has(Piecewise, nan, zoo, oo, -oo):
             return None
         values.append(value)
@@ -825,7 +826,8 @@ def _general_solution(coefficients: Sequence[Expr], rhs: Expr, t: Symbol,
     """The general solution of ``sum_j a_j I^(j) = rhs`` with its
     constants: a basis of the homogeneous equation and a particular
     solution by variation of parameters (the native linear solvers),
-    SymPy's ``dsolve`` when they do not find them."""
+    the classical hints of :func:`~sympy_extras.solvers.dsolve.explicit_solution`
+    when they do not find them."""
     from sympy_extras.solvers.factorization import variation_of_parameters
     from sympy_extras.solvers.linear_ode import LinearOperator, dsolve_linear, has_integral
     order = len(coefficients) - 1
@@ -843,8 +845,8 @@ def _general_solution(coefficients: Sequence[Expr], rhs: Expr, t: Symbol,
         if particular is not None and not has_integral(particular):
             constants = [Dummy('_C%d' % (j + 1)) for j in range(order)]
             return add(particular, *[mul(c, s) for c, s in zip(constants, basis)]), list(constants)
-    from .telescoping_sympy import dsolve_of_core
-    return dsolve_of_core(equation, Function('I')(t))
+    from sympy_extras.solvers.dsolve import explicit_solution
+    return attempt(lambda: explicit_solution(equation, Function('I')(t)), settings.timeout, native=True)
 
 
 def _solve_constants(equations: list[Expr], constants: list[Symbol]) -> Optional[list[Expr]]:
@@ -906,8 +908,8 @@ def _verified(value: Expr, F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: As
     value."""
     if not settings.numerical_checks:
         return True
-    from .telescoping_sympy import verify_numerically_of_core
-    return verify_numerically_of_core(value, F, x, a, b, assumptions) is not False
+    from .definite import verify_numerically
+    return verify_numerically(value, F, x, a, b, assumptions) is not False
 
 
 def holonomic_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,

@@ -4,12 +4,7 @@
 :class:`IntegralByRanges` is the unevaluated integral on SymPy objects
 and :func:`integrate_by_ranges` computes it: the arguments are converted
 by :mod:`sympy_extras.interop`, the native code runs and the value is
-converted back (the algebraic numbers of the bounds as ``CRootOf``). The
-step of the native module which stays on SymPy is here too, on core
-expressions: the one-dimensional integrals by
-:func:`~sympy_extras.integrals.definite.definite_integral`, not ported
-yet (:func:`definite_integral_of_core`, the default integrator of the
-native module).
+converted back (the algebraic numbers of the bounds as ``CRootOf``).
 
 Examples
 ========
@@ -74,16 +69,14 @@ from sympy.core.basic import Basic
 from sympy.core.containers import Tuple
 from sympy.core.expr import Expr
 from sympy.core.symbol import Str, Symbol
-from sympy.integrals.integrals import Integral
 from sympy.logic.boolalg import Boolean
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import ComplexRootOf
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_boolean, sympy_boolean
-from sympy_extras.core.basic import Basic as CoreBasic
-from sympy_extras.core.expr import Expr as CoreExpr, as_expr as as_core_expr
+from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_boolean, sympy_boolean
+from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.polys.cad.indexedroot import real_root
@@ -92,7 +85,7 @@ from sympy_extras.polys.polytools import Poly as CorePoly
 
 from . import regions as native
 
-__all__ = ['IntegralByRanges', 'integrate_by_ranges', 'definite_integral_of_core']
+__all__ = ['IntegralByRanges', 'integrate_by_ranges']
 
 #: the measures of integration (see :mod:`sympy_extras.integrals.regions`)
 _MEASURES = ('lebesgue', 'hausdorff')
@@ -323,44 +316,6 @@ def integrate_by_ranges(integrand: ExprLike, condition: object,
 
 # ---------------------------------------------------------------------------
 # the step of the native module which stays on SymPy
-
-def definite_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                              assumptions: Sequence[CoreBoolean]) -> Optional[CoreExpr]:
-    """:func:`~sympy_extras.integrals.definite.definite_integral` of
-    ``Integral(f, (x, a, b))`` under the assumptions, without the cases of
-    the special values of the parameters, on core expressions (not ported
-    yet): the default integrator of
-    :func:`sympy_extras.integrals.regions.integrate_by_ranges`. ``None``
-    when the integral is not computed (it keeps an ``Integral``) or its
-    value cannot be converted; the ``ValueError`` of bounds which
-    contradict the assumptions goes on to the caller (an empty cell)."""
-    from .definite import definite_integral
-    value = definite_integral(sympy_expr(f), (_sympy_symbol(x), sympy_expr(a), sympy_expr(b)),
-                              [sympy_boolean(p) for p in assumptions], special_values=False)
-    if value.has(Integral, IntegralByRanges):
-        return None
-    try:
-        return _native_roots(value, core_expr(value))
-    except (TypeError, ValueError, NotImplementedError):
-        return None
-
-
-def _native_roots(value: Expr, converted: CoreExpr) -> CoreExpr:
-    """The conversion ``converted`` of ``value`` with its real
-    ``CRootOf`` (the algebraic bounds of the cells, which went to SymPy as
-    ``CRootOf``) the native root objects again."""
-    rule: dict[CoreBasic, CoreBasic] = {}
-    for root in value.atoms(ComplexRootOf):
-        if not isinstance(root, ComplexRootOf) or not root.is_real:
-            continue
-        symbols = sorted_symbols(free_symbols(as_expr(root.expr)))
-        if len(symbols) != 1:
-            continue
-        rule[core_expr(root)] = real_root(core_real(root), symbols[0].name)
-    if not rule:
-        return converted
-    return as_core_expr(converted._xreplace_evaluated(rule))
-
 
 # ---------------------------------------------------------------------------
 # the private steps of the native module on SymPy objects, for the tests

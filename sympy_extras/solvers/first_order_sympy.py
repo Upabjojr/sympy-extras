@@ -9,12 +9,10 @@ native functions. The private helpers ``_derivative_polynomial`` and
 ``_explicit_rhs`` stay written on SymPy for
 :mod:`~sympy_extras.solvers.darboux`, which is written on SymPy too.
 
-The step of the native module which stays written on SymPy is called
-from it at run time (a function ending in ``_of_core``, which takes and
-returns objects of the core): :func:`dsolve_of_core`, SymPy's ``dsolve``,
-for the linear equation of a Lagrange equation and the inverse Riccati
-equations of the AIR class (:mod:`~sympy_extras.solvers.abel`) the native
-solver misses. The antiderivatives are native
+The linear equation of a Lagrange equation and the inverse Riccati
+equations of the AIR class (:mod:`~sympy_extras.solvers.abel`) are solved
+by the native :func:`sympy_extras.solvers.dsolve.dsolve`, and the
+antiderivatives are native
 (:func:`sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
@@ -34,16 +32,13 @@ from typing import Optional
 from sympy.core.basic import Basic
 from sympy.core.function import AppliedUndef
 
-from sympy_extras._timeout import attempt
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
 from sympy_extras.interop import from_sympy, to_sympy
-from sympy_extras.settings import settings
 
 from . import first_order as native
 
-__all__ = ['riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order',
-           'dsolve_of_core']
+__all__ = ['riccati_ode', 'chini_ode', 'abel_ode', 'lagrange_ode', 'dsolve_first_order']
 
 
 # ---------------------------------------------------------------------------
@@ -83,22 +78,6 @@ def _optional(found: Optional[CoreBasic]) -> Optional[Basic]:
 
 # ---------------------------------------------------------------------------
 # the steps of the native modules which stay on SymPy
-
-
-
-def dsolve_of_core(equation: CoreBasic, f: CoreAppliedUndef) -> Optional[CoreBasic]:
-    """SymPy's ``dsolve(equation, f)`` under the time limit of the
-    settings (an ``Eq`` or a list of them as SymPy gives them, converted),
-    ``None`` when it does not finish."""
-    from sympy.solvers.ode import dsolve
-    e, y = _sympy_basic(equation), _sympy_function(f)
-    found = attempt(lambda: dsolve(e, y), settings.timeout)
-    if found is None:
-        return None
-    if isinstance(found, list):
-        from sympy.core.containers import Tuple
-        return _core_basic(Tuple(*found))
-    return _core_basic(found)
 
 
 # ---------------------------------------------------------------------------

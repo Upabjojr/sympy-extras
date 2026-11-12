@@ -571,7 +571,7 @@ of intervals by the cylindrical algebraic decomposition. See
 ```python
 >>> from sympy import symbols, exp, sin, cos, sqrt, Abs, log, oo, pi, S
 >>> from sympy_extras.assumptions.facts_sympy import element
->>> from sympy_extras.integrals.definite import definite_integral
+>>> from sympy_extras.integrals.definite_sympy import definite_integral
 >>> from sympy_extras.integrals.regions_sympy import IntegralByRanges
 >>> from sympy_extras.integrals.mellin_sympy import mellin_transform
 >>> x, y, k, s = symbols('x y k s')
@@ -1009,7 +1009,9 @@ sympy_extras/
         residues_sympy.py    the SymPy face of residues
         contours.py          the rectangle, the sector and the indented line for residues (native)
         contours_sympy.py    the SymPy face of contours
-        definite.py          definite_integral: splitting, range mappings, verified fallback
+        definite.py          definite_integral: splitting, range mappings, verified fallback (native)
+        definite_sympy.py    the SymPy face of definite
+        integral.py          Integral: the unevaluated integral of the core
         regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD) (native)
         regions_sympy.py     the SymPy face of regions
         telescoping.py       Almkvist–Zeilberger creative telescoping (holonomic integrals) (native)

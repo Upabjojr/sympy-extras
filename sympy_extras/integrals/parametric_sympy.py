@@ -1,15 +1,14 @@
 """The SymPy face of differentiation under the integral sign
-(:mod:`sympy_extras.integrals.parametric`), for the integrators which are
-still written on SymPy (:mod:`.definite`).
+(:mod:`sympy_extras.integrals.parametric`): the old interface on SymPy
+objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of
 :mod:`.conditions_sympy`). The native module asks its definite integrals
-and its numerical checks of a :class:`~sympy_extras.integrals.parametric.ParametricIntegrator`:
-here :class:`DefiniteIntegrator`, on the integrator of
-:mod:`.definite` (``_Integrator`` without the method, and
-``verify_numerically``); its antiderivative in the parameter is SymPy's
-``integrate`` (:func:`antiderivative_of_core`).
+and its numerical checks of a :class:`~sympy_extras.integrals.parametric.ParametricIntegrator`,
+the native :class:`~sympy_extras.integrals.definite.DefiniteIntegrator`;
+its antiderivative in the parameter is SymPy's ``integrate``
+(:func:`antiderivative_of_core`).
 
 Examples
 ========
@@ -27,7 +26,7 @@ ConditionalValue(log(p + 1))
 """
 from __future__ import annotations
 
-from typing import Final, Optional
+from typing import Optional
 
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
@@ -36,53 +35,16 @@ from sympy.integrals.integrals import Integral, integrate
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import ExprLike, as_expr, as_symbol
-from sympy_extras.assumptions import ask as native_ask
 from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import to_sympy
 
-from . import conditions as native_conditions
 from . import parametric as native
 from .conditions_sympy import ConditionalValue
-from .definite import _Integrator, verify_numerically
-from .laplace_sympy import _sympy_assumptions
+from .definite import DefiniteIntegrator
 
-__all__ = ['parametric_integral', 'candidate_parameters', 'DefiniteIntegrator', 'definite_integrator',
-           'antiderivative_of_core']
-
-
-class DefiniteIntegrator(native.ParametricIntegrator):
-    """The integrator of :mod:`.definite` (without differentiation under
-    the integral sign) and its ``verify_numerically``, under assumptions
-    given with SymPy objects, on core expressions."""
-
-    __slots__ = ('assumptions', '_integrator')
-
-    def __init__(self, assumptions: Assumptions) -> None:
-        self.assumptions: Final[Assumptions] = assumptions
-        self._integrator: Final[_Integrator] = _Integrator(assumptions, parametric=False)
-
-    def integrate(self, f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
-                  depth: int) -> Optional[native_conditions.ConditionalValue]:
-        found = self._integrator.integrate(sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b),
-                                           depth, True)
-        if found is None:
-            return None
-        try:
-            return found.to_core()
-        except (TypeError, ValueError, NotImplementedError):
-            return None
-
-    def verify(self, value: CoreExpr, f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr) -> Optional[bool]:
-        return verify_numerically(sympy_expr(value), sympy_expr(f), _sympy_symbol(x), sympy_expr(a),
-                                  sympy_expr(b), self.assumptions)
-
-
-def definite_integrator(assumptions: native_ask.Assumptions) -> DefiniteIntegrator:
-    """The :class:`DefiniteIntegrator` under assumptions of the core (the
-    default integrator of :func:`sympy_extras.integrals.parametric.parametric_integral`)."""
-    return DefiniteIntegrator(_sympy_assumptions(assumptions))
+__all__ = ['parametric_integral', 'candidate_parameters', 'antiderivative_of_core']
 
 
 def antiderivative_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
@@ -120,7 +82,8 @@ def parametric_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, parame
     """:func:`sympy_extras.integrals.parametric.parametric_integral` on
     SymPy objects: ``Integral(f, (x, a, b))`` by differentiation under the
     integral sign with respect to ``parameter``, the integrals by
-    :class:`DefiniteIntegrator`; ``None`` when a step fails or the
+    the native :class:`~sympy_extras.integrals.definite.DefiniteIntegrator`;
+    ``None`` when a step fails or the
     numerical check rejects the result.
 
     >>> from sympy import symbols, atan, oo
@@ -132,5 +95,6 @@ def parametric_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, parame
     """
     found = native.parametric_integral(core_expr(sympify(f)), _core_symbol(x), core_expr(sympify(a)),
                                        core_expr(sympify(b)), _core_symbol(parameter),
-                                       core_assumptions(assumptions), depth, DefiniteIntegrator(assumptions))
+                                       core_assumptions(assumptions), depth,
+                                       DefiniteIntegrator(core_assumptions(assumptions)))
     return None if found is None else ConditionalValue.from_core(found)
