@@ -1724,7 +1724,7 @@ class _Integrator:
         return self._finish(mean_value_integral(f, x, a, b, self.assumptions))
 
     def _residues(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
-        from .residues import residue_integral
+        from .residues_sympy import residue_integral
         return self._finish(residue_integral(f, x, a, b, self.assumptions))
 
     def _real_parts(self, condition: Boolean) -> Boolean:
@@ -2419,7 +2419,7 @@ class _Integrator:
 
     def _contours(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:
         """Rectangular, sector and indented contours (:mod:`.contours`)."""
-        from .contours import contour_integral
+        from .contours_sympy import contour_integral
         return self._finish(contour_integral(f, x, a, b, self.assumptions))
 
     def _transformations(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int) -> Optional[ConditionalValue]:

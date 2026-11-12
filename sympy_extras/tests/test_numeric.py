@@ -82,7 +82,7 @@ def test_the_checks_of_the_package_go_through_them() -> None:
     from sympy_extras.solvers.transcendental_sympy import _real_root
     t = symbols('t', real=True)
     assert _real_root(as_expr(t - log(2 * sqrt(2))), t, as_expr(L - I * pi)) is True
-    from sympy_extras.integrals.residues import _numerically
+    from sympy_extras.integrals.residues_sympy import _numerically
     # (unevaluated: SymPy's own im(L) > 0 is decided by the rounding, or
     # raises RecursionError)
     assert _numerically(as_boolean(Gt(im(L, evaluate=False), 0, evaluate=False))) is True

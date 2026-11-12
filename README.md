@@ -1005,7 +1005,10 @@ sympy_extras/
         slater_sympy.py      the SymPy face of slater
         marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo) (native)
         marichev_sympy.py    the SymPy face of marichev
-        residues.py          rational, Fourier and trigonometric integrals by residues
+        residues.py          rational, Fourier and trigonometric integrals by residues (native)
+        residues_sympy.py    the SymPy face of residues
+        contours.py          the rectangle, the sector and the indented line for residues (native)
+        contours_sympy.py    the SymPy face of contours
         definite.py          definite_integral: splitting, range mappings, verified fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD)
         telescoping.py       Almkvist–Zeilberger creative telescoping (holonomic integrals)

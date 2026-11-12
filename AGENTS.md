@@ -259,7 +259,14 @@ sympy_extras/
                              native slater, refine, gammasimp, factor and unpolarify)
         marichev_sympy.py    the SymPy face of marichev, which definite, algebraic, series and the other
                              integrators written on SymPy use (mellin_integrate, tidy, checked_tidy, ...)
-        residues.py          rational, Fourier and trigonometric integrals by the residue theorem
+        residues.py          rational, Fourier and trigonometric integrals by the residue theorem (native: the native
+                             roots with placeholders for the constants, factor over ZZ_I, ask, find_instance, limits,
+                             simplify, the validated quadrature; CRootOf of unwieldy numerical poles through residues_sympy)
+        residues_sympy.py    the SymPy face of residues, used by definite, and complex_roots_of_core,
+                             verify_numerically_of_core
+        contours.py          the rectangle, the sector and the indented real line for the residue theorem (native: the
+                             native residues, the core's residue, elimination on core expressions)
+        contours_sympy.py    the SymPy face of contours, used by definite
         definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
         regions.py           IntegralByRanges: integrals over semialgebraic regions through the CAD
         tables.py            TABLE, TableEntry, lookup, table_integral: definite integrals by table lookup (Gradshteyn–Ryzhik)
