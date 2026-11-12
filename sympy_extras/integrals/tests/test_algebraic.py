@@ -8,7 +8,7 @@ from sympy_extras.integrals.algebraic_sympy import (algebraic_integral, euler_su
                                               binomial_differential, rationalised_integral, binomial_exponents,
                                               chebyshev_elementary, binomial_hypergeometric_antiderivative)
 from sympy_extras.integrals.conditions_sympy import ConditionalValue
-from sympy_extras.integrals.definite import verify_numerically
+from sympy_extras.integrals.definite_sympy import verify_numerically
 
 x = symbols('x')
 a = symbols('a', positive=True)

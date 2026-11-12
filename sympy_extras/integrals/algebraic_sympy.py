@@ -38,7 +38,7 @@ from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
-from sympy_extras._typing_sympy import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions import ask as native_ask
 from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
@@ -48,7 +48,7 @@ from sympy_extras.core.symbol import Symbol as CoreSymbol
 from . import algebraic as native
 from . import conditions as native_conditions
 from .conditions_sympy import ConditionalValue
-from .laplace_sympy import _sympy_assumptions, conditional_integral_of_core
+from .laplace_sympy import conditional_integral_of_core
 
 __all__ = ['algebraic_integral', 'euler_substitution', 'euler_substitutions', 'binomial_differential', 'moebius_root',
            'rationalised_integral', 'Rationalisation', 'BinomialDifferential', 'binomial_exponents',
@@ -285,9 +285,4 @@ def verify_numerically_of_core(value: CoreExpr, f: CoreExpr, x: CoreSymbol, a: C
     agrees, ``None`` when nothing was checked or the expressions cannot be
     converted."""
     from .definite import verify_numerically
-    try:
-        converted = (sympy_expr(value), sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b))
-    except (TypeError, ValueError, NotImplementedError):
-        return None
-    v, integrand, variable, lower, upper = converted
-    return verify_numerically(as_expr(v), integrand, variable, lower, upper, _sympy_assumptions(assumptions))
+    return verify_numerically(value, f, x, a, b, assumptions)

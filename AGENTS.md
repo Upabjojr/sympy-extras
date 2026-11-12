@@ -273,7 +273,13 @@ sympy_extras/
         contours.py          the rectangle, the sector and the indented real line for the residue theorem (native: the
                              native residues, the core's residue, elimination on core expressions)
         contours_sympy.py    the SymPy face of contours, used by definite
-        definite.py          definite_integral: splitting, range mappings, the verified SymPy fallback
+        definite.py          definite_integral, conditional_integral, verify_numerically, DefiniteIntegrator: splitting,
+                             range mappings, the cases of the parameters, the methods in turn (native: every method of the
+                             package called natively, the native solve, ask, SAT, limits, singularities and simplification,
+                             quadratures by the numerical rules of the nodes; SymPy's integrate, the last method, and the
+                             verified antiderivatives of indefinite through definite_sympy)
+        definite_sympy.py    the SymPy face of definite, and integrate_of_core, verified_antiderivative_of_core
+        integral.py          Integral (node): the unevaluated indefinite or definite integral; is_unevaluated (native)
         regions.py           IntegralByRanges, integrate_by_ranges, Integrator: integrals over semialgebraic regions through
                              the CAD (native: the native CAD, ask, refine, solve, simplify, roots and simplex; the
                              one-dimensional integrals by a typed integrator, definite's through regions_sympy by default)

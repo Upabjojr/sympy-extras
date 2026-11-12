@@ -41,7 +41,7 @@ from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.assumptions import ask as native_ask
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions, sympy_boolean
+from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_assumptions, sympy_boolean
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean, to_boolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
@@ -177,16 +177,8 @@ def definite_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreEx
     (not ported yet); ``None`` when it does not finish or its value
     cannot be converted."""
     from .definite import definite_integral
-    integrand, variable, lower, upper = sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b)
-    facts = _sympy_assumptions(assumptions)
-    found = attempt(lambda: definite_integral(integrand, (variable, lower, upper), facts,
-                                              special_values=special_values), seconds)
-    if found is None:
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
+    return attempt(lambda: definite_integral(f, (x, a, b), assumptions, special_values=special_values), seconds,
+                   native=True)
 
 
 def conditional_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
@@ -197,12 +189,4 @@ def conditional_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: Cor
     ``None``), on core expressions (not ported yet); ``None`` when it is
     not found, does not finish or cannot be converted."""
     from .definite import conditional_integral
-    integrand, variable, lower, upper = sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b)
-    facts = _sympy_assumptions(assumptions)
-    found = attempt(lambda: conditional_integral(integrand, variable, lower, upper, facts), seconds)
-    if found is None:
-        return None
-    try:
-        return found.to_core()
-    except (TypeError, ValueError, NotImplementedError):
-        return None
+    return attempt(lambda: conditional_integral(f, x, a, b, assumptions), seconds, native=True)

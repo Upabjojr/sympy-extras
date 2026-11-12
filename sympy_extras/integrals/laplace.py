@@ -111,14 +111,16 @@ def _fresh(name: str, **assumptions: bool) -> Dummy:
 
 
 def _is_integral(e: Basic) -> bool:
-    """Whether ``e`` is an ``Integral`` (SymPy's, wrapped in a node of the
-    core: the core has no class of its own)."""
-    return e._is_foreign_node() and e._compare_name() == 'Integral'
+    """Whether ``e`` is an unevaluated ``Integral``: the node of
+    :mod:`.integral` (the value of :mod:`.definite` when no method
+    applies), or SymPy's wrapped in a node of the core."""
+    from .integral import Integral
+    return isinstance(e, Integral) or (e._is_foreign_node() and e._compare_name() == 'Integral')
 
 
 def has_integral(e: Basic) -> bool:
-    """Whether ``e`` has an unevaluated ``Integral`` (SymPy's, wrapped in a
-    node of the core).
+    """Whether ``e`` has an unevaluated ``Integral`` (the node of
+    :mod:`.integral`, or SymPy's wrapped in a node of the core).
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.integrals.laplace import has_integral

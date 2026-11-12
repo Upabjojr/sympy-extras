@@ -7,7 +7,7 @@ import random
 
 from sympy import symbols, sqrt, S, gamma, pi, elliptic_k, elliptic_e, simplify, Rational, oo, Expr
 
-from sympy_extras.integrals.definite import verify_numerically
+from sympy_extras.integrals.definite_sympy import verify_numerically
 from sympy_extras.integrals.elliptic_sympy import elliptic_integral
 
 x = symbols('x')

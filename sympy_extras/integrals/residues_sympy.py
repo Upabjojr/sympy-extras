@@ -301,5 +301,4 @@ def verify_numerically_of_core(value: CoreExpr, f: CoreExpr, x: CoreSymbol, a: C
     disagrees with the quadratures at samples of the parameters, ``True``
     when it agrees, ``None`` when nothing could be checked."""
     from .definite import verify_numerically
-    return verify_numerically(sympy_expr(value), sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b),
-                              _sympy_assumptions(assumptions))
+    return verify_numerically(value, f, x, a, b, assumptions)

@@ -252,16 +252,8 @@ def definite_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreEx
     (not ported yet); ``None`` when it does not finish or its value
     cannot be converted."""
     from .definite import definite_integral
-    integrand, variable, lower, upper = sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b)
-    facts = _sympy_assumptions(assumptions)
-    found = attempt(lambda: definite_integral(integrand, (variable, lower, upper), facts,
-                                              special_values=special_values), seconds)
-    if found is None:
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
+    return attempt(lambda: definite_integral(f, (x, a, b), assumptions, special_values=special_values), seconds,
+                   native=True)
 
 
 def verify_numerically_of_core(value: CoreExpr, f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr,
@@ -273,8 +265,7 @@ def verify_numerically_of_core(value: CoreExpr, f: CoreExpr, x: CoreSymbol, a: C
     parameters), ``True`` when it agrees, ``None`` when nothing could be
     checked."""
     from .definite import verify_numerically
-    return verify_numerically(sympy_expr(value), sympy_expr(f), _sympy_symbol(x), sympy_expr(a), sympy_expr(b),
-                              _sympy_assumptions(assumptions))
+    return verify_numerically(value, f, x, a, b, assumptions)
 
 
 def _sympy_function(f: CoreAppliedUndef) -> AppliedUndef:

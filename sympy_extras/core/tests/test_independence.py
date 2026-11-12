@@ -2732,3 +2732,48 @@ def test_native_roots_over_ex_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_EX_ROOTS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DEFINITE = r'''
+import sys
+from sympy_extras.core import Integer, oo, pi, sqrt, symbols
+from sympy_extras.functions import abs_, atan, cos, exp, log, sin
+from sympy_extras.integrals.definite import conditional_integral, definite_integral, verify_numerically
+from sympy_extras.integrals.integral import Integral
+assert 'sympy' not in sys.modules
+x, k, c = symbols('x k c')
+a = symbols('a', positive=True)
+cases = [(1/x, (x, 0, 1), None, 'oo'),
+         (exp(-a*x)*cos(k*x), (x, 0, oo), k > 0, 'a/(a**2 + k**2)'),
+         (1/sqrt(1 - x**2), (x, -1, 1), None, 'pi'),
+         (exp(-x)*x**k, (x, 0, oo), k > -1, 'gamma(k + 1)'),
+         (log(1 + x)/(1 + x**2), (x, 0, 1), None, 'pi*log(2)/8'),
+         (atan(x)/(x*(1 + x**2)), (x, 0, oo), None, 'pi*log(2)/2'),
+         (sin(x)**2, (x, 0, pi), None, 'pi/2'),
+         (abs_(x - 1), (x, 0, 3), None, '5/2'),
+         (exp(-x**2), (x, -oo, oo), None, 'sqrt(pi)'),
+         (sqrt(x)*sqrt(2 - x), (x, 0, 2), None, 'pi/2'),
+         (1/(x**2 + c**2), (x, 0, oo), c > 0, 'pi/(2*c)'),
+         (x**a*log(x), (x, 0, 1), None, '-1/(a + 1)**2')]
+for f, limits, assumptions, expected in cases:
+    assert str(definite_integral(f, limits, assumptions)) == expected, (f, definite_integral(f, limits, assumptions))
+assert str(conditional_integral(exp(-a*x), x, Integer(0), oo)) == 'ConditionalValue(1/a)'
+assert verify_numerically(1/a, exp(-a*x), x, Integer(0), oo) is True
+assert verify_numerically(2/a, exp(-a*x), x, Integer(0), oo) is False
+assert str(Integral(exp(-x**2), x, Integer(0), oo)) == 'Integral(exp(-x**2), (x, 0, oo))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_definite_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.definite` does not load
+    SymPy, nor do the integrals which the native methods settle (the
+    divergences, the Mellin table and the Marichev–Adamchik method, the
+    residues, the tables, the splitting at kinks, the antiderivatives with
+    their limits, the numerical checks); only SymPy's ``integrate``, the
+    last of the methods, and the verified antiderivatives of
+    :mod:`~sympy_extras.integrals.indefinite` reach SymPy's side, through
+    :mod:`~sympy_extras.integrals.definite_sympy`."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DEFINITE], capture_output=True, text=True, timeout=1200)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import random
+from typing import Optional
 
 from sympy import (symbols, exp, sin, cos, log, sqrt, oo, pi, S, Rational, Abs, Heaviside, Piecewise, Integral, I, Eq,
                    sign, Max, Min, simplify, gamma, DiracDelta, erf, EulerGamma, atan, asin, besselj, Si, E, tan, arg, cosh,
@@ -16,9 +17,14 @@ from sympy_extras._testing import untyped
 from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.integrals.definite import definite_integral, conditional_integral, verify_numerically
+from sympy_extras.integrals.definite_sympy import definite_integral, conditional_integral, verify_numerically
 from sympy_extras.integrals.conditions_sympy import ConditionalValue
 from sympy_extras.settings import configure
+from sympy_extras._numeric_sympy import core_expr, sympy_expr
+from sympy_extras.assumptions.ask_sympy import _core_symbol
+from sympy_extras.integrals import definite as native_definite
+from sympy_extras.core.expr import Expr as CoreExpr
+from sympy.core.sympify import sympify
 
 x, k, t = symbols('x k t')
 a, b, s = symbols('a b s', positive=True)
@@ -26,6 +32,15 @@ a, b, s = symbols('a b s', positive=True)
 
 def _same(u: ExprLike, v: ExprLike) -> bool:
     return simplify(as_expr(u) - as_expr(v)) == 0
+
+
+def _core(e: ExprLike) -> CoreExpr:
+    return core_expr(sympify(e))
+
+
+def _quadrature(f: ExprLike, variable: Symbol, lower: ExprLike, upper: ExprLike) -> Optional[complex]:
+    """The quadrature of the native module on SymPy objects."""
+    return native_definite._quadrature(_core(f), _core_symbol(variable), _core(lower), _core(upper))
 
 
 def test_trivial_ranges() -> None:
@@ -318,7 +333,6 @@ def test_sums_are_integrated_term_by_term() -> None:
     # other method takes a sum of two distinct radicals; each term is
     # elementary, and the slice of the union of two discs between their
     # intersection points is exactly this integrand
-    from sympy_extras.integrals.definite import _Integrator
     g = sqrt(x) * sqrt(2 - x) - sqrt(1 - x) * sqrt(x + 1)
     assert _same(definite_integral(g, (x, S.Half, 1)), sqrt(3) / 4 - pi / 12)
     assert _same(definite_integral(sqrt(x) * sqrt(2 - x) + sqrt(1 - x) * sqrt(x + 1), (x, S.Half, 1)), pi / 4)
@@ -326,8 +340,8 @@ def test_sums_are_integrated_term_by_term() -> None:
     assert _same(definite_integral((sqrt(x) + sqrt(1 - x))**2, (x, 0, 1)), 1 + pi / 4)
     # terms which diverge separately and cancel in the sum give no
     # termwise value; the whole integrand still has one
-    integrator = _Integrator(())
-    assert integrator._termwise(1 / x - 1 / (x + x**2), x, S.Zero, S.One, 0) is None
+    integrator = native_definite._Integrator(())
+    assert integrator._termwise(_core(1 / x - 1 / (x + x**2)), _core_symbol(x), _core(0), _core(1), 0) is None
     assert definite_integral(1 / x - 1 / (x + x**2), (x, 0, 1)) == log(2)
 
 
@@ -362,12 +376,11 @@ def test_powers_and_logarithms_split_by_the_signs_of_their_factors() -> None:
     assert _same(definite_integral(log(x**2) / sqrt(1 - x**2), (x, -1, 1)), -2 * pi * log(2))
     assert _same(definite_integral((x - x**2)**k, (x, 0, 1), k > -1), gamma(k + 1)**2 / gamma(2 * k + 2))
     # a factor of unknown sign stays in the remainder: nothing is claimed
-    from sympy_extras.integrals.definite import _Integrator
-    integrator = _Integrator(None)
-    piece = integrator._branch(sqrt((x - k) * x), x, S(2), S(3), frozenset(), True)
-    assert piece == sqrt(x) * sqrt(x - k)
-    piece = integrator._branch(log(x**2 * (x - 1)), x, S(0), S(1), frozenset(), True)
-    assert piece == 2 * log(x) + log(1 - x) + log(-1)
+    integrator = native_definite._Integrator(None)
+    piece = integrator._branch(_core(sqrt((x - k) * x)), _core_symbol(x), _core(2), _core(3), frozenset(), True)
+    assert piece is not None and sympy_expr(piece) == sqrt(x) * sqrt(x - k)
+    piece = integrator._branch(_core(log(x**2 * (x - 1))), _core_symbol(x), _core(0), _core(1), frozenset(), True)
+    assert piece is not None and sympy_expr(piece) == 2 * log(x) + log(1 - x) + log(-1)
 
 
 def test_exponentials_are_combined() -> None:
@@ -751,7 +764,6 @@ def _cases_agree_with_quadrature(f: ExprLike, limits: tuple[Symbol, ExprLike, Ex
     first ``integrals`` samples with ``definite_integral`` on that
     range."""
     from sympy_extras._numeric_sympy import reliable_value
-    from sympy_extras.integrals.definite import _quadrature
     variable, lower, upper = limits[0], as_expr(limits[1]), as_expr(limits[2])
     f_ = as_expr(f)
     value = definite_integral(f_, limits, assumptions)
@@ -981,7 +993,6 @@ def test_quadrature_on_a_segment_through_a_branch_point() -> None:
     # principal branch, 2*I*cos(pi*log(c)/2)/(1 + log(c)) for c**log(z))
     # was accepted before only because nan compared as agreeing
     import mpmath
-    from sympy_extras.integrals.definite import _quadrature
     z = symbols('z')
     for c in (2, 3):
         f = S(c)**log(z)
@@ -1001,7 +1012,6 @@ def test_quadrature_ignores_the_rounding_onto_an_endpoint_singularity() -> None:
     # oo compared as agreeing); acoth((1 - z)/(1 + z)) is -log(z)/2 - I*pi/2
     # on (0, 1), so the value is 2/9 - I*pi/3
     import mpmath
-    from sympy_extras.integrals.definite import _quadrature
     z, u = symbols('z u')
     found = _quadrature(u**2 * acoth((1 - u**2) / (u**2 + 1)), u, S.Zero, S.One)
     assert found is not None and abs(found - complex(Rational(1, 9) - I * pi / 6)) < 1e-12
@@ -1022,10 +1032,10 @@ def test_halves_of_the_real_line_on_disjoint_regions() -> None:
     # and cancelled to 0 (REDUCE's defint 93, exp(-(x - mu)**2/(2*sigma**2))
     # over the real line, came out Piecewise((0, ...), (Integral, True))),
     # where the integral is sqrt(pi)
-    from sympy_extras.integrals.definite import _Integrator
     mu = symbols('mu')
-    found = _Integrator(None)._mapped(exp(-(x - mu)**2), x, -oo, oo, 0)
-    assert found is None or abs(complex(found.value.subs(mu, 1).evalf(20)) - complex(sqrt(pi).evalf(20))) < 1e-12, found
+    found = native_definite._Integrator(None)._mapped(_core(exp(-(x - mu)**2)), _core_symbol(x), _core(-oo), _core(oo), 0)
+    assert found is None or abs(complex(sympy_expr(found.value).subs(mu, 1).evalf(20)) - complex(sqrt(pi).evalf(20))) \
+        < 1e-12, found
 
 
 def test_nonelementary_binomial_differentials_before_the_range_is_mapped() -> None:

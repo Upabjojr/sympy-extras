@@ -74,16 +74,14 @@ from sympy.core.basic import Basic
 from sympy.core.containers import Tuple
 from sympy.core.expr import Expr
 from sympy.core.symbol import Str, Symbol
-from sympy.integrals.integrals import Integral
 from sympy.logic.boolalg import Boolean
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import ComplexRootOf
 
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, as_symbol, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_boolean, sympy_boolean
-from sympy_extras.core.basic import Basic as CoreBasic
-from sympy_extras.core.expr import Expr as CoreExpr, as_expr as as_core_expr
+from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, core_boolean, sympy_boolean
+from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.polys.cad.indexedroot import real_root
@@ -335,31 +333,11 @@ def definite_integral_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreEx
     value cannot be converted; the ``ValueError`` of bounds which
     contradict the assumptions goes on to the caller (an empty cell)."""
     from .definite import definite_integral
-    value = definite_integral(sympy_expr(f), (_sympy_symbol(x), sympy_expr(a), sympy_expr(b)),
-                              [sympy_boolean(p) for p in assumptions], special_values=False)
-    if value.has(Integral, IntegralByRanges):
+    from .integral import is_unevaluated
+    value = definite_integral(f, (x, a, b), list(assumptions), special_values=False)
+    if is_unevaluated(value) or value.has(native.IntegralByRanges):
         return None
-    try:
-        return _native_roots(value, core_expr(value))
-    except (TypeError, ValueError, NotImplementedError):
-        return None
-
-
-def _native_roots(value: Expr, converted: CoreExpr) -> CoreExpr:
-    """The conversion ``converted`` of ``value`` with its real
-    ``CRootOf`` (the algebraic bounds of the cells, which went to SymPy as
-    ``CRootOf``) the native root objects again."""
-    rule: dict[CoreBasic, CoreBasic] = {}
-    for root in value.atoms(ComplexRootOf):
-        if not isinstance(root, ComplexRootOf) or not root.is_real:
-            continue
-        symbols = sorted_symbols(free_symbols(as_expr(root.expr)))
-        if len(symbols) != 1:
-            continue
-        rule[core_expr(root)] = real_root(core_real(root), symbols[0].name)
-    if not rule:
-        return converted
-    return as_core_expr(converted._xreplace_evaluated(rule))
+    return value
 
 
 # ---------------------------------------------------------------------------

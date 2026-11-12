@@ -165,7 +165,7 @@ def parametric_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike, parameter:
     if derivative == 0:
         return None
     if integrator is None:
-        from .parametric_sympy import definite_integrator
+        from .definite import definite_integrator
         integrator = definite_integrator(assumptions)
     inner = integrator.integrate(derivative, x, a_, b_, depth + 1)
     if inner is None or has_integral(inner.value):

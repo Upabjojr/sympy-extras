@@ -73,7 +73,7 @@ def test_symbolic_algebraic_bounds() -> None:
     # of one_sided_limit, which rejected the symbol of the bound; and the
     # sampler of the numerical check, which had no point for an
     # assumption with the irrational bound -sqrt(2)/2
-    from sympy_extras.integrals.definite import definite_integral
+    from sympy_extras.integrals.definite_sympy import definite_integral
     y = symbols('y')
     found = definite_integral(2 * sqrt(1 - y**2), (y, -sqrt(1 - x**2), x), [x > -sqrt(2) / 2, x < 0])
     assert not found.has(Integral)

@@ -141,9 +141,13 @@ def _normal(e: Expr) -> Expr:
 
 
 def has_integral(e: Basic) -> bool:
-    """Whether ``e`` has an unevaluated ``Integral`` (of SymPy, wrapped in
-    a node of the core: :func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`)."""
-    return any(node._is_foreign_node() and node._compare_name() == 'Integral' for node in preorder_traversal(e))
+    """Whether ``e`` has an unevaluated ``Integral``: the node of
+    :mod:`sympy_extras.integrals.integral` (the value of the native
+    definite integration when no method applies), or SymPy's wrapped in a
+    node of the core (:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`)."""
+    from sympy_extras.integrals.integral import Integral
+    return any(isinstance(node, Integral) or (node._is_foreign_node() and node._compare_name() == 'Integral')
+               for node in preorder_traversal(e))
 
 
 # ---------------------------------------------------------------------------
