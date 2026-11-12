@@ -332,7 +332,8 @@ pub fn hong_projection(polys: &[Poly], x: &Basic) -> PolyResult<Vec<Poly>> {
     collect(items)
 }
 
-fn project(method: Method, polys: &[Poly], x: &Basic) -> PolyResult<Vec<Poly>> {
+/// The projection operator of `method` (`PROJECTIONS[method]`).
+pub fn project(method: Method, polys: &[Poly], x: &Basic) -> PolyResult<Vec<Poly>> {
     match method {
         Method::McCallum => mccallum_projection(polys, x, &[]),
         Method::Hong => hong_projection(polys, x),

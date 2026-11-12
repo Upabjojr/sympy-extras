@@ -11,6 +11,7 @@ use crate::error::{not_ported, zero_division, PolyResult};
 use crate::ntheory::factorint;
 use crate::numbers::*;
 
+use super::add::add;
 use super::assumptions::Predicate;
 use super::basic::{Basic, Head};
 use super::expr::{
@@ -394,7 +395,29 @@ fn power_of_power(b: &Basic, e: &Basic, expt: &Basic) -> PolyResult<Option<Basic
         s = Some(Basic::one());
     } else if let Some(real) = is(e, Predicate::extended_real) {
         if !real {
-            return Err(not_ported("floor of the branch of a complex exponent"));
+            // exp(2*I*pi*expt*floor(1/2 - im(e*log(b))/(2*pi))), kept when it
+            // is a real sign
+            use crate::functions::elementary::{
+                exponential::{exp, log},
+                integers::floor,
+            };
+            let two_pi: Basic = mul(&[Basic::int(2), Basic::pi()])?;
+            let angle: Basic = im(&mul(&[e.clone(), log(&b)?])?)?;
+            let inner: Basic = add(&[
+                Basic::half(),
+                mul(&[Basic::negative_one(), angle, pow(&two_pi, &Basic::negative_one())?])?,
+            ])?;
+            let factor: Basic = exp(&mul(&[
+                Basic::int(2),
+                Basic::imaginary_unit(),
+                Basic::pi(),
+                expt.clone(),
+                floor(&inner)?,
+            ])?)?;
+            return match real_sign(&factor)? {
+                Some(s) => Ok(Some(mul(&[s, pow(&b, &mul(&[e.clone(), expt.clone()])?)?])?)),
+                None => Ok(None),
+            };
         }
         if is_rational_value(e, -1) {
             if half(expt)? {
@@ -425,13 +448,49 @@ fn power_of_power(b: &Basic, e: &Basic, expt: &Basic) -> PolyResult<Option<Basic
         {
             s = Some(Basic::one());
         } else if half(expt)? {
-            return Err(not_ported("floor and arg of a half-integer power"));
+            // exp(2*pi*I*expt*floor(1/2 - e*arg(b)/(2*pi))), kept when it
+            // is a real sign
+            use crate::functions::elementary::{argument::arg, exponential::exp, integers::floor};
+            let two_pi: Basic = mul(&[Basic::int(2), Basic::pi()])?;
+            let inner: Basic = add(&[
+                Basic::half(),
+                mul(&[
+                    Basic::negative_one(),
+                    e.clone(),
+                    arg(&b)?,
+                    pow(&two_pi, &Basic::negative_one())?,
+                ])?,
+            ])?;
+            let factor: Basic = exp(&mul(&[
+                Basic::int(2),
+                Basic::pi(),
+                Basic::imaginary_unit(),
+                expt.clone(),
+                floor(&inner)?,
+            ])?)?;
+            s = real_sign(&factor)?;
         }
     }
     match s {
         Some(s) => Ok(Some(mul(&[s, pow(&b, &mul(&[e.clone(), expt.clone()])?)?])?)),
         None => Ok(None),
     }
+}
+
+/// The factor when it is a real sign (`_real_sign`): `sign(s)` when
+/// `sign(s) - s` is zero (evaluated to 2 digits in Python: exactly zero).
+fn real_sign(s: &Basic) -> PolyResult<Option<Basic>> {
+    if !is_true(s, Predicate::extended_real) {
+        return Ok(None);
+    }
+    let sg: Basic = crate::functions::elementary::complexes::sign(s)?;
+    let difference: Basic = add(&[sg.clone(), mul(&[Basic::negative_one(), s.clone()])?])?;
+    let zero: bool = difference == Basic::zero()
+        || super::evalf::numeric_value(&difference, 7).is_some_and(|v| {
+            let (re, im) = super::evalf::parts(&v);
+            re == super::evalf::Real::ZERO && im == super::evalf::Real::ZERO
+        });
+    Ok(if zero { Some(sg) } else { None })
 }
 
 /// `(a*b)**e` distributed when the rules allow it (`_power_of_product`).
@@ -643,6 +702,15 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
                 }
             }
         }
+    }
+    if super::accumbounds::is_bounds(exp) && matches!(base.head(), Head::Exp1) {
+        // Pow.__new__: E**AccumBounds
+        use crate::functions::elementary::exponential::exp as exponential;
+        return super::accumbounds::accum_bounds(&exponential(&exp.args()[0])?, &exponential(&exp.args()[1])?);
+    }
+    if super::accumbounds::is_bounds(base) {
+        // AccumulationBounds._eval_power
+        return super::accumbounds::ab_pow(base, exp);
     }
     if base.is_function(super::basic::Function::Abs) {
         if let Some(own) = crate::functions::elementary::complexes::abs_power(base, exp)? {

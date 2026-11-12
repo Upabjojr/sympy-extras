@@ -45,6 +45,11 @@ pub fn subs_mapping(e: &Basic, pairs: &[(Basic, Basic)]) -> PolyResult<Basic> {
 /// `_subs`.
 fn subs_node_rec(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Basic> {
     if e == old {
+        // the node itself when it equals new too: Python's new is then
+        // (usually) the same object, and the parents are not rebuilt
+        if e == new {
+            return Ok(e.clone());
+        }
         return Ok(new.clone());
     }
     if e.is_symbol() {
