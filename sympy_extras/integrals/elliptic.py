@@ -99,9 +99,9 @@ of the parameters, the irrational constants of the coefficients held by
 placeholders; the partial fractions from the Laurent coefficients at the
 linear factors; the real roots as indexed roots), the native ``ask`` and
 the numerical values of :mod:`sympy_extras._numeric`, and imports no
-SymPy. One step stays on SymPy: the rational antiderivative of the
-elementary odd part of the two-pairs case (SymPy's ``integrate``,
-through :func:`sympy_extras.integrals.elliptic_sympy.integrate_of_core`).
+SymPy. The rational antiderivative of the elementary odd part of the
+two-pairs case is the native ``ratint`` of
+:mod:`sympy_extras.integrals.risch.rationaltools`.
 :mod:`sympy_extras.integrals.elliptic_sympy` is the SymPy face.
 
 Examples
@@ -2359,14 +2359,13 @@ def _poles_outside(H: Expr, s: Symbol, lower: Expr, upper: Expr, assumptions: As
 def _odd_antiderivative(H: Expr, s: Symbol, m: Expr) -> Optional[Expr]:
     """An antiderivative of ``H(s)/sqrt(1 - m s)``: with ``v = sqrt(1 - m s)``
     the integrand is the rational function ``-2 H((1 - v**2)/m)/m`` of
-    ``v``, integrated exactly (by SymPy's ``integrate``, through the face:
-    the step of the module which stays on SymPy)."""
-    from .elliptic_sympy import integrate_of_core
+    ``v``, integrated exactly by the native ``ratint``."""
+    from .risch.rationaltools import ratint
     v = _fresh('v', positive=True)
     rational = cancel(-2 * _expr(H.subs(s, (1 - v**2) / m)) / m)
     if not rational.is_rational_function(v):
         return None
-    F = integrate_of_core(rational, v, _budget())
+    F = attempt(lambda: ratint(rational, v), _budget(), native=True)
     if F is None:
         return None
     return _expr(F.subs(v, sqrt(1 - m * s)))

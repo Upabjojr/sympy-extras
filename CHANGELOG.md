@@ -601,10 +601,9 @@ remove public functions. Breaking changes are listed here when they happen.
   and quadratic factors by the native `roots` instead of `solve`, the
   real roots of numeric radicands as indexed roots (`CRootOf` through
   interop) and their complex pairs from mpmath roots and the native
-  resultants, the native `ask` and reliable values. One step stays on
-  SymPy: the rational antiderivative of the elementary odd part of the
-  two-pairs case, SymPy's `integrate` through
-  `elliptic_sympy.integrate_of_core`. The old API on SymPy objects moves
+  resultants, the native `ask` and reliable values, and the native
+  `ratint` for the rational antiderivative of the elementary odd part of
+  the two-pairs case. The old API on SymPy objects moves
   to the new face `sympy_extras.integrals.elliptic_sympy`, which
   `integrals.definite` and the tests use. The unused helper
   `_square_root` is gone.

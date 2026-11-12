@@ -7,9 +7,7 @@ The functions take and return SymPy objects, converted by
 functions become SymPy's ``elliptic_k``, ``elliptic_e``, ``elliptic_f``
 and ``elliptic_pi``, the indexed roots of a numeric radicand SymPy's
 ``CRootOf`` (a value in them is converted without evaluation, as the old
-module built it). One step of the native module stays on SymPy:
-:func:`integrate_of_core`, SymPy's ``integrate`` of the rational
-antiderivative of the elementary odd part in the two-pairs case.
+module built it).
 
 Examples
 ========
@@ -32,11 +30,9 @@ from typing import Final, Optional, Sequence
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
-from sympy.integrals.integrals import Integral, integrate
 from sympy.logic.boolalg import Boolean
 
 from sympy_extras._numeric_sympy import core_expr, core_values, sympy_expr
-from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions, core_boolean, sympy_boolean
 from sympy_extras.core.expr import Expr as CoreExpr
@@ -48,7 +44,7 @@ from . import conditions as native_conditions
 from . import elliptic as native
 from .conditions_sympy import ConditionalValue
 
-__all__ = ['elliptic_integral', 'radicand', 'real_roots', 'legendre_reduction', 'Reduction', 'integrate_of_core']
+__all__ = ['elliptic_integral', 'radicand', 'real_roots', 'legendre_reduction', 'Reduction']
 
 
 def _core_symbol(s: Basic) -> CoreSymbol:
@@ -212,19 +208,3 @@ def _restore(value: Expr, radicals: dict[Symbol, Expr], facts: Sequence[Boolean]
     replaced by their expressions."""
     restored = native._restore(core_expr(value), core_values(radicals), [core_boolean(f) for f in facts])
     return None if restored is None else _sympy_value(restored)
-
-
-def integrate_of_core(f: CoreExpr, x: CoreSymbol, seconds: Optional[float]) -> Optional[CoreExpr]:
-    """SymPy's ``integrate(f, x)`` of a rational function within
-    ``seconds``, on core expressions (the step of
-    :mod:`sympy_extras.integrals.elliptic` which stays on SymPy); ``None``
-    when it does not finish, leaves an ``Integral`` or its antiderivative
-    cannot be converted."""
-    integrand, variable = sympy_expr(f), _sympy_symbol(x)
-    found = attempt(lambda: as_expr(integrate(integrand, variable)), seconds)
-    if found is None or found.has(Integral):
-        return None
-    try:
-        return core_expr(found)
-    except (TypeError, ValueError, NotImplementedError):
-        return None
