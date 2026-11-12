@@ -205,6 +205,10 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "PolyGamma" => Basic::new(Head::Function(Function::PolyGamma), args()?),
         "SingularityFunctionNode" => Basic::new(Head::Function(Function::SingularityFunction), args()?),
         "YnmNode" => Basic::new(Head::Function(Function::Ynm), args()?),
+        "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
+        "EllipticF" => Basic::new(Head::Function(Function::EllipticF), args()?),
+        "EllipticE" => Basic::new(Head::Function(Function::EllipticE), args()?),
+        "EllipticPi" => Basic::new(Head::Function(Function::EllipticPi), args()?),
         "MathieuS" => Basic::new(Head::Function(Function::MathieuS), args()?),
         "MathieuC" => Basic::new(Head::Function(Function::MathieuC), args()?),
         "MathieuSPrime" => Basic::new(Head::Function(Function::MathieuSPrime), args()?),
@@ -481,6 +485,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::FresnelC => "error_functions",
                 Function::SingularityFunction => "singularity_functions",
                 Function::Ynm | Function::Znm => "spherical_harmonics",
+                Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
+                    "elliptic_integrals"
+                }
                 Function::MathieuS | Function::MathieuC | Function::MathieuSPrime | Function::MathieuCPrime => {
                     "mathieu_functions"
                 }
@@ -514,6 +521,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || *f == Function::SingularityFunction
                 || sympy_extras_core::functions::special::spherical_harmonics::is_spherical_harmonic(*f)
                 || sympy_extras_core::functions::special::mathieu_functions::is_mathieu(*f)
+                || sympy_extras_core::functions::special::elliptic_integrals::is_elliptic(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
@@ -645,7 +653,7 @@ fn pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> Py
 fn sub<'py>(py: Python<'py>, a: &Bound<'py, PyAny>, b: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
         py,
-        &rust_core::add::sub(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
+        &rust_core::add::sub_operator(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
     )
 }
 
@@ -653,13 +661,16 @@ fn sub<'py>(py: Python<'py>, a: &Bound<'py, PyAny>, b: &Bound<'py, PyAny>) -> Py
 fn div<'py>(py: Python<'py>, a: &Bound<'py, PyAny>, b: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
         py,
-        &rust_core::mul::div(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
+        &rust_core::mul::div_operator(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
     )
 }
 
 #[pyfunction]
 fn neg<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(py, &rust_core::mul::neg(&from_python(a)?).map_err(crate::convert::err)?)
+    to_python(
+        py,
+        &rust_core::mul::neg_operator(&from_python(a)?).map_err(crate::convert::err)?,
+    )
 }
 
 /// `str(e)` printed by the Rust core.
@@ -2317,6 +2328,20 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => Some(false),
             };
             sympy_extras_core::functions::elementary::piecewise::piecewise_fold(&a[0], evaluate).map_err(e)?
+        }
+        "elliptic_k" | "elliptic_f" | "elliptic_e" | "elliptic_pi" => {
+            use sympy_extras_core::core::basic::Function as F;
+            use sympy_extras_core::functions::special::elliptic_integrals as ei;
+            let f: F = match name {
+                "elliptic_k" => F::EllipticK,
+                "elliptic_f" => F::EllipticF,
+                "elliptic_e" => F::EllipticE,
+                _ => F::EllipticPi,
+            };
+            if !ei::arity_fits(f, a.len()) {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
+            }
+            ei::elliptic(f, &a).map_err(e)?
         }
         "mathieus" | "mathieuc" | "mathieusprime" | "mathieucprime" => {
             use sympy_extras_core::core::basic::Function as F;

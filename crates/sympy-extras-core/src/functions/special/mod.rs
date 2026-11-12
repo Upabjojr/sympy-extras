@@ -3,6 +3,7 @@
 pub mod beta_functions;
 pub mod bsplines;
 pub mod delta_functions;
+pub mod elliptic_integrals;
 pub mod error_functions;
 pub mod gamma_functions;
 pub mod gamma_numeric;

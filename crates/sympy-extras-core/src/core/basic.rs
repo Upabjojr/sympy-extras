@@ -267,6 +267,10 @@ pub enum Function {
     PolyGamma,
     SingularityFunction,
     Ynm,
+    EllipticK,
+    EllipticF,
+    EllipticE,
+    EllipticPi,
     MathieuS,
     MathieuC,
     MathieuSPrime,
@@ -387,6 +391,10 @@ impl Function {
             Function::PolyGamma => "polygamma",
             Function::SingularityFunction => "SingularityFunction",
             Function::Ynm => "Ynm",
+            Function::EllipticK => "elliptic_k",
+            Function::EllipticF => "elliptic_f",
+            Function::EllipticE => "elliptic_e",
+            Function::EllipticPi => "elliptic_pi",
             Function::MathieuS => "mathieus",
             Function::MathieuC => "mathieuc",
             Function::MathieuSPrime => "mathieusprime",
@@ -506,6 +514,10 @@ impl Function {
             Function::PolyGamma => "PolyGamma",
             Function::SingularityFunction => "SingularityFunctionNode",
             Function::Ynm => "YnmNode",
+            Function::EllipticK => "EllipticK",
+            Function::EllipticF => "EllipticF",
+            Function::EllipticE => "EllipticE",
+            Function::EllipticPi => "EllipticPi",
             Function::MathieuS => "MathieuS",
             Function::MathieuC => "MathieuC",
             Function::MathieuSPrime => "MathieuSPrime",
@@ -646,6 +658,10 @@ impl Function {
             | Function::PolyGamma
             | Function::SingularityFunction
             | Function::Ynm
+            | Function::EllipticK
+            | Function::EllipticF
+            | Function::EllipticE
+            | Function::EllipticPi
             | Function::MathieuS
             | Function::MathieuC
             | Function::MathieuSPrime

@@ -152,7 +152,12 @@ pub fn add(args: &[Basic]) -> PolyResult<Basic> {
 
 /// The evaluated difference `a - b`.
 pub fn sub(a: &Basic, b: &Basic) -> PolyResult<Basic> {
-    // the operators of AccumBounds (its _op_priority is the higher)
+    add(&[a.clone(), mul(&[Basic::negative_one(), b.clone()])?])
+}
+
+/// The operator `a - b` (`Expr.__sub__`): the interval arithmetic of an
+/// `AccumBounds` operand (its `_op_priority` is the higher), else `sub`.
+pub fn sub_operator(a: &Basic, b: &Basic) -> PolyResult<Basic> {
     if evaluate() && super::accumbounds::is_bounds(a) {
         return super::accumbounds::ab_sub(a, b);
     }
