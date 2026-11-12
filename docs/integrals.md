@@ -378,6 +378,10 @@ The driver tries, after the Mellin method and the residues:
   antiderivative a `Piecewise`; a nested radical has its innermost root
   substituted first and the substitutions of the result composed with
   it). Trager's algorithm handles the general case of one square root.
+  Both modules are native, on the core; `sympy_extras.integrals.algebraic_sympy`
+  and `sympy_extras.integrals.rewriting_sympy` are their faces on SymPy
+  objects (the rational integral of `algebraic` still comes from
+  `definite`, through the face).
 - **Series expansion and termwise integration**
   (`sympy_extras.integrals.series`): one factor expanded in its formal
   power series (or a geometric series of exponentials), the moments of the

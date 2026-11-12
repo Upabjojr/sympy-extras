@@ -2103,3 +2103,65 @@ def test_native_contours_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_CONTOURS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ALGEBRAIC = r'''
+import sys
+from sympy_extras.core import Rational, Symbol, sqrt
+from sympy_extras.integrals.algebraic import (binomial_differential, binomial_exponents,
+                                              binomial_hypergeometric_antiderivative, chebyshev_elementary,
+                                              euler_substitutions, moebius_root)
+assert 'sympy' not in sys.modules
+x, c = Symbol('x'), Symbol('c')
+assert str(binomial_exponents(sqrt(x**7/(1 - 5*x**2)), x)) == 'BinomialDifferential(x**(7/2)*(1 + -5*x**(2))**(-1/2))'
+assert chebyshev_elementary(binomial_exponents(x**3*sqrt(x**2 + 1), x))
+assert str(moebius_root((x + 1)**Rational(1, 3)/x, x).t_of_x) == '(x + 1)**(1/3)'
+assert len(euler_substitutions(1/sqrt(x**2 + 1), x, 0, 1)) == 2 and len(euler_substitutions(1/sqrt(x**2 - 1), x, 2, 3)) == 2
+assert str(binomial_differential(3*x**3*sqrt(x**2 + 1), x)) == '(3, 3, 1, 1, 2, 1/2)'
+assert str(binomial_hypergeometric_antiderivative(sqrt(x**3 + 1), x)) == 'x*hyper((-1/2, 1/3), (4/3,), -x**3)'
+assert binomial_hypergeometric_antiderivative(sqrt(1 + c*x**3), x).has(c)
+assert binomial_hypergeometric_antiderivative(sqrt(x**7/(1 - 5*x**2)), x) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_algebraic_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.algebraic` does not load
+    SymPy, nor do the recognition of the substitutions (Möbius roots,
+    Euler's, binomial differentials, Chebyshev's criterion) or the
+    hypergeometric antiderivatives with their one-sided limits; only the
+    rational integral and its numerical check reach SymPy's side
+    (``conditional_integral``, ``verify_numerically``) through the face."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ALGEBRAIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REWRITING = r'''
+import sys
+from sympy_extras.core import Rational, Symbol, sqrt
+from sympy_extras.functions import Abs, asinh, cosh, exp, log
+from sympy_extras.integrals.rewriting import implied_assumptions, power_substitutions, rewritten_forms, substitute_back
+assert 'sympy' not in sys.modules
+x, c, d = Symbol('x'), Symbol('c'), Symbol('d')
+assert len(rewritten_forms(2**x*cosh(x), x)) == 2
+assert str(rewritten_forms(asinh(x)/sqrt(x**2 + 1), x)) == '[log(x + sqrt(x**2 + 1))/sqrt(x**2 + 1)]'
+assert str(rewritten_forms(x*Abs(x), x, [x > 0])) == '[x**2]'
+assert str(implied_assumptions(c**(d*x), x)) == '[c > 0]'
+for f in (sqrt(x)/(1 + x), exp(x)/(exp(2*x) - 1), 1/(x*log(x)**2), sqrt(x**4 + 1)/x**5, sqrt(1 - sqrt(x))/(x**2 - 1)):
+    assert power_substitutions(f, x), f
+assert [len(s.facts) for s in power_substitutions(((x - 1)**2*(x + 1))**Rational(1, 3)/x**2, x)] == [1, 1]
+t = Symbol('t')
+assert str(substitute_back(t**2, t, sqrt(x))) == 'x'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_rewriting_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.rewriting` does not load
+    SymPy, nor do the canonical forms (the native rewriting rules,
+    powsimp, cancel) or the substitutions (the Möbius roots by region on
+    the native factorisation, Chebyshev's, the nested radicals)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REWRITING], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

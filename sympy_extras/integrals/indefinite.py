@@ -93,7 +93,7 @@ from sympy_extras._typing_sympy import ExprLike, as_boolean, as_expr, free_symbo
 from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.settings import settings
 from .conditions_sympy import sample_values
-from .rewriting import Substitution
+from .rewriting_sympy import Substitution
 
 __all__ = ['indefinite_integral', 'verified_antiderivative', 'is_antiderivative', 'real_form', 'conjugate_logarithms']
 
@@ -416,7 +416,7 @@ def _trager(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
 
 
 def _binomial(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
-    from .algebraic import binomial_hypergeometric_antiderivative
+    from .algebraic_sympy import binomial_hypergeometric_antiderivative
     return attempt(lambda: binomial_hypergeometric_antiderivative(f, x), _budget())
 
 
@@ -441,7 +441,7 @@ def _rewriting(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     as exponentials, inverse hyperbolic functions as logarithms; ``x = t**k``
     for fractional powers, ``u = exp(c*x)`` for rational functions of an
     exponential, ``x = exp(t)`` for rational functions of a logarithm."""
-    from .rewriting import rewritten_forms, power_substitutions, implied_assumptions
+    from .rewriting_sympy import rewritten_forms, power_substitutions, implied_assumptions
     forms = attempt(lambda: rewritten_forms(f, x, assumptions), _budget())
     # the forms hold under the facts they assume (c > 0 for c**(d*z)), and
     # so does an antiderivative found through them
@@ -503,7 +503,7 @@ def _rewritten_heurisch(f: Expr, x: Symbol, assumptions: Assumptions) -> Optiona
     (:mod:`.rewriting`), after it failed on ``f`` itself; not again on
     the exponential forms of hyperbolic functions, which
     :func:`_rewriting` tried."""
-    from .rewriting import rewritten_forms, implied_assumptions
+    from .rewriting_sympy import rewritten_forms, implied_assumptions
     if _hyperbolic(f):
         return None
     forms = attempt(lambda: rewritten_forms(f, x, assumptions), _budget())
@@ -520,7 +520,7 @@ def _substituted(f: Expr, x: Symbol, substitution: Substitution, inner: list[Boo
     methods on the substituted integrand and on its canonical forms:
     ``d**(a*z + b*sqrt(z))`` becomes ``2*t*d**(a*t**2 + b*t)``, an
     exponential of a quadratic once the power of ``d`` is written as one."""
-    from .rewriting import rewritten_forms, substitute_back
+    from .rewriting_sympy import rewritten_forms, substitute_back
     g, t = substitution.integrand, substitution.variable
     candidates = [g] + (attempt(lambda: rewritten_forms(g, t, inner), _budget()) or [])
     for candidate in candidates:

@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from sympy import symbols, exp, sqrt, sinh, cosh, tanh, asech, asinh, atanh, Abs, S, log, diff, simplify, Integral
 
+from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._typing_sympy import as_boolean, as_expr
+from sympy_extras.assumptions.ask_sympy import _core_symbol, sympy_boolean
 from sympy_extras.integrals.conditions_sympy import numerically_equal
-from sympy_extras.integrals.rewriting import rewritten_forms, power_substitutions, substitute_back
+from sympy_extras.integrals.rewriting_sympy import rewritten_forms, power_substitutions, substitute_back
 
 x, z, u, v = symbols('x z u v')
 a, b, c, d, e, f, g, h = symbols('a b c d e f g h', positive=True)
@@ -29,7 +31,7 @@ def test_exponential_forms() -> None:
             assert _equal(form, expr, [z > 0]), (expr, form)
         # some form has no product of two exponentials
         from sympy_extras.integrals.rewriting import _products_of_exponentials
-        assert any(not _products_of_exponentials(form) for form in forms), forms
+        assert any(not _products_of_exponentials(core_expr(form)) for form in forms), forms
     # a base of unknown sign is rewritten (k**z is real on an interval only
     # for k > 0, where it is exp(z*log(k))); a base known negative is not
     k = symbols('k')
@@ -74,7 +76,7 @@ def test_radicals_and_absolute_values() -> None:
 
 def _checks(substitution: object, expr: object, var: object) -> bool:
     # g(t) dt/dx == f(x) with t = back(x)
-    from sympy_extras.integrals.rewriting import Substitution
+    from sympy_extras.integrals.rewriting_sympy import Substitution
     assert isinstance(substitution, Substitution)
     t, back = substitution.variable, substitution.back
     left = as_expr(substitution.integrand.subs(t, back) * diff(back, as_expr(var)))
@@ -151,7 +153,7 @@ def test_symbolic_bases_and_exponents_are_rewritten() -> None:
     # is real on an interval only for a > 0, where it is exp(b*z*log(a)),
     # and exp(X)**v is exp(v*X) for the real v and X the contract assumes
     from sympy import exp, log, symbols
-    from sympy_extras.integrals.rewriting import rewritten_forms
+    from sympy_extras.integrals.rewriting_sympy import rewritten_forms
     a, b, c, r, v, z = symbols('a b c r v z')
     assert rewritten_forms(a**(b*z), z) == [exp(b*z*log(a))]
     assert exp(c*v*z**r) in rewritten_forms(exp(c*z**r)**v, z)
@@ -170,7 +172,7 @@ def test_products_of_exponentials_as_a_base_and_real_branches() -> None:
     # one exponential; and exp(acosh(z)), exp(asech(z)) are algebraic in
     # SymPy's logarithm forms, the functions' branches on the whole real line
     from sympy import acosh, asech, exp, sqrt, symbols
-    from sympy_extras.integrals.rewriting import rewritten_forms
+    from sympy_extras.integrals.rewriting_sympy import rewritten_forms
     c, d, g, t, v, z = symbols('c d g t v z')
     forms = rewritten_forms(2*t*(exp(g)*exp(c*t))**v*exp(d*t**2), t)
     assert 2*t*exp(c*t*v + d*t**2 + g*v) in forms, forms
@@ -185,7 +187,7 @@ def test_nested_powers_of_the_variable() -> None:
     # exp(a*z**(p*r)) for z > 0, and not without the assumption (at z < 0
     # with an even r, (z**r)**(1/r) is -z)
     from sympy import exp, symbols
-    from sympy_extras.integrals.rewriting import rewritten_forms
+    from sympy_extras.integrals.rewriting_sympy import rewritten_forms
     a, p, r, z = symbols('a p r z')
     assert rewritten_forms(exp(a*(z**r)**p), z, [z > 0]) == [exp(a*z**(p*r))]
     assert rewritten_forms((z**r)**p, z, [z > 0]) == [z**(p*r)]
@@ -199,7 +201,7 @@ def test_the_even_and_algebraic_exponential_substitutions() -> None:
     # u for the radical table (exp(x + 14) has a constant in its argument,
     # exp(2*c*z) and exp(c*z) are multiples of one coefficient)
     from sympy import Rational, exp, sqrt, symbols
-    from sympy_extras.integrals.rewriting import power_substitutions
+    from sympy_extras.integrals.rewriting_sympy import power_substitutions
     a, b, c, h, k, r, x, z = symbols('a b c h k r x z')
     [s] = power_substitutions(1 / (r * sqrt(-a**2 + 2 * h * r**2 - 2 * k * r**4)), r)
     assert s.back == r**2 and s.integrand == 1 / (2 * s.variable * sqrt(-2 * s.variable**2 * k + 2 * s.variable * h - a**2))
@@ -239,7 +241,7 @@ def test_identities_valid_on_the_positive_axis_only_need_the_assumption() -> Non
     found = verified_antiderivative(exp_(acosh(z)), z, [z > 1])
     assert found is not None and found[1] == 'rewriting'
     u = symbols('u')
-    assert _inverse_hyperbolic_to_logarithms(acosh(u)) == log_(u + sqrt(u - 1) * sqrt(u + 1))
+    assert sympy_expr(_inverse_hyperbolic_to_logarithms(core_expr(acosh(u)))) == log_(u + sqrt(u - 1) * sqrt(u + 1))
 
 
 def test_moebius_substitutions_by_region() -> None:
@@ -247,28 +249,41 @@ def test_moebius_substitutions_by_region() -> None:
     # x > 1 and (1 - x)*((x + 1)/(1 - x))**(1/3) for x < 1: a rational
     # integrand in t**3 = (x + 1)/(x - 1) on each region, the
     # antiderivative piecewise
-    from sympy import Piecewise, Rational
+    from sympy import Rational
     from sympy_extras.integrals.indefinite import is_antiderivative, verified_antiderivative
     from sympy_extras.integrals.rewriting import _extracted_powers
     x = symbols('x')
     f = as_expr(((x - 1)**2 * (x + 1))**Rational(1, 3) / x**2)
-    regions = _extracted_powers(f, x)
+    X = _core_symbol(x)
+    regions = [(sympy_expr(g), [sympy_boolean(fact) for fact in facts])
+               for g, facts in _extracted_powers(core_expr(f), X)]
     assert [facts for _, facts in regions] == [[as_boolean(x - 1 > 0)], [as_boolean(1 - x > 0)]]
     assert regions[0][0] == (x - 1) * ((x + 1) / (x - 1))**Rational(1, 3) / x**2
     assert regions[1][0] == (1 - x) * ((x + 1) / (1 - x))**Rational(1, 3) / x**2
     substitutions = power_substitutions(f, x)
     assert [s.facts for s in substitutions] == [[as_boolean(x - 1 > 0)], [as_boolean(1 - x > 0)]]
     assert all(s.integrand.is_rational_function(s.variable) for s in substitutions)
+    # each region's substitution gives an antiderivative there
+    from sympy_extras.integrals.risch.rationaltools_sympy import ratint
+    for s in substitutions:
+        F = substitute_back(as_expr(ratint(s.integrand, s.variable)), s.variable, s.back)
+        assert is_antiderivative(F, f, x, s.facts) is True
+    # Trager's algorithm on the curve (the native curves, tried before the
+    # rewriting route and inside it on the expanded radicand) integrates
+    # f itself now, so the pieces above are no longer assembled into a
+    # Piecewise (the test expected 'rewriting' and a Piecewise, and failed
+    # once Trager answered first): whichever method answers is right on
+    # every region
     found = verified_antiderivative(f, x)
-    assert found is not None and found[1] == 'rewriting' and isinstance(found[0], Piecewise)
+    assert found is not None and found[1] in ('trager', 'rewriting')
     assert is_antiderivative(found[0], f, x) is True
     assert is_antiderivative(found[0], f, x, [x > 1]) is True
     assert is_antiderivative(found[0], f, x, [x > -1, x < 1]) is True
     # an odd exponent extracted: one region, the factor's sign fixed
     g = as_expr(sqrt(x**3 * (x + 2)) / x)
-    assert all(len(facts) == 2 for _, facts in _extracted_powers(g, x))
+    assert all(len(facts) == 2 for _, facts in _extracted_powers(core_expr(g), X))
     # nothing to extract
-    assert _extracted_powers(as_expr(sqrt(x**2 + 1) / x), x) == []
+    assert _extracted_powers(core_expr(sqrt(x**2 + 1) / x), X) == []
 
 
 def test_binomial_substitutions() -> None:

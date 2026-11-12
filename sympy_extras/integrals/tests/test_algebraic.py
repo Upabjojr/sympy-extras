@@ -4,7 +4,7 @@ from __future__ import annotations
 from sympy import symbols, sqrt, cbrt, S, oo, pi, Rational, simplify, log, asinh, exp
 
 from sympy_extras._typing_sympy import ExprLike, as_expr
-from sympy_extras.integrals.algebraic import (algebraic_integral, euler_substitutions, moebius_root,
+from sympy_extras.integrals.algebraic_sympy import (algebraic_integral, euler_substitutions, moebius_root,
                                               binomial_differential, rationalised_integral, binomial_exponents,
                                               chebyshev_elementary, binomial_hypergeometric_antiderivative)
 from sympy_extras.integrals.conditions_sympy import ConditionalValue

@@ -2123,7 +2123,7 @@ class _Integrator:
         table, the Marichev–Adamchik method and Legendre's
         elliptic forms, cheap too, are tried first as in the order of the
         strategies."""
-        from .algebraic import binomial_exponents, chebyshev_elementary
+        from .algebraic_sympy import binomial_exponents, chebyshev_elementary
         from .indefinite import verified_antiderivative
         if free_symbols(f) != {x} or a.has(x) or b.has(x) or a.is_finite is not True or b.is_finite is not True:
             return None
@@ -2389,7 +2389,7 @@ class _Integrator:
         """Rationalising substitutions for algebraic integrands of genus
         zero (:mod:`.algebraic`): Euler's substitutions, Möbius roots,
         Chebyshev's binomial differentials."""
-        from .algebraic import algebraic_integral
+        from .algebraic_sympy import algebraic_integral
         if depth > 1 or not any(isinstance(node, Pow) and isinstance(node.exp, Rational) and not node.exp.is_integer
                                 and node.base.has(x) for node in f.atoms(Pow)):
             return None

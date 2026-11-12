@@ -539,6 +539,26 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The rationalising substitutions for algebraic integrands and the
+  canonical forms and substitutions before integration are native
+  (**breaking**): `sympy_extras.integrals.algebraic`
+  (`algebraic_integral`, `euler_substitutions`, `euler_substitution`,
+  `moebius_root`, `binomial_differential`, `binomial_exponents`,
+  `chebyshev_elementary`, `binomial_hypergeometric_antiderivative`,
+  `rationalised_integral`, `Rationalisation`, `BinomialDifferential`) and
+  `sympy_extras.integrals.rewriting` (`rewritten_forms`,
+  `power_substitutions`, `substitute_back`, `implied_assumptions`,
+  `Substitution`) take and return objects of the core and import no
+  SymPy: the native ask, limits under assumptions, `cancel`, `factor`,
+  `powsimp`, the roots of quadratics, the rewriting rules of the core's
+  functions and `tidy`. The new variables are dummies with names of their
+  own (`_t3` rather than `_t`). The rational integral of `algebraic` and
+  its numerical check still come from `definite` (not ported yet)
+  through the face (`algebraic_sympy.conditional_integral_of_core`,
+  `verify_numerically_of_core`); SymPy is loaded on that path only. The
+  old API on SymPy objects is in `sympy_extras.integrals.algebraic_sympy`
+  and `sympy_extras.integrals.rewriting_sympy`, used by `definite`,
+  `indefinite`, `trager` and the tests.
 - The Laplace rules, Frullani's and Glasser's theorems, the summability
   means and differentiation under the integral sign are native
   (**breaking**): `sympy_extras.integrals.laplace` (`laplace_rules`,
