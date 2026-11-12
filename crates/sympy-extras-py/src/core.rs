@@ -201,6 +201,9 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Gamma" => Basic::new(Head::Function(Function::Gamma), args()?),
         "LogGamma" => Basic::new(Head::Function(Function::LogGamma), args()?),
         "PolyGamma" => Basic::new(Head::Function(Function::PolyGamma), args()?),
+        "LowerGamma" => Basic::new(Head::Function(Function::LowerGamma), args()?),
+        "UpperGamma" => Basic::new(Head::Function(Function::UpperGamma), args()?),
+        "MultiGamma" => Basic::new(Head::Function(Function::MultiGamma), args()?),
         "DiGamma" => Basic::new(Head::Function(Function::DiGamma), args()?),
         "TriGamma" => Basic::new(Head::Function(Function::TriGamma), args()?),
         "Zeta" => Basic::new(Head::Function(Function::Zeta), args()?),
@@ -463,6 +466,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::LerchPhi
                 | Function::RiemannXi
                 | Function::Stieltjes => "zeta_functions",
+                Function::LowerGamma | Function::UpperGamma | Function::MultiGamma => "gamma_functions",
                 Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
                     "gamma_functions"
                 }
@@ -481,6 +485,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             let package: &str = if matches!(f, Function::DiracDelta | Function::Heaviside)
                 || sympy_extras_core::functions::special::gamma_functions::is_gamma_function(*f)
+                || sympy_extras_core::functions::special::gamma_functions::is_incomplete_gamma(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
@@ -2255,6 +2260,15 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "lerchphi" => zf::lerchphi(&a[0], &a[1], &a[2]),
                 "riemann_xi" => zf::riemann_xi(&a[0]),
                 _ => zf::stieltjes(&a[0], a.get(1)),
+            }
+            .map_err(e)?
+        }
+        "lowergamma" | "uppergamma" | "multigamma" => {
+            use sympy_extras_core::functions::special::gamma_functions as gf;
+            match name {
+                "lowergamma" => gf::lowergamma(&a[0], &a[1]),
+                "uppergamma" => gf::uppergamma(&a[0], &a[1]),
+                _ => gf::multigamma(&a[0], &a[1]),
             }
             .map_err(e)?
         }

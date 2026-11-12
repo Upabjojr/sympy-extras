@@ -99,6 +99,9 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         Function::Mod | Function::KroneckerDelta | Function::LeviCivita => {
             crate::core::modulo::modulo_fdiff(e, argindex)
         }
+        g @ (Function::LowerGamma | Function::UpperGamma | Function::MultiGamma) => {
+            special::gamma_functions::incomplete_fdiff(g, e, argindex)
+        }
         g @ (Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma) => {
             special::gamma_functions::gamma_fdiff(g, e, argindex)
         }
@@ -230,6 +233,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::zeta_functions::is_zeta_function(f) {
         return special::zeta_functions::zeta_function(f, args);
     }
+    if special::gamma_functions::is_incomplete_gamma(f) {
+        return special::gamma_functions::incomplete_gamma(f, args);
+    }
     if special::gamma_functions::is_gamma_function(f) {
         return special::gamma_functions::gamma_function(f, args);
     }
@@ -334,6 +340,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::Motzkin
         | Function::Andre => unreachable!("evaluated above with all their arguments"),
         Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
+            unreachable!("evaluated above with all their arguments")
+        }
+        Function::LowerGamma | Function::UpperGamma | Function::MultiGamma => {
             unreachable!("evaluated above with all their arguments")
         }
     }

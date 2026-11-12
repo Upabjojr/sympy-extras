@@ -461,7 +461,7 @@ fn expand_power_base_node(e: &Basic, force: bool) -> PolyResult<Option<Basic>> {
 
 /// `unpolarify` on the core, which has no polar numbers: the tree
 /// evaluated again until it does not change.
-fn unpolarify(e: &Basic) -> PolyResult<Basic> {
+pub(crate) fn unpolarify(e: &Basic) -> PolyResult<Basic> {
     let mut current: Basic = e.clone();
     loop {
         let next: Basic = doit(&current)?;

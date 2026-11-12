@@ -143,6 +143,9 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
             Ok(Some(crate::functions::special::beta_functions::beta_conjugate(g, e)?))
         }
         g @ (Function::Gamma | Function::LogGamma) => crate::functions::special::gamma_functions::gamma_conjugate(g, e),
+        g @ (Function::LowerGamma | Function::UpperGamma | Function::MultiGamma) => {
+            crate::functions::special::gamma_functions::incomplete_conjugate(g, e)
+        }
         Function::Max
         | Function::Min
         | Function::Floor
@@ -546,6 +549,9 @@ fn function_real_imag(
         | Function::Gamma
         | Function::LogGamma
         | Function::PolyGamma
+        | Function::LowerGamma
+        | Function::UpperGamma
+        | Function::MultiGamma
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta

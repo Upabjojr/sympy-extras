@@ -675,16 +675,19 @@ fn fresnel_eval(f: Function, z: &Basic) -> PolyResult<Basic> {
 fn part2_eval(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     match f {
         Function::Expint => {
-            let (nu, _z) = (&args[0], &args[1]);
+            let nu: &Basic = &args[0];
             let integer: bool = nu.as_rational().is_some_and(|v| crate::numbers::denom(v) == Int::ONE);
             let half_integer: bool = !integer
                 && nu
                     .as_rational()
                     .is_some_and(|v| crate::numbers::denom(v) == Int::from(2));
             if (integer && is_true(nu, Predicate::nonpositive)) || half_integer {
-                return Err(crate::error::not_ported(
-                    "uppergamma (expint of a nonpositive integer or half-integer order)",
-                ));
+                use crate::core::function::{expand_mul, unpolarify};
+                use crate::functions::special::gamma_functions::uppergamma;
+                let z: &Basic = &args[1];
+                let one: Basic = Basic::one();
+                let product: Basic = mul(&[pow(z, &sub(nu, &one)?)?, uppergamma(&sub(&one, nu)?, z)?])?;
+                return unpolarify(&expand_mul(&product, true)?);
             }
             Ok(node(f, args.to_vec()))
         }

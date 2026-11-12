@@ -434,3 +434,327 @@ pub fn gamma_value(f: Function, values: &[Complex], prec: usize) -> Option<Compl
         _ => gamma_numeric::polygamma(1, &values[0], prec),
     }
 }
+
+// ---------------------------------------------------------------------
+// the incomplete gammas and multigamma (without the polar arguments: the
+// Rust core has no polar numbers)
+
+fn range_to(e: &Basic) -> PolyResult<i64> {
+    integer_value(e)
+        .and_then(|v| i64::try_from(&v).ok())
+        .filter(|v| v.abs() <= 10_000)
+        .ok_or_else(|| crate::error::value_error(format!("an integer is expected, not {}", e)))
+}
+
+fn neg(e: &Basic) -> PolyResult<Basic> {
+    mul(&[Basic::negative_one(), e.clone()])
+}
+
+fn div2(a: &Basic, b: &Basic) -> PolyResult<Basic> {
+    mul(&[a.clone(), pow(b, &Basic::negative_one())?])
+}
+
+fn lowergamma_eval(a: &Basic, x: &Basic) -> PolyResult<Basic> {
+    use crate::functions::elementary::exponential::exp;
+    use crate::functions::special::error_functions::erf;
+    let one: Basic = Basic::one();
+    let half: Basic = Basic::half();
+    if x.as_rational().is_some_and(|v| v.is_zero()) {
+        return Ok(Basic::zero());
+    }
+    if is_true(a, Predicate::integer) && is_true(a, Predicate::positive) {
+        let nx: Basic = crate::core::function::unpolarify(x)?;
+        if nx != *x {
+            return lowergamma(a, &nx);
+        }
+    }
+    if let Some(r) = a.as_rational() {
+        let (p, q) = (numer(r), denom(r));
+        if *a == one {
+            return sub(&one, &exp(&neg(x)?)?);
+        }
+        if *a == half {
+            return mul(&[sqrt_pi()?, erf(&pow(x, &half)?)?]);
+        }
+        if q == Int::ONE || q == Int::from(2) {
+            let b: Basic = sub(a, &one)?;
+            if is_true(&b, Predicate::positive) {
+                if q == Int::ONE {
+                    let mut terms: Vec<Basic> = Vec::new();
+                    for k in 0..range_to(&Basic::integer(p.clone()))? {
+                        terms.push(div2(&pow(x, &int(k))?, &factorial(&int(k))?)?);
+                    }
+                    let fb: Basic = factorial(&b)?;
+                    return sub(&fb, &mul(&[exp(&neg(x)?)?, fb.clone(), add(&terms)?])?);
+                }
+                let mut terms: Vec<Basic> = Vec::new();
+                for k in 1..range_to(&add(&[a.clone(), half.clone()])?)? {
+                    terms.push(div2(
+                        &pow(x, &sub(&int(k), &half)?)?,
+                        &gamma(&add(&[half.clone(), int(k)])?)?,
+                    )?);
+                }
+                let inner: Basic = sub(
+                    &div2(&lowergamma(&half, x)?, &sqrt_pi()?)?,
+                    &mul(&[exp(&neg(x)?)?, add(&terms)?])?,
+                )?;
+                return mul(&[gamma(a)?, inner]);
+            }
+            if q != Int::ONE {
+                let mut terms: Vec<Basic> = Vec::new();
+                let upper: i64 = range_to(&sub(&Basic::rational(Int::from(3), Int::from(2))?, a)?)?;
+                for k in 1..upper {
+                    let top: Basic = mul(&[pow(x, &add(&[int(k), sub(a, &one)?])?)?, gamma(a)?])?;
+                    terms.push(div2(&top, &gamma(&add(&[a.clone(), int(k)])?)?)?);
+                }
+                let first: Basic = div2(
+                    &mul(&[
+                        pow(&Basic::negative_one(), &sub(&half, a)?)?,
+                        Basic::pi(),
+                        erf(&pow(x, &half)?)?,
+                    ])?,
+                    &gamma(&sub(&one, a)?)?,
+                )?;
+                return add(&[first, mul(&[exp(&neg(x)?)?, add(&terms)?])?]);
+            }
+        }
+    }
+    if is_true(x, Predicate::zero) {
+        return Ok(Basic::zero());
+    }
+    Ok(node(Function::LowerGamma, vec![a.clone(), x.clone()]))
+}
+
+fn uppergamma_eval(a: &Basic, z: &Basic) -> PolyResult<Basic> {
+    use crate::functions::elementary::complexes::re;
+    use crate::functions::elementary::exponential::exp;
+    use crate::functions::special::error_functions::{erfc, integral_function};
+    let one: Basic = Basic::one();
+    let half: Basic = Basic::half();
+    let minus_z: Basic = neg(z)?;
+    let ei = |w: &Basic| integral_function(Function::Ei, std::slice::from_ref(w));
+    match z.head() {
+        Head::NaN => return Ok(Basic::nan()),
+        Head::Infinity => return Ok(Basic::zero()),
+        _ => {}
+    }
+    if z.as_rational().is_some_and(|v| v.is_zero()) && is_true(&re(a)?, Predicate::positive) {
+        return gamma(a);
+    }
+    if is_true(a, Predicate::integer) && is_true(a, Predicate::positive) {
+        let nx: Basic = crate::core::function::unpolarify(z)?;
+        if nx != *z {
+            return uppergamma(a, &nx);
+        }
+    }
+    if let Some(r) = a.as_rational() {
+        let (p, q) = (numer(r), denom(r));
+        if p == Int::ZERO && is_true(z, Predicate::positive) {
+            return neg(&ei(&minus_z)?);
+        }
+        if *a == one {
+            return exp(&minus_z);
+        }
+        if *a == half {
+            return mul(&[sqrt_pi()?, erfc(&pow(z, &half)?)?]);
+        }
+        if q == Int::ONE || q == Int::from(2) {
+            let b: Basic = sub(a, &one)?;
+            if is_true(&b, Predicate::positive) {
+                if q == Int::ONE {
+                    let mut terms: Vec<Basic> = Vec::new();
+                    for k in 0..range_to(&Basic::integer(p.clone()))? {
+                        terms.push(div2(&pow(z, &int(k))?, &factorial(&int(k))?)?);
+                    }
+                    return mul(&[exp(&minus_z)?, factorial(&b)?, add(&terms)?]);
+                }
+                let mut terms: Vec<Basic> = Vec::new();
+                for k in 0..range_to(&sub(a, &half)?)? {
+                    let top: Basic = mul(&[
+                        gamma(&sub(&Basic::rational(Int::from(-1), Int::from(2))?, &int(k))?)?,
+                        pow(&minus_z, &int(k))?,
+                    ])?;
+                    terms.push(div2(&top, &gamma(&sub(&one, a)?)?)?);
+                }
+                let sign: Basic = pow(
+                    &Basic::negative_one(),
+                    &sub(a, &Basic::rational(Int::from(3), Int::from(2))?)?,
+                )?;
+                return add(&[
+                    mul(&[gamma(a)?, erfc(&pow(z, &half)?)?])?,
+                    mul(&[sign, exp(&minus_z)?, pow(z, &half)?, add(&terms)?])?,
+                ]);
+            }
+            if integer_value(&b).is_some() {
+                let order: Basic = neg(&b)?;
+                let e: Basic = integral_function(Function::Expint, &[order, z.clone()])?;
+                return mul(&[
+                    e,
+                    pow(&crate::core::function::unpolarify(z)?, &add(&[b.clone(), one.clone()])?)?,
+                ]);
+            }
+            if q != Int::ONE {
+                let mut terms: Vec<Basic> = Vec::new();
+                for k in 0..range_to(&sub(&half, a)?)? {
+                    let top: Basic = mul(&[pow(z, &int(k))?, gamma(a)?])?;
+                    terms.push(div2(&top, &gamma(&add(&[a.clone(), int(k + 1)])?)?)?);
+                }
+                let first: Basic = div2(
+                    &mul(&[
+                        pow(&Basic::negative_one(), &sub(&half, a)?)?,
+                        Basic::pi(),
+                        erfc(&pow(z, &half)?)?,
+                    ])?,
+                    &gamma(&sub(&one, a)?)?,
+                )?;
+                return sub(&first, &mul(&[pow(z, a)?, exp(&minus_z)?, add(&terms)?])?);
+            }
+        }
+    }
+    if is_true(a, Predicate::zero) && is_true(z, Predicate::positive) {
+        return neg(&ei(&minus_z)?);
+    }
+    if is_true(z, Predicate::zero) && is_true(&re(a)?, Predicate::positive) {
+        return gamma(a);
+    }
+    Ok(node(Function::UpperGamma, vec![a.clone(), z.clone()]))
+}
+
+fn multigamma_eval(x: &Basic, p: &Basic) -> PolyResult<Basic> {
+    if crate::core::expr::is_false(p, Predicate::positive) || crate::core::expr::is_false(p, Predicate::integer) {
+        return Err(crate::error::value_error(
+            "Order parameter p must be positive integer.".to_string(),
+        ));
+    }
+    let Some(order) = integer_value(p).filter(|_| p.as_rational().is_some()) else {
+        return Ok(node(Function::MultiGamma, vec![x.clone(), p.clone()]));
+    };
+    let order: i64 = i64::try_from(&order).map_err(|_| not_ported("a huge multigamma order"))?;
+    if order > 10_000 {
+        return Err(not_ported("a huge multigamma order"));
+    }
+    let mut factors: Vec<Basic> = vec![pow(
+        &Basic::pi(),
+        &div2(&mul(&[p.clone(), sub(p, &Basic::one())?])?, &int(4))?,
+    )?];
+    for k in 1..=order {
+        factors.push(gamma(&add(&[
+            x.clone(),
+            div2(&sub(&Basic::one(), &int(k))?, &int(2))?,
+        ])?)?);
+    }
+    mul(&factors)
+}
+
+/// The incomplete gammas and multigamma.
+pub fn is_incomplete_gamma(f: Function) -> bool {
+    matches!(f, Function::LowerGamma | Function::UpperGamma | Function::MultiGamma)
+}
+
+/// The evaluating function of the incomplete gammas and multigamma.
+pub fn incomplete_gamma(f: Function, args: &[Basic]) -> PolyResult<Basic> {
+    if !evaluate() {
+        return Ok(node(f, args.to_vec()));
+    }
+    match f {
+        Function::LowerGamma => lowergamma_eval(&args[0], &args[1]),
+        Function::UpperGamma => uppergamma_eval(&args[0], &args[1]),
+        _ => multigamma_eval(&args[0], &args[1]),
+    }
+}
+
+pub fn lowergamma(a: &Basic, x: &Basic) -> PolyResult<Basic> {
+    incomplete_gamma(Function::LowerGamma, &[a.clone(), x.clone()])
+}
+
+pub fn uppergamma(a: &Basic, z: &Basic) -> PolyResult<Basic> {
+    incomplete_gamma(Function::UpperGamma, &[a.clone(), z.clone()])
+}
+
+pub fn multigamma(x: &Basic, p: &Basic) -> PolyResult<Basic> {
+    incomplete_gamma(Function::MultiGamma, &[x.clone(), p.clone()])
+}
+
+/// The derivative in the argument `argindex` (from 1, `fdiff`).
+pub fn incomplete_fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
+    use crate::functions::elementary::exponential::exp;
+    let args: &[Basic] = e.args();
+    match (f, argindex) {
+        (Function::LowerGamma, 2) | (Function::UpperGamma, 2) => {
+            let (a, z) = (&args[0], &args[1]);
+            let value: Basic = mul(&[exp(&neg(z)?)?, pow(z, &sub(a, &Basic::one())?)?])?;
+            if f == Function::UpperGamma {
+                neg(&value)
+            } else {
+                Ok(value)
+            }
+        }
+        (Function::LowerGamma, 1) | (Function::UpperGamma, 1) => {
+            Err(not_ported("meijerg (the derivative in the order)"))
+        }
+        _ => {
+            let v: &Basic = &args[argindex - 1];
+            let elsewhere: bool = args
+                .iter()
+                .enumerate()
+                .any(|(i, w)| i != argindex - 1 && w.free_symbols().contains(v));
+            if v.is_symbol() && !elsewhere {
+                return Ok(crate::core::function::derivative_node(e, &[(v.clone(), 1)]));
+            }
+            Err(not_ported("a derivative as a Subs"))
+        }
+    }
+}
+
+/// The conjugate (`_eval_conjugate`); `None` for no rule.
+pub fn incomplete_conjugate(f: Function, e: &Basic) -> PolyResult<Option<Basic>> {
+    use crate::functions::elementary::complexes::conjugate;
+    let (a, x) = (&e.args()[0], &e.args()[1]);
+    match f {
+        Function::MultiGamma => Ok(Some(multigamma(&conjugate(a)?, x)?)),
+        _ => {
+            if is_true(x, Predicate::zero) || matches!(x.head(), Head::NegativeInfinity) {
+                return Ok(None);
+            }
+            Ok(Some(incomplete_gamma(f, &[conjugate(a)?, conjugate(x)?])?))
+        }
+    }
+}
+
+/// The facts (`_eval_facts`).
+pub fn incomplete_facts(f: Function, args: &[Basic]) -> FactList {
+    use crate::core::logic::truth;
+    use crate::core::relational::{gt, le};
+    let mut facts: FactList = FactList::new();
+    facts.set(Predicate::commutative, true);
+    match f {
+        Function::LowerGamma => {
+            if facts_of(&args[1]).get(&Predicate::zero) == Some(&true) {
+                facts.set(Predicate::zero, true);
+            }
+        }
+        Function::MultiGamma => {
+            let (x, p) = (&args[0], &args[1]);
+            let Ok(y) = mul(&[int(2), x.clone()]) else { return facts };
+            let Ok(p1) = sub(p, &Basic::one()) else { return facts };
+            let integral: bool = is_true(&y, Predicate::integer) || integer_value(&y).is_some();
+            let below: bool = le(&y, &p1).ok().and_then(|r| truth(&r)) == Some(true);
+            if integral && below {
+                facts.set(Predicate::real, false);
+            } else if gt(&y, &p1).ok().and_then(|r| truth(&r)) == Some(true) || is_true(&y, Predicate::noninteger) {
+                facts.set(Predicate::real, true);
+            }
+        }
+        _ => {}
+    }
+    facts
+}
+
+/// The value (`numeric`).
+pub fn incomplete_value(f: Function, values: &[Complex], prec: usize) -> Option<Complex> {
+    match f {
+        Function::LowerGamma => gamma_numeric::lower_gamma(&values[0], &values[1], prec),
+        Function::UpperGamma => gamma_numeric::upper_gamma(&values[0], &values[1], prec),
+        _ => None,
+    }
+}

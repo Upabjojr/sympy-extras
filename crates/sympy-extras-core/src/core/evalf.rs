@@ -271,6 +271,17 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::elementary::argument::argument_value(*g, &values, wp)
         }
         Head::Function(
+            g @ (super::basic::Function::LowerGamma
+            | super::basic::Function::UpperGamma
+            | super::basic::Function::MultiGamma),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::gamma_functions::incomplete_value(*g, &values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Gamma
             | super::basic::Function::LogGamma
             | super::basic::Function::PolyGamma
@@ -511,6 +522,9 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Gamma
                 | super::basic::Function::LogGamma
                 | super::basic::Function::PolyGamma
+                | super::basic::Function::LowerGamma
+                | super::basic::Function::UpperGamma
+                | super::basic::Function::MultiGamma
                 | super::basic::Function::DiGamma
                 | super::basic::Function::TriGamma
                 | super::basic::Function::Zeta

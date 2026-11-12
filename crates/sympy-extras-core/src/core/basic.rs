@@ -261,6 +261,9 @@ pub enum Function {
     Gamma,
     LogGamma,
     PolyGamma,
+    LowerGamma,
+    UpperGamma,
+    MultiGamma,
     DiGamma,
     TriGamma,
     Zeta,
@@ -371,6 +374,9 @@ impl Function {
             Function::Gamma => "gamma",
             Function::LogGamma => "loggamma",
             Function::PolyGamma => "polygamma",
+            Function::LowerGamma => "lowergamma",
+            Function::UpperGamma => "uppergamma",
+            Function::MultiGamma => "multigamma",
             Function::DiGamma => "digamma",
             Function::TriGamma => "trigamma",
             Function::Zeta => "zeta",
@@ -480,6 +486,9 @@ impl Function {
             Function::Gamma => "Gamma",
             Function::LogGamma => "LogGamma",
             Function::PolyGamma => "PolyGamma",
+            Function::LowerGamma => "LowerGamma",
+            Function::UpperGamma => "UpperGamma",
+            Function::MultiGamma => "MultiGamma",
             Function::DiGamma => "DiGamma",
             Function::TriGamma => "TriGamma",
             Function::Zeta => "Zeta",
@@ -610,6 +619,9 @@ impl Function {
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma
+            | Function::LowerGamma
+            | Function::UpperGamma
+            | Function::MultiGamma
             | Function::DiGamma
             | Function::TriGamma => 10000,
             Function::Sin => 20,
