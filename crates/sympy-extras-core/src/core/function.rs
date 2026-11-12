@@ -36,6 +36,17 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Equivalent => Ok(super::logic::equivalent(&args)),
         Head::Ite => Ok(super::logic::ite(&args[0], &args[1], &args[2])),
         Head::Relational(op) => super::relational::evaluate_relation(*op, &args[0], &args[1]),
+        h @ (Head::EmptySet
+        | Head::UniversalSet
+        | Head::Reals
+        | Head::Interval
+        | Head::FiniteSet
+        | Head::Union
+        | Head::Intersection
+        | Head::Complement
+        | Head::Contains
+        | Head::ProductSet
+        | Head::PointSet) => crate::sets::sets::rebuild_set(h, &args),
         Head::IndexedRoot => {
             let k: usize = args[2]
                 .as_rational()

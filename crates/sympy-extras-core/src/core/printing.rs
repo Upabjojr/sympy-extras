@@ -343,6 +343,9 @@ impl StrPrinter {
                 }
                 format!("Derivative({})", parts.join(", "))
             }
+            _ if crate::sets::sets::is_set(e) || matches!(e.head(), Head::Contains) => {
+                crate::sets::sets::print_set(e, &|a: &Basic| self.doprint(a))
+            }
             Head::BooleanTrue => "True".to_string(),
             Head::BooleanFalse => "False".to_string(),
             Head::And | Head::Or | Head::Xor => {

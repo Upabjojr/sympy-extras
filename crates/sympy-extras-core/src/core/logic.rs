@@ -51,6 +51,7 @@ pub fn is_boolean(e: &Basic) -> bool {
             | Head::Equivalent
             | Head::Ite
             | Head::Relational(_)
+            | Head::Contains
     )
 }
 

@@ -77,6 +77,19 @@ pub enum Head {
     Ite,
     /// A relation between two expressions (`Eq(a, b)`, `Lt(a, b)`, ...).
     Relational(RelOp),
+    /// The sets of `sets.sets` (`EmptySet`, `UniversalSet`, `Reals` are
+    /// atoms), and the boolean `Contains(x, s)`.
+    EmptySet,
+    UniversalSet,
+    Reals,
+    Interval,
+    FiniteSet,
+    Union,
+    Intersection,
+    Complement,
+    Contains,
+    ProductSet,
+    PointSet,
 }
 
 /// The relations of `core.relational`.
@@ -394,6 +407,17 @@ impl Head {
             Head::Equivalent => "Equivalent",
             Head::Ite => "ITE",
             Head::Relational(op) => op.class_name(),
+            Head::EmptySet => "EmptySetClass",
+            Head::UniversalSet => "UniversalSetClass",
+            Head::Reals => "RealsClass",
+            Head::Interval => "Interval",
+            Head::FiniteSet => "FiniteSet",
+            Head::Union => "Union",
+            Head::Intersection => "Intersection",
+            Head::Complement => "Complement",
+            Head::Contains => "Contains",
+            Head::ProductSet => "ProductSet",
+            Head::PointSet => "PointSet",
         }
     }
 
@@ -453,6 +477,14 @@ impl Head {
                 | Head::Equivalent
                 | Head::Ite
                 | Head::Relational(_)
+                | Head::Interval
+                | Head::FiniteSet
+                | Head::Union
+                | Head::Intersection
+                | Head::Complement
+                | Head::Contains
+                | Head::ProductSet
+                | Head::PointSet
         )
     }
 
@@ -552,7 +584,11 @@ impl Basic {
                 a.0.hash.hash(&mut hasher);
             }
         }
-        let hash: u64 = hasher.finish();
+        let mut hash: u64 = hasher.finish();
+        if matches!(head, Head::Reals) {
+            // Reals equals Interval(-oo, oo, True, True), with its hash
+            hash = crate::sets::sets::whole_line().0.hash;
+        }
         Basic(Arc::new(Node {
             head,
             args,
@@ -811,8 +847,16 @@ impl PartialEq for Basic {
         if Arc::ptr_eq(&self.0, &other.0) {
             return true;
         }
-        if self.0.hash != other.0.hash || !self.0.head.same(&other.0.head) {
+        if self.0.hash != other.0.hash {
             return false;
+        }
+        if !self.0.head.same(&other.0.head) {
+            // Reals and Interval(-oo, oo, True, True)
+            let whole = |x: &Basic| matches!(x.head(), Head::Reals) || crate::sets::sets::is_whole_line(x);
+            return matches!(self.head(), Head::Reals | Head::Interval)
+                && matches!(other.head(), Head::Reals | Head::Interval)
+                && whole(self)
+                && whole(other);
         }
         if self.0.head.args_are_a_set() {
             let unique = |args: &[Basic]| -> Vec<Basic> {

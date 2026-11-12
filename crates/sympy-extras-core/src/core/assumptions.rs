@@ -631,7 +631,10 @@ pub fn constant_facts(e: &Basic) -> FactList {
 pub fn is_number(e: &Basic) -> bool {
     // an undefined function, a derivative, and a node with a Tuple argument
     // (not an expression: Subs) are not numbers
-    if e.is_symbol() || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple) {
+    if e.is_symbol()
+        || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple)
+        || crate::sets::sets::is_set(e)
+    {
         return false;
     }
     if matches!(e.head(), Head::IndexedRoot) {
@@ -1274,7 +1277,7 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::Tuple => FactList::new(),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
         // a boolean is not an expression: no facts
-        _ if super::logic::is_boolean(e) => FactList::new(),
+        _ if super::logic::is_boolean(e) || crate::sets::sets::is_set(e) => FactList::new(),
         _ => constant_facts(e),
     }
 }

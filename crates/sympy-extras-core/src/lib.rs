@@ -36,6 +36,7 @@ pub mod numbers;
 pub mod orderedmap;
 pub mod polys;
 pub mod random;
+pub mod sets;
 pub mod simplify;
 pub mod solvers;
 
