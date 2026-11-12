@@ -1319,3 +1319,13 @@ fn try_heuristics(f: &Poly, cubics: bool, quartics: bool) -> PolyResult<Vec<Basi
     }
     Ok(result)
 }
+
+/// The components of the functional decomposition (`_decompose`).
+pub(crate) fn decompose_parts(f: &Poly) -> PolyResult<Vec<Poly>> {
+    decompose(f)
+}
+
+/// Whether `f` is cyclotomic (`_is_cyclotomic`).
+pub(crate) fn is_cyclotomic_poly(f: &Poly) -> PolyResult<bool> {
+    is_cyclotomic(f)
+}

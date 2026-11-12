@@ -225,6 +225,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
     let real = |x: Real| -> Option<Complex> { Some(complex_real(x, wp)) };
     match e.head() {
         Head::Rational { value, .. } => real(real_rat(value, wp)),
+        Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_value(e, wp),
         Head::Pi => real(Real::pi(wp)),
         Head::Exp1 => real(Real::e(wp)),
         Head::EulerGamma => real(euler_gamma(wp)),

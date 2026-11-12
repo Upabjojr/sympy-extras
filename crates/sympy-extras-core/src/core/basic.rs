@@ -61,6 +61,9 @@ pub enum Head {
     Derivative,
     /// `Subs(expr, Tuple(variables), Tuple(points))`, unevaluated.
     Subs,
+    /// `IndexedRoot(f, t, k)`: the `k`-th distinct real root of `f` in the
+    /// bound variable `t` (`polys.cad.indexedroot`).
+    IndexedRoot,
 }
 
 /// An undefined function (`UndefinedFunction`): its name, numbers of
@@ -289,6 +292,7 @@ impl Head {
             Head::Tuple => "Tuple",
             Head::Derivative => "Derivative",
             Head::Subs => "Subs",
+            Head::IndexedRoot => "IndexedRoot",
         }
     }
 
@@ -338,6 +342,7 @@ impl Head {
                 | Head::Tuple
                 | Head::Derivative
                 | Head::Subs
+                | Head::IndexedRoot
         )
     }
 
@@ -631,6 +636,15 @@ impl Basic {
                     result.extend(p.free_symbols());
                 }
                 result
+            }
+            Head::IndexedRoot => {
+                // the variable is bound
+                let variable: &Basic = &self.0.args[1];
+                self.0.args[0]
+                    .free_symbols()
+                    .into_iter()
+                    .filter(|s| s != variable)
+                    .collect()
             }
             _ if self.is_symbol() => std::iter::once(self.clone()).collect(),
             _ => {

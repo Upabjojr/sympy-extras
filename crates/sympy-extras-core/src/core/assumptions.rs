@@ -634,6 +634,10 @@ pub fn is_number(e: &Basic) -> bool {
     if e.is_symbol() || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple) {
         return false;
     }
+    if matches!(e.head(), Head::IndexedRoot) {
+        // _is_number_node: no free symbols (the variable is bound)
+        return e.free_symbols().is_empty();
+    }
     e.args().iter().all(is_number)
 }
 
@@ -1268,6 +1272,7 @@ fn eval_facts(e: &Basic) -> FactList {
             facts
         }
         Head::Tuple => FactList::new(),
+        Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
         _ => constant_facts(e),
     }
 }

@@ -143,6 +143,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Tuple" => Basic::new(Head::Tuple, args()?),
         "Derivative" => Basic::new(Head::Derivative, args()?),
         "Subs" => Basic::new(Head::Subs, args()?),
+        "IndexedRoot" => Basic::new(Head::IndexedRoot, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
@@ -258,6 +259,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         }
         Head::Derivative => rebuilt("Derivative", "function")?,
         Head::Subs => rebuilt("Subs", "function")?,
+        Head::IndexedRoot => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.polys.cad.indexedroot")?
+                .getattr("IndexedRoot")?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             let module: &str = match f {
@@ -1674,6 +1681,18 @@ fn cad_report<'py>(
     Ok(out)
 }
 
+/// `indexed_root(f, t, k)` of `polys.cad.indexedroot`.
+#[pyfunction]
+fn indexed_root<'py>(
+    py: Python<'py>,
+    f: &Bound<'py, PyAny>,
+    t: &Bound<'py, PyAny>,
+    k: usize,
+) -> PyResult<Bound<'py, PyAny>> {
+    let value = sympy_extras_core::polys::cad::indexedroot::indexed_root(&from_python(f)?, &from_python(t)?, k);
+    to_python(py, &value.map_err(crate::convert::err)?)
+}
+
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(
@@ -1726,6 +1745,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(cad_projection_sets, m)?)?;
     m.add_function(wrap_pyfunction!(samplepoint_report, m)?)?;
     m.add_function(wrap_pyfunction!(cad_report, m)?)?;
+    m.add_function(wrap_pyfunction!(indexed_root, m)?)?;
     m.add_function(wrap_pyfunction!(sorted_by_key, m)?)?;
     m.add_function(wrap_pyfunction!(factor_terms, m)?)?;
     m.add_function(wrap_pyfunction!(as_content_primitive, m)?)?;
