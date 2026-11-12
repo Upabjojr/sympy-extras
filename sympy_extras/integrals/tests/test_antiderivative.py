@@ -174,7 +174,7 @@ def test_the_late_heuristic_is_tried_on_the_integrand_before_its_rewritten_forms
     # budget, and FriCAS's mapleok in2485a, log(1 - sqrt(z)) - acoth(sqrt(z))
     # over (0, 1), was left unevaluated
     from sympy import acoth, acosh
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     from sympy_extras.settings import configure
     for f in (log(1 - sqrt(x)) - acoth(sqrt(x)), acosh(x)):
         with configure(timeout=12):

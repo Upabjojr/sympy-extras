@@ -35,8 +35,8 @@ for a few of these equations in their standard forms only.
 The module works on the objects of the core and imports no SymPy (its
 face on SymPy objects is :mod:`sympy_extras.solvers.special_sympy`): the
 special functions are those of :mod:`sympy_extras.functions`; the factor
-``exp(-Integral(p)/2)`` goes through SymPy's ``integrate`` at run time
-(:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`).
+``exp(-Integral(p)/2)`` comes from the native indefinite integration
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
 ========
@@ -177,8 +177,8 @@ def _match_whittaker(terms: dict[int, Expr], c: Expr) -> Optional[_Family]:
 
 
 def _prefactor(p: Expr, x: Symbol) -> Optional[Expr]:
-    from .kovacic_sympy import integrate_of_core
-    integral = integrate_of_core(p, x, 'none', False)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    integral = closed_antiderivative(p, x)
     if integral is None:
         return None
     return exp(-integral/2)
@@ -370,7 +370,7 @@ def special_solutions(equation: Basic, f: AppliedUndef) -> Optional[list[Expr]]:
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (kovacic_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.special import special_solutions
     >>> x = Symbol('x')

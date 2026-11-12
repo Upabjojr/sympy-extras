@@ -1044,7 +1044,10 @@ sympy_extras/
         axisymmetric.py      region integrals with a rotational symmetry reduced to their profile (native)
         axisymmetric_sympy.py the SymPy face of axisymmetric
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic
-        indefinite.py        indefinite integration by the typed methods in turn, every antiderivative checked
+        indefinite.py        indefinite integration by the typed methods in turn, every antiderivative checked (native;
+                             SymPy's routes last, through indefinite_sympy)
+        indefinite_sympy.py  the SymPy face of indefinite
+        integral.py          Integral: the unevaluated indefinite integral of the core (native)
         trigonometric.py     products and rational functions of trigonometric and hyperbolic functions
         heurisch.py          the heuristic Risch integrator, typed, verified, with an extended candidate table (native)
         heurisch_sympy.py    the SymPy face of heurisch

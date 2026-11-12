@@ -52,12 +52,14 @@ linear algebra (reduced row echelon forms, ranks, null spaces, inverses,
 determinants) is exact Gaussian elimination with the native ``cancel``,
 the eigenvalues are the native polynomial
 :func:`~sympy_extras.polys.polyroots.roots` and the results are put in
-shape by the native ``simplify``. One step has no native counterpart and
-is taken from SymPy at run time through the face
-:mod:`sympy_extras.solvers.dae_sympy`: ``integrate`` for the particular
-solution of the regular part when the integrand is not a sum of powers of
-the variable (``integral_of_core``, an unevaluated integral when SymPy
-finds none). The face also keeps the old API on SymPy matrices.
+shape by the native ``simplify``. The integration comes from the native
+indefinite integration
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`): the antiderivatives
+of the particular solution of the regular part when the integrand is not
+a sum of powers of the variable (an unevaluated
+:class:`~sympy_extras.integrals.integral.Integral` when none is found).
+The face :mod:`sympy_extras.solvers.dae_sympy` keeps the old API on SymPy
+matrices.
 
 References
 ==========
@@ -86,7 +88,7 @@ from sympy_extras.core.power import pow
 from sympy_extras.core.relational import Eq
 from sympy_extras.core.sorting import ordered
 from sympy_extras.core.symbol import Dummy, Symbol
-from sympy_extras.functions.elementary.exponential import exp
+from sympy_extras.functions.elementary.exponential import Exp, exp
 from sympy_extras.functions.elementary.trigonometric import Cos
 from sympy_extras.matrices.dense import ExprMatrix
 from sympy_extras.polys.polyroots import roots
@@ -453,8 +455,10 @@ def _integrate(e: Expr, x: Symbol) -> Expr:
     native = _power_antiderivative(e, x)
     if native is not None:
         return native
-    from .dae_sympy import integral_of_core
-    return integral_of_core(e, x)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    from sympy_extras.integrals.integral import Integral
+    found = closed_antiderivative(e, x, cases=True)
+    return Integral(e, x) if found is None else found
 
 
 def _real_exponential(M: ExprMatrix, x: Symbol) -> ExprMatrix:
@@ -635,4 +639,14 @@ def check_dae(A: ExprMatrix, B: ExprMatrix, f: Optional[ExprMatrix], y: ExprMatr
     True
     """
     residual = A * y.diff(x) + B * y - (f if f is not None else ExprMatrix.zeros(A.rows, 1))
-    return all(simplify(e.doit()) == 0 for e in residual.entries)
+    return all(_vanishes(e.doit()) for e in residual.entries)
+
+
+def _vanishes(e: Expr) -> bool:
+    """Whether ``simplify`` makes ``e`` zero, as given or with its
+    hyperbolic and trigonometric functions written as exponentials (the
+    native antiderivative of ``exp(x)*sinh(x)`` is ``exp(2*x)/4 - x/2``,
+    and the residual mixing both forms simplifies to zero only so)."""
+    if simplify(e) == 0:
+        return True
+    return simplify(e.rewrite(Exp)) == 0

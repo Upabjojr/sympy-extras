@@ -98,7 +98,14 @@ def test_what_the_face_refuses() -> None:
 
 
 def test_the_exact_test_of_is_antiderivative() -> None:
-    from sympy_extras.integrals.indefinite import _exactly_zero, is_antiderivative
+    from sympy_extras._numeric_sympy import core_expr
+    from sympy_extras.assumptions.ask_sympy import Assumptions, core_assumptions
+    from sympy_extras.integrals import indefinite
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
+
+    def _exactly_zero(e: Expr, assumptions: Assumptions) -> bool:
+        return indefinite._exactly_zero(core_expr(e), core_assumptions(assumptions))
+
     assert _exactly_zero(as_expr(sin(x)**2 + cos(x)**2 - 1), None) is True
     assert _exactly_zero(as_expr(exp(x) - 1), None) is False
     assert _exactly_zero(as_expr(gamma(x) - gamma(x) + erf(x)), None) is False     # not elementary: no proof

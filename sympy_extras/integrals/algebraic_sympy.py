@@ -1,7 +1,6 @@
 """The SymPy face of the rationalising substitutions for algebraic
 integrands of genus zero (:mod:`sympy_extras.integrals.algebraic`), for
-the integrators which are still written on SymPy (:mod:`.definite`,
-:mod:`.indefinite`).
+the integrators which are still written on SymPy (:mod:`.definite`).
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (the values of

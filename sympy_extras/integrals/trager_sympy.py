@@ -1,6 +1,5 @@
 """The SymPy face of Trager's algorithm for algebraic integrands
-(:mod:`sympy_extras.integrals.trager`), for the integrators which are
-still written on SymPy (:mod:`.indefinite`).
+(:mod:`sympy_extras.integrals.trager`), for the users of SymPy objects.
 
 The functions take and return SymPy objects, converted by
 :mod:`sympy_extras.interop` around the native ones; nothing of the

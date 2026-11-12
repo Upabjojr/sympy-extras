@@ -1,15 +1,12 @@
 """The SymPy face of the differential-algebraic solver
-(:mod:`sympy_extras.solvers.dae`), and the step of it which stays on
-SymPy.
+(:mod:`sympy_extras.solvers.dae`).
 
 The functions take and return SymPy matrices (``Matrix``), converted
 entry by entry by :mod:`sympy_extras.interop` to the
 :class:`~sympy_extras.matrices.dense.ExprMatrix` of the native module and
-back; :class:`DAESolution` holds a SymPy matrix. The native module calls
-:func:`integral_of_core` at run time (it takes and returns objects of the
-core): SymPy's ``integrate`` for the particular solution of the regular
-part when the integrand is not a sum of powers of the variable, with
-SymPy's unevaluated ``Integral`` when it finds no antiderivative.
+back; :class:`DAESolution` holds a SymPy matrix. The native module
+integrates by the native indefinite integration
+(:func:`sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
 ========
@@ -27,38 +24,24 @@ from typing import Optional, Sequence
 from sympy.core.basic import Basic
 from sympy.core.function import AppliedUndef
 from sympy.core.symbol import Symbol
-from sympy.integrals.integrals import Integral, integrate
 from sympy.matrices.dense import Matrix, MutableDenseMatrix
 
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.analysis_sympy import as_symbol_of
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
 from sympy_extras.core.basic import Basic as CoreBasic
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy
 from sympy_extras.matrices.dense import ExprMatrix
-from sympy_extras.settings import settings
 
 from . import dae as native
 
 __all__ = ['core_nilpotent_decomposition', 'dae_index', 'dsolve_dae', 'dae_matrices', 'check_dae', 'DAESolution',
-           'integral_of_core', 'core_matrix', 'sympy_matrix']
+           'core_matrix', 'sympy_matrix']
 
 
 # ---------------------------------------------------------------------------
 # the step of the native solver which stays on SymPy
 
-def integral_of_core(e: CoreExpr, x: CoreSymbol) -> CoreExpr:
-    """An antiderivative of ``e`` in ``x`` by SymPy's ``integrate`` (under
-    the time limit), SymPy's unevaluated ``Integral`` when none is found."""
-    sympy_e, sympy_x = sympy_expr(e), as_symbol_of(x)
-    value = attempt(lambda: as_expr(integrate(sympy_e, sympy_x)), settings.timeout)
-    if value is None or value.has(Integral):
-        return core_expr(Integral(sympy_e, sympy_x))
-    return core_expr(value)
 
 
 # ---------------------------------------------------------------------------

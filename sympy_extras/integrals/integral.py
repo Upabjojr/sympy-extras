@@ -149,12 +149,13 @@ class Integral(Expr):
         return result
 
     def doit(self) -> Expr:
-        """The definite integral by
+        """The integral by
+        :func:`~sympy_extras.integrals.indefinite.indefinite_integral` or
         :func:`~sympy_extras.integrals.definite.definite_integral` (itself
-        again when it is not found); an indefinite one stays as it is
-        until :mod:`.indefinite` is native."""
+        again when it is not found)."""
         if self._bounds is None:
-            return self
+            from .indefinite import indefinite_integral
+            return indefinite_integral(self._function, self._variable)
         from .definite import definite_integral
         return definite_integral(self._function, (self._variable, self._bounds[0], self._bounds[1]))
 

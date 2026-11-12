@@ -1,6 +1,6 @@
 """The SymPy face of the canonical forms and substitutions before
-integration (:mod:`sympy_extras.integrals.rewriting`), for the
-integrators which are still written on SymPy (:mod:`.indefinite`).
+integration (:mod:`sympy_extras.integrals.rewriting`), for the users
+of SymPy objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the results back (:class:`Substitution` with

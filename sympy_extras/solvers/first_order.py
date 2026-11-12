@@ -35,12 +35,11 @@ the native ones, the linearised Riccati equations are solved by the
 native :mod:`~sympy_extras.solvers.linear_ode` and
 :mod:`~sympy_extras.solvers.special`, and
 :mod:`sympy_extras.solvers.first_order_sympy` is its face on SymPy
-objects. Two steps are not ported and go through SymPy at run time
-(the face holds them, the functions ending in ``_of_core``): the
-antiderivatives of Chini's separated equation
-(SymPy's ``integrate``, :func:`~sympy_extras.solvers.first_order_sympy.integrate_of_core`)
-and the linear equation of a Lagrange equation (SymPy's ``dsolve``,
-:func:`~sympy_extras.solvers.first_order_sympy.dsolve_of_core`). The
+objects. The antiderivatives of Chini's separated equation come from the
+native indefinite integration (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`,
+SymPy's routes its last methods); one step is not ported and goes
+through SymPy at run time: the linear equation of a Lagrange equation
+(SymPy's ``dsolve``, :func:`~sympy_extras.solvers.first_order_sympy.dsolve_of_core`). The
 Prelle–Singer procedure of :mod:`sympy_extras.solvers.darboux` is native.
 
 References
@@ -52,7 +51,7 @@ References
 Examples
 ========
 
->>> import sympy_extras.interop  # SymPy's integrate (first_order_sympy.integrate_of_core)
+>>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
 >>> from sympy_extras.core import Function, Symbol
 >>> from sympy_extras.solvers.first_order import riccati_ode
 >>> x = Symbol('x')
@@ -167,10 +166,14 @@ def _derivative_polynomial(equation: Basic, f: AppliedUndef) -> tuple[Expr, Symb
 
 
 def _integrate(e: Expr, v: Symbol) -> Expr:
-    """SymPy's antiderivative (an unevaluated ``Integral`` when it does
-    not finish)."""
-    from .first_order_sympy import integrate_of_core
-    return integrate_of_core(e, v)
+    """An antiderivative by the native verified indefinite integration
+    (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`,
+    SymPy's routes last), the unevaluated
+    :class:`~sympy_extras.integrals.integral.Integral` when none is found."""
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    from sympy_extras.integrals.integral import Integral
+    found = closed_antiderivative(e, v)
+    return Integral(e, v) if found is None else found
 
 
 def _explicit_rhs(F: Expr, p: Symbol) -> Optional[Expr]:
@@ -190,7 +193,7 @@ def chini_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (first_order_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.first_order import chini_ode
     >>> x = Symbol('x')
@@ -270,7 +273,7 @@ def abel_ode(equation: Basic, f: AppliedUndef) -> Optional[Basic]:
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (first_order_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.first_order import abel_ode
     >>> x = Symbol('x')
@@ -417,7 +420,7 @@ def riccati_ode(equation: Basic, f: AppliedUndef, special_values: bool = True) -
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (kovacic_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.first_order import riccati_ode
     >>> x = Symbol('x')

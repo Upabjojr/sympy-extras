@@ -38,14 +38,12 @@ The module works on the objects of the core and imports no SymPy: the
 polynomials, their roots, the series, the linear systems and the
 simplifications are the native ones, and
 :mod:`sympy_extras.solvers.kovacic_sympy` is its face on SymPy objects.
-Three steps are not ported and go through SymPy at run time (the face
-holds them, the functions ending in ``_of_core``): the antiderivatives
-(SymPy's ``integrate``, :func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`),
-the unevaluated integrals of the solutions it cannot integrate
-(:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`, an
-``Integral`` of SymPy wrapped in a node of the core) and SymPy's rational
-Riccati solver (:func:`~sympy_extras.solvers.kovacic_sympy.riccati_of_core`),
-the fallback of case 1. The cases of the isolated values of the
+The antiderivatives come from the native verified indefinite
+integration (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`, SymPy's routes
+its last methods), the integrals it cannot do are left unevaluated (the
+node :class:`~sympy_extras.integrals.integral.Integral`), and SymPy's
+rational Riccati solver, the fallback of case 1, is called at run time
+through the face (:func:`~sympy_extras.solvers.kovacic_sympy.riccati_of_core`). The cases of the isolated values of the
 parameters are those of :mod:`sympy_extras.solvers._special_values`.
 
 References
@@ -475,10 +473,11 @@ def _case1_sympy(r: Expr, x: Symbol) -> Optional[KovacicSolution]:
 
 
 def _exp_integral(omega: Expr, x: Symbol) -> Expr:
-    from .kovacic_sympy import integral_of_core, integrate_of_core
-    integral = integrate_of_core(omega, x, 'none', True)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    from sympy_extras.integrals.integral import Integral
+    integral = closed_antiderivative(omega, x, closed=True)
     if integral is None:
-        return exp(integral_of_core(omega, x))
+        return exp(Integral(omega, x))
     return exp(integral)
 
 
@@ -623,9 +622,9 @@ def _case3(r: Expr, num: _Polynomial, den: _Polynomial, poles: dict[Expr, int], 
                 polynomial = cancel(_sum([S_poly**i*_replaced(polynomials[i], values)/factorial(n - i)*w**i
                                           for i in range(n + 1)]))
                 omega = _algebraic_root(polynomial, w)
-                from .kovacic_sympy import integral_of_core
+                from sympy_extras.integrals.integral import Integral
                 integrand = omega if omega is not None else _root_placeholder(x)
-                return KovacicSolution(3, omega, polynomial, exp(integral_of_core(integrand, x)))
+                return KovacicSolution(3, omega, polynomial, exp(Integral(integrand, x)))
     return None
 
 
@@ -706,12 +705,13 @@ def _second_solution(y1: Expr, p: Expr, x: Symbol) -> Optional[Expr]:
     ``y2 = y1 Integral(exp(-Integral(p))/y1**2)``, in closed form when
     SymPy integrates it (without conditions on the parameters) and the
     result verifies, otherwise with the integral left unevaluated."""
-    from .kovacic_sympy import integral_of_core, integrate_of_core
-    inner = integrate_of_core(p, x, 'none', False)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    from sympy_extras.integrals.integral import Integral
+    inner = closed_antiderivative(p, x)
     if inner is None:
         return None
     integrand = simplify(exp(-inner)/y1**2)
-    outer = integrate_of_core(integrand, x, 'none', True)
+    outer = closed_antiderivative(integrand, x, closed=True)
     if outer is not None:
         candidate = simplify(y1*outer)
         # verified against the original equation y'' + p y' + q y = 0 through
@@ -719,7 +719,7 @@ def _second_solution(y1: Expr, p: Expr, x: Symbol) -> Optional[Expr]:
         difference = attempt(lambda: simplify((candidate/y1).diff(x) - integrand), settings.timeout)
         if difference is not None and difference == _ZERO:
             return candidate
-    return y1*integral_of_core(integrand, x)
+    return y1*Integral(integrand, x)
 
 
 def dsolve_kovacic(equation: Basic, f: AppliedUndef, special_values: bool = True) -> Optional[list[Expr]]:
@@ -736,7 +736,7 @@ def dsolve_kovacic(equation: Basic, f: AppliedUndef, special_values: bool = True
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (kovacic_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.kovacic import dsolve_kovacic
     >>> x = Symbol('x')
@@ -786,8 +786,8 @@ def _dsolve_kovacic(equation: Basic, f: AppliedUndef) -> Optional[list[Expr]]:
     z = liouvillian_solution(r, x)
     if z is None or z.omega is None:
         return None
-    from .kovacic_sympy import integrate_of_core
-    integral_p = integrate_of_core(p, x, 'piecewise', False)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    integral_p = closed_antiderivative(p, x, cases=True)
     if integral_p is None:
         return None
     factor_ = exp(-integral_p/2)

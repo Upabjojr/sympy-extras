@@ -62,15 +62,13 @@ The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy: every method is native (the Mellin table, the residues, the
 tables, the antiderivatives and the other modules of the package, the
 native ``solve``, ``ask``, SAT solver, limits, factorisation and
-simplification, the native cases of the special values of the
+simplification, the verified antiderivatives of the native
+:mod:`.indefinite`, the native cases of the special values of the
 parameters), and the numerical checks evaluate the integrands by the
-numerical rules of the nodes. Two steps stay on SymPy and are reached
-at run time through :mod:`.definite_sympy`, SymPy being loaded on those
-paths only: SymPy's ``integrate`` and ``meijerint``, the last of the
-methods (:func:`~sympy_extras.integrals.definite_sympy.integrate_of_core`),
-and the verified antiderivatives of :mod:`.indefinite`, which is not
-native yet, for the binomial differentials
-(:func:`~sympy_extras.integrals.definite_sympy.verified_antiderivative_of_core`).
+numerical rules of the nodes. One step stays on SymPy and is reached at
+run time through :mod:`.definite_sympy`, SymPy being loaded on that path
+only: SymPy's ``integrate`` and ``meijerint``, the last of the methods
+(:func:`~sympy_extras.integrals.definite_sympy.integrate_of_core`).
 The functions on SymPy objects are in :mod:`.definite_sympy`.
 
 Examples
@@ -2464,8 +2462,8 @@ class _Integrator:
         pieces = cuts
 
         def compute() -> Optional[ConditionalValue]:
-            from .definite_sympy import verified_antiderivative_of_core
-            known = verified_antiderivative_of_core(f, x, self.assumptions, ['binomial'])
+            from .indefinite import verified_antiderivative
+            known = verified_antiderivative(f, x, self.assumptions, ['binomial'])
             if known is None:
                 return None
             bounds = [a] + pieces + [b]

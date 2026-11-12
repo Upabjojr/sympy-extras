@@ -45,13 +45,12 @@ typed ``Poly`` refuses are taken as generators of the coefficients, as
 SymPy's ``Poly`` does), their roots and factors, the linear algebra and
 the simplifications are the native ones, and
 :mod:`sympy_extras.solvers.linear_ode_sympy` is its face on SymPy objects.
-Three steps are not ported and go through SymPy at run time: the
-antiderivatives of the reduction of order and of the first order
-equations (:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`),
-the unevaluated integrals of what SymPy cannot integrate
-(:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`, an
-``Integral`` of SymPy wrapped in a node of the core), and SymPy's
-``dsolve``, the last resort on the reduced equations
+The antiderivatives of the reduction of order and of the first order
+equations come from the native indefinite integration
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`), what it cannot integrate
+is left unevaluated (:class:`~sympy_extras.integrals.integral.Integral`),
+and SymPy's ``dsolve``, the last resort on the reduced equations, goes
+through SymPy at run time
 (:func:`~sympy_extras.solvers.linear_ode_sympy.dsolve_of_core`).
 
 References
@@ -85,7 +84,7 @@ from math import comb
 from typing import Final, Optional, Sequence
 
 from sympy_extras.core.add import Add, add
-from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import AppliedUndef, Derivative, Function, expand
 from sympy_extras.core.mul import Mul, mul
@@ -141,13 +140,11 @@ def _normal(e: Expr) -> Expr:
 
 
 def has_integral(e: Basic) -> bool:
-    """Whether ``e`` has an unevaluated ``Integral``: the node of
-    :mod:`sympy_extras.integrals.integral` (the value of the native
-    definite integration when no method applies), or SymPy's wrapped in a
-    node of the core (:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`)."""
-    from sympy_extras.integrals.integral import Integral
-    return any(isinstance(node, Integral) or (node._is_foreign_node() and node._compare_name() == 'Integral')
-               for node in preorder_traversal(e))
+    """Whether ``e`` has an unevaluated integral: the native
+    :class:`~sympy_extras.integrals.integral.Integral` of a quadrature
+    left undone, or SymPy's, wrapped in a node of the core."""
+    from sympy_extras.integrals.integral import is_unevaluated
+    return is_unevaluated(e)
 
 
 # ---------------------------------------------------------------------------
@@ -1494,12 +1491,13 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
     if n == 1:
         # SymPy's integrate, imported here only: the other orders reach it
         # through the reduction of order alone
-        from .kovacic_sympy import integral_of_core, integrate_of_core
+        from sympy_extras.integrals.indefinite import closed_antiderivative
+        from sympy_extras.integrals.integral import Integral
         # y' = -a_0/a_1 y
         rho = _normal(-L.coefficients[0]/L.coefficients[1])
-        integral = integrate_of_core(rho, x, 'piecewise', False)
+        integral = closed_antiderivative(rho, x, cases=True)
         if integral is None:
-            return [exp(integral_of_core(rho, x))]
+            return [exp(Integral(rho, x))]
         return [exp(integral)]
     found: list[Expr] = []
     found.extend(rational_solutions(L))
@@ -1558,7 +1556,8 @@ def _by_reduction(L: LinearOperator, f: AppliedUndef, found: list[Expr], use_kov
     """``found`` extended by the solutions of the operator reduced by the
     first solution (``y1 * Integral(v)`` for its solutions ``v``), ``None``
     when the first one is not a solution."""
-    from .kovacic_sympy import integral_of_core, integrate_of_core
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    from sympy_extras.integrals.integral import Integral
     x = L.x
     y1 = found[0]
     try:
@@ -1567,10 +1566,10 @@ def _by_reduction(L: LinearOperator, f: AppliedUndef, found: list[Expr], use_kov
         return None
     reduced = _solve_operator(M, f, use_kovacic, use_dsolve, factorize)
     for v in reduced:
-        w = integrate_of_core(v, x, 'none', True)
+        w = closed_antiderivative(v, x, closed=True)
         if w is None:
             # the quadrature is left unevaluated
-            w = integral_of_core(v, x)
+            w = Integral(v, x)
         product = y1*w
         found = _independent(found + [_normal(product) if product.is_rational_function(x) else product], x)
     return found

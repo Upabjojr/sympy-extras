@@ -1,7 +1,7 @@
 """The SymPy face of the antiderivatives of exponentials of powers, of
 quadratics and of rational functions of an exponential
-(:mod:`sympy_extras.integrals.exponential`), for the integrators which are
-still written on SymPy (:mod:`.indefinite`).
+(:mod:`sympy_extras.integrals.exponential`), for the users of SymPy
+objects.
 
 The functions convert their arguments by :mod:`sympy_extras.interop`, run
 the native code and convert the antiderivatives back.

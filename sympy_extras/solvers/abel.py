@@ -54,10 +54,10 @@ The module works on the objects of the core and imports no SymPy: the
 invariants, the gcd of the equivalence, the simplifications and the
 numerical check of a relation (a secant method in mpmath) are native,
 and :mod:`sympy_extras.solvers.abel_sympy` is its face on SymPy objects.
-Three steps go through SymPy at run time (the functions ending in
-``_of_core`` of the faces): the antiderivatives
-(:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`), SymPy's
-``solve`` of the undetermined coefficients of a particular solution
+The antiderivatives come from the native indefinite integration
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`); two steps go through
+SymPy at run time (the functions ending in ``_of_core`` of the faces):
+SymPy's ``solve`` of the undetermined coefficients of a particular solution
 (:func:`~sympy_extras.solvers.factorization_sympy.solve_of_core`) and of
 a common factor of degree two or more of the equivalence
 (:func:`~sympy_extras.solvers.charpit_sympy.solve_of_core`), and SymPy's
@@ -423,8 +423,8 @@ def particular_solution(coefficients: CoefficientsLike, x: Symbol, degree: int =
 
 
 def _integrate(e: Expr, v: Symbol) -> Optional[Expr]:
-    from .kovacic_sympy import integrate_of_core
-    return integrate_of_core(e, v, 'piecewise', False)
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    return closed_antiderivative(e, v, cases=True)
 
 
 def _quadratic(e: Expr, x: Symbol) -> bool:

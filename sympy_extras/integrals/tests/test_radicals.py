@@ -88,7 +88,7 @@ def test_negative_powers_of_x() -> None:
     # the lowest power, from 1/(x*sqrt(Q)) (GR 2.266: a logarithm for a
     # positive constant term, an arcsine for a negative one, checked in
     # Mathematica on both sides of zero) and from Q taken out of the radical
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     assert quadratic_radical_antiderivative(1 / (x * sqrt(x**2 + 1)), x) == -log((2 * sqrt(x**2 + 1) + 2) / x)
     assert quadratic_radical_antiderivative(1 / (x * sqrt(x**2 - 1)), x) == -asin(1 / sqrt(x**2))
     for f in [1 / (x * sqrt(1 - x**2)), 1 / (x**2 * sqrt(1 - x**2)), (1 - x**2)**Rational(3, 2) / x,
@@ -132,7 +132,7 @@ def test_odd_powers_of_a_quadratic_under_the_root() -> None:
     # sqrt(Q**3) is Q*sqrt(Q) where Q > 0: the radical table's entries
     # for the odd powers of sqrt(Q) (Maxima's rtestint with symbolic
     # coefficients)
-    from sympy_extras.integrals.indefinite import is_antiderivative, verified_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative, verified_antiderivative
     from sympy_extras.integrals.radicals_sympy import _odd_power
     a, b, c = symbols('a b c')
     Q = as_expr(a + b * x + c * x**2)

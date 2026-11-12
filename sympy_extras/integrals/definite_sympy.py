@@ -10,9 +10,7 @@ the native code and convert the results back (the values of
 ``Integral``). The steps of the native module which stay on SymPy are
 here too, on core expressions, imported by it at run time: SymPy's
 ``integrate`` and its Meijer G-function route, the last of the methods
-(:func:`integrate_of_core`), and the verified antiderivatives of
-:mod:`.indefinite`, not native yet (:func:`verified_antiderivative_of_core`,
-the one route to it).
+(:func:`integrate_of_core`).
 
 Examples
 ========
@@ -48,7 +46,6 @@ from sympy.integrals.integrals import integrate
 from sympy_extras._numeric_sympy import core_expr, sympy_expr
 from sympy_extras._timeout import attempt
 from sympy_extras._typing_sympy import ExprLike, as_expr
-from sympy_extras.assumptions import ask as native_ask
 from sympy_extras.assumptions.ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
@@ -56,10 +53,8 @@ from sympy_extras.core.symbol import Symbol as CoreSymbol
 from . import conditions as native_conditions
 from . import definite as native
 from .conditions_sympy import ConditionalValue
-from .laplace_sympy import _sympy_assumptions
 
-__all__ = ['definite_integral', 'conditional_integral', 'verify_numerically', 'Limits', 'integrate_of_core',
-           'verified_antiderivative_of_core']
+__all__ = ['definite_integral', 'conditional_integral', 'verify_numerically', 'Limits', 'integrate_of_core']
 
 #: ``(x, a, b)``
 Limits = tuple[Symbol, ExprLike, ExprLike]
@@ -173,20 +168,3 @@ def integrate_of_core(f: CoreExpr, x: CoreSymbol, a: CoreExpr, b: CoreExpr, meij
     except (TypeError, ValueError, NotImplementedError):
         return None
 
-
-def verified_antiderivative_of_core(f: CoreExpr, x: CoreSymbol, assumptions: native_ask.Assumptions,
-                                    methods: Optional[list[str]] = None) -> Optional[tuple[CoreExpr, str]]:
-    """:func:`sympy_extras.integrals.indefinite.verified_antiderivative`
-    on core expressions: an antiderivative of ``f`` which checks, with the
-    name of the method which found it (the methods restricted to
-    ``methods``); ``None`` when none is found or it cannot be converted.
-    The one route of :mod:`.definite` to :mod:`.indefinite`, which is not
-    native yet."""
-    from .indefinite import verified_antiderivative
-    found = verified_antiderivative(sympy_expr(f), _sympy_symbol(x), _sympy_assumptions(assumptions), methods)
-    if found is None:
-        return None
-    try:
-        return core_expr(found[0]), found[1]
-    except (TypeError, ValueError, NotImplementedError):
-        return None

@@ -9,8 +9,8 @@ functions; :class:`DarbouxPolynomial`, :class:`ExponentialFactor` and
 :class:`DarbouxIntegral` carry SymPy expressions. The modules still
 written on SymPy (:mod:`~sympy_extras.solvers.first_order`) use them.
 
-The quadratures of the integrating factor go through
-:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`.
+The quadratures of the integrating factor are native
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
 Examples
 ========

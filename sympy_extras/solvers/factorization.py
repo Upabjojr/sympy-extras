@@ -54,12 +54,12 @@ Van Hoeij's local method and the eigenring are not implemented.
 
 The module works on the objects of the core and imports no SymPy (its
 face on SymPy objects is :mod:`sympy_extras.solvers.factorization_sympy`).
-Two steps go through SymPy at run time: the quadratures of the variation
-of parameters and of Abel's identity
-(:func:`~sympy_extras.solvers.kovacic_sympy.integrate_of_core`, the
-integrals SymPy cannot do left unevaluated with
-:func:`~sympy_extras.solvers.kovacic_sympy.integral_of_core`) and SymPy's
-``solve`` on the quadratic Grassmann–Plücker systems
+The quadratures of the variation of parameters and of Abel's identity
+come from the native indefinite integration
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`, the integrals it cannot do
+left unevaluated as :class:`~sympy_extras.integrals.integral.Integral`);
+SymPy's ``solve`` on the quadratic Grassmann–Plücker systems goes through
+SymPy at run time
 (:func:`~sympy_extras.solvers.factorization_sympy.solve_of_core`).
 
 References
@@ -540,7 +540,10 @@ def _joined(left: tuple[list[LinearOperator], list[Truth]], right: tuple[list[Li
 def _elementary(e: Expr) -> bool:
     """Whether the functions in ``e`` are elementary (an unevaluated
     integral is no function)."""
+    from sympy_extras.integrals.integral import Integral
     for node in preorder_traversal(e):
+        if isinstance(node, Integral):
+            continue
         if node._is_foreign_node():
             if node._compare_name() != 'Integral':
                 return False
@@ -559,15 +562,16 @@ def _quadrature(integrand: Expr, x: Symbol) -> Expr:
     limit (without conditions and without ``Piecewise``); a sixth of it
     for integrands with special functions, which SymPy seldom
     integrates."""
-    from .kovacic_sympy import integral_of_core, integrate_of_core
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    from sympy_extras.integrals.integral import Integral
     limit = settings.timeout
     if limit is not None and not _elementary(integrand):
         limit = limit/6
     simplified = attempt(lambda: simplify(integrand), limit, native=True) if _ops(integrand) < 200 else None
     f = integrand if simplified is None else simplified
-    value = attempt(lambda: integrate_of_core(f, x, 'none', True), limit, native=True)
+    value = attempt(lambda: closed_antiderivative(f, x, closed=True), limit, native=True)
     if value is None:
-        return integral_of_core(f, x)
+        return Integral(f, x)
     return value
 
 
@@ -580,7 +584,7 @@ def variation_of_parameters(L: LinearOperator, basis: list[Expr], rhs: Expr) -> 
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (kovacic_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import Integer, Symbol
     >>> from sympy_extras.functions import exp
     >>> from sympy_extras.simplify.simplify import simplify
@@ -598,10 +602,10 @@ def variation_of_parameters(L: LinearOperator, basis: list[Expr], rhs: Expr) -> 
 def _abel_wronskian(L: LinearOperator) -> Optional[Expr]:
     """``exp(-Integral(a_{n-1}/a_n))``, the Wronskian of a basis up to a
     constant factor (Abel's identity), when the integral is found."""
-    from .kovacic_sympy import integrate_of_core
+    from sympy_extras.integrals.indefinite import closed_antiderivative
     x = L.x
     p = _normal(L.coefficients[-2]/L.leading_coefficient)
-    integral = integrate_of_core(p, x, 'none', True)
+    integral = closed_antiderivative(p, x, closed=True)
     if integral is None:
         return None
     W = exp(-integral)
@@ -655,7 +659,7 @@ def solve_factored(factors: Sequence[LinearOperator], solver: Solver) -> list[Ex
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's integrate (kovacic_sympy.integrate_of_core)
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
     >>> from sympy_extras.core import Integer, Symbol
     >>> from sympy_extras.solvers.linear_ode import LinearOperator, hyperexponential_solutions
     >>> from sympy_extras.solvers.factorization import solve_factored

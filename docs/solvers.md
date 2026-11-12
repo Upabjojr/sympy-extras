@@ -201,9 +201,11 @@ SymPy lacks:
   covers only the first case (and misses equations without finite
   poles). `sympy_extras.solvers.kovacic` is native (core expressions,
   the native polynomials, roots, series and linear systems); its SymPy
-  face is `sympy_extras.solvers.kovacic_sympy`, and SymPy's `integrate`
-  and Riccati solver are called through the face (`integrate_of_core`,
-  `integral_of_core`, `riccati_of_core`).
+  face is `sympy_extras.solvers.kovacic_sympy`; the antiderivatives
+  come from the native verified indefinite integration
+  (`sympy_extras.integrals.indefinite.closed_antiderivative`, SymPy's
+  routes its last methods), and SymPy's Riccati solver is called through
+  the face (`riccati_of_core`).
 - **Polynomial, rational and hyperexponential solutions** of equations
   of any order with polynomial coefficients (`polynomial_solutions`,
   `rational_solutions`, `hyperexponential_solutions`): degree bounds
@@ -258,10 +260,13 @@ SymPy lacks:
 (core expressions, the native polynomials, roots, number fields, linear
 algebra and simplification); their SymPy faces are `linear_ode_sympy`,
 `factorization_sympy`, `irregular_sympy` and `special_sympy`, which the
-examples below use. SymPy's `integrate`, `dsolve` (the last resort on the
-reduced equations) and `solve` (the Grassmann–Plücker relations of Beke's
-method) are called through the faces (`integrate_of_core`,
-`integral_of_core`, `dsolve_of_core`, `solve_of_core`).
+examples below use. The quadratures come from the native verified
+indefinite integration (`sympy_extras.integrals.indefinite.closed_antiderivative`,
+an integral it cannot do left as the unevaluated
+`sympy_extras.integrals.integral.Integral`); SymPy's `dsolve` (the last
+resort on the reduced equations) and `solve` (the Grassmann–Plücker
+relations of Beke's method) are called through the faces
+(`dsolve_of_core`, `solve_of_core`).
 
 ```python
 >>> from sympy import Matrix, Function

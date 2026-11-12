@@ -33,13 +33,12 @@ The module works on the objects of :mod:`sympy_extras.core` and imports
 no SymPy. The antiderivative itself is a step of its own, an
 :data:`AntiderivativeStep` which every function takes: by default
 :func:`antiderivative`, which tries the native table of quadratic
-radicals (:mod:`.radicals`) and asks the rest of SymPy's ``integrate``
-and of the verified methods of :mod:`.indefinite` (not ported yet)
-through the face (:func:`~.antiderivative_sympy.integrate_of_core`,
-:func:`~.antiderivative_sympy.verified_antiderivative_of_core`), which
-loads SymPy on that path only. A native antiderivative (the native
-``ratint`` of :mod:`.risch.rationaltools`, say) runs the whole method
-without SymPy. The singularities of the integrand are those of SymPy's
+radicals (:mod:`.radicals`) and the verified methods of the native
+:mod:`.indefinite`, whose last methods (SymPy's) and SymPy's
+``integrate`` of the polynomials in elementary functions
+(:func:`~.antiderivative_sympy.integrate_of_core`) load SymPy on their
+paths only. A native antiderivative (the native ``ratint`` of
+:mod:`.risch.rationaltools`, say) runs the whole method without SymPy. The singularities of the integrand are those of SymPy's
 ``singularities`` (a port, :func:`singularities`). The functions on SymPy
 objects are in :mod:`.antiderivative_sympy`.
 
@@ -133,7 +132,8 @@ _METHODS: Final[tuple[str, ...]] = ('rational', 'radicals', 'exponential', 'trig
 
 
 #: the heuristic methods, tried late and under a larger budget
-_LATE_METHODS: Final[tuple[str, ...]] = ('heurisch', 'rewriting', 'rewritten heurisch', 'manual', 'meijer', 'sympy')
+_LATE_METHODS: Final[tuple[str, ...]] = ('heurisch', 'rewriting', 'rewritten heurisch', 'sympy heurisch', 'manual',
+                                         'meijer', 'sympy')
 
 #: the classes of the elementary functions of linear arguments which
 #: integrate takes at once, with their evaluating functions
@@ -165,9 +165,10 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
     are tried instead, under a quarter of the time limit (the second pass
     of the definite driver, after its slow methods).
 
-    The radical table is native; SymPy's ``integrate`` and the methods of
-    :mod:`.indefinite` (not ported) are reached through
-    :mod:`.antiderivative_sympy`, which loads SymPy.
+    The radical table and :mod:`.indefinite` are native; SymPy's
+    ``integrate`` of a polynomial in elementary functions is reached
+    through :mod:`.antiderivative_sympy`, and the last methods of
+    :mod:`.indefinite` through :mod:`.indefinite_sympy`, which load SymPy.
 
     Examples
     ========
@@ -184,8 +185,8 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
         # a real form (SymPy writes the arcsine of sqrt(1 - x**2) as a
         # complex logarithm, whose limits at algebraic bounds fail)
         return found
-    from .antiderivative_sympy import integrate_of_core, verified_antiderivative_of_core
     if elementary_polynomial(f, x):
+        from .antiderivative_sympy import integrate_of_core
         # a polynomial in x and in exponentials and trigonometric functions
         # of linear arguments: integrate does it at once, where the Risch
         # port spends seconds on gcds over the constants of the arguments
@@ -212,8 +213,11 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
     # route is tried on every piece of every mapped range, and the other
     # methods of the driver need their share (log(sin(x)/x) over
     # (0, pi/2) lost its budget to the failures on its pieces)
-    return verified_antiderivative_of_core(f, x, assumptions, list(_LATE_METHODS if late else _METHODS),
-                                           _budget(4 if late else 8))
+    from .indefinite import verified_antiderivative
+    methods = list(_LATE_METHODS if late else _METHODS)
+    verified = attempt(lambda: verified_antiderivative(f, x, assumptions, methods), _budget(4 if late else 8),
+                       native=True)
+    return None if verified is None else verified[0]
 
 
 def _expanded_argument(node: Basic) -> Basic:

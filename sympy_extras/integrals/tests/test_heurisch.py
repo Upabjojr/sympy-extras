@@ -152,7 +152,7 @@ def test_the_special_functions_of_the_tower() -> None:
     # dilogarithm for exp(theta) + 1 in the denominator; the FriCAS suite's
     # cases which FriCAS integrates in these functions
     from sympy import erfi, polylog
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     expected = {
         exp(x) / (x + 1)**2: Ei, 1 / (log(x) + 1): Ei, x / (log(x) + 1): Ei,
         (2 * exp(2 * x) + exp(x)) / log(exp(2 * x) + exp(x)): Ei, exp(-x) / (x + 2): Ei,
