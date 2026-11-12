@@ -3146,3 +3146,24 @@ def test_native_expr_with_limits_doit_does_not_load_sympy() -> None:
                          text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_RATSIMP_DOMAINS = r'''
+import sys
+from sympy_extras.core import Symbol, I, Float
+from sympy_extras.simplify.ratsimp import ratsimp
+x, y = Symbol('x'), Symbol('y')
+assert str(ratsimp((x**2 + I)/(x + 1))) == 'x - 1 + (1 + I)/(x + 1)'
+assert str(ratsimp((I*x**3 + 2*x + 1)/(x**2 + I))) == 'I*x + (3*x + 1)/(x**2 + I)'
+assert str(ratsimp((x**2 + Float(0.5))/(x + 1))) == '1.0*x - 1.0 + 1.5/(1.0*x + 1.0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ratsimp_domains_do_not_load_sympy() -> None:
+    """``ratsimp`` divides over ``QQ_I`` and ``EX`` natively (Gaussian and
+    float coefficients went to SymPy's ``ratsimp``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RATSIMP_DOMAINS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

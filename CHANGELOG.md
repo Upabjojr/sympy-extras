@@ -10,6 +10,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `simplify.ratsimp` loads no SymPy at run time: the division of the
+  numerator by the denominator runs over the typed domains `QQ`, `QQ_I`
+  (Gaussian coefficients) and `EX` (floats and the other numbers),
+  instead of sending those to SymPy's `ratsimp`.
 - `ExprWithLimits.doit` (the base class of `Sum` and `Product`, which
   have their own) evaluates its function and bounds natively, as SymPy's
   `Basic.doit`, instead of going through SymPy.
