@@ -471,16 +471,18 @@ def _linear_solution(e: Expr, target: Expr) -> Optional[list[Expr]]:
 
 # PORTED FROM SYMPY: sympy/solvers/ode/subscheck.py:checkodesol
 def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
-                       timeout: Optional[float] = DEFAULT_TIMEOUT) -> bool:
+                       timeout: Optional[float] = DEFAULT_TIMEOUT, solve_for_func: bool = True) -> bool:
     """Whether ``solution`` (``Eq(f, rhs)``, an implicit relation ``Eq(F(x,
     f), G(x, f))`` or the right-hand side alone) solves the ordinary
     differential equation, as SymPy's ``checkodesol`` decides it: an
     implicit relation is solved for ``f`` first (by SymPy's ``solve``,
-    within ``timeout`` seconds; the relation itself is checked when it
-    gives up, where ``checkodesol`` raises), and every solution must be checked; the
+    within ``timeout`` seconds; ``False`` when it gives up, where
+    ``checkodesol`` raises), and every solution must be checked; the
     solution is substituted and the residual simplified, else the
     derivatives of the relation are substituted (when ``solve`` finds no
-    solution). ``False`` when nothing proves it.
+    solution). ``False`` when nothing proves it. Without
+    ``solve_for_func`` (SymPy's argument of the same name) an implicit
+    relation is checked through its derivatives without being solved.
 
     Examples
     ========
@@ -499,7 +501,7 @@ def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
     True
     """
     limit = _limit(timeout)
-    found = attempt(lambda: _checkodesol(ode, solution, f, limit, True), limit, native=True)
+    found = attempt(lambda: _checkodesol(ode, solution, f, limit, solve_for_func), limit, native=True)
     return found is True
 
 
@@ -519,10 +521,9 @@ def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Op
     solved = sol_lhs == func and not sol_rhs.has(func)
     if solve_for_func and not solved:
         values = _solved_for(sol_lhs - sol_rhs, func, timeout)
-        # SymPy's solve gives up (values is None; checkodesol raises then):
-        # the relation is checked by its derivatives below, as when solve
-        # finds no solution (the implicit erfi(y/sqrt(2)) = C1 x + C2 of
-        # y'' + y y'**2 = 0, which SymPy's dsolve wrote with an Integral)
+        if values is None:
+            # SymPy's solve gives up: so does checkodesol
+            return False
         if values:
             return all(_checkodesol(ode, Eq(func, value), func, timeout, False) for value in values)
     if sol_lhs.has(Order) or sol_rhs.has(Order):

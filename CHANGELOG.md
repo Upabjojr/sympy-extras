@@ -34,6 +34,9 @@ remove public functions. Breaking changes are listed here when they happen.
   `linear_systems_sympy.linodesolve_of_core` are removed. The solutions
   are SymPy's or equivalent ones (checked by substitution); a first
   order linear solution keeps SymPy's form `(C1 + x)*exp(x)` when shorter.
+  `solvers.ode.check_ode_solution` takes SymPy's `solve_for_func`
+  argument (an implicit relation checked through its derivatives without
+  being solved).
 - **Breaking**: the verified indefinite integration
   `sympy_extras.integrals.indefinite` (`indefinite_integral`,
   `verified_antiderivative`, `is_antiderivative`, `real_form`,
