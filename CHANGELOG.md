@@ -10,6 +10,16 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: `assumptions.refine_sympy.factor_list_of_core` is removed (the
+  native factorisation raises `CoercionFailed`, never `NotImplementedError`,
+  for coefficients which are not rational, so the route was not reached);
+  the native `simplify` of a relation which is not polynomial in real
+  variables is the new `assumptions.refine.simplify_relational`, a port of
+  SymPy's `Relational._eval_simplify` (the sides simplified, solved for a
+  single symbol when linear, the coefficients made coprime), the
+  difference of two numbers decided by a reliable value rather than to
+  two digits. `simplify_boolean_of_core` stays for compound formulas
+  (SymPy's `simplify_univariate` and the patterns of `And` and `Or`).
 - **Breaking**: `sympy_extras.polys.polytools_sympy` (`invert_of_core`,
   `cancel_of_core`, `factor_of_core`) is removed: the native `cancel`
   cancels over `CC` (the gcd over `QQ_I`, the cofactors rounded back, as

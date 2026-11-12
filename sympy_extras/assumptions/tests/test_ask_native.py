@@ -76,3 +76,19 @@ def test_native_resolve() -> None:
     assert str(resolve(Exists(x, Eq(2*x, y)), domain=Integers)) == 'Eq(Mod(y, 2), 0)'
     assert str(resolve(Exists(x, Eq(Symbol('a')*x, 1)), domain=Complexes)) == 'Ne(a, 0)'
     assert resolve(x > 2, assumptions=x > 1) == Gt(x, 2)
+
+
+def test_native_simplification_of_a_relation() -> None:
+    # SymPy's Relational._eval_simplify, ported (simplify_boolean_of_core
+    # sent every relation to SymPy): solved for its symbol when linear,
+    # the coefficients made coprime, decided when the sides are numbers
+    from sympy_extras.assumptions.refine import simplify_relational
+    from sympy_extras.core.logic import false
+    from sympy_extras.core.relational import Lt
+    a, p = Symbol('a'), Symbol('p')
+    assert simplify_relational(Lt(2*a, 1), 1.7, False, False, True) == Lt(a, Rational(1, 2))
+    assert simplify_relational(Eq(2*p, 1), 1.7, False, False, True) == Eq(p, Rational(1, 2))
+    assert simplify_relational(Lt(3*x + 6*y, 3), 1.7, False, False, True) == Lt(x + 2*y, 1)
+    assert simplify_relational(Lt(x**2 + 1, x**2), 1.7, False, False, True) is false
+    # an unchanged relation stays as it is
+    assert simplify_relational(Lt(sin(x), 0), 1.7, False, False, True) == Lt(sin(x), 0)

@@ -2544,3 +2544,27 @@ def test_native_polytools_domains_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+
+_NATIVE_RELATION_SIMPLIFY = r"""
+import sys
+from sympy_extras.core import symbols, Eq
+from sympy_extras.functions import abs_, sin
+from sympy_extras.assumptions.refine import simplify
+a, x = symbols('a x')
+assert str(simplify(2*a < 1)) == 'a < 1/2' and str(simplify(Eq(2*a, 1))) == 'Eq(a, 1/2)'
+assert str(simplify(abs_(x) > 1)) == 'Abs(x) > 1' and str(simplify(sin(x) > 0)) == 'sin(x) > 0'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_simplify_of_a_relation_does_not_load_sympy() -> None:
+    """The native ``simplify`` of a relation which is not polynomial in
+    real variables is the port of SymPy's ``Relational._eval_simplify``
+    (it went through ``simplify_boolean_of_core``, which keeps only the
+    compound formulas)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RELATION_SIMPLIFY], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

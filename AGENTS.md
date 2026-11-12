@@ -182,8 +182,9 @@ sympy_extras/
         ask.py               ask(): the core's ask first, then the CAD (native, with the native CAD and virtual
                              substitution, the native structure theorem, sample points and reliable values)
         ask_sympy.py         the SymPy face of ask
-        refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers (native)
-        refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of Booleans, the proofs
+        refine.py            refine(), simplify(): the core's refine and simplify plus CAD-decided handlers, simplify_relational
+                             (native, PORTED FROM SYMPY Relational._eval_simplify)
+        refine_sympy.py      the SymPy face of refine (_Refiner too), SymPy's simplify of compound Booleans, the proofs
         resolve.py           resolve(): quantifier elimination over R, Z, C (native, with the native CAD, virtual
                              substitution, Cooper and comprehensive Groebner systems)
         resolve_sympy.py     the SymPy face of resolve
