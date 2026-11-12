@@ -1669,7 +1669,7 @@ def _parts_rule(integrand: Expr, symbol: Symbol) -> Generator[IntegralInfo, Rule
     dummy = _fresh('temporary')
     # we can integrate log(x) and atan(x) by setting dv = 1
     if isinstance(integrand, (Log, *_INVERSE_TRIG)):
-        integrand = Mul(dummy, integrand)
+        integrand = mul(dummy, integrand)
 
     for index, rule in enumerate(liate_rules):
         result = rule(integrand)
