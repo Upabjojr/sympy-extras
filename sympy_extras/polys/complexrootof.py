@@ -100,7 +100,7 @@ from sympy_extras.polys.densetools import dup_shift
 from sympy_extras.polys.domains import QQ, ZZ
 from sympy_extras.polys.euclidtools import dup_qq_gcd
 from sympy_extras.polys.factortools import dup_zz_factor
-from sympy_extras.polys.numberfields.qqbar import Algebraic, algebraic_roots
+from sympy_extras.polys.numberfields.qqbar import Algebraic, _roots as _unsorted_roots
 from sympy_extras.polys.polyerrors import BasePolynomialError, CoercionFailed
 from sympy_extras.polys.polyroots import preprocess_roots
 from sympy_extras.polys.polytools import Poly
@@ -303,6 +303,7 @@ def complex_rectangles(f: Sequence[int], upper: Sequence[Algebraic]
     Examples
     ========
 
+    >>> from fractions import Fraction
     >>> from sympy_extras.polys.numberfields.qqbar import algebraic_roots
     >>> from sympy_extras.polys.complexrootof import complex_rectangles
     >>> f = [1, 0, 6, 0, 4]                       # x**4 + 6*x**2 + 4: roots on the imaginary axis
@@ -372,9 +373,11 @@ def _irreducible_roots(f: IntegerPoly) -> tuple[int, list[Algebraic]]:
     if len(f) == 2:
         result: tuple[int, list[Algebraic]] = (1, [Algebraic.from_rational(Fraction(-f[1], f[0]))])
     else:
-        listed = algebraic_roots(list(f))
-        reals = [r for r in listed if r.is_real]
-        upper = [r for r in listed if not r.is_real and _above(r)]
+        # unsorted: qqbar's order of the complex roots compares their real
+        # parts exactly (resultants), which SymPy's order does not need
+        reals, others = _unsorted_roots(list(f))
+        reals.sort(key=_RealKey)
+        upper = [r for r in others if _above(r)]
         ordered: list[Algebraic] = list(reals)
         for _, r in complex_rectangles(f, upper):
             ordered.extend([r.conjugate(), r])
