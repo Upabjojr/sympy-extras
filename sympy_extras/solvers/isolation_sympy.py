@@ -1,6 +1,6 @@
 """The SymPy face of the isolation of real roots of transcendental
-functions (:mod:`sympy_extras.solvers.isolation`), and the steps which
-stay on SymPy.
+functions (:mod:`sympy_extras.solvers.isolation`), and the step which
+stays on SymPy.
 
 :func:`isolate_real_roots`, :func:`real_roots_of`, :func:`point_between`
 and :func:`compare_points` take and return SymPy objects, converted by
@@ -10,12 +10,10 @@ native root object (``interop`` converts one into the other): its
 bisections, refinements and numerical values are those of the native
 object.
 
-Two steps of the native module stay written on SymPy and are called from
-it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): the real roots of a polynomial with
-rational coefficients which are not all in radicals (SymPy's
-``real_roots``, with its ``CRootOf``), and whether a function which is
-not rational is continuous on an interval (SymPy's ``continuous_domain``).
+One step of the native module stays written on SymPy and is called from
+it at run time (:func:`continuous_on_of_core`, which takes and returns
+objects of the core): whether a function which is not rational is
+continuous on an interval (SymPy's ``continuous_domain``).
 
 Examples
 ========
@@ -37,7 +35,6 @@ from sympy.core.expr import Expr
 from sympy.core.numbers import Float, Rational
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
-from sympy.polys.polytools import Poly
 from sympy.printing.printer import Printer
 from sympy.sets.sets import Complement, EmptySet, FiniteSet, Intersection, Interval, Set
 
@@ -53,7 +50,7 @@ from sympy_extras.settings import settings
 from . import isolation as native
 
 __all__ = ['TranscendentalRoot', 'isolate_real_roots', 'real_roots_of', 'point_between', 'compare_points',
-    'real_roots_of_core', 'continuous_on_of_core', 'sympy_root', 'native_root']
+    'continuous_on_of_core', 'sympy_root', 'native_root']
 
 #: an exact real number, or an isolated root
 Point = Expr
@@ -68,14 +65,6 @@ def _sympy_symbol(s: CoreSymbol) -> Symbol:
 
 # ---------------------------------------------------------------------------
 # the steps of the native module which stay on SymPy
-
-def real_roots_of_core(f: CoreExpr, x: CoreSymbol) -> list[CoreExpr]:
-    """The real roots of a polynomial with rational coefficients, with
-    their multiplicities, in increasing order (SymPy's ``Poly.real_roots``:
-    radicals for the linear, quadratic and binomial factors, ``CRootOf``
-    otherwise)."""
-    return [core_expr(as_expr(r)) for r in Poly(sympy_expr(f), _sympy_symbol(x)).real_roots()]
-
 
 def continuous_on_of_core(f: CoreExpr, x: CoreSymbol, piece: CoreSet) -> bool:
     """Whether the piece lies in SymPy's ``continuous_domain`` of ``f``

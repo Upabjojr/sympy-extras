@@ -398,8 +398,8 @@ sympy_extras/
         tests/
     solvers/                 solvers extending sympy.solvers (exports nothing: import the modules)
         isolation.py         TranscendentalRoot (node), isolate_real_roots, point_between, compare_points: exact real roots of
-                             exp-log functions (native; SymPy's real_roots with CRootOf and continuous_domain through isolation_sympy)
-        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), the *_of_core functions
+                             exp-log functions (native, the roots without radicals as IndexedRoot; SymPy's continuous_domain through isolation_sympy)
+        isolation_sympy.py   the SymPy face of isolation (TranscendentalRoot as a SymPy Expr, interop converts), and continuous_on_of_core
         transcendental.py    solve_transcendental, polynomialize, Reduction: transcendental equations and inequalities
                              reduced to polynomial ones through kernels (native; SymPy's solveset of the non-rational
                              polynomial relations, the Lambert W candidates of its solve and _numeric through

@@ -10,6 +10,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- **Breaking**: `solvers.isolation_sympy.real_roots_of_core` is removed:
+  the real roots of a polynomial with rational coefficients which are not
+  in radicals are the native canonical `IndexedRoot` of their minimal
+  polynomial (SymPy's `CRootOf` through `interop`), ordered exactly as
+  real algebraic numbers, so that `isolate_real_roots` no longer loads
+  SymPy for them.
 - **Breaking**: `simplify_logic_of_core` is removed from
   `polys.virtual_substitution_sympy` and `solvers.integers_sympy`: the
   results of virtual substitution and of Cooper's algorithm, and the joined

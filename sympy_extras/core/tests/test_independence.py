@@ -2494,3 +2494,27 @@ def test_native_simplify_logic_does_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REAL_ROOTS = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.cad.indexedroot import IndexedRoot
+from sympy_extras.sets import interval
+from sympy_extras.solvers.isolation import isolate_real_roots
+x = symbols('x')
+roots = isolate_real_roots((x**5 - x - 1)*(x**2 - 2)*(3*x - 1), x)
+assert roots is not None and str(roots[:2] + roots[3:]) == '[-sqrt(2), 1/3, sqrt(2)]', roots
+assert isinstance(roots[2], IndexedRoot) and str(roots[2].evalf(10)) == '1.167303978', roots
+assert str(isolate_real_roots(x**5 - x - 1, x, interval(1, 2))) == '[IndexedRoot(x**5 - x - 1, x, 0)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_real_roots_of_polynomials_do_not_load_sympy() -> None:
+    """The real roots of a polynomial which are not in radicals are
+    native ``IndexedRoot`` nodes (they went through SymPy's
+    ``real_roots`` and its ``CRootOf``, ``real_roots_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REAL_ROOTS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
