@@ -26,7 +26,7 @@ use crate::core::expr::{as_coeff_mul, as_independent, is_false, is_true};
 use crate::core::function::{expand_with, rebuild_evaluated, xreplace_evaluated, Hints};
 use crate::core::mul::mul;
 use crate::core::power::pow;
-use crate::core::sorting::sort_key;
+use crate::core::sorting::ordered;
 use crate::core::Dummy;
 use crate::error::{arithmetic_error, not_ported, polys_error, value_error, PolyError, PolyResult, PolysErrorKind};
 use crate::numbers::*;
@@ -748,13 +748,6 @@ fn left_decompose(f: &[Rat], h: &[Rat]) -> PolyResult<Option<Vec<Rat>>> {
     Ok(Some(dup_strip(&dense, k)))
 }
 
-/// SymPy's `ordered`: by the number of nodes, then the canonical key.
-fn ordered(items: Vec<Basic>) -> Vec<Basic> {
-    let mut items: Vec<Basic> = items;
-    items.sort_by_cached_key(|e| (e.count_nodes(), sort_key(e)));
-    items
-}
-
 fn listed(result: &RootsResult) -> Vec<Basic> {
     let mut out: Vec<Basic> = Vec::new();
     for zero in ordered(result.keys().cloned().collect()) {
@@ -1325,4 +1318,14 @@ fn try_heuristics(f: &Poly, cubics: bool, quartics: bool) -> PolyResult<Vec<Basi
         result.extend(roots_quartic(&f)?);
     }
     Ok(result)
+}
+
+/// The components of the functional decomposition (`_decompose`).
+pub(crate) fn decompose_parts(f: &Poly) -> PolyResult<Vec<Poly>> {
+    decompose(f)
+}
+
+/// Whether `f` is cyclotomic (`_is_cyclotomic`).
+pub(crate) fn is_cyclotomic_poly(f: &Poly) -> PolyResult<bool> {
+    is_cyclotomic(f)
 }

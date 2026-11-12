@@ -28,6 +28,13 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
             diff(&args[0], &counts)
         }
         Head::Subs => substituted(&args[0], args[1].args(), args[2].args()),
+        Head::IndexedRoot => {
+            let k: usize = args[2]
+                .as_rational()
+                .and_then(|v| usize::try_from(&crate::numbers::numer(v)).ok())
+                .unwrap_or(0);
+            crate::polys::cad::indexedroot::indexed_root(&args[0], &args[1], k)
+        }
         _ => Ok(e.rebuild(args)),
     }
 }

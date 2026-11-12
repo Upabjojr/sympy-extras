@@ -240,3 +240,11 @@ pub fn as_ordered_factors(e: &Basic) -> Vec<Basic> {
     factors.sort_by_cached_key(sort_key);
     factors
 }
+
+/// SymPy's `ordered` (`core.sorting.ordered`): by the number of nodes, then
+/// the canonical key.
+pub fn ordered(items: Vec<Basic>) -> Vec<Basic> {
+    let mut items: Vec<Basic> = items;
+    items.sort_by_cached_key(|e| (e.count_nodes(), sort_key(e)));
+    items
+}

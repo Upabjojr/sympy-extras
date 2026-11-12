@@ -59,6 +59,18 @@ fn subs_node_rec(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Basic> {
     if e.args().is_empty() {
         return Ok(e.clone());
     }
+    if matches!(e.head(), Head::IndexedRoot) {
+        // the variable is bound: a substitution of it leaves the root alone
+        let (f, t, k) = crate::polys::cad::indexedroot::parts(e);
+        if old == t {
+            return Ok(e.clone());
+        }
+        let replaced: Basic = subs_node_rec(f, old, new)?;
+        if replaced.ptr_eq(f) {
+            return Ok(e.clone());
+        }
+        return crate::polys::cad::indexedroot::indexed_root(&replaced, t, k);
+    }
     if let Some(replaced) = subs_partial(e, old, new)? {
         return Ok(replaced);
     }
