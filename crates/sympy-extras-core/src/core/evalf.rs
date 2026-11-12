@@ -489,7 +489,21 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Euler
                 | super::basic::Function::Bell
                 | super::basic::Function::Genocchi
-                | super::basic::Function::Partition => {
+                | super::basic::Function::Partition
+                | super::basic::Function::Totient
+                | super::basic::Function::ReducedTotient
+                | super::basic::Function::DivisorSigma
+                | super::basic::Function::UDivisorSigma
+                | super::basic::Function::PrimeNu
+                | super::basic::Function::PrimeOmega
+                | super::basic::Function::Mobius
+                | super::basic::Function::PrimePi
+                | super::basic::Function::LegendreSymbol
+                | super::basic::Function::JacobiSymbol
+                | super::basic::Function::KroneckerSymbol
+                | super::basic::Function::Tribonacci
+                | super::basic::Function::Motzkin
+                | super::basic::Function::Andre => {
                     return None;
                 }
                 g

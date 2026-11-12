@@ -1334,6 +1334,22 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::Bell
         | super::basic::Function::Genocchi
         | super::basic::Function::Partition) => crate::functions::combinatorial::numbers::number_facts(g, e.args()),
+        g @ (super::basic::Function::Totient
+        | super::basic::Function::ReducedTotient
+        | super::basic::Function::DivisorSigma
+        | super::basic::Function::UDivisorSigma
+        | super::basic::Function::PrimeNu
+        | super::basic::Function::PrimeOmega
+        | super::basic::Function::Mobius
+        | super::basic::Function::PrimePi
+        | super::basic::Function::LegendreSymbol
+        | super::basic::Function::JacobiSymbol
+        | super::basic::Function::KroneckerSymbol
+        | super::basic::Function::Tribonacci
+        | super::basic::Function::Motzkin
+        | super::basic::Function::Andre) => {
+            crate::functions::combinatorial::numbertheory::number_theoretic_facts(g, e.args())
+        }
         super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
             crate::functions::special::tensor_functions::tensor_facts()
         }

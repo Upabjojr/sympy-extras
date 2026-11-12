@@ -61,7 +61,21 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Euler
         | Function::Bell
         | Function::Genocchi
-        | Function::Partition) => combinatorial::numbers::number_fdiff(g, e, argindex),
+        | Function::Partition
+        | Function::Totient
+        | Function::ReducedTotient
+        | Function::DivisorSigma
+        | Function::UDivisorSigma
+        | Function::PrimeNu
+        | Function::PrimeOmega
+        | Function::Mobius
+        | Function::PrimePi
+        | Function::LegendreSymbol
+        | Function::JacobiSymbol
+        | Function::KroneckerSymbol
+        | Function::Tribonacci
+        | Function::Motzkin
+        | Function::Andre) => combinatorial::numbers::number_fdiff(g, e, argindex),
         Function::Mod | Function::KroneckerDelta | Function::LeviCivita => {
             crate::core::modulo::modulo_fdiff(e, argindex)
         }
@@ -172,6 +186,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if combinatorial::numbertheory::is_number_theoretic(f) {
+        return combinatorial::numbertheory::number_theoretic(f, args);
+    }
     if combinatorial::numbers::is_combinatorial_number(f) {
         return combinatorial::numbers::combinatorial_number(f, args);
     }
@@ -252,7 +269,21 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::Euler
         | Function::Bell
         | Function::Genocchi
-        | Function::Partition => unreachable!("evaluated above with all their arguments"),
+        | Function::Partition
+        | Function::Totient
+        | Function::ReducedTotient
+        | Function::DivisorSigma
+        | Function::UDivisorSigma
+        | Function::PrimeNu
+        | Function::PrimeOmega
+        | Function::Mobius
+        | Function::PrimePi
+        | Function::LegendreSymbol
+        | Function::JacobiSymbol
+        | Function::KroneckerSymbol
+        | Function::Tribonacci
+        | Function::Motzkin
+        | Function::Andre => unreachable!("evaluated above with all their arguments"),
         Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
             unreachable!("evaluated above with all their arguments")
         }

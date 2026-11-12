@@ -282,6 +282,20 @@ pub enum Function {
     Bell,
     Genocchi,
     Partition,
+    Totient,
+    ReducedTotient,
+    DivisorSigma,
+    UDivisorSigma,
+    PrimeNu,
+    PrimeOmega,
+    Mobius,
+    PrimePi,
+    LegendreSymbol,
+    JacobiSymbol,
+    KroneckerSymbol,
+    Tribonacci,
+    Motzkin,
+    Andre,
 }
 
 impl Function {
@@ -357,6 +371,20 @@ impl Function {
             Function::Bell => "bell",
             Function::Genocchi => "genocchi",
             Function::Partition => "partition",
+            Function::Totient => "totient",
+            Function::ReducedTotient => "reduced_totient",
+            Function::DivisorSigma => "divisor_sigma",
+            Function::UDivisorSigma => "udivisor_sigma",
+            Function::PrimeNu => "primenu",
+            Function::PrimeOmega => "primeomega",
+            Function::Mobius => "mobius",
+            Function::PrimePi => "primepi",
+            Function::LegendreSymbol => "legendre_symbol",
+            Function::JacobiSymbol => "jacobi_symbol",
+            Function::KroneckerSymbol => "kronecker_symbol",
+            Function::Tribonacci => "tribonacci",
+            Function::Motzkin => "motzkin",
+            Function::Andre => "andre",
         }
     }
 
@@ -432,6 +460,20 @@ impl Function {
             Function::Bell => "Bell",
             Function::Genocchi => "Genocchi",
             Function::Partition => "Partition",
+            Function::Totient => "Totient",
+            Function::ReducedTotient => "ReducedTotient",
+            Function::DivisorSigma => "DivisorSigma",
+            Function::UDivisorSigma => "UDivisorSigma",
+            Function::PrimeNu => "PrimeNu",
+            Function::PrimeOmega => "PrimeOmega",
+            Function::Mobius => "Mobius",
+            Function::PrimePi => "PrimePi",
+            Function::LegendreSymbol => "LegendreSymbol",
+            Function::JacobiSymbol => "JacobiSymbol",
+            Function::KroneckerSymbol => "KroneckerSymbol",
+            Function::Tribonacci => "Tribonacci",
+            Function::Motzkin => "Motzkin",
+            Function::Andre => "Andre",
         }
     }
 
@@ -471,6 +513,20 @@ impl Function {
             | Function::Bell
             | Function::Genocchi
             | Function::Partition
+            | Function::Totient
+            | Function::ReducedTotient
+            | Function::DivisorSigma
+            | Function::UDivisorSigma
+            | Function::PrimeNu
+            | Function::PrimeOmega
+            | Function::Mobius
+            | Function::PrimePi
+            | Function::LegendreSymbol
+            | Function::JacobiSymbol
+            | Function::KroneckerSymbol
+            | Function::Tribonacci
+            | Function::Motzkin
+            | Function::Andre
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma

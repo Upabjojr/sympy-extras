@@ -2,3 +2,4 @@
 
 pub mod factorials;
 pub mod numbers;
+pub mod numbertheory;

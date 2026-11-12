@@ -221,6 +221,20 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Bell" => Basic::new(Head::Function(Function::Bell), args()?),
         "Genocchi" => Basic::new(Head::Function(Function::Genocchi), args()?),
         "Partition" => Basic::new(Head::Function(Function::Partition), args()?),
+        "Totient" => Basic::new(Head::Function(Function::Totient), args()?),
+        "ReducedTotient" => Basic::new(Head::Function(Function::ReducedTotient), args()?),
+        "DivisorSigma" => Basic::new(Head::Function(Function::DivisorSigma), args()?),
+        "UDivisorSigma" => Basic::new(Head::Function(Function::UDivisorSigma), args()?),
+        "PrimeNu" => Basic::new(Head::Function(Function::PrimeNu), args()?),
+        "PrimeOmega" => Basic::new(Head::Function(Function::PrimeOmega), args()?),
+        "Mobius" => Basic::new(Head::Function(Function::Mobius), args()?),
+        "PrimePi" => Basic::new(Head::Function(Function::PrimePi), args()?),
+        "LegendreSymbol" => Basic::new(Head::Function(Function::LegendreSymbol), args()?),
+        "JacobiSymbol" => Basic::new(Head::Function(Function::JacobiSymbol), args()?),
+        "KroneckerSymbol" => Basic::new(Head::Function(Function::KroneckerSymbol), args()?),
+        "Tribonacci" => Basic::new(Head::Function(Function::Tribonacci), args()?),
+        "Motzkin" => Basic::new(Head::Function(Function::Motzkin), args()?),
+        "Andre" => Basic::new(Head::Function(Function::Andre), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -389,7 +403,21 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::Euler
                 | Function::Bell
                 | Function::Genocchi
-                | Function::Partition => "numbers",
+                | Function::Partition
+                | Function::Totient
+                | Function::ReducedTotient
+                | Function::DivisorSigma
+                | Function::UDivisorSigma
+                | Function::PrimeNu
+                | Function::PrimeOmega
+                | Function::Mobius
+                | Function::PrimePi
+                | Function::LegendreSymbol
+                | Function::JacobiSymbol
+                | Function::KroneckerSymbol
+                | Function::Tribonacci
+                | Function::Motzkin
+                | Function::Andre => "numbers",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
                 Function::Zeta
                 | Function::DirichletEta
@@ -420,6 +448,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
                 || sympy_extras_core::functions::combinatorial::numbers::is_combinatorial_number(*f)
+                || sympy_extras_core::functions::combinatorial::numbertheory::is_number_theoretic(*f)
             {
                 "combinatorial"
             } else {
@@ -2081,6 +2110,43 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
         }
         "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
+        n if [
+            "totient",
+            "reduced_totient",
+            "divisor_sigma",
+            "udivisor_sigma",
+            "primenu",
+            "primeomega",
+            "mobius",
+            "primepi",
+            "legendre_symbol",
+            "jacobi_symbol",
+            "kronecker_symbol",
+            "tribonacci",
+            "motzkin",
+            "andre",
+        ]
+        .contains(&n) =>
+        {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match n {
+                "totient" => F::Totient,
+                "reduced_totient" => F::ReducedTotient,
+                "divisor_sigma" => F::DivisorSigma,
+                "udivisor_sigma" => F::UDivisorSigma,
+                "primenu" => F::PrimeNu,
+                "primeomega" => F::PrimeOmega,
+                "mobius" => F::Mobius,
+                "primepi" => F::PrimePi,
+                "legendre_symbol" => F::LegendreSymbol,
+                "jacobi_symbol" => F::JacobiSymbol,
+                "kronecker_symbol" => F::KroneckerSymbol,
+                "tribonacci" => F::Tribonacci,
+                "motzkin" => F::Motzkin,
+                _ => F::Andre,
+            };
+            sympy_extras_core::functions::combinatorial::numbertheory::number_theoretic(f, &a).map_err(e)?
+        }
         "catalan" | "fibonacci" | "lucas" | "harmonic" | "bernoulli" | "euler" | "bell" | "genocchi" | "partition" => {
             use sympy_extras_core::functions::combinatorial::numbers as nb;
             match name {

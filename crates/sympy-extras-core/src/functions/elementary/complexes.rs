@@ -156,7 +156,21 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Euler
         | Function::Bell
         | Function::Genocchi
-        | Function::Partition => {
+        | Function::Partition
+        | Function::Totient
+        | Function::ReducedTotient
+        | Function::DivisorSigma
+        | Function::UDivisorSigma
+        | Function::PrimeNu
+        | Function::PrimeOmega
+        | Function::Mobius
+        | Function::PrimePi
+        | Function::LegendreSymbol
+        | Function::JacobiSymbol
+        | Function::KroneckerSymbol
+        | Function::Tribonacci
+        | Function::Motzkin
+        | Function::Andre => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
                 return Ok(Some(e.clone()));
@@ -529,6 +543,20 @@ fn function_real_imag(
         | Function::Bell
         | Function::Genocchi
         | Function::Partition
+        | Function::Totient
+        | Function::ReducedTotient
+        | Function::DivisorSigma
+        | Function::UDivisorSigma
+        | Function::PrimeNu
+        | Function::PrimeOmega
+        | Function::Mobius
+        | Function::PrimePi
+        | Function::LegendreSymbol
+        | Function::JacobiSymbol
+        | Function::KroneckerSymbol
+        | Function::Tribonacci
+        | Function::Motzkin
+        | Function::Andre
         | Function::Sign
         | Function::Conjugate => {
             if ignore == Some(e) {
