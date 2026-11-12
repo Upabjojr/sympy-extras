@@ -49,9 +49,10 @@ The antiderivatives of the reduction of order and of the first order
 equations come from the native indefinite integration
 (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`), what it cannot integrate
 is left unevaluated (:class:`~sympy_extras.integrals.integral.Integral`),
-and SymPy's ``dsolve``, the last resort on the reduced equations, goes
-through SymPy at run time
-(:func:`~sympy_extras.solvers.linear_ode_sympy.dsolve_of_core`).
+and the last resort on the reduced equations, SymPy's ``dsolve`` in the
+past, is the native classical hints for constant coefficients, Euler's
+equations and the reduction to the lowest derivative
+(:func:`~sympy_extras.solvers.dsolve.solution_parts`).
 
 References
 ==========
@@ -1544,8 +1545,9 @@ def _solve_operator(L: LinearOperator, f: AppliedUndef, use_kovacic: bool, use_d
     # nth_order_reducible), and which the reduction has already handed to
     # dsolve: asking again is wasted
     if len(found) < n and use_dsolve and not (reduced_by_constant and L.coefficients[0] == _ZERO):
-        from .linear_ode_sympy import dsolve_of_core
-        parts = dsolve_of_core(_equation(L), Function('y')(x))
+        from .dsolve import solution_parts
+        equation = _equation(L)
+        parts = attempt(lambda: solution_parts(equation, Function('y')(x)), settings.timeout, native=True)
         for part in parts or []:
             found = _independent(found + [part], x)
     return found[:n]

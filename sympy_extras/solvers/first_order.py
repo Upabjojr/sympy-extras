@@ -37,10 +37,9 @@ native :mod:`~sympy_extras.solvers.linear_ode` and
 :mod:`sympy_extras.solvers.first_order_sympy` is its face on SymPy
 objects. The antiderivatives of Chini's separated equation come from the
 native indefinite integration (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`,
-SymPy's routes its last methods); one step is not ported and goes
-through SymPy at run time: the linear equation of a Lagrange equation
-(SymPy's ``dsolve``, :func:`~sympy_extras.solvers.first_order_sympy.dsolve_of_core`). The
-Prelle–Singer procedure of :mod:`sympy_extras.solvers.darboux` is native.
+SymPy's routes its last methods), the linear equation of a Lagrange
+equation is solved by the native classical hints of
+:func:`~sympy_extras.solvers.dsolve.dsolve`, and the Prelle–Singer procedure of :mod:`sympy_extras.solvers.darboux` is native.
 
 References
 ==========
@@ -366,7 +365,6 @@ def lagrange_ode(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's dsolve (first_order_sympy.dsolve_of_core)
     >>> from sympy_extras.core import Function, Symbol, Eq
     >>> from sympy_extras.solvers.first_order import lagrange_ode
     >>> x = Symbol('x')
@@ -390,11 +388,12 @@ def lagrange_ode(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
         return None   # Clairaut: SymPy's hint
     parameter = Symbol('p')
     Fp, Gp = _replaced(Fp, {p: parameter}), _replaced(Gp, {p: parameter})
-    from .first_order_sympy import dsolve_of_core
+    from .dsolve import dsolve
     X = Function('X')(parameter)
     linear = Eq(X.diff(parameter) - X*Fp.diff(parameter)/(parameter - Fp), Gp.diff(parameter)/(parameter - Fp))
-    solved = attempt(lambda: dsolve_of_core(linear, X), settings.timeout, native=True)
-    if not isinstance(solved, Eq) or solved.lhs != X:
+    found = attempt(lambda: dsolve(linear, X), settings.timeout, native=True)
+    solved = found[0] if found is not None and len(found) == 1 else None
+    if solved is None or solved.lhs != X:
         return None
     X_value = solved.rhs
     if has_integral(X_value):

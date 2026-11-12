@@ -60,10 +60,10 @@ SymPy at run time (the functions ending in ``_of_core`` of the faces):
 SymPy's ``solve`` of the undetermined coefficients of a particular solution
 (:func:`~sympy_extras.solvers.factorization_sympy.solve_of_core`) and of
 a common factor of degree two or more of the equivalence
-(:func:`~sympy_extras.solvers.charpit_sympy.solve_of_core`), and SymPy's
-``dsolve`` of an inverse Riccati equation which the native
-:func:`~sympy_extras.solvers.first_order.riccati_ode` does not solve
-(:func:`~sympy_extras.solvers.first_order_sympy.dsolve_of_core`).
+(:func:`~sympy_extras.solvers.charpit_sympy.solve_of_core`); an inverse
+Riccati equation which the native
+:func:`~sympy_extras.solvers.first_order.riccati_ode` does not solve goes
+to the native classical hints of :func:`~sympy_extras.solvers.dsolve.dsolve`.
 
 References
 ==========
@@ -625,8 +625,9 @@ def air_solution(coefficients: CoefficientsLike, x: Symbol, f: AppliedUndef, Q: 
     riccati = Eq(X.diff(z), _replaced(g1, {x: X})*z + _replaced(g0, {x: X}))
     solved = attempt(lambda: riccati_ode(riccati, X), settings.timeout, native=True)
     if solved is None:
-        from .first_order_sympy import dsolve_of_core
-        solved = attempt(lambda: dsolve_of_core(riccati, X), settings.timeout, native=True)
+        from .dsolve import dsolve
+        found = attempt(lambda: dsolve(riccati, X), settings.timeout, native=True)
+        solved = found[0] if found is not None and len(found) == 1 else None
     if not isinstance(solved, Eq):
         return None
     z_value = P/(f - Q) - g0/g1

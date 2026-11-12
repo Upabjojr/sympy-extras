@@ -16,11 +16,11 @@ native ones, the first order equations go to the native
 :func:`~sympy_extras.solvers.first_order.dsolve_first_order`, and a
 solution is checked by :func:`check_ode_solution`, a port of SymPy's
 ``checkodesol`` (``sympy.solvers.ode.subscheck``) on the core.
-:mod:`sympy_extras.solvers.ode_sympy` is its face on SymPy objects. Two
-steps have no native counterpart and go through SymPy at run time (the
-functions ending in ``_of_core`` of the faces): SymPy's ``dsolve`` of the
-reduced equations (:func:`~sympy_extras.solvers.pde_sympy.dsolve_of_core`)
-and its ``solve`` of the canonical coordinates and of the implicit solutions
+:mod:`sympy_extras.solvers.ode_sympy` is its face on SymPy objects. The
+reduced equations are solved by the native classical hints of
+:func:`~sympy_extras.solvers.dsolve.dsolve`; one step has no native
+counterpart and goes through SymPy at run time (the functions ending in
+``_of_core`` of the faces): SymPy's ``solve`` of the canonical coordinates and of the implicit solutions
 (:func:`~sympy_extras.solvers.pde_sympy.solve_of_core`); the
 quadratures come from the native indefinite integration
 (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
@@ -129,10 +129,11 @@ def _with_limit(f: Callable[[], T], timeout: Optional[float]) -> Optional[T]:
 
 
 def _dsolve(equation: Basic, f: AppliedUndef, timeout: Optional[float]) -> Optional[list[Eq]]:
-    """The solutions ``Eq`` of an ODE by SymPy's ``dsolve`` within the
-    time limit (``None`` when it gives up)."""
-    from .pde_sympy import dsolve_of_core
-    return attempt(lambda: dsolve_of_core(equation, f), timeout)
+    """The solutions ``Eq`` of an ODE by the native classical methods
+    (:func:`~sympy_extras.solvers.dsolve.dsolve`) within the time limit
+    (``None`` when it gives up)."""
+    from .dsolve import dsolve
+    return attempt(lambda: dsolve(equation, f), timeout, native=True)
 
 
 def _solve(e: Expr, v: Symbol, timeout: Optional[float]) -> list[Expr]:
@@ -693,7 +694,6 @@ def solve_ode(ode: Equation, y: AppliedUndef, degree: int = 2, check: bool = Tru
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's dsolve (pde_sympy.dsolve_of_core)
     >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.functions import exp
     >>> from sympy_extras.solvers.ode import solve_ode

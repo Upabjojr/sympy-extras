@@ -52,13 +52,12 @@ simplifications, the linear systems of the structure constants and the
 symmetries (:mod:`sympy_extras.solvers.ode`) are the native ones, and
 :mod:`sympy_extras.solvers.second_order_sympy` is its face on SymPy
 objects. The quadratures come from the native indefinite integration
-(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`); two steps have no
-native counterpart and go through SymPy at run time (the functions
-ending in ``_of_core`` of the faces): SymPy's
-``dsolve`` of the linear equations, the first integrals and the
-equations ``u'' = F(u')``
-(:func:`~sympy_extras.solvers.first_order_sympy.dsolve_of_core`) and its
-``solve`` of the transformed derivative and of the pulled back
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`), the linear
+equations, the first integrals and the equations ``u'' = F(u')`` are
+solved by the native classical hints of
+:func:`~sympy_extras.solvers.dsolve.dsolve`; one step has no native
+counterpart and goes through SymPy at run time (the functions ending in
+``_of_core`` of the faces): SymPy's ``solve`` of the transformed derivative and of the pulled back
 solutions (:func:`~sympy_extras.solvers.charpit_sympy.solve_of_core`; a
 linear system of structure constants which is not uniquely solvable
 over the rational functions by
@@ -263,16 +262,14 @@ def _integrate(e: Expr, v: Symbol) -> Optional[Expr]:
 
 
 def _dsolve(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
-    """What SymPy's ``dsolve`` returns under the time limit of the
-    settings, as a list (one ``Eq``, or the several ones of a list),
-    ``None`` when it gives up."""
-    from .first_order_sympy import dsolve_of_core
-    found = dsolve_of_core(equation, f)
-    if found is None:
+    """The solutions of the native classical methods
+    (:func:`~sympy_extras.solvers.dsolve.dsolve`) under the time limit of
+    the settings, ``None`` when they find none."""
+    from .dsolve import dsolve
+    found = attempt(lambda: dsolve(equation, f), settings.timeout, native=True)
+    if not found:
         return None
-    if isinstance(found, Tuple):
-        return list(found.args)
-    return [found]
+    return list(found)
 
 
 def _solve(e: Expr, v: Symbol) -> list[Expr]:
