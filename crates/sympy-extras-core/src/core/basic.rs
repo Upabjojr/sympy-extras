@@ -273,6 +273,15 @@ pub enum Function {
     Mod,
     KroneckerDelta,
     LeviCivita,
+    Catalan,
+    Fibonacci,
+    Lucas,
+    Harmonic,
+    Bernoulli,
+    Euler,
+    Bell,
+    Genocchi,
+    Partition,
 }
 
 impl Function {
@@ -339,6 +348,15 @@ impl Function {
             Function::Mod => "Mod",
             Function::KroneckerDelta => "KroneckerDelta",
             Function::LeviCivita => "LeviCivita",
+            Function::Catalan => "catalan",
+            Function::Fibonacci => "fibonacci",
+            Function::Lucas => "lucas",
+            Function::Harmonic => "harmonic",
+            Function::Bernoulli => "bernoulli",
+            Function::Euler => "euler",
+            Function::Bell => "bell",
+            Function::Genocchi => "genocchi",
+            Function::Partition => "partition",
         }
     }
 
@@ -405,6 +423,15 @@ impl Function {
             Function::Mod => "Mod",
             Function::KroneckerDelta => "KroneckerDeltaNode",
             Function::LeviCivita => "LeviCivitaNode",
+            Function::Catalan => "Catalan",
+            Function::Fibonacci => "Fibonacci",
+            Function::Lucas => "Lucas",
+            Function::Harmonic => "Harmonic",
+            Function::Bernoulli => "Bernoulli",
+            Function::Euler => "Euler",
+            Function::Bell => "Bell",
+            Function::Genocchi => "Genocchi",
+            Function::Partition => "Partition",
         }
     }
 
@@ -435,6 +462,15 @@ impl Function {
             | Function::Mod
             | Function::KroneckerDelta
             | Function::LeviCivita
+            | Function::Catalan
+            | Function::Fibonacci
+            | Function::Lucas
+            | Function::Harmonic
+            | Function::Bernoulli
+            | Function::Euler
+            | Function::Bell
+            | Function::Genocchi
+            | Function::Partition
             | Function::Gamma
             | Function::LogGamma
             | Function::PolyGamma

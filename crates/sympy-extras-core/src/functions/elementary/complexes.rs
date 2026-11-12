@@ -147,7 +147,16 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Stieltjes
         | Function::Mod
         | Function::KroneckerDelta
-        | Function::LeviCivita => {
+        | Function::LeviCivita
+        | Function::Catalan
+        | Function::Fibonacci
+        | Function::Lucas
+        | Function::Harmonic
+        | Function::Bernoulli
+        | Function::Euler
+        | Function::Bell
+        | Function::Genocchi
+        | Function::Partition => {
             // DefinedFunction._eval_conjugate
             if is_true(e, extended_real) {
                 return Ok(Some(e.clone()));
@@ -511,6 +520,15 @@ fn function_real_imag(
         | Function::Mod
         | Function::KroneckerDelta
         | Function::LeviCivita
+        | Function::Catalan
+        | Function::Fibonacci
+        | Function::Lucas
+        | Function::Harmonic
+        | Function::Bernoulli
+        | Function::Euler
+        | Function::Bell
+        | Function::Genocchi
+        | Function::Partition
         | Function::Sign
         | Function::Conjugate => {
             if ignore == Some(e) {

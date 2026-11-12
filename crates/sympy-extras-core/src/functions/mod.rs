@@ -53,6 +53,15 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::LerchPhi
         | Function::RiemannXi
         | Function::Stieltjes) => special::zeta_functions::zeta_fdiff(g, e, argindex),
+        g @ (Function::Catalan
+        | Function::Fibonacci
+        | Function::Lucas
+        | Function::Harmonic
+        | Function::Bernoulli
+        | Function::Euler
+        | Function::Bell
+        | Function::Genocchi
+        | Function::Partition) => combinatorial::numbers::number_fdiff(g, e, argindex),
         Function::Mod | Function::KroneckerDelta | Function::LeviCivita => {
             crate::core::modulo::modulo_fdiff(e, argindex)
         }
@@ -163,6 +172,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if combinatorial::numbers::is_combinatorial_number(f) {
+        return combinatorial::numbers::combinatorial_number(f, args);
+    }
     if matches!(f, Function::KroneckerDelta | Function::LeviCivita) {
         return special::tensor_functions::tensor_function(f, args);
     }
@@ -232,6 +244,15 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::Mod
         | Function::KroneckerDelta
         | Function::LeviCivita => unreachable!("evaluated above with all their arguments"),
+        Function::Catalan
+        | Function::Fibonacci
+        | Function::Lucas
+        | Function::Harmonic
+        | Function::Bernoulli
+        | Function::Euler
+        | Function::Bell
+        | Function::Genocchi
+        | Function::Partition => unreachable!("evaluated above with all their arguments"),
         Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
             unreachable!("evaluated above with all their arguments")
         }

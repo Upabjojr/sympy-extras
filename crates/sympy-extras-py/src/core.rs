@@ -90,7 +90,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Pi" => Basic::pi(),
         "Exp1" => Basic::e(),
         "EulerGammaType" | "EulerGamma" => Basic::euler_gamma(),
-        "CatalanType" | "Catalan" => Basic::catalan(),
+        "CatalanType" => Basic::catalan(),
         "GoldenRatioType" | "GoldenRatio" => Basic::golden_ratio(),
         "TribonacciConstantType" | "TribonacciConstant" => Basic::tribonacci_constant(),
         "ImaginaryUnit" => Basic::imaginary_unit(),
@@ -212,6 +212,15 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Mod" => Basic::new(Head::Function(Function::Mod), args()?),
         "KroneckerDeltaNode" => Basic::new(Head::Function(Function::KroneckerDelta), args()?),
         "LeviCivitaNode" => Basic::new(Head::Function(Function::LeviCivita), args()?),
+        "Catalan" => Basic::new(Head::Function(Function::Catalan), args()?),
+        "Fibonacci" => Basic::new(Head::Function(Function::Fibonacci), args()?),
+        "Lucas" => Basic::new(Head::Function(Function::Lucas), args()?),
+        "Harmonic" => Basic::new(Head::Function(Function::Harmonic), args()?),
+        "Bernoulli" => Basic::new(Head::Function(Function::Bernoulli), args()?),
+        "Euler" => Basic::new(Head::Function(Function::Euler), args()?),
+        "Bell" => Basic::new(Head::Function(Function::Bell), args()?),
+        "Genocchi" => Basic::new(Head::Function(Function::Genocchi), args()?),
+        "Partition" => Basic::new(Head::Function(Function::Partition), args()?),
         "Heaviside" => Basic::new(Head::Function(Function::Heaviside), args()?),
         "Ceiling" => Basic::new(Head::Function(Function::Ceiling), args()?),
         "Frac" => Basic::new(Head::Function(Function::Frac), args()?),
@@ -372,6 +381,15 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 }
                 Function::Max | Function::Min => "miscellaneous",
                 Function::Floor | Function::Ceiling | Function::Frac => "integers",
+                Function::Catalan
+                | Function::Fibonacci
+                | Function::Lucas
+                | Function::Harmonic
+                | Function::Bernoulli
+                | Function::Euler
+                | Function::Bell
+                | Function::Genocchi
+                | Function::Partition => "numbers",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
                 Function::Zeta
                 | Function::DirichletEta
@@ -400,7 +418,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
             {
                 "special"
-            } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f) {
+            } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
+                || sympy_extras_core::functions::combinatorial::numbers::is_combinatorial_number(*f)
+            {
                 "combinatorial"
             } else {
                 "elementary"
@@ -2061,6 +2081,21 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
         }
         "mod" => sympy_extras_core::core::modulo::modulo(&a[0], &a[1]).map_err(e)?,
+        "catalan" | "fibonacci" | "lucas" | "harmonic" | "bernoulli" | "euler" | "bell" | "genocchi" | "partition" => {
+            use sympy_extras_core::functions::combinatorial::numbers as nb;
+            match name {
+                "catalan" => nb::catalan(&a[0]),
+                "fibonacci" => nb::fibonacci(&a[0], a.get(1)),
+                "lucas" => nb::lucas(&a[0]),
+                "harmonic" => nb::harmonic(&a[0], a.get(1)),
+                "bernoulli" => nb::bernoulli(&a[0], a.get(1)),
+                "euler" => nb::euler(&a[0], a.get(1)),
+                "bell" => nb::bell(&a[0], a.get(1)),
+                "genocchi" => nb::genocchi(&a[0], a.get(1)),
+                _ => nb::partition(&a[0]),
+            }
+            .map_err(e)?
+        }
         "KroneckerDelta" => {
             sympy_extras_core::functions::special::tensor_functions::kronecker_delta(&a[0], &a[1]).map_err(e)?
         }

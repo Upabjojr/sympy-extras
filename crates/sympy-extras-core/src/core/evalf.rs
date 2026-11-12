@@ -284,6 +284,23 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
         }
         Head::Function(
+            g @ (super::basic::Function::Catalan
+            | super::basic::Function::Fibonacci
+            | super::basic::Function::Lucas
+            | super::basic::Function::Harmonic
+            | super::basic::Function::Bernoulli
+            | super::basic::Function::Euler
+            | super::basic::Function::Bell
+            | super::basic::Function::Genocchi
+            | super::basic::Function::Partition),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::combinatorial::numbers::number_value(*g, &values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Zeta
             | super::basic::Function::DirichletEta
             | super::basic::Function::PolyLog
@@ -463,7 +480,16 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 // no value of its own (Python asks SymPy)
                 super::basic::Function::Mod
                 | super::basic::Function::KroneckerDelta
-                | super::basic::Function::LeviCivita => {
+                | super::basic::Function::LeviCivita
+                | super::basic::Function::Catalan
+                | super::basic::Function::Fibonacci
+                | super::basic::Function::Lucas
+                | super::basic::Function::Harmonic
+                | super::basic::Function::Bernoulli
+                | super::basic::Function::Euler
+                | super::basic::Function::Bell
+                | super::basic::Function::Genocchi
+                | super::basic::Function::Partition => {
                     return None;
                 }
                 g

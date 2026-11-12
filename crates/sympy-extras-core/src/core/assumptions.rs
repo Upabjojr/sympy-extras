@@ -1325,6 +1325,15 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::PolyGamma
         | super::basic::Function::DiGamma
         | super::basic::Function::TriGamma) => crate::functions::special::gamma_functions::gamma_facts(g, e.args()),
+        g @ (super::basic::Function::Catalan
+        | super::basic::Function::Fibonacci
+        | super::basic::Function::Lucas
+        | super::basic::Function::Harmonic
+        | super::basic::Function::Bernoulli
+        | super::basic::Function::Euler
+        | super::basic::Function::Bell
+        | super::basic::Function::Genocchi
+        | super::basic::Function::Partition) => crate::functions::combinatorial::numbers::number_facts(g, e.args()),
         super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
             crate::functions::special::tensor_functions::tensor_facts()
         }
