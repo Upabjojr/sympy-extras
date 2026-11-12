@@ -2183,9 +2183,7 @@ def _symbolic_factor_list(expr: Expr, gens: Sequence[ExprLike], method: Method =
                     # float coefficients: SymPy's factorisation over RR
                     c, gaussian = _real_factor_list(base)
                 except CoercionFailed:
-                    # CC and EX: SymPy's dmp_factor_list raises DomainError,
-                    # and Poly.factor_list keeps the polynomial as it is
-                    c, gaussian = Integer(1), [(_expanded(base), 1)]
+                    c, gaussian = _infinite_factor_list(base, gens)
             found = [(g, Integer(k)) for g, k in gaussian]
         else:
             c, poly_factors = p.factor_list() if method == 'factor' else p.sqf_list()
@@ -2358,6 +2356,37 @@ def factor(f: ExprLike, *gens: ExprLike, deep: bool = False, fraction: bool = Tr
         from sympy_extras.core.exprtools import factor_nc
         return factor_nc(e)
     return _symbolic_factor(e, gens, fraction)
+
+
+def _infinite_factor_list(base: Expr, gens: Sequence[ExprLike]) -> tuple[Expr, list[tuple[Expr, int]]]:
+    """The factors of a polynomial over ``CC`` or ``EX``: with ``zoo``,
+    ``oo`` or ``nan`` among the coefficients (``zoo - 1`` already ``zoo``)
+    those are generators of the coefficient domain for SymPy (``ZZ[zoo]``),
+    factored as symbols and put back; otherwise SymPy's ``dmp_factor_list``
+    raises ``DomainError`` and ``Poly.factor_list`` keeps the polynomial as
+    it is."""
+    from sympy_extras.core.symbol import Dummy
+    expanded = _expanded(base)
+    infinities = [a for a in expanded.atoms(Number) if isinstance(a, Number) and a.is_finite is not True]
+    if not infinities:
+        return Integer(1), [(expanded, 1)]
+    forward: dict[Basic, Basic] = {}
+    back: dict[Basic, Basic] = {}
+    for a in infinities:
+        d = Dummy('g')
+        forward[a] = d
+        back[d] = a
+    replaced = _expr_of_basic(expanded._xreplace_evaluated(forward))
+    try:
+        c, factors = _symbolic_factor_list(replaced, gens)
+    except CoercionFailed:
+        return Integer(1), [(expanded, 1)]
+    found: list[tuple[Expr, int]] = []
+    for g, k in factors:
+        if not isinstance(k, Integer):
+            return Integer(1), [(expanded, 1)]
+        found.append((_expr_of_basic(_base_expr(g)._xreplace_evaluated(back)), k.p))
+    return _expr_of_basic(c._xreplace_evaluated(back)), found
 
 
 def _symbolic_factor(e: Expr, gens: Sequence[ExprLike], fraction: bool, method: Method = 'factor') -> Expr:

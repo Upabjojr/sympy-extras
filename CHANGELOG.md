@@ -39,8 +39,9 @@ remove public functions. Breaking changes are listed here when they happen.
   elements of `EX`, the same rational function as SymPy's in another form,
   and a generator which is not a factor of the expression, `x**2` in `x**3`,
   through the same path); `factor` with generators over `ZZ_I`, `QQ_I` and
-  `RR` factors in every symbol, and leaves a polynomial over `CC` or `EX`
-  as it is (SymPy's `DomainError`); `invert` of two numbers follows
+  `RR` factors in every symbol, factors `zoo`, `oo` and `nan` among the
+  coefficients as generators (SymPy's `ZZ[zoo]`), and leaves a polynomial
+  over `CC` or `EX` otherwise as it is (SymPy's `DomainError`); `invert` of two numbers follows
   SymPy's `Domain.invert` over `ZZ_I`, `QQ_I` and `RR` (the `TypeError` of
   SymPy over `CC`). The dense pseudo-division raises
   `PolynomialDivisionFailed` when the degree does not drop, as SymPy's.
