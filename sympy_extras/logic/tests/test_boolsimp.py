@@ -159,3 +159,22 @@ def test_other_booleans() -> None:
     assert _same_truth(simplify_boolean(f), f)
     assert str(simplify_boolean(Xor(x > 1, x > 2))) == "(x <= 2) & (x > 1)"
     assert isinstance(simplify_boolean(Not(and_(x > 0, y > 0))), Boolean)
+
+
+def test_sympy_intervals() -> None:
+    # the conditions of piecewise_simplify_arguments take SymPy's intervals
+    # (Piecewise._intervals, one per term), the endpoints decided on the
+    # formula
+    f = or_(x <= -3, x < 1)
+    assert str(simplify_univariate(f)) == 'x < 1'
+    assert str(simplify_univariate(f, True)) == '(x <= -3) | (x < 1)'
+    f = not_(and_(x + 1 >= 2, -x <= 3))
+    assert str(simplify_boolean(f)) == 'x < 1'
+    assert str(simplify_boolean(f, sympy_intervals=True)) == str(_sympy_simplify(f)) == '(x <= -3) | (x < 1)'
+    assert str(simplify_univariate(not_(and_(x > 0, x < 1)), True)) == '(x >= 1) | (x <= 0)'
+    # true at the isolated point x = 0: SymPy's simplify gives False
+    f = and_(x < 2, x**2 <= 0, -x < 2)
+    assert _sympy_simplify(f) is false
+    for intervals in (False, True):
+        s = simplify_boolean(f, sympy_intervals=intervals)
+        assert s.subs(x, Integer(0)) is true and _same_truth(f, s), s

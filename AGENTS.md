@@ -547,8 +547,9 @@ sympy_extras/
                              PORTED FROM SYMPY logic/boolalg)
         boolsimp.py          simplify_boolean, simplify_univariate: SymPy's simplify of Boolean formulas (native, PORTED
                              FROM SYMPY boolalg's _eval_simplify; the univariate intervals computed natively, maximal,
-                             endpoints decided on the formula; the patterns of And and Or matched structurally; Xor
-                             without the algebraic normal form; used by piecewise and by refine's simplify)
+                             or SymPy's from piecewise_intervals (sympy_intervals, for piecewise), endpoints decided on
+                             the formula; the patterns of And and Or matched structurally; Xor without the algebraic
+                             normal form; used by piecewise and by refine's simplify)
         cnf.py               to_clauses, conjunction, Clauses: conjunctive normal forms encoded with integers (native,
                              PORTED FROM SYMPY assumptions/cnf)
         dpll2.py             SATSolver, propositional_models, is_satisfiable: DPLL with watched literals and VSIDS, every

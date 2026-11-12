@@ -21,7 +21,12 @@ does:
    inclusion of the endpoints is decided on the formula itself: SymPy
    tests them on the relation built for the previous interval, so that
    its ``simplify(~((x > 0) & (x < 1)))`` is ``(x >= 1) | (x < 0)``,
-   false at ``x = 0``;
+   false at ``x = 0``. With ``sympy_intervals`` (the conditions of
+   ``piecewise_simplify_arguments``, which must be SymPy's) the intervals
+   are SymPy's, from the port of ``Piecewise._intervals``, with the
+   endpoints still decided on the formula and a formula true at an
+   isolated point still left as it is (SymPy's ``simplify`` of
+   ``(x**2 <= 0) & (x < 2)`` is ``False``);
 2. the arguments are simplified (the relations by
    :func:`~sympy_extras.assumptions.refine.simplify_relational`, the
    port of ``Relational._eval_simplify``) and the formula is minimised by
@@ -83,8 +88,8 @@ from typing import Callable, Final, Optional, Sequence
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, as_expr
-from sympy_extras.core.logic import (And, Boolean, BooleanAtom, BooleanFunction, ITE, Or, and_, false, ite, not_,
-                                     or_, to_boolean, true)
+from sympy_extras.core.logic import (And, Boolean, BooleanAtom, BooleanFunction, ITE, Or, Xor, and_, false, ite,
+                                     not_, or_, to_boolean, true)
 from sympy_extras.core.mul import neg
 from sympy_extras.core.numbers import Float, Integer, NegativeInfinity, Rational, oo
 from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ge, gt, le, lt, ne
@@ -104,21 +109,26 @@ Bindings = dict[str, Expr]
 
 
 class _Options:
-    """The relation simplifier, the measure and the ratio of ``simplify``."""
+    """The relation simplifier, the measure and the ratio of ``simplify``,
+    and whether the univariate intervals are SymPy's."""
 
-    def __init__(self, relation: RelationSimplifier, measure: Measure, ratio: float) -> None:
+    def __init__(self, relation: RelationSimplifier, measure: Measure, ratio: float,
+                 sympy_intervals: bool) -> None:
         self.relation: Final[RelationSimplifier] = relation
         self.measure: Final[Measure] = measure
         self.ratio: Final[float] = ratio
+        self.sympy_intervals: Final[bool] = sympy_intervals
 
 
 def simplify_boolean(formula: Boolean, relation: Optional[RelationSimplifier] = None,
-                     measure: Optional[Measure] = None, ratio: float = 1.7) -> Boolean:
+                     measure: Optional[Measure] = None, ratio: float = 1.7,
+                     sympy_intervals: bool = False) -> Boolean:
     """SymPy's ``simplify`` of a Boolean formula (see the module
     documentation). ``relation`` simplifies the relations (by default
     :func:`~sympy_extras.assumptions.refine.simplify_relational` with the
     default options of ``simplify``) and ``measure`` is the size of a
-    formula (``count_ops`` by default).
+    formula (``count_ops`` by default); ``sympy_intervals`` is passed to
+    :func:`simplify_univariate`.
 
     Examples
     ========
@@ -136,7 +146,7 @@ def simplify_boolean(formula: Boolean, relation: Optional[RelationSimplifier] = 
             return simplify_relational(r, ratio, False, False, True)
         relation = default_relation if relation is None else relation
         measure = _measure if measure is None else measure
-    return _simplify(formula, _Options(relation, measure, ratio))
+    return _simplify(formula, _Options(relation, measure, ratio, sympy_intervals))
 
 
 def _simplify(b: Boolean, options: _Options) -> Boolean:
@@ -158,7 +168,7 @@ def _simplify_function(b: BooleanFunction, options: _Options) -> Boolean:
     minimised by ``simplify_logic`` (with its relations simplified once
     more, ``deep=True``)."""
     from sympy_extras.logic.boolalg import simplify_logic
-    rv = simplify_univariate(b)
+    rv = simplify_univariate(b, options.sympy_intervals)
     if not isinstance(rv, BooleanFunction):
         return _simplify(rv, options)
     rv = to_boolean(rv._evaluated(tuple(_simplify(a, options) for a in rv.args)))
@@ -547,11 +557,20 @@ _OR_PATTERNS: Final[tuple[_Pattern, ...]] = (
 # univariate formulas
 
 # PORTED FROM SYMPY: sympy/logic/boolalg.py:simplify_univariate
-def simplify_univariate(expr: Boolean) -> Boolean:
+def simplify_univariate(expr: Boolean, sympy_intervals: bool = False) -> Boolean:
     """A formula in one symbol without equations as the union of the
     intervals where it holds, in SymPy's form (``x < b``,
     ``(a <= x) & (x < b)``, ...); the formula itself when a relation
     cannot be solved for the symbol or it holds at an isolated point.
+
+    The intervals are maximal and computed natively (the linear relations
+    and the polynomial ones whose real roots are found). With
+    ``sympy_intervals`` they are SymPy's, those of ``Piecewise._intervals``
+    (:func:`~sympy_extras.functions.elementary.piecewise.piecewise_intervals`,
+    one or more per term of the disjunctive form), for a caller whose
+    output must be SymPy's (``piecewise_simplify_arguments``); in both the
+    endpoints are decided on the formula (SymPy decides them on the
+    relation of the previous interval).
 
     Examples
     ========
@@ -564,6 +583,8 @@ def simplify_univariate(expr: Boolean) -> Boolean:
     ((1 < x) & (x < 3), (x > 2) | (x < 0))
     >>> simplify_univariate(and_(x > 1, x < 0)), simplify_univariate(and_(sin(x) > 0, x < 0))
     (False, (x < 0) & (sin(x) > 0))
+    >>> simplify_univariate(or_(x <= -3, x < 1)), simplify_univariate(or_(x <= -3, x < 1), True)
+    (x < 1, (x <= -3) | (x < 1))
     """
     if not isinstance(expr, BooleanFunction):
         return expr
@@ -573,9 +594,19 @@ def simplify_univariate(expr: Boolean) -> Boolean:
     if len(free) != 1:
         return expr
     x = next(iter(free))
-    found = _truth_intervals(expr, x)
-    if found is None:
+    truth = _truth_intervals(expr, x)
+    if truth is not None and truth.isolated:
+        # true at an isolated point: SymPy's intervals stop at an equation
+        # (its Piecewise._intervals drops the point: simplify of
+        # (x**2 <= 0) & (x < 2) is False there)
         return expr
+    if sympy_intervals and not expr.has(Xor):
+        # (SymPy's Piecewise._intervals does not take an Xor: such a
+        # formula takes the native intervals)
+        return _sympy_univariate(expr, x)
+    if truth is None:
+        return expr
+    found = truth.intervals
     if not found:
         return false
     args: list[Boolean] = []
@@ -592,6 +623,43 @@ def simplify_univariate(expr: Boolean) -> Boolean:
             lower = _relation(Le, a, x) if incl_a else _relation(Lt, a, x)
             upper = _relation(Le, x, b) if incl_b else _relation(Lt, x, b)
             c = and_(lower, upper)
+        args.append(c)
+    return or_(*args)
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:simplify_univariate
+def _sympy_univariate(expr: BooleanFunction, x: Symbol) -> Boolean:
+    """SymPy's ``simplify_univariate`` on the intervals of
+    ``Piecewise._intervals``, the endpoints included as the formula says."""
+    from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise_intervals
+    from sympy_extras.core.numbers import Infinity
+    ok, pieces = piecewise_intervals(Piecewise((Integer(0), expr)), x, err_on_Eq=True)
+    if not ok or isinstance(pieces, str):
+        return expr
+    if not pieces:
+        return false
+
+    def holds(at: Expr) -> bool:
+        return expr.subs(x, at) is true
+    args: list[Boolean] = []
+    for a, b, _, _ in pieces:
+        c: Boolean
+        if isinstance(a, NegativeInfinity):
+            if isinstance(b, Infinity):
+                c = true
+            else:
+                c = (x <= b) if holds(b) else (x < b)
+        else:
+            incl_a = holds(a)
+            incl_b = holds(b)
+            if incl_a and incl_b:
+                c = (x >= a) if b.is_infinite is True else and_(a <= x, x <= b)
+            elif incl_a:
+                c = and_(a <= x, x < b)
+            elif incl_b:
+                c = (x > a) if b.is_infinite is True else and_(a < x, x <= b)
+            else:
+                c = and_(a < x, x < b)
         args.append(c)
     return or_(*args)
 
@@ -681,9 +749,18 @@ def _approximation(e: Expr) -> Optional[Fraction]:
     return None
 
 
-def _truth_intervals(expr: Boolean, x: Symbol) -> Optional[list[Interval]]:
+class _Truth:
+    """The maximal intervals where a formula holds, or that it holds at an
+    isolated point (``isolated``, the intervals then not computed)."""
+
+    def __init__(self, intervals: list[Interval], isolated: bool) -> None:
+        self.intervals: Final[list[Interval]] = intervals
+        self.isolated: Final[bool] = isolated
+
+
+def _truth_intervals(expr: Boolean, x: Symbol) -> Optional[_Truth]:
     """The maximal intervals where ``expr`` holds; ``None`` when a
-    relation is not solved or the formula holds at an isolated point."""
+    relation is not solved or the breakpoints are not ordered."""
     relations = [r for r in ordered(expr.atoms(Relational)) if isinstance(r, Relational)]
     solved: list[_Solved] = []
     for r in relations:
@@ -756,11 +833,9 @@ def _truth_intervals(expr: Boolean, x: Symbol) -> Optional[list[Interval]]:
             k += 1
         end = k
         if start == end and start % 2 == 1:
-            # true at an isolated point: SymPy's intervals stop at an
-            # equation
-            return None
+            return _Truth([], True)
         a: Expr = -oo if start == 0 else points[(start - 1)//2][1]
         b: Expr = oo if end == len(truth) - 1 else points[end//2][1]
         intervals.append((a, b, start % 2 == 1, end % 2 == 1))
         k += 1
-    return intervals
+    return _Truth(intervals, False)
