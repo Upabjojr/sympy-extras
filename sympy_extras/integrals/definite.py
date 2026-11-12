@@ -2924,15 +2924,19 @@ class _Integrator:
         if f.has(DiracDelta):
             F = deltaintegrate(f, x)
         else:
-            # the exact methods and the rules, which fail fast (those of the
-            # antiderivative route of the driver): not the heuristics, which
-            # spent the whole budget where SymPy's integrate gave up in
-            # seconds (the radicals of the cells of regions), nor the Meijer
-            # G route, which the theorems cover and whose antiderivatives
-            # took the budget to check (lerchphi of polar arguments for
-            # x**k/(x + 3))
+            # on a real range the exact methods and the rules, which fail
+            # fast (the driver's late antiderivative route tried the
+            # heuristics already, which spent the whole budget here on the
+            # radicals of the cells of regions, where SymPy's integrate gave
+            # up in seconds); on a complex path, which no other method takes,
+            # the heuristics too (2**log(z) from -I to I by heurisch). Never
+            # the Meijer G route, which the theorems cover and whose
+            # antiderivatives took the budget to check (lerchphi of polar
+            # arguments for x**k/(x + 3))
             from .antiderivative import _METHODS as EXACT
-            found = verified_antiderivative(f, x, self.assumptions, list(EXACT))
+            from .indefinite import METHODS
+            names = list(EXACT) if _real_bounds(a, b) else [name for name, _ in METHODS if name != 'meijer']
+            found = verified_antiderivative(f, x, self.assumptions, names)
             F = None if found is None else found[0]
         if F is None or is_unevaluated(F) or F.has(Integral):
             return None
