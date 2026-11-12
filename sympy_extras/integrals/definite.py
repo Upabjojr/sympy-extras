@@ -2918,12 +2918,16 @@ class _Integrator:
         the delta functions by :func:`.deltafunctions.deltaintegrate`) at
         the endpoints, by limits, as SymPy's ``integrate`` evaluates it."""
         from .deltafunctions import deltaintegrate
-        from .indefinite import verified_antiderivative
+        from .indefinite import METHODS, verified_antiderivative
         F: Optional[Expr] = None
         if f.has(DiracDelta):
             F = deltaintegrate(f, x)
         else:
-            found = verified_antiderivative(f, x, self.assumptions)
+            # not the Meijer G route, which the theorems cover: the check of
+            # its antiderivatives (lerchphi of polar arguments for
+            # x**k/(x + 3)) took the whole budget
+            names = [name for name, _ in METHODS if name not in ('meijer', 'sympy')]
+            found = verified_antiderivative(f, x, self.assumptions, names)
             F = None if found is None else found[0]
         if F is None or is_unevaluated(F) or F.has(Integral):
             return None

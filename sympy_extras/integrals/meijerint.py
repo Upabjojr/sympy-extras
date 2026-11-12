@@ -61,7 +61,8 @@ References
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/integrals/meijerint.py, sympy/integrals/integrals.py
-# (Integral._eval_integral, the meijerg=True path) (SymPy 1.14)
+# (Integral._eval_integral, the meijerg=True path), sympy/integrals/transforms.py
+# (_mellin_transform, _rewrite_sin, _rewrite_gamma, _inverse_mellin_transform) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: strict typing on the core; the table entries are typed records
@@ -94,7 +95,7 @@ from sympy_extras.core.singleton import S
 from sympy_extras.core.sorting import SortKey, default_sort_key
 from sympy_extras.core.symbol import Dummy, Symbol, Wild
 from sympy_extras.functions.combinatorial.factorials import factorial
-from sympy_extras.functions.elementary.complexes import (PeriodicArgument, PrincipalBranch, _unpolarify, abs_,
+from sympy_extras.functions.elementary.complexes import (PeriodicArgument, PrincipalBranch, Re, _unpolarify, abs_,
                                                           arg as arg_, polar_lift, polarify, principal_branch, re, sign,
                                                           unbranched_argument, unpolarify)
 from sympy_extras.functions.elementary.exponential import Exp, exp, exp_polar, log
@@ -109,6 +110,7 @@ from sympy_extras.functions.special.error_functions import (Chi, Ci, Ei, Shi, Si
 from sympy_extras.functions.special.gamma_functions import gamma
 from sympy_extras.functions.special.hyper import Hyper, MeijerG, meijerg
 from sympy_extras.functions.special.singularity_functions import SingularityFunctionNode
+from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polytools import cancel, factor
 from sympy_extras.simplify.fu import sincos_to_sum
 from sympy_extras.simplify.gammasimp import gammasimp
@@ -1311,6 +1313,374 @@ def _rewrite_mellin(f: Expr, x: Symbol) -> Optional[Rewriting]:
     return [(coeff, power, g)], quotient.condition
 
 
+# ---------------------------------------------------------------------------
+# the recursive Mellin transform: the transform of a product of two
+# G-functions by the theorem, written as gamma functions and inverted
+
+class _GammaRewriteError(ValueError):
+    """Raised by :func:`_rewrite_gamma` when a factor has no gamma form
+    (SymPy's IntegralTransformError and MellinTransformStripError)."""
+
+
+def _disjuncts(b: Boolean) -> tuple[Boolean, ...]:
+    return b.args if isinstance(b, Or) else (b,)
+
+
+def _conjuncts(b: Boolean) -> tuple[Boolean, ...]:
+    return b.args if isinstance(b, And) else (b,)
+
+
+#: a strip ``a < re(s) < b`` and the auxiliary conditions
+Strip = tuple[Expr, Expr, Boolean]
+
+
+def _real_part(*args: Basic) -> Basic:
+    return _expr(args[0]).as_real_imag()[0]
+
+
+# PORTED FROM SYMPY: sympy/integrals/transforms.py:_mellin_transform (process_conds)
+def _strip(cond: Boolean, s: Symbol) -> Strip:
+    """``cond`` (a conjunction) as a strip ``a < re(s) < b`` and the
+    auxiliary conditions."""
+    from sympy_extras.functions.elementary.miscellaneous import max_, min_
+    from sympy_extras.solvers.inequalities import solve_inequality
+    a: Expr = S.NegativeInfinity
+    b: Expr = S.Infinity
+    aux: Boolean = true
+    t = Dummy('t', real=True)
+    for c in _conjuncts(cond):
+        a_: Expr = S.Infinity
+        b_: Expr = S.NegativeInfinity
+        aux_: list[Boolean] = []
+        for d in _disjuncts(c):
+            d_ = to_boolean(d.replace(Re, _real_part).subs(re(s), t))
+            if not isinstance(d, Relational) or isinstance(d, (Eq, Ne)) or d_.has(s) or not d_.has(t):
+                aux_.append(d)
+                continue
+            try:
+                soln = solve_inequality(d_, t)
+            except (NotImplementedError, ValueError, TypeError):
+                aux_.append(d)
+                continue
+            if not isinstance(soln, Relational) or isinstance(soln, (Eq, Ne)):
+                aux_.append(d)
+                continue
+            # SymPy's soln.lts == t: t on the smaller side
+            smaller, greater = (soln.lhs, soln.rhs) if isinstance(soln, (Lt, Le)) else (soln.rhs, soln.lhs)
+            if smaller == t:
+                b_ = max_(greater, b_)
+            elif greater == t:
+                a_ = min_(smaller, a_)
+            else:
+                aux_.append(d)
+        if not isinstance(a_, Infinity) and a_ != b:
+            a = max_(a_, a)
+        elif not isinstance(b_, NegativeInfinity) and b_ != a:
+            b = min_(b_, b)
+        else:
+            aux = and_(aux, or_(*aux_))
+    return a, b, aux
+
+
+# PORTED FROM SYMPY: sympy/integrals/transforms.py:_mellin_transform
+def _mellin_of_product(f: Expr, x: Symbol, s: Symbol) -> Optional[tuple[Expr, Strip]]:
+    """The Mellin transform of ``f`` by the theorem for two G-functions
+    (SymPy's integrator of the recursive method), with its strip."""
+    from sympy_extras.core.function import count_ops
+    r = _meijerint_definite_4(x**(s - 1) * f, x, only_double=True)
+    if r is None:
+        return None
+    res, cond = r
+    if _is_false(cond):
+        return None
+    F = _my_unpolarify(hyperexpand(res, rewrite='nonrepsmall'))
+    strips = [_strip(c, s) for c in _disjuncts(cond)]
+    strips = [st for st in strips if not _is_false(st[2])]
+    if not strips:
+        return None
+
+    def key(st: Strip) -> tuple[SortKey, int]:
+        ops = count_ops(st[2])
+        return (default_sort_key(st[0] - st[1]), ops.p if isinstance(ops, Integer) else 0)
+    strips.sort(key=key)
+    return F, strips[0]
+
+
+# PORTED FROM SYMPY: sympy/integrals/transforms.py:_rewrite_sin
+def _rewrite_sin(m: Expr, n: Expr, s: Symbol, a: Optional[Expr]) -> tuple[Expr, Expr, Expr]:
+    """``sin(m*s + n)`` as ``fac/(gamma1*gamma2)``, the gammas on the right
+    side of the strip: ``(gamma1, gamma2, fac)``."""
+    from sympy_extras.functions.elementary.integers import ceiling
+    m_ = expand_mul(m / pi)
+    n_ = expand_mul(n / pi)
+    r = ceiling(-m_ * (a if a is not None else ZERO) - n_.as_real_imag()[0])
+    return gamma(m_ * s + n_ + r), gamma(1 - n_ - r - m_ * s), Integer(-1)**r * pi
+
+
+def _linear_arg(arg: Expr, s: Symbol) -> tuple[Expr, Expr]:
+    p = arg.as_poly(s)
+    if p is None or p.degree() != 1:
+        raise _GammaRewriteError("not linear in s: %s" % (arg,))
+    coefficients = p.all_coeffs()
+    return coefficients[0], coefficients[1]
+
+
+#: ``Gamma(a*s + c)`` as ``(a, c)``
+GammaFactorPair = tuple[Expr, Expr]
+#: the parameters, the argument, the exponent and the factor of an inverse Mellin transform
+GammaRewriting = tuple[list[Expr], list[Expr], list[Expr], list[Expr], Expr, Expr, Expr]
+
+
+# PORTED FROM SYMPY: sympy/integrals/transforms.py:_rewrite_gamma
+def _rewrite_gamma(f: Expr, s: Symbol, a: Optional[Expr], b: Optional[Expr]) -> GammaRewriting:
+    """``f(s)`` as a product of gamma functions: ``(an, ap, bm, bq, arg,
+    exponent, fac)`` with ``G(an, ap, bm, bq, arg/x**exponent)*fac`` the
+    inverse Mellin transform of ``f`` over the strip ``(a, b)``;
+    :class:`_GammaRewriteError` when a factor has no such form."""
+    from functools import reduce
+    from math import gcd
+    from sympy_extras.functions.elementary.trigonometric import Cot
+    from sympy_extras.functions.special.gamma_functions import Gamma
+    from sympy_extras.polys.polyroots import roots
+    from sympy_extras.simplify.radsimp import fraction
+    a_, b_ = a, b
+
+    def left(c: Expr, is_numer: bool) -> Optional[bool]:
+        # whether the pole at c lies to the left of the strip
+        c = expand(re(c))
+        if a_ is None and isinstance(b_, Infinity):
+            return True
+        if a_ is None:
+            return b_ is not None and lt(c, b_) is true
+        if b_ is None:
+            return le(c, a_) is true
+        if ge(c, b_) is true:
+            return False
+        if le(c, a_) is true:
+            return True
+        if is_numer:
+            return None
+        if a_.free_symbols or b_.free_symbols or c.free_symbols:
+            return None
+        raise _GammaRewriteError('Pole inside critical strip?')
+
+    # 1) the constant c such that the inversion is in s' = c*s
+    multipliers: list[Expr] = []
+    for g in f.atoms(Gamma):
+        if not g.has(s):
+            continue
+        argument = _expr(g.args[0])
+        if isinstance(argument, Add):
+            argument = argument.as_independent(s, as_Add=True)[1]
+        multipliers.append(_coeff_mul(argument, s)[0])
+    for g in f.atoms(Sin, Cos, Tan, Cot):
+        if not g.has(s):
+            continue
+        argument = _expr(g.args[0])
+        if isinstance(argument, Add):
+            argument = argument.as_independent(s, as_Add=True)[1]
+        multipliers.append(_coeff_mul(argument, s)[0] / pi)
+    multipliers = [abs_(m) if m.is_extended_real else m for m in multipliers]
+    common: Expr = ONE
+    for m in multipliers:
+        if not isinstance(m, Rational):
+            common = m
+            break
+    multipliers = [m / common for m in multipliers]
+    rationals = [m for m in multipliers if isinstance(m, Rational)]
+    if len(rationals) != len(multipliers) or not common.is_extended_real:
+        raise _GammaRewriteError("Nonrational multiplier")
+    s_multiplier: Expr = common / Integer(reduce(lcm, [m.q for m in rationals], 1))
+    if s_multiplier == common and rationals:
+        s_multiplier = common * Integer(reduce(gcd, [m.p for m in rationals]))
+    f = f.subs(s, s / s_multiplier)
+    fac: Expr = ONE / s_multiplier
+    exponent: Expr = ONE / s_multiplier
+    if a_ is not None:
+        a_ = a_ * s_multiplier
+    if b_ is not None:
+        b_ = b_ * s_multiplier
+
+    # 2) the factors as gamma functions of s and exponentials of s
+    numer, denom = fraction(f)
+    pending: list[tuple[Expr, bool]] = [(e, True) for e in Mul.make_args(numer)] + \
+        [(e, False) for e in Mul.make_args(denom)]
+    facs: list[Expr] = []
+    dfacs: list[Expr] = []
+    numer_gammas: list[GammaFactorPair] = []
+    denom_gammas: list[GammaFactorPair] = []
+    exponentials: list[Expr] = []
+    while pending:
+        fact, is_numer = pending.pop()
+        ugammas, lgammas = (numer_gammas, denom_gammas) if is_numer else (denom_gammas, numer_gammas)
+        ufacs = facs if is_numer else dfacs
+        poly = fact.as_poly(s) if fact.has(s) else None
+        if not fact.has(s):
+            ufacs.append(fact)
+        elif isinstance(fact, (Pow, Exp)):
+            if isinstance(fact, Pow):
+                base, exp_ = fact.base, fact.exp
+            else:
+                base, exp_ = exp_polar(ONE), _expr(fact.args[0])
+            if isinstance(exp_, Integer):
+                cond = is_numer if exp_.p > 0 else not is_numer
+                pending += [(base, cond)] * abs(exp_.p)
+                continue
+            if base.has(s):
+                raise _GammaRewriteError("Unrecognised form %s" % (fact,))
+            ca, cb = _linear_arg(exp_, s)
+            if not is_numer:
+                base = 1 / base
+            exponentials.append(base**ca)
+            facs.append(base**cb)
+        elif poly is not None:
+            if poly.degree() != 1:
+                found = roots(poly.as_expr(), s)
+                if not isinstance(found, dict) or sum(found.values()) != poly.degree():
+                    raise _GammaRewriteError("the roots of %s" % (fact,))
+                ufacs.append(poly.LC())
+                for root_, multiplicity in found.items():
+                    if isinstance(root_, Expr):
+                        pending += [(s - root_, is_numer)] * multiplicity
+                continue
+            ca, cc = _linear_arg(fact, s)
+            ufacs.append(ca)
+            c = -cc / ca
+            if left(c, is_numer):
+                ugammas.append((ONE, -c + 1))
+                lgammas.append((ONE, -c))
+            else:
+                ufacs.append(Integer(-1))
+                ugammas.append((Integer(-1), c + 1))
+                lgammas.append((Integer(-1), c))
+        elif isinstance(fact, Gamma):
+            ca, cb = _linear_arg(_expr(fact.args[0]), s)
+            if is_numer:
+                if (gt(ca, 0) is true and left(-cb / ca, is_numer) is False) or \
+                        (lt(ca, 0) is true and left(-cb / ca, is_numer) is True):
+                    raise _GammaRewriteError('Gammas partially over the strip.')
+            ugammas.append((ca, cb))
+        elif isinstance(fact, Sin):
+            argument = _expr(fact.args[0])
+            if is_numer:
+                gamma1, gamma2, fac_ = gamma(argument / pi), gamma(1 - argument / pi), _expr(pi)
+            else:
+                m_, n_ = _linear_arg(argument, s)
+                gamma1, gamma2, fac_ = _rewrite_sin(m_, n_, s, a_)
+            pending += [(gamma1, not is_numer), (gamma2, not is_numer)]
+            ufacs.append(fac_)
+        elif isinstance(fact, Tan):
+            argument = _expr(fact.args[0])
+            pending += [(Sin(argument), is_numer), (Sin(pi / 2 - argument), not is_numer)]
+        elif isinstance(fact, Cos):
+            argument = _expr(fact.args[0])
+            pending += [(Sin(pi / 2 - argument), is_numer)]
+        elif isinstance(fact, Cot):
+            argument = _expr(fact.args[0])
+            pending += [(Sin(pi / 2 - argument), is_numer), (Sin(argument), not is_numer)]
+        else:
+            raise _GammaRewriteError("Unrecognised form %s" % (fact,))
+    fac = fac * mul(*facs) / mul(*dfacs)
+
+    # 3) the gamma functions of argument c + s or c - s
+    an: list[Expr] = []
+    ap: list[Expr] = []
+    bm: list[Expr] = []
+    bq: list[Expr] = []
+    for gammas, plus, minus, is_numer in [(numer_gammas, an, bm, True), (denom_gammas, bq, ap, False)]:
+        while gammas:
+            ca, c = gammas.pop()
+            if ca != -1 and ca != 1:
+                # Gauss's multiplication theorem
+                if not isinstance(ca, Integer):
+                    raise _GammaRewriteError("a is not an integer")
+                size = abs(ca.p)
+                newa = ca / size
+                for k in range(size):
+                    gammas.append((newa, c / size + Rational(k, size)))
+                if is_numer:
+                    fac = fac * (2 * pi)**Rational(1 - size, 2) * Integer(size)**(c - HALF)
+                    exponentials.append(Integer(size)**ca)
+                else:
+                    fac = fac / ((2 * pi)**Rational(1 - size, 2) * Integer(size)**(c - HALF))
+                    exponentials.append(Integer(size)**(-ca))
+                continue
+            if ca == 1:
+                plus.append(1 - c)
+            else:
+                minus.append(c)
+    for params in (an, ap, bm, bq):
+        params.sort(key=default_sort_key)
+    return an, ap, bm, bq, mul(*exponentials), exponent, fac
+
+
+# PORTED FROM SYMPY: sympy/integrals/transforms.py:_inverse_mellin_transform (as_meijerg=True)
+def _inverse_mellin_meijerg(F: Expr, s: Symbol, x: Symbol, strip: tuple[Expr, Expr]) -> Optional[Expr]:
+    """The inverse Mellin transform of ``F`` over the strip as a sum of
+    G-functions (times constants) of ``x``; ``None`` when a term has no
+    gamma form or the G-function is not valid."""
+    from sympy_extras.functions.special.gamma_functions import Gamma
+    F = _expr(F.rewrite(Gamma))
+    for form in (factor, expand_mul, expand):
+        try:
+            g = form(F)
+        except BasePolynomialError:
+            continue
+        if isinstance(g, Add):
+            terms: list[Expr] = []
+            for term in g.args:
+                found = _inverse_mellin_meijerg(_expr(term), s, x, strip)
+                if found is None:
+                    return None
+                terms.append(found)
+            return add(*terms)
+        try:
+            an, ap, bm, bq, C, e, fac = _rewrite_gamma(g, s, strip[0], strip[1])
+            G = _g(an, ap, bm, bq, C / x**e)
+        except (ValueError, TypeError, BasePolynomialError):
+            continue
+        return G * fac
+    return None
+
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:_rewrite_single (the recursive Mellin transform)
+def _rewrite_recursive(f: Expr, x: Symbol) -> Optional[Rewriting]:
+    """``f`` as G-functions by its Mellin transform, computed by the
+    theorem for two G-functions, then inverted as G-functions."""
+    s = _dummy('s', 'rewrite-single', f)
+    g: Optional[Expr] = None
+    found = _mellin_of_product(f, x, s)
+    if found is not None:
+        F, (a, b, _) = found
+        g = _inverse_mellin_meijerg(F, s, x, (a, b))
+    if g is None:
+        # by analytic continuation in a scale c of the argument, set to 1
+        # at the end (also when the dummy is already in the expression
+        # there is no point in putting in another one)
+        scale = _dummy_('a', 'rewrite-single')
+        if scale not in f.free_symbols and _is_analytic(f, x):
+            found = _mellin_of_product(f.subs(x, scale * x), x, s)
+            if found is not None:
+                F, (a, b, _) = found
+                inverse = _inverse_mellin_meijerg(F, s, x, (a, b))
+                g = None if inverse is None else inverse.subs(scale, ONE)
+    if g is None or g.has(S.Infinity, S.NaN, S.ComplexInfinity):
+        return None
+    res: list[GTerm] = []
+    for term in Add.make_args(g):
+        c, m = _coeff_mul(term, x)
+        if len(m) != 1 or not isinstance(m[0], MeijerG):
+            return None
+        h = m[0]
+        try:
+            coeff, power = _get_coeff_exp(h.argument, x)
+        except ValueError:
+            return None
+        lifted = unpolarify(polarify(coeff, lift=True)[0], exponents_only=True)
+        res.append((c, ZERO, _g(h.an, h.aother, h.bm, h.bother, lifted * x**power)))
+    return res, true
+
+
 # PORTED FROM SYMPY: sympy/integrals/meijerint.py:_rewrite_single
 @cacheit
 def rewrite_single(f: Expr, x: Symbol, recursive: bool = True) -> Optional[Rewriting]:
@@ -1343,8 +1713,24 @@ def rewrite_single(f: Expr, x: Symbol, recursive: bool = True) -> Optional[Rewri
     found = _rewrite_table(f, x)
     if found is not None:
         return found
+    if isinstance(f, Mul) and all(isinstance(e, Exp) for e in f.args if e.has(x)):
+        # a product of exponentials is one exponential (SymPy reaches
+        # exp(2*a*x)*exp(2*b*x)*exp(2*c*x) through its recursive Mellin
+        # transform, by an analytic continuation in the scale)
+        exponent: Expr = ZERO
+        for e in f.args:
+            if isinstance(e, Exp):
+                exponent = exponent + _expr(e.args[0])
+        combined = mul(*[e for e in f.args if not isinstance(e, Exp)]) * exp(factor_terms(exponent))
+        if combined != f:
+            found = _rewrite_table(combined, x)
+            if found is not None:
+                return found
     if not recursive:
         return None
+    found = _rewrite_recursive(f, x)
+    if found is not None:
+        return found
     return _rewrite_mellin(f, x)
 
 

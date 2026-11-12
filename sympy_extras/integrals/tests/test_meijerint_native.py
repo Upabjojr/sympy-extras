@@ -100,6 +100,33 @@ def test_rewrite1() -> None:
         (5, x**3, [(1, 0, _g([a], [b], [c], [d], x**2 * (y + 1)))], true)
 
 
+def test_recursive_mellin_transform() -> None:
+    # a product which the table does not have, by its Mellin transform
+    # (the theorem for two G-functions) inverted as a G-function
+    found = rewrite_single(exp(-x) * sin(x), x)
+    assert found is not None and found[1] is true
+    total: Expr = ZERO
+    for coeff, power, g in found[0]:
+        total = total + coeff * x**power * g
+    assert _same(total, exp(-x) * sin(x), {x: Rational(7, 10)})
+    F = _antiderivative(exp(-x) * sin(x), x)
+    assert _derivative_is(F, exp(-x) * sin(x), x)
+
+
+def test_recursive() -> None:
+    ap, bp, cp = _syms('a b c', positive=True)
+    for f, expected in [
+            (exp(-(x - ap)**2) * exp(-(x - bp)**2),
+             sqrt(2) * sqrt(pi) * (erf(sqrt(2) * (ap + bp) / 2) + 1) * exp(-ap**2 / 2 + ap * bp - bp**2 / 2) / 4),
+            (exp(-(x - ap)**2) * exp(-(x - bp)**2) * exp(cp * x),
+             sqrt(2) * sqrt(pi) * (erf(sqrt(2) * (2 * ap + 2 * bp + cp) / 4) + 1)
+             * exp(-ap**2 - bp**2 + (2 * ap + 2 * bp + cp)**2 / 8) / 4),
+            (exp(-(x - ap - bp - cp)**2), sqrt(pi) / 2 * (1 + erf(ap + bp + cp))),
+            (exp(-(x + ap + bp + cp)**2), sqrt(pi) / 2 * (1 - erf(ap + bp + cp)))]:
+        value, cond = _definite(f, x, ZERO, oo)
+        assert cond is true and _same(value, expected)
+
+
 def test_meijerint_indefinite_numerically() -> None:
     values = {a: Rational(1, 10), b: Rational(3, 10), c: Rational(1, 3), d: Rational(2, 7)}
 
