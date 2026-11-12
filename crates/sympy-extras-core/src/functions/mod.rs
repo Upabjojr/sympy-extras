@@ -100,6 +100,7 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
             crate::core::modulo::modulo_fdiff(e, argindex)
         }
         Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
+        g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
         g @ (Function::LowerGamma | Function::UpperGamma | Function::MultiGamma) => {
             special::gamma_functions::incomplete_fdiff(g, e, argindex)
         }
@@ -234,6 +235,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::zeta_functions::is_zeta_function(f) {
         return special::zeta_functions::zeta_function(f, args);
     }
+    if special::spherical_harmonics::is_spherical_harmonic(f) && args.len() == 4 {
+        return special::spherical_harmonics::spherical_harmonic(f, args);
+    }
     if f == Function::SingularityFunction && args.len() == 3 {
         return special::singularity_functions::singularity_function(&args[0], &args[1], &args[2]);
     }
@@ -347,6 +351,7 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
             unreachable!("evaluated above with all their arguments")
         }
         Function::SingularityFunction => unreachable!("evaluated above with all their arguments"),
+        Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
         Function::LowerGamma | Function::UpperGamma | Function::MultiGamma => {
             unreachable!("evaluated above with all their arguments")
         }

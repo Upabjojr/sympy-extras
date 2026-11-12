@@ -204,6 +204,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "LogGamma" => Basic::new(Head::Function(Function::LogGamma), args()?),
         "PolyGamma" => Basic::new(Head::Function(Function::PolyGamma), args()?),
         "SingularityFunctionNode" => Basic::new(Head::Function(Function::SingularityFunction), args()?),
+        "YnmNode" => Basic::new(Head::Function(Function::Ynm), args()?),
+        "ZnmNode" => Basic::new(Head::Function(Function::Znm), args()?),
         "LowerGamma" => Basic::new(Head::Function(Function::LowerGamma), args()?),
         "UpperGamma" => Basic::new(Head::Function(Function::UpperGamma), args()?),
         "MultiGamma" => Basic::new(Head::Function(Function::MultiGamma), args()?),
@@ -474,6 +476,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::FresnelS
                 | Function::FresnelC => "error_functions",
                 Function::SingularityFunction => "singularity_functions",
+                Function::Ynm | Function::Znm => "spherical_harmonics",
                 Function::DiracDelta | Function::Heaviside => "delta_functions",
                 Function::Zeta
                 | Function::DirichletEta
@@ -502,6 +505,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::gamma_functions::is_gamma_function(*f)
                 || sympy_extras_core::functions::special::gamma_functions::is_incomplete_gamma(*f)
                 || *f == Function::SingularityFunction
+                || sympy_extras_core::functions::special::spherical_harmonics::is_spherical_harmonic(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
@@ -2305,6 +2309,15 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => Some(false),
             };
             sympy_extras_core::functions::elementary::piecewise::piecewise_fold(&a[0], evaluate).map_err(e)?
+        }
+        "Ynm" | "Znm" | "Ynm_c" => {
+            use sympy_extras_core::functions::special::spherical_harmonics as sh;
+            match name {
+                "Ynm" => sh::ynm(&a[0], &a[1], &a[2], &a[3]),
+                "Znm" => sh::znm(&a[0], &a[1], &a[2], &a[3]),
+                _ => sh::ynm_c(&a[0], &a[1], &a[2], &a[3]),
+            }
+            .map_err(e)?
         }
         "SingularityFunction" => {
             sympy_extras_core::functions::special::singularity_functions::singularity_function(&a[0], &a[1], &a[2])

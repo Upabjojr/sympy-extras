@@ -266,6 +266,8 @@ pub enum Function {
     LogGamma,
     PolyGamma,
     SingularityFunction,
+    Ynm,
+    Znm,
     LowerGamma,
     UpperGamma,
     MultiGamma,
@@ -380,6 +382,8 @@ impl Function {
             Function::LogGamma => "loggamma",
             Function::PolyGamma => "polygamma",
             Function::SingularityFunction => "SingularityFunction",
+            Function::Ynm => "Ynm",
+            Function::Znm => "Znm",
             Function::LowerGamma => "lowergamma",
             Function::UpperGamma => "uppergamma",
             Function::MultiGamma => "multigamma",
@@ -493,6 +497,8 @@ impl Function {
             Function::LogGamma => "LogGamma",
             Function::PolyGamma => "PolyGamma",
             Function::SingularityFunction => "SingularityFunctionNode",
+            Function::Ynm => "YnmNode",
+            Function::Znm => "ZnmNode",
             Function::LowerGamma => "LowerGamma",
             Function::UpperGamma => "UpperGamma",
             Function::MultiGamma => "MultiGamma",
@@ -627,6 +633,8 @@ impl Function {
             | Function::LogGamma
             | Function::PolyGamma
             | Function::SingularityFunction
+            | Function::Ynm
+            | Function::Znm
             | Function::LowerGamma
             | Function::UpperGamma
             | Function::MultiGamma

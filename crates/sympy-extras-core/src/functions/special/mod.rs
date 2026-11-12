@@ -7,5 +7,6 @@ pub mod error_functions;
 pub mod gamma_functions;
 pub mod gamma_numeric;
 pub mod singularity_functions;
+pub mod spherical_harmonics;
 pub mod tensor_functions;
 pub mod zeta_functions;

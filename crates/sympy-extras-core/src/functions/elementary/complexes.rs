@@ -143,6 +143,7 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
             Ok(Some(crate::functions::special::beta_functions::beta_conjugate(g, e)?))
         }
         g @ (Function::Gamma | Function::LogGamma) => crate::functions::special::gamma_functions::gamma_conjugate(g, e),
+        Function::Ynm => crate::functions::special::spherical_harmonics::spherical_conjugate(e),
         g @ (Function::LowerGamma | Function::UpperGamma | Function::MultiGamma) => {
             crate::functions::special::gamma_functions::incomplete_conjugate(g, e)
         }
@@ -161,6 +162,7 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Factorial2
         | Function::PolyGamma
         | Function::SingularityFunction
+        | Function::Znm
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -552,6 +554,8 @@ fn function_real_imag(
         | Function::LogGamma
         | Function::PolyGamma
         | Function::SingularityFunction
+        | Function::Ynm
+        | Function::Znm
         | Function::LowerGamma
         | Function::UpperGamma
         | Function::MultiGamma
