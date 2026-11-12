@@ -132,3 +132,19 @@ def test_expansion_and_conjunction() -> None:
     both = conjunction([cnf, to_clauses(And(Not(Q.zero(x)), Not(Q.negative(x))))])
     assert not is_satisfiable(both)
     assert isinstance(both, Clauses) and len(both.atoms) == 3
+
+
+def test_same_models_in_the_same_order_as_sympy_dpll2() -> None:
+    # the port makes the same decisions as SymPy's solver on the same
+    # clauses (given as lists, so that SymPy keeps their order)
+    from sympy.logic.algorithms.dpll2 import SATSolver as SymPySATSolver
+    rng = random.Random(7)
+    for _ in range(300):
+        n = rng.randint(1, 7)
+        clauses: list[list[int]] = []
+        for _ in range(rng.randint(0, 12)):
+            literals = {rng.choice([1, -1])*rng.randint(1, n) for _ in range(rng.randint(1, 4))}
+            clauses.append(sorted(literals, key=lambda lit: (abs(lit), lit)))
+        theirs = SymPySATSolver([list(c) for c in clauses], set(range(1, n + 1)), set(), list(range(1, n + 1)))
+        expected = [sorted(m.items()) for m in theirs._find_model()]
+        assert [sorted(m.items()) for m in SATSolver(clauses, n).find_models()] == expected, clauses
