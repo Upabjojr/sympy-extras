@@ -142,6 +142,10 @@ def _sign_of_number(e: Expr, positive: bool) -> Truth:
     z = _value(e)
     if z is None:
         return None
+    if abs(z) < 1e-10:
+        # a hidden zero evaluates to noise (sqrt(2)*4/(2*sqrt(2) + 3) -
+        # 12*sqrt(2) + 16 to 1e-87): zero only when proved, else undecided
+        return False if _proved_number_zero(e) else None
     real = _is_zero_part(z.imag, z)
     if real is not True:
         return None if real is None else False

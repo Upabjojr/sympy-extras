@@ -93,3 +93,15 @@ def test_algebraic_zero_is_proved() -> None:
     r = sqrt(2)
     e = (-12 - 8 * r) * (2 * r + 3) + 24 * r + 34 + 2 * (2 * r + 3)**2
     assert ask(Q.zero(e)) is True and ask(Q.nonzero(e)) is False
+
+
+def test_hidden_zero_has_no_sign() -> None:
+    # -12*sqrt(2) + 4*sqrt(2)/(2*sqrt(2) + 3) + 16 is 0 and evaluates to
+    # -1e-87: the product with another factor was taken for positive
+    # (elliptic_integral of x/sqrt((x**2 + 1)*(x - 2)*(x - 3)) over (4, oo)
+    # then returned a value with zoo instead of None)
+    r = sqrt(2)
+    zero = -12 * r + 4 * r / (2 * r + 3) + 16
+    e = zero * (-12 * r + 8 * r / (4 * r + 9) + 16)
+    assert ask(Q.positive(e)) is False and ask(Q.negative(e)) is False
+    assert ask(Q.positive(zero)) is False and ask(Q.nonzero(zero)) is False
