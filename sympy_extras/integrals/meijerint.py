@@ -1875,6 +1875,81 @@ def _meijerint_indefinite_1(f: Expr, x: Symbol) -> Optional[ConditionalExpr]:
     return res, _my_unpolarify_cond(cond)
 
 
+def _breakpoint(cond: Boolean, x: Symbol) -> Optional[tuple[Expr, bool, bool]]:
+    """A condition ``x < c``, ``x <= c``, ``x > c`` or ``x >= c`` with a real
+    number ``c``: ``(c, below, closed)``, ``below`` when it holds for ``x``
+    under ``c``; ``None`` for another condition."""
+    if not isinstance(cond, (Lt, Le, Gt, Ge)):
+        return None
+    lhs, rhs = cond.lhs, cond.rhs
+    below_ops = (Lt, Le)
+    if lhs == x and not rhs.has(x):
+        c, below = rhs, isinstance(cond, below_ops)
+    elif rhs == x and not lhs.has(x):
+        c, below = lhs, not isinstance(cond, below_ops)
+    else:
+        return None
+    if not (c.is_number and c.is_extended_real):
+        return None
+    return c, below, isinstance(cond, (Le, Ge))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_integral (the continuous antiderivative)
+def _piecewise_antiderivative(f: Piecewise, x: Symbol) -> Optional[Expr]:
+    """A continuous antiderivative of a ``Piecewise`` whose conditions are
+    ``x`` against real numbers (each piece the first whose condition
+    holds, as SymPy's ``Piecewise._eval_integral`` computes it): the
+    antiderivatives of the pieces by the verified methods, each shifted
+    to join the one before at the breakpoint; ``None`` for other
+    conditions or a piece without an antiderivative."""
+    from .indefinite import verified_antiderivative
+    pieces: list[tuple[Expr, Optional[tuple[Expr, bool, bool]]]] = []
+    for pair in f.args:
+        if pair.cond is true:
+            pieces.append((pair.expr, None))
+            break
+        point = _breakpoint(pair.cond, x)
+        if point is None:
+            return None
+        pieces.append((pair.expr, point))
+    # the line cut at the breakpoints, each interval taking the first piece
+    # whose condition holds at a point inside it
+    cuts = sorted({p[1][0] for p in pieces if p[1] is not None}, key=lambda c: float(c))
+    if not cuts:
+        return None
+    samples = [cuts[0] - 1] + [(u + v) / 2 for u, v in zip(cuts[:-1], cuts[1:])] + [cuts[-1] + 1]
+
+    def piece_at(point: Expr) -> Optional[Expr]:
+        for expr, cond in pieces:
+            if cond is None:
+                return expr
+            c, below, _ = cond
+            if (lt(point, c) if below else gt(point, c)) is true:
+                return expr
+        return None
+    total: Optional[Expr] = None
+    branches: list[tuple[Expr, Boolean]] = []
+    for i, sample in enumerate(samples):
+        g = piece_at(sample)
+        if g is None:
+            return None
+        if g.has(x):
+            found = verified_antiderivative(g, x)
+            if found is None:
+                return None
+            G = found[0]
+        else:
+            G = g * x
+        if total is not None:
+            c = cuts[i - 1]
+            G = G + (total.subs(x, c) - G.subs(x, c))
+            if G.has(S.NaN, S.ComplexInfinity):
+                return None
+        total = G
+        branches.append((G, le(x, cuts[i]) if i < len(cuts) else true))
+    return piecewise(*branches)
+
+
 def meijer_antiderivative(f: ExprLike, x: Symbol) -> Optional[Expr]:
     """SymPy's ``integrate(f, x, meijerg=True, risch=False)``: each term of
     the sum, its constant factor out, by :func:`meijerint_indefinite` when
@@ -1894,7 +1969,7 @@ def meijer_antiderivative(f: ExprLike, x: Symbol) -> Optional[Expr]:
     from .integral import Integral, is_unevaluated
     e = to_expr(f)
     if isinstance(e, Piecewise):
-        return None
+        return _piecewise_antiderivative(e, x)
     if not e.has(x):
         return e * x
     terms = Add.make_args(e)

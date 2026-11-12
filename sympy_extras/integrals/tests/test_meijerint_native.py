@@ -364,3 +364,17 @@ def test_saxena_and_antecedents() -> None:
     assert _same(C, sr / (4 * sqrt(pi)), {sr: Integer(2)})
     assert f1.argument == sr**2 * tr / 4 and f2.argument == tr / 4
     assert _check_antecedents(f1, f2, tr) != False
+
+
+def test_piecewise_antiderivative_is_continuous() -> None:
+    # SymPy's integrate(meijerg=True) integrated a Piecewise by
+    # piecewise_integrate (the native route returned None: the jump test of
+    # test_indefinite_native lost its antiderivative)
+    from sympy_extras.functions import Piecewise
+    F = meijer_antiderivative(Piecewise((x, x < 0), (sin(x), x < 2), (Integer(1), True)), x)
+    assert F is not None
+    for point in (ZERO, Integer(2)):
+        left = F.subs(x, point - Rational(1, 10**8))
+        right = F.subs(x, point + Rational(1, 10**8))
+        assert _same(left, right) or abs(complex(reliable_value(left - right, 15) or 0)) < 1e-6
+    assert _same(F.diff(x).subs(x, Integer(1)), sin(Integer(1)))
