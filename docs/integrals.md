@@ -486,7 +486,7 @@ The driver tries, after the Mellin method and the residues:
 ```python
 >>> from sympy import symbols, exp, sin, log, atan, cos, oo, pi
 >>> from sympy_extras.integrals.definite import definite_integral
->>> from sympy_extras.integrals.telescoping import holonomic_ode
+>>> from sympy_extras.integrals.telescoping_sympy import holonomic_ode
 >>> from sympy_extras.integrals.parametric import parametric_integral
 >>> x = symbols('x')
 >>> p, t = symbols('p t', positive=True)

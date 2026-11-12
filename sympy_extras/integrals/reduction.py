@@ -57,14 +57,22 @@ part of `B` and `\\tilde{B} = B/\\beta`:
 
 The differential equation of the integral and its solution are as in
 :mod:`sympy_extras.integrals.telescoping` (`\\sum_j a_j I^{(j)} = [R F]_a^b`,
-``dsolve`` and initial values). The algebraic case of [CKK]_ is not
-implemented.
+the linear ODE solvers and initial values). The algebraic case of [CKK]_
+is not implemented.
+
+The module works on the expressions of the core and imports no SymPy:
+the polynomials in `x` over the field of the parameters of
+:mod:`.telescoping` (the typed polynomial layer). Only the initial values
+and the numerical check of :func:`reduction_integral` reach SymPy, through
+:mod:`.telescoping_sympy`; :mod:`.reduction_sympy` is the old interface on
+SymPy objects.
 
 Examples
 ========
 
->>> from sympy import symbols, exp, oo
->>> from sympy_extras.integrals.reduction import hermite_reduce, reduction_telescoper, reduction_integral
+>>> from sympy_extras.core import symbols, oo
+>>> from sympy_extras.functions import exp
+>>> from sympy_extras.integrals.reduction import hermite_reduce, reduction_telescoper
 >>> x = symbols('x')
 >>> t = symbols('t', positive=True)
 >>> g, r = hermite_reduce(1/x**2, -2*x, x)
@@ -72,8 +80,6 @@ Examples
 (-1/x, -2)
 >>> reduction_telescoper(exp(-x**2 - t**2/x**2), x, t)
 DifferentialTelescoper([-4, 0, 1], 2/x)
->>> reduction_integral(exp(-x**2 - t**2/x**2), x, 0, oo, t)
-ConditionalValue(sqrt(pi)*exp(-2*t)/2)
 
 References
 ==========
@@ -92,36 +98,27 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Final, Optional, Sequence
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import Function, AppliedUndef, diff
-from sympy.core.numbers import Integer, nan, oo, zoo
-from sympy.core.relational import Eq
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
-from sympy.core.sympify import sympify
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.matrices.dense import Matrix
-from sympy.polys.domains.domain import Domain
-from sympy.polys.domains import QQ, QQ_I, ZZ_I
-from sympy.polys.polyerrors import CoercionFailed, NotInvertible, PolynomialError
-from sympy.polys.polytools import Poly, cancel
-from sympy.sets.sets import FiniteSet
-from sympy.simplify.simplify import simplify
-from sympy.solvers.ode import dsolve
-from sympy.solvers.solveset import linsolve
-
-from sympy_extras._timeout import attempt
-from sympy_extras._typing_sympy import ExprLike, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.settings import settings
-from .conditions_sympy import ConditionalValue
-from .telescoping import (DifferentialTelescoper, is_hyperexponential, logarithmic_derivative, _boundary, _constants,
-                          _initial_values, _normalized, _order, _polys, _terms)
+from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.core.add import add
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.function import diff
+from sympy_extras.core.mul import mul
+from sympy_extras.core.numbers import Integer, nan, oo, zoo
+from sympy_extras.core.power import pow
+from sympy_extras.core.relational import Eq
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.polys.polytools import cancel
+from .conditions import ConditionalValue
+from .telescoping import (_POLYNOMIAL_FAILURES, DifferentialTelescoper, KPoly, _Context, _equation, _normalized,
+                          _nullspace, _solve, _terms, _verified, is_hyperexponential, logarithmic_derivative)
 
 __all__ = ['HermiteReducer', 'hermite_reduce', 'reduction_telescoper', 'reduction_ode', 'reduction_integral']
+
+_ZERO = Integer(0)
+_ONE = Integer(1)
 
 
 class _Split(Exception):
@@ -130,9 +127,9 @@ class _Split(Exception):
 
 def _integer(value: Expr) -> Optional[int]:
     """``value`` as a Python integer when it is one."""
-    v = as_expr(cancel(value))
+    v = cancel(value)
     if isinstance(v, Integer):
-        return int(v)
+        return v.p
     return None
 
 
@@ -150,6 +147,10 @@ class HermiteReducer:
     t : Symbol
         The parameter (the coefficient field is the rational functions of
         ``t``).
+    parameters : sequence of Expr
+        Expressions whose symbols join the coefficient field from the start
+        (those of the functions reduced later; the field grows when a new
+        one occurs otherwise).
 
     Attributes
     ==========
@@ -157,257 +158,264 @@ class HermiteReducer:
     shell : Expr
         The polynomial ``S`` (in ``x``) with ``q = q_hat + S'/S`` and no
         integer residue of ``q_hat`` at a simple pole.
-    A, B : Poly
-        Numerator and denominator of ``q_hat``.
+    A, B : Expr
+        Numerator and denominator of ``q_hat``, polynomials in ``x``.
 
     Examples
     ========
 
-    >>> from sympy import symbols
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.integrals.reduction import HermiteReducer
     >>> x, t = symbols('x t')
     >>> reducer = HermiteReducer(2/x + 1/(x - t)**2, x, t)
-    >>> reducer.shell, reducer.A.as_expr(), reducer.B.as_expr()
+    >>> reducer.shell, reducer.A, reducer.B
     (x**2, 1, t**2 - 2*t*x + x**2)
     >>> g, r = reducer.reduce(1/x)
     >>> g, r
     (t**2/2 - t*x + x**2/2, t - 1/2)
     """
 
-    def __init__(self, q: ExprLike, x: Symbol, t: Symbol) -> None:
-        self.x = x
-        self.t = t
-        q_ = as_expr(sympify(q))
-        A, B = _polys(q_, x, t)
-        domain: Domain = A.domain.unify(QQ.frac_field(t))
-        self.domain = domain
-        self.shell: Expr = S.One
+    def __init__(self, q: ExprLike, x: Symbol, t: Symbol, parameters: Sequence[Expr] = ()) -> None:
+        self.x: Final[Symbol] = x
+        self.t: Final[Symbol] = t
+        q_ = to_expr(q)
+        context = _Context([q_, t, *parameters], x)
+        A, B = context.fraction(q_)
+        self.context: _Context = context
+        self.shell: Expr = _ONE
         try:
-            A, B = self._normalize(A.set_domain(domain), B.set_domain(domain))
+            A, B = self._normalize(A, B)
         except _Split:
             # conjugate poles with different integer residues: factor over
             # the Gaussian rationals
-            self.domain = QQ_I.frac_field(t)
-            self.shell = S.One
-            A, B = self._normalize(A.set_domain(self.domain), B.set_domain(self.domain))
-        self.A: Poly = A
-        self.B: Poly = B
-        self.beta: Poly = self._squarefree_part(B)
-        self.cofactor: Poly = B.quo(self.beta)          # B / beta
-        self.q: Expr = as_expr(cancel(A.as_expr() / B.as_expr()))
-        self._echelon: dict[int, tuple[Poly, Poly]] = {}
+            self.context = context.extended([], gaussian=True)
+            self.shell = _ONE
+            A, B = self.context.fraction(q_)
+            A, B = self._normalize(A, B)
+        self._A: KPoly = A
+        self._B: KPoly = B
+        self._beta: KPoly = self._squarefree_part(B)
+        self._cofactor: KPoly = B.quo(self._beta)          # B / beta
+        self.q: Final[Expr] = self.context.fraction_expr(A, B)
+        self._echelon: dict[int, tuple[KPoly, KPoly]] = {}
         self._basis_size = 0
 
-    def _gaussian(self) -> bool:
-        return self.domain == QQ_I.frac_field(self.t) or self.domain == ZZ_I.frac_field(self.t)
+    @property
+    def A(self) -> Expr:
+        return self.context.poly_expr(self._A)
 
-    def _upgrade(self, domain: Domain) -> None:
-        """Move every polynomial to the larger ``domain``."""
-        self.domain = domain
-        self.A, self.B = self.A.set_domain(domain), self.B.set_domain(domain)
-        self.beta, self.cofactor = self.beta.set_domain(domain), self.cofactor.set_domain(domain)
-        self._echelon = {d: (v.set_domain(domain), h.set_domain(domain)) for d, (v, h) in self._echelon.items()}
+    @property
+    def B(self) -> Expr:
+        return self.context.poly_expr(self._B)
+
+    def _upgrade(self, exprs: Sequence[Expr]) -> None:
+        """Move every polynomial to the field of the generators of
+        ``exprs`` too."""
+        old = self.context
+        new = old.extended(exprs)
+        self.context = new
+        self._A, self._B = new.convert(self._A, old), new.convert(self._B, old)
+        self._beta, self._cofactor = new.convert(self._beta, old), new.convert(self._cofactor, old)
+        self._echelon = {d: (new.convert(v, old), new.convert(h, old)) for d, (v, h) in self._echelon.items()}
 
     # -- construction ---------------------------------------------------
 
-    def _lc(self, P: Poly) -> object:
-        """The leading coefficient of ``P`` as an element of the domain."""
-        return self.domain.from_sympy(P.LC())
-
-    def _coefficient(self, P: Poly, degree: int) -> object:
-        return self.domain.from_sympy(P.nth(degree))
-
-    def _poly(self, e: ExprLike) -> Poly:
-        return Poly(as_expr(sympify(e)), self.x, domain=self.domain)
-
-    def _squarefree_part(self, P: Poly) -> Poly:
-        result = self._poly(1)
+    def _squarefree_part(self, P: KPoly) -> KPoly:
+        result = self.context.constant(self.context.field.one)
         for factor, _ in P.sqf_list()[1]:
-            if factor.degree() > 0:
-                result = result * factor
-        return result.monic() if result.degree() > 0 else result
+            if factor.degree > 0:
+                result = result*factor
+        return result.monic() if result.degree > 0 else result
 
-    def _normalize(self, A: Poly, B: Poly) -> tuple[Poly, Poly]:
+    def _normalize(self, A: KPoly, B: KPoly) -> tuple[KPoly, KPoly]:
         """Move the factors ``d**n`` of ``F`` (simple poles of ``q`` with
         the integer residue ``n``) into the shell."""
-        shell: Expr = S.One
-        q = as_expr(cancel(A.as_expr() / B.as_expr()))
+        K = self.context
+        shell: Expr = _ONE
+        q = K.fraction_expr(A, B)
         for factor, multiplicity in B.factor_list()[1]:
-            if factor.degree() == 0 or multiplicity != 1:
+            if factor.degree == 0 or multiplicity != 1:
                 continue
             d = factor.monic()
             cofactor = B.quo(d)
             try:
-                inverse = (cofactor * d.diff(self.x)).invert(d)
-            except (NotInvertible, PolynomialError, ZeroDivisionError):
+                inverse = (cofactor*d.diff()).invert(d)
+            except _POLYNOMIAL_FAILURES:
                 continue
-            residue = (A * inverse).rem(d)
-            if residue.degree() > 0:
-                if self._gaussian():
+            residue = (A*inverse).rem(d)
+            if residue.degree > 0:
+                if K.gaussian:
                     continue
                 raise _Split
-            n = _integer(as_expr(residue.as_expr()))
+            n = _integer(K.element_expr(residue.LC)) if not residue.is_zero else 0
             if n is None or n == 0:
                 continue
-            shell = as_expr(shell * d.as_expr()**n)
+            d_expr = K.poly_expr(d)
+            shell = mul(shell, pow(d_expr, Integer(n)))
             # q - n d'/d
-            q = as_expr(cancel(q - n * d.diff(self.x).as_expr() / d.as_expr()))
+            q = cancel(q - Integer(n)*K.poly_expr(d.diff())/d_expr)
         self.shell = shell
-        A2, B2 = _polys(q, self.x, self.t)
-        return A2.set_domain(self.domain), B2.set_domain(self.domain)
+        return K.fraction(q)
 
     # -- the derivation ---------------------------------------------------
 
     def derivation(self, g: ExprLike) -> Expr:
         """``D(g) = g' + q_hat*g`` (with the normalised ``q``)."""
-        g_ = as_expr(sympify(g))
-        return as_expr(cancel(diff(g_, self.x) + self.q * g_))
+        g_ = to_expr(g)
+        return cancel(diff(g_, self.x) + self.q*g_)
 
     # -- the reduction ----------------------------------------------------
 
-    def _numerator_denominator(self, p: Expr) -> tuple[Poly, Poly]:
-        P, Q = _polys(p, self.x, self.t)
-        try:
-            return P.set_domain(self.domain), Q.set_domain(self.domain)
-        except CoercionFailed:
-            self._upgrade(self.domain.unify(P.domain))
-            return P.set_domain(self.domain), Q.set_domain(self.domain)
+    def _numerator_denominator(self, p: Expr) -> tuple[KPoly, KPoly]:
+        if not self.context.covers([p]):
+            self._upgrade([p])
+        return self.context.fraction(p)
 
-    def _coprime_part(self, Q: Poly) -> Poly:
+    def _coprime_part(self, Q: KPoly) -> KPoly:
         """``Q`` with every factor of ``B`` removed."""
         result = Q
         while True:
-            common = result.gcd(self.beta)
-            if common.degree() == 0:
+            common = result.gcd(self._beta)
+            if common.degree == 0:
                 return result
             result = result.quo(common)
 
     def _reduce_coprime_poles(self, p: Expr) -> tuple[Expr, Expr]:
         """Step 2: the poles of order at least two away from ``B``; returns
         ``(g, p - D(g))``."""
-        g: Expr = S.Zero
+        g: Expr = _ZERO
         current = p
         while True:
             P, Q = self._numerator_denominator(current)
+            K = self.context
             Q_c = self._coprime_part(Q)
-            target: Optional[tuple[Poly, int]] = None
+            target: Optional[tuple[KPoly, int]] = None
             for factor, multiplicity in Q_c.sqf_list()[1]:
-                if factor.degree() > 0 and multiplicity >= 2:
-                    target = (factor.monic(), int(multiplicity))
+                if factor.degree > 0 and multiplicity >= 2:
+                    target = (factor.monic(), multiplicity)
                     break
             if target is None:
                 return g, current
             s, n = target
             # leading coefficient of the pole: P / (Q / s^n) mod s
             rest = Q.quo(s**n)
-            lead = (P * rest.invert(s)).rem(s)
-            h = (lead * (s.diff(self.x).mul_ground(self.domain.convert(1 - n))).invert(s)).rem(s)
-            g_step = as_expr(h.as_expr() / s.as_expr()**(n - 1))
+            lead = (P*rest.invert(s)).rem(s)
+            h = (lead*(s.diff().mul_ground(K.field.from_int(1 - n))).invert(s)).rem(s)
+            g_step = K.poly_expr(h)/pow(K.poly_expr(s), Integer(n - 1))
             g = g + g_step
-            current = as_expr(cancel(current - self.derivation(g_step)))
+            current = cancel(current - self.derivation(g_step))
 
     def _reduce_b_poles(self, p: Expr) -> tuple[Expr, Expr]:
         """Step 3: the poles at the factors of ``B``; returns
         ``(g, p - D(g))`` with the latter free of such poles."""
         P, Q = self._numerator_denominator(p)
+        K = self.context
         Q_c = self._coprime_part(Q)
         Q_B = Q.quo(Q_c)
-        g: Expr = S.Zero
-        if Q_B.degree() == 0 and self.beta.degree() == 0:
+        g: Expr = _ZERO
+        beta, A, B, cofactor = self._beta, self._A, self._B, self._cofactor
+        if Q_B.degree == 0 and beta.degree == 0:
             return g, p
         # the smallest m with Q_B | B beta^m
         m = 0
-        while not (self.B * self.beta**m).rem(Q_B).is_zero:
+        while not (B*beta**m).rem(Q_B).is_zero:
             m += 1
-        N = P * (self.B * self.beta**m * Q_c).quo(Q)
-        beta_prime = self.beta.diff(self.x)
-        inverse_c = Q_c.invert(self.beta)
+        N = P*(B*beta**m*Q_c).quo(Q)
+        beta_prime = beta.diff()
+        inverse_c = Q_c.invert(beta)
         while m >= 0:
-            modulus = self.A - beta_prime.mul_ground(self.domain.convert(m)) * self.cofactor
-            h = (N * inverse_c * modulus.invert(self.beta)).rem(self.beta)
-            phi = (self.beta * h.diff(self.x) - beta_prime.mul_ground(self.domain.convert(m)) * h) * self.cofactor \
-                + self.A * h
-            g = g + as_expr(h.as_expr() / self.beta.as_expr()**m)
-            N = (N - phi * Q_c).quo(self.beta)
+            m_ = K.field.from_int(m)
+            modulus = A - beta_prime.mul_ground(m_)*cofactor
+            h = (N*inverse_c*modulus.invert(beta)).rem(beta)
+            phi = (beta*h.diff() - beta_prime.mul_ground(m_)*h)*cofactor + A*h
+            g = g + K.poly_expr(h)/pow(K.poly_expr(beta), Integer(m))
+            N = (N - phi*Q_c).quo(beta)
             m -= 1
         # now the fraction is N / (cofactor Q_c)
-        if self.cofactor.degree() > 0:
-            inverse_a = (self.A * Q_c).invert(self.cofactor)
-            h = (N * inverse_a).rem(self.cofactor)
-            psi = (self.beta * h.diff(self.x) + beta_prime * h) * self.cofactor + self.A * h
-            g = g + as_expr(h.as_expr() * self.beta.as_expr())
-            N = (N - psi * Q_c).quo(self.cofactor)
-        remainder = as_expr(cancel(N.as_expr() / Q_c.as_expr()))
-        return g, remainder
+        if cofactor.degree > 0:
+            inverse_a = (A*Q_c).invert(cofactor)
+            h = (N*inverse_a).rem(cofactor)
+            psi = (beta*h.diff() + beta_prime*h)*cofactor + A*h
+            g = g + K.poly_expr(h)*K.poly_expr(beta)
+            N = (N - psi*Q_c).quo(cofactor)
+        return g, K.fraction_expr(N, Q_c)
 
-    def _image(self, j: int) -> Poly:
+    def _image(self, j: int) -> KPoly:
         """``E(x**j) = B (x**j)' + (A + B') x**j``."""
-        monomial = self._poly(self.x**j)
-        return self.B * monomial.diff(self.x) + (self.A + self.B.diff(self.x)) * monomial
+        monomial = self._monomial(j)
+        return self._B*monomial.diff() + (self._A + self._B.diff())*monomial
+
+    def _monomial(self, j: int) -> KPoly:
+        F = self.context.field
+        return self.context.from_elements([F.one] + [F.zero]*j)
 
     def _extend_basis(self, size: int) -> None:
         """The row echelon form of ``E(1), ..., E(x**size)`` (pivots at the
         leading degrees), with the preimages."""
+        F = self.context.field
         while self._basis_size < size + 1:
             j = self._basis_size
-            vector, preimage = self._image(j), self._poly(self.x**j)
+            vector, preimage = self._image(j), self._monomial(j)
             self._basis_size += 1
             while not vector.is_zero:
-                degree = vector.degree()
+                degree = vector.degree
                 if degree in self._echelon:
                     pivot, pivot_preimage = self._echelon[degree]
-                    factor = self.domain.quo(self._lc(vector), self._lc(pivot))
+                    factor = F.quo(vector.LC, pivot.LC)
                     vector = vector - pivot.mul_ground(factor)
                     preimage = preimage - pivot_preimage.mul_ground(factor)
                 else:
                     self._echelon[degree] = (vector, preimage)
                     break
 
-    def _reduce_polynomial(self, P: Poly) -> tuple[Expr, Poly]:
+    def _reduce_polynomial(self, P: KPoly) -> tuple[Expr, KPoly]:
         """Step 4: ``(g, r)`` with ``P = D(g) + r`` and ``r`` reduced modulo
         the image of the polynomials."""
         if P.is_zero:
-            return S.Zero, P
-        n_a = self.A.degree() if not self.A.is_zero else -1
-        n_b = self.B.degree()
+            return _ZERO, P
+        K = self.context
+        F = K.field
+        n_a = self._A.degree if not self._A.is_zero else -1
+        n_b = self._B.degree
         delta = max(n_a, n_b - 1)
-        size = P.degree() - delta + 2
+        size = P.degree - delta + 2
         if n_a == n_b - 1 and n_b >= 1:
             # E(x**j) has a lower degree for j = -(n_b + lc(A)/lc(B))
-            mu = as_expr(self.domain.to_sympy(self.domain.quo(self.A.LC(), self.B.LC()))) + n_b
+            mu = K.element_expr(F.quo(self._A.LC, self._B.LC)) + Integer(n_b)
             exceptional = _integer(-mu)
             if exceptional is not None and exceptional >= 0:
                 size = max(size, exceptional + 2)
         self._extend_basis(max(size, 1))
         remainder = P
-        preimage = self._poly(0)
+        preimage = K.constant(F.zero)
         # a pivot at degree d only changes the coefficients of degree at
         # most d: one descending pass leaves zeros at every pivot degree
         for degree in sorted(self._echelon, reverse=True):
-            if remainder.is_zero or degree > remainder.degree():
+            if remainder.is_zero or degree > remainder.degree:
                 continue
-            coefficient = self._coefficient(remainder, degree)
-            if not coefficient:
+            coefficient = remainder.coeff(degree)
+            if F.is_zero(coefficient):
                 continue
             pivot, pivot_preimage = self._echelon[degree]
-            factor = self.domain.quo(coefficient, self._lc(pivot))
+            factor = F.quo(coefficient, pivot.LC)
             remainder = remainder - pivot.mul_ground(factor)
             preimage = preimage + pivot_preimage.mul_ground(factor)
-        g = as_expr(self.B.as_expr() * preimage.as_expr())
+        g = K.poly_expr(self._B)*K.poly_expr(preimage)
         return g, remainder
 
     def reduce(self, p: ExprLike) -> tuple[Expr, Expr]:
         """``(g, r)`` with ``p*S = D(g) + r`` for the normalised derivation
         (``S`` the shell) and ``r`` a reduced form: ``r == 0`` if and only
         if ``p*F`` has a hyperexponential antiderivative."""
-        p_ = as_expr(cancel(as_expr(sympify(p)) * self.shell))
+        p_ = cancel(to_expr(p)*self.shell)
         g1, current = self._reduce_coprime_poles(p_)
         g2, current = self._reduce_b_poles(current)
         P, Q = self._numerator_denominator(current)
         polynomial, proper_numerator = P.div(Q)
         g3, reduced = self._reduce_polynomial(polynomial)
-        proper = as_expr(cancel(proper_numerator.as_expr() / Q.as_expr()))
-        return as_expr(cancel(g1 + g2 + g3)), as_expr(cancel(proper + reduced.as_expr()))
+        K = self.context
+        proper = K.fraction_expr(proper_numerator, Q)
+        return cancel(g1 + g2 + g3), cancel(proper + K.poly_expr(reduced))
 
 
 def hermite_reduce(p: ExprLike, q: ExprLike, x: Symbol, t: Optional[Symbol] = None) -> tuple[Expr, Expr]:
@@ -418,7 +426,7 @@ def hermite_reduce(p: ExprLike, q: ExprLike, x: Symbol, t: Optional[Symbol] = No
     Examples
     ========
 
-    >>> from sympy import symbols, exp
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.integrals.reduction import hermite_reduce
     >>> x, t = symbols('x t')
     >>> hermite_reduce(x, -2*x, x)          # x exp(-x**2) = (-exp(-x**2)/2)'
@@ -428,42 +436,40 @@ def hermite_reduce(p: ExprLike, q: ExprLike, x: Symbol, t: Optional[Symbol] = No
     >>> hermite_reduce(1/(x**2 + t), 0, x, t)
     (0, 1/(t + x**2))
     """
+    p_ = to_expr(p)
     t_ = t if t is not None else Symbol('t')
-    reducer = HermiteReducer(q, x, t_)
-    g, r = reducer.reduce(p)
+    reducer = HermiteReducer(q, x, t_, [p_])
+    g, r = reducer.reduce(p_)
     S_ = reducer.shell
-    return as_expr(cancel(g / S_)), as_expr(cancel(r / S_))
+    return cancel(g/S_), cancel(r/S_)
 
 
 def _dependency(vectors: list[list[Expr]]) -> Optional[list[Expr]]:
     """A nontrivial ``a`` with ``sum(a_j v_j) = 0`` and ``a[-1] != 0``."""
     width = max(len(v) for v in vectors)
-    matrix = Matrix([[v[i] if i < len(v) else S.Zero for v in vectors] for i in range(width)])
-    for vector in matrix.nullspace():
-        values = [as_expr(cancel(v)) for v in vector]
-        if values[-1] != 0:
+    rows = [[v[i] if i < len(v) else _ZERO for v in vectors] for i in range(width)]
+    basis = _nullspace(rows, len(vectors))
+    for values in basis or []:
+        if values[-1] != _ZERO:
             return values
     return None
 
 
-def _coordinates(forms: Sequence[Expr], x: Symbol, t: Symbol) -> list[list[Expr]]:
-    """The reduced forms over a common denominator, as coefficient lists."""
-    numerators: list[Poly] = []
-    denominators: list[Poly] = []
-    for r in forms:
-        P, Q = _polys(r, x, t)
-        numerators.append(P)
-        denominators.append(Q)
-    common = denominators[0]
-    for Q in denominators[1:]:
-        common, Q_ = common.unify(Q)
-        common = common.lcm(Q_)
+def _coordinates(forms: Sequence[Expr], x: Symbol) -> Optional[list[list[Expr]]]:
+    """The reduced forms over a common (monic) denominator, as coefficient
+    lists (lowest degree first)."""
+    try:
+        K = _Context(list(forms), x)
+        fractions = [K.fraction(r) for r in forms]
+    except _POLYNOMIAL_FAILURES:
+        return None
+    common = fractions[0][1].monic()
+    for _, Q in fractions[1:]:
+        common = common.lcm(Q)
     vectors: list[list[Expr]] = []
-    for P, Q in zip(numerators, denominators):
-        common_, Q_ = common.unify(Q)
-        P_, _ = P.unify(Q_)
-        numerator = P_ * common_.quo(Q_)
-        vectors.append([as_expr(c) for c in reversed(numerator.all_coeffs())])
+    for P, Q in fractions:
+        numerator = P*common.quo(Q)
+        vectors.append([K.element_expr(c) for c in reversed(numerator.rep)])
     return vectors
 
 
@@ -472,24 +478,24 @@ class _Term:
     ``p_j = partial_t^j F / F``."""
 
     def __init__(self, F: Expr, x: Symbol, t: Symbol) -> None:
-        self.F = F
-        self.t = t
+        self.F: Final[Expr] = F
+        self.t: Final[Symbol] = t
         q = logarithmic_derivative(F, x)
         p = logarithmic_derivative(F, t)
         if q is None or p is None:
             raise ValueError("not hyperexponential: %s" % F)
-        self.p = p
-        self.reducer = HermiteReducer(q, x, t)
-        self.ps: list[Expr] = []
-        self.gs: list[Expr] = []
-        self.rs: list[Expr] = []
+        self.p: Final[Expr] = p
+        self.reducer: Final[HermiteReducer] = HermiteReducer(q, x, t, [p])
+        self.ps: Final[list[Expr]] = []
+        self.gs: Final[list[Expr]] = []
+        self.rs: Final[list[Expr]] = []
 
     def extend(self) -> None:
         """The next ``p_j`` and its reduction."""
         if not self.ps:
-            self.ps.append(S.One)
+            self.ps.append(_ONE)
         else:
-            self.ps.append(as_expr(cancel(diff(self.ps[-1], self.t) + self.p * self.ps[-1])))
+            self.ps.append(cancel(diff(self.ps[-1], self.t) + self.p*self.ps[-1]))
         g, r = self.reducer.reduce(self.ps[-1])
         self.gs.append(g)
         self.rs.append(r)
@@ -497,13 +503,13 @@ class _Term:
     def certificate(self, relation: Sequence[Expr]) -> Expr:
         """``R`` with ``sum(a_j partial_t^j F) = partial_x(R F)`` for the
         term alone."""
-        return as_expr(cancel(Add(*[a * g for a, g in zip(relation, self.gs)]) / self.reducer.shell))
+        return cancel(add(*[mul(a, g) for a, g in zip(relation, self.gs)])/self.reducer.shell)
 
 
 def _similar(u: Expr, v: Expr, x: Symbol, t: Symbol) -> Optional[Expr]:
     """``u/v`` when it is a rational function of ``x`` and ``t``."""
-    ratio = as_expr(cancel(u / v))
-    if ratio.is_rational_function(x, t):
+    ratio = cancel(u/v)
+    if ratio.is_rational_function(x, t) is True:
         return ratio
     return None
 
@@ -515,11 +521,11 @@ def _grouped(terms: Sequence[Expr], x: Symbol, t: Symbol) -> list[Expr]:
         for i, group in enumerate(groups):
             ratio = _similar(term, group, x, t)
             if ratio is not None:
-                groups[i] = as_expr(cancel(group * (1 + ratio)))
+                groups[i] = cancel(group*(1 + ratio))
                 break
         else:
             groups.append(term)
-    return [g for g in groups if g != 0]
+    return [g for g in groups if g != _ZERO]
 
 
 def _telescope(terms: Sequence[Expr], x: Symbol, t: Symbol, max_order: int) -> Optional[tuple[list[Expr], Expr]]:
@@ -527,12 +533,15 @@ def _telescope(terms: Sequence[Expr], x: Symbol, t: Symbol, max_order: int) -> O
     telescoper of non-similar hyperexponential terms: the first linear
     dependence of the concatenated reduced forms."""
     objects = [_Term(term, x, t) for term in terms]
-    F = Add(*terms)
+    F = add(*terms)
     for j in range(max_order + 1):
         vectors: list[list[Expr]] = [[] for _ in range(j + 1)]
         for term in objects:
             term.extend()
-            for i, v in enumerate(_coordinates(term.rs, x, t)):
+            coordinates = _coordinates(term.rs, x)
+            if coordinates is None:
+                return None
+            for i, v in enumerate(coordinates):
                 vectors[i].extend(v)
         relation = _dependency(vectors)
         if relation is None:
@@ -541,8 +550,8 @@ def _telescope(terms: Sequence[Expr], x: Symbol, t: Symbol, max_order: int) -> O
         if len(objects) == 1:
             certificate = objects[0].certificate(relation)
         else:
-            certificate = as_expr(cancel(Add(*[term.certificate(relation) * term.F for term in objects]) / F))
-        return normalized, as_expr(cancel(certificate * factor_))
+            certificate = cancel(add(*[term.certificate(relation)*term.F for term in objects])/F)
+        return normalized, cancel(certificate*factor_)
     return None
 
 
@@ -558,7 +567,8 @@ def reduction_telescoper(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 6) 
     Examples
     ========
 
-    >>> from sympy import symbols, exp
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.reduction import reduction_telescoper
     >>> x, t = symbols('x t')
     >>> found = reduction_telescoper(1/(x**2 + t**2), x, t)
@@ -569,7 +579,7 @@ def reduction_telescoper(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 6) 
     >>> reduction_telescoper(exp(-t*x**2) + exp(-t**2*x**2), x, t).coefficients
     [1, 5*t, 2*t**2]
     """
-    F_ = as_expr(sympify(F))
+    F_ = to_expr(F)
     if is_hyperexponential(F_, x, t):
         groups = [F_]
     else:
@@ -579,12 +589,15 @@ def reduction_telescoper(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 6) 
         groups = _grouped(terms, x, t)
         if not groups:
             return None
-    result = _telescope(groups, x, t, max_order)
+    try:
+        result = _telescope(groups, x, t, max_order)
+    except _POLYNOMIAL_FAILURES:
+        return None
     if result is None:
         return None
     coefficients, certificate = result
     if len(groups) > 1:
-        certificate = as_expr(cancel(certificate * Add(*groups) / F_))
+        certificate = cancel(certificate*add(*groups)/F_)
     return DifferentialTelescoper(F_, x, t, coefficients, certificate)
 
 
@@ -593,23 +606,19 @@ def reduction_ode(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,
     """The differential equation ``sum_j a_j(t) I^(j)(t) = [R F]_a^b`` of
     ``I(t) = Integral(F, (x, a, b))`` from the reduction-based telescoper.
 
-    >>> from sympy import symbols, exp, oo
+    >>> from sympy_extras.core import symbols, oo
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.reduction import reduction_ode
     >>> x, t = symbols('x t')
     >>> reduction_ode(exp(-x**2)*exp(2*x*t), x, -oo, oo, t)
     Eq(-2*t*I(t) + Derivative(I(t), t), 0)
     """
-    F_ = as_expr(sympify(F))
-    a_, b_ = as_expr(sympify(a)), as_expr(sympify(b))
+    F_ = to_expr(F)
     telescoper = reduction_telescoper(F_, x, t)
     if telescoper is None:
         return None
-    G = as_expr(telescoper.certificate * F_)
-    upper = _boundary(G, x, b_, '-', assumptions)
-    lower = _boundary(G, x, a_, '+', assumptions)
-    if upper is None or lower is None:
-        return None
-    return Eq(telescoper.operator(name), as_expr(simplify(upper - lower)))
+    return _equation(telescoper.coefficients, telescoper.certificate*F_, x, to_expr(a), to_expr(b), t, assumptions,
+                     name)
 
 
 def reduction_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,
@@ -619,50 +628,31 @@ def reduction_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symb
     :func:`~sympy_extras.integrals.telescoping.holonomic_integral` for the
     solution of the equation and the initial values).
 
-    >>> from sympy import symbols, exp, cos, oo
+    >>> from sympy_extras.core import symbols, oo
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.reduction import reduction_integral
+    >>> from sympy_extras.settings import configure
     >>> x = symbols('x')
     >>> t = symbols('t', positive=True)
-    >>> reduction_integral(exp(-x**2)*cos(2*t*x), x, 0, oo, t)
-    ConditionalValue(sqrt(pi)*exp(-t**2)/2)
+    >>> with configure(numerical_checks=False):
+    ...     reduction_integral(x*exp(-t*x**2), x, 0, oo, t)
+    ConditionalValue(1/(2*t))
     """
-    from .definite import verify_numerically
-    from .marichev_sympy import tidy
-    F_ = as_expr(sympify(F))
-    a_, b_ = as_expr(sympify(a)), as_expr(sympify(b))
-    equation = reduction_ode(F_, x, a_, b_, t, assumptions)
+    from .marichev import tidy
+    F_ = to_expr(F)
+    a_, b_ = to_expr(a), to_expr(b)
+    telescoper = reduction_telescoper(F_, x, t)
+    if telescoper is None:
+        return None
+    equation = _equation(telescoper.coefficients, telescoper.certificate*F_, x, a_, b_, t, assumptions, 'I')
     if equation is None:
         return None
-    unknown = Function('I')(t)
-    if not isinstance(unknown, AppliedUndef):
+    solution = _solve(telescoper.coefficients, equation, F_, x, a_, b_, t, assumptions)
+    if solution is None:
         return None
-    order = _order(equation.lhs, unknown, t)
-    general = attempt(lambda: dsolve(equation, unknown), settings.timeout)
-    if not isinstance(general, Eq) or general.lhs != unknown:
-        return None
-    solution = as_expr(general.rhs)
-    constants = _constants(solution)
-    if len(constants) != order:
-        return None
-    if constants:
-        fixed: Optional[Expr] = None
-        for t0 in (S.One, Integer(2), S.Half, Integer(3)):
-            values = _initial_values(F_, x, a_, b_, t, t0, order, assumptions)
-            if values is None:
-                continue
-            equations = [as_expr(diff(solution, t, j).subs(t, t0)) - v for j, v in enumerate(values)]
-            solved = attempt(lambda: linsolve(equations, constants), settings.timeout)
-            if not isinstance(solved, FiniteSet) or len(solved) != 1:
-                continue
-            assignment = dict(zip(constants, [as_expr(v) for v in list(solved)[0]]))
-            fixed = as_expr(solution.xreplace(assignment))
-            break
-        if fixed is None:
-            return None
-        solution = fixed
     value = tidy(solution, assumptions)
     if value.has(nan, zoo, oo, -oo, Piecewise):
         return None
-    if settings.numerical_checks and verify_numerically(value, F_, x, a_, b_, assumptions) is False:
+    if not _verified(value, F_, x, a_, b_, assumptions):
         return None
     return ConditionalValue(value)

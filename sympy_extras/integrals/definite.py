@@ -2434,8 +2434,8 @@ class _Integrator:
         """Creative telescoping (:mod:`.telescoping`) for a hyperexponential
         integrand with one parameter: the integral satisfies a linear
         ODE in the parameter, solved with initial conditions."""
-        from .reduction import reduction_integral
-        from .telescoping import holonomic_integral, is_hyperexponential
+        from .reduction_sympy import reduction_integral
+        from .telescoping_sympy import holonomic_integral, is_hyperexponential
         if not self.parametric or depth > 1:
             return None
         parameters = sorted_symbols(free_symbols(f) - {x} - free_symbols(a) - free_symbols(b))
@@ -2452,8 +2452,8 @@ class _Integrator:
         """Chyzak's algorithm (:mod:`.dfinite`): creative telescoping for
         a D-finite integrand with one parameter which is not
         hyperexponential."""
-        from .dfinite import dfinite_integral
-        from .telescoping import is_hyperexponential
+        from .dfinite_sympy import dfinite_integral
+        from .telescoping_sympy import is_hyperexponential
         if not self.parametric or depth > 1:
             return None
         parameters = sorted_symbols(free_symbols(f) - {x} - free_symbols(a) - free_symbols(b))

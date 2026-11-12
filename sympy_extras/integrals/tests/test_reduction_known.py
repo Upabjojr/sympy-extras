@@ -25,8 +25,8 @@ from sympy import Expr, cancel, cos, exp, oo, pi, sqrt, symbols
 
 from sympy_extras._typing_sympy import ExprLike
 from sympy_extras.integrals.conditions_sympy import ConditionalValue
-from sympy_extras.integrals.reduction import reduction_integral, reduction_telescoper
-from sympy_extras.integrals.telescoping import almkvist_zeilberger
+from sympy_extras.integrals.reduction_sympy import reduction_integral, reduction_telescoper
+from sympy_extras.integrals.telescoping_sympy import almkvist_zeilberger
 
 x = symbols('x')
 t = symbols('t', positive=True)
