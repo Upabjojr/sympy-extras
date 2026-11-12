@@ -37,6 +37,8 @@ from __future__ import annotations
 
 from typing import Final, Optional, Sequence, Union
 
+import mpmath
+
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
@@ -197,6 +199,14 @@ class Sum(ExprWithLimits):
         """The sum evaluated (:func:`~sympy_extras.concrete.summations.sum_doit`)."""
         from .summations import sum_doit
         return sum_doit(self)
+
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        # PORTED FROM SYMPY: sympy/core/evalf.py:evalf_sum (sympy_extras.concrete._evalf)
+        from ._evalf import evalf_sum
+        if len(self._limits) != 1:
+            return None
+        i, a, b = self._limits[0]
+        return evalf_sum(self._function, i, a, b, prec)
 
     def _eval_facts(self) -> dict[str, bool]:
         facts = ExprWithLimits._eval_facts(self)

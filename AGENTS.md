@@ -241,6 +241,7 @@ sympy_extras/
                              factor_terms, a native rewrite (rewriting.py), SymPy's order of the arguments, to_sympy/from_sympy with generic wrappers
                              of any SymPy object; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
+        _evalf.py            evalf_sum, hypsum: the numerical values of sums (native), PORTED FROM SYMPY
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation, the cases of the
                              isolated values of the parameters of sums (_sum_special_values_native) (native)

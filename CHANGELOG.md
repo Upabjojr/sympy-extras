@@ -85,6 +85,15 @@ remove public functions. Breaking changes are listed here when they happen.
   target but `Max`/`Min` in terms of `Abs`, `Heaviside`, `Piecewise`):
   they are rebuilt natively instead of asking SymPy, which answered
   `None`.
+- The numerical value of a `Sum` is native (`concrete._evalf`, a port of
+  SymPy's `evalf_sum`, `hypsum` and `check_convergence`): the infinite
+  hypergeometric sums by direct summation or Richardson extrapolation,
+  SymPy's `ValueError` for the divergent ones (`Sum(1, (i, 1, oo))`), the
+  finite sums of a few terms term by term; SymPy's Euler–Maclaurin
+  summation is not ported (those sums still go to SymPy). Against SymPy:
+  a ratio of the terms with irrational coefficients is summed numerically
+  (SymPy truncates the coefficients to integers: its value of
+  `Sum(pi**i/factorial(i), (i, 0, oo))` is `exp(3)`).
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's

@@ -3429,3 +3429,30 @@ def test_native_rewrite_of_parameter_nodes_does_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SUM_VALUES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, oo
+from sympy_extras.concrete.expr_with_limits import Sum
+from sympy_extras.functions import factorial
+i = Symbol('i', integer=True)
+assert str(Sum(1/factorial(i), (i, 0, oo)).evalf(20)) == '2.7182818284590452354'
+assert str(Sum(1/i**2, (i, 1, oo)).evalf()) == '1.64493406684823'
+try:
+    Sum(Integer(1), (i, 1, oo)).evalf()
+except ValueError as e:
+    assert str(e) == 'Sum diverges like n^0', e
+else:
+    raise AssertionError('a divergent sum has no value')
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_sum_values_do_not_load_sympy() -> None:
+    """The values of the hypergeometric sums are the port of SymPy's
+    ``evalf_sum`` (a divergent sum raises SymPy's ``ValueError``; it went
+    to SymPy's ``evalf`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SUM_VALUES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
