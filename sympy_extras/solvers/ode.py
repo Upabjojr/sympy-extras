@@ -16,12 +16,13 @@ native ones, the first order equations go to the native
 :func:`~sympy_extras.solvers.first_order.dsolve_first_order`, and a
 solution is checked by :func:`check_ode_solution`, a port of SymPy's
 ``checkodesol`` (``sympy.solvers.ode.subscheck``) on the core.
-:mod:`sympy_extras.solvers.ode_sympy` is its face on SymPy objects. Two
-steps have no native counterpart and go through SymPy at run time (the
+:mod:`sympy_extras.solvers.ode_sympy` is its face on SymPy objects. One
+step has no native counterpart and goes through SymPy at run time (the
 functions ending in ``_of_core`` of the faces): SymPy's ``dsolve`` of the
-reduced equations (:func:`~sympy_extras.solvers.pde_sympy.dsolve_of_core`)
-and its ``solve`` of the canonical coordinates and of the implicit solutions
-(:func:`~sympy_extras.solvers.pde_sympy.solve_of_core`); the
+reduced equations (:func:`~sympy_extras.solvers.pde_sympy.dsolve_of_core`);
+the canonical coordinates and the implicit solutions are solved by the
+native port of SymPy's ``solve``
+(:func:`~sympy_extras.solvers.solvers.solve_equation`), and the
 quadratures come from the native indefinite integration
 (:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`).
 
@@ -136,10 +137,10 @@ def _dsolve(equation: Basic, f: AppliedUndef, timeout: Optional[float]) -> Optio
 
 
 def _solve(e: Expr, v: Symbol, timeout: Optional[float]) -> list[Expr]:
-    """The solutions of ``e = 0`` for ``v`` by SymPy's ``solve`` within the
-    time limit (none when it gives up)."""
-    from .pde_sympy import solve_of_core
-    return attempt(lambda: solve_of_core(e, v), timeout) or []
+    """The solutions of ``e = 0`` for ``v`` by the native port of SymPy's
+    ``solve`` within the time limit (none when it gives up)."""
+    from .solvers import solve_equation
+    return attempt(lambda: solve_equation(e, v), timeout, native=True) or []
 
 
 def _integral(e: Expr, v: Symbol, timeout: Optional[float]) -> Optional[Expr]:
@@ -447,11 +448,11 @@ def _sub_func_doit(eq: Expr, func: Expr, new: Expr) -> Expr:
 
 def _solved_for(e: Expr, target: Expr, timeout: Optional[float]) -> Optional[list[Expr]]:
     """The solutions of ``e = 0`` for ``target`` (a function or a
-    derivative, replaced by a dummy) by SymPy's ``solve`` within the time
-    limit, ``None`` when it gives up."""
-    from .pde_sympy import solve_of_core
+    derivative, replaced by a dummy) by the native port of SymPy's
+    ``solve`` within the time limit, ``None`` when it gives up."""
+    from .solvers import solve_equation
     d = Dummy('f')
-    found = attempt(lambda: solve_of_core(_replaced(e, {target: d}), d), timeout)
+    found = attempt(lambda: solve_equation(_replaced(e, {target: d}), d), timeout, native=True)
     return None if found is None else [value.subs(d, target) for value in found]
 
 
@@ -484,7 +485,6 @@ def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's solve (pde_sympy.solve_of_core)
     >>> from sympy_extras.core import Eq, Function, symbols
     >>> from sympy_extras.functions import exp
     >>> from sympy_extras.solvers.ode import check_ode_solution

@@ -31,12 +31,13 @@ SymPy's ``pdsolve`` solves first order **linear** equations only.
 The module imports no SymPy: the equation is an expression of the core
 (:mod:`sympy_extras.core`) in an applied undefined function and its
 first derivatives; the equations polynomial in the unknown are solved by
-the native :func:`~sympy_extras.polys.polyroots.roots`, the polynomials
+the native :func:`~sympy_extras.polys.polyroots.roots` (the others by
+the native port of SymPy's ``solve``,
+:func:`~sympy_extras.solvers.solvers.solve_equation`), the polynomials
 in a variable are integrated term by term, and the checks use the native
-:func:`~sympy_extras.simplify.simplify.simplify`. Two steps have no
-native counterpart and are taken from SymPy at run time through the face
-:mod:`sympy_extras.solvers.charpit_sympy`: ``solve`` for the equations
-which are not polynomial in the unknown (``solve_of_core``) and
+:func:`~sympy_extras.simplify.simplify.simplify`. One step has no
+native counterpart and is taken from SymPy at run time through the face
+:mod:`sympy_extras.solvers.charpit_sympy`:
 ``integrate`` for the integrands which are not polynomials in the
 variable (``antiderivative_of_core``). The face also keeps the old API
 on SymPy objects.
@@ -260,12 +261,12 @@ def _power_antiderivative(e: Expr, x: Symbol) -> Optional[Expr]:
 def _solutions(expression: Expr, variable: Symbol) -> list[Expr]:
     """The solutions of ``expression = 0`` for ``variable``: the roots of
     the numerator when it is a polynomial in ``variable`` whose roots are
-    all found, SymPy's ``solve`` otherwise."""
+    all found, the native port of SymPy's ``solve`` otherwise."""
     native = attempt(lambda: _polynomial_solutions(expression, variable), settings.timeout, native=True)
     if native is not None:
         return native
-    from .charpit_sympy import solve_of_core
-    return solve_of_core(expression, variable)
+    from .solvers import solve_equation
+    return attempt(lambda: solve_equation(expression, variable), settings.timeout, native=True) or []
 
 
 def _polynomial_solutions(expression: Expr, variable: Symbol) -> Optional[list[Expr]]:

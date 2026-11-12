@@ -29,11 +29,10 @@ derivatives, the linear system of the ansatz is solved over ``QQ`` or the
 field of rational functions of the parameters
 (:class:`~sympy_extras.polys.domains.sparsefractionfield.SparseFractionField`),
 and the Janet basis of the determining system is the native one of
-:mod:`sympy_extras.polys.differential`. One step has no native
-counterpart and is taken from SymPy at run time: an equation which is
-neither linear nor quadratic in its leading derivative is solved for it
-by SymPy's ``solve`` (``solve_of_core`` of
-:mod:`sympy_extras.solvers.charpit_sympy`). The face
+:mod:`sympy_extras.polys.differential`; an equation which is neither
+linear nor quadratic in its leading derivative is solved for it by the
+native port of SymPy's ``solve``
+(:func:`~sympy_extras.solvers.solvers.solve_equation`). The face
 :mod:`sympy_extras.solvers.lie_sympy` keeps the API on SymPy objects.
 
 References
@@ -466,15 +465,18 @@ def _prepare(equations: Union[Equation, Sequence[Equation]],
 
 def _solve_for(eq: Expr, s: Symbol) -> list[Expr]:
     """The solutions of ``eq = 0`` for ``s``: natively for a quadratic
-    (in the order of SymPy's ``solve``), by SymPy's ``solve`` otherwise."""
+    (in the order of SymPy's ``solve``), by the native port of SymPy's
+    ``solve`` otherwise."""
     try:
         poly = Poly(eq, s)
     except BasePolynomialError:
         poly = None
     if poly is not None and poly.degree() == 2:
         return roots_quadratic(poly)
-    from .charpit_sympy import solve_of_core
-    return solve_of_core(eq, s)
+    from sympy_extras._timeout import attempt
+    from sympy_extras.settings import settings
+    from .solvers import solve_equation
+    return attempt(lambda: solve_equation(eq, s), settings.timeout, native=True) or []
 
 
 def _leading_derivatives(jets: JetSpace, eqs: list[Expr]) -> dict[Basic, Basic]:

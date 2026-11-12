@@ -10,6 +10,23 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The solvers which called SymPy's `solve` at run time through the
+  `solve_of_core` functions of the faces (`charpit`, `second_order`,
+  `lie`, `abel`, `ode`, `pde`, `factorization`, and the Lambert W
+  candidates of `transcendental`) use the native port of it, the new
+  modules `sympy_extras.solvers.solvers` (`solve_equation`: one equation
+  in one unknown by its roots, one generator, the radicals of one base,
+  the inversion of the outer functions; `solve_system`: polynomial systems
+  by a Gröbner basis and substitution; `invert`, `checksol`) and
+  `sympy_extras.solvers.bivariate` (`solve_lambert`, SymPy's Lambert W
+  forms), so that these steps load no SymPy. The functions
+  `charpit_sympy.solve_of_core`, `factorization_sympy.solve_of_core`,
+  `pde_sympy.solve_of_core` and `transcendental_sympy.solve_of_core` are
+  removed. The Lambert W candidates of `solve_transcendental` include the
+  branch `-1` whenever it is real (SymPy's `solve` gave only the principal
+  branch of `x = exp(x) - 2`, which the transcendental solver completed
+  already).
+
 - **Breaking**: the verified indefinite integration
   `sympy_extras.integrals.indefinite` (`indefinite_integral`,
   `verified_antiderivative`, `is_antiderivative`, `real_form`,

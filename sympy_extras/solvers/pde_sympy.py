@@ -1,20 +1,17 @@
 """The SymPy face of the similarity reductions of partial differential
-equations (:mod:`sympy_extras.solvers.pde`), and the two steps of them
-which stay on SymPy.
+equations (:mod:`sympy_extras.solvers.pde`), and the step of them which
+stays on SymPy.
 
 :func:`pde_symmetries`, :func:`similarity_reduction`, :func:`pdsolve_lie`
 and :func:`check_pde_solution` take SymPy equations, functions and the
 symmetries of :mod:`sympy_extras.solvers.lie_sympy`, converted by
 :mod:`sympy_extras.interop` around the native functions. The native
-module calls two functions of this module at run time (they take and
-return objects of the core):
+module calls one function of this module at run time (it takes and
+returns objects of the core):
 
 * :func:`dsolve_of_core`, SymPy's ``dsolve`` for the characteristic
   equations of a symmetry and for the reduced ordinary differential
   equations;
-* :func:`solve_of_core`, SymPy's ``solve`` for the equations which are not
-  linear in the unknown (the similarity variable solved for an
-  independent variable).
 
 Examples
 ========
@@ -40,21 +37,18 @@ from sympy.core.function import AppliedUndef
 from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 from sympy.solvers.ode import dsolve
-from sympy.solvers.solvers import solve
 
 from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
 from sympy_extras.core.relational import Eq as CoreEq
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 
 from . import pde as native
 from .lie_sympy import Equation, JetSpace, Symmetry, _core_equation, _core_expr, _core_function, _sympy_expr
 
 __all__ = ['pde_symmetries', 'similarity_reduction', 'pdsolve_lie', 'check_pde_solution', 'Reduction',
-           'dsolve_of_core', 'solve_of_core']
+           'dsolve_of_core']
 
 #: the default ``timeout`` argument: the value of
 #: :data:`sympy_extras.settings.settings.timeout` at call time
@@ -77,19 +71,6 @@ def dsolve_of_core(equation: CoreBasic, f: CoreAppliedUndef) -> list[CoreEq]:
         if isinstance(converted, CoreEq):
             solutions.append(converted)
     return solutions
-
-
-def solve_of_core(expression: CoreExpr, variable: CoreSymbol) -> list[CoreExpr]:
-    """The solutions of ``expression = 0`` for ``variable`` by SymPy's
-    ``solve`` (no time limit: the native module sets it)."""
-    found = solve(to_sympy(expression), to_sympy(variable))
-    result: list[CoreExpr] = []
-    for v in found:
-        if isinstance(v, Expr):
-            converted = from_sympy(v)
-            if isinstance(converted, CoreExpr):
-                result.append(converted)
-    return result
 
 
 # ---------------------------------------------------------------------------

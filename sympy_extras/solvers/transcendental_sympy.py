@@ -12,9 +12,8 @@ The steps of the native module which stay written on SymPy are called
 from it at run time (the functions ending in ``_of_core``, which take and
 return objects of the core): SymPy's ``solveset`` of a relation
 polynomial in the unknown with transcendental or symbolic coefficients
-(when no solver is given), the candidates of SymPy's ``solve`` (its
-Lambert W patterns), and the reliable numerical values of
-:mod:`sympy_extras._numeric`.
+(when no solver is given). The Lambert W candidates are native
+(:mod:`sympy_extras.solvers.bivariate`).
 
 Examples
 ========
@@ -40,7 +39,6 @@ from sympy.sets.sets import Set
 from sympy_extras._typing_sympy import Truth, as_boolean, as_expr, as_set
 from sympy_extras.assumptions.ask_sympy import core_boolean, sympy_boolean
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
-from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
@@ -48,8 +46,7 @@ from sympy_extras.sets.sets import Set as CoreSet
 
 from . import transcendental as native
 
-__all__ = ['solve_transcendental', 'polynomialize', 'Reduction', 'Solver', 'Decider', 'solveset_of_core',
-    'solve_of_core']
+__all__ = ['solve_transcendental', 'polynomialize', 'Reduction', 'Solver', 'Decider', 'solveset_of_core']
 
 #: solves a formula, polynomial in the given variable, for it (``None``
 #: when it cannot)
@@ -83,14 +80,6 @@ def solveset_of_core(relation: CoreBoolean, x: CoreSymbol) -> CoreSet:
     from sympy.core.singleton import S
     from sympy.solvers.solveset import solveset
     return _core_set(solveset(sympy_boolean(relation), _sympy_symbol(x), S.Reals))
-
-
-def solve_of_core(e: CoreExpr, x: CoreSymbol) -> list[CoreExpr]:
-    """The solutions of ``e = 0`` by SymPy's ``solve`` which are
-    expressions (with its Lambert W patterns; its exceptions go on)."""
-    from sympy.solvers.solvers import solve
-    found = solve(sympy_expr(e), _sympy_symbol(x))
-    return [core_expr(v) for v in found if isinstance(v, Expr)]
 
 
 # ---------------------------------------------------------------------------

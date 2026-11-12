@@ -58,11 +58,10 @@ ending in ``_of_core`` of the faces): SymPy's
 ``dsolve`` of the linear equations, the first integrals and the
 equations ``u'' = F(u')``
 (:func:`~sympy_extras.solvers.first_order_sympy.dsolve_of_core`) and its
-``solve`` of the transformed derivative and of the pulled back
-solutions (:func:`~sympy_extras.solvers.charpit_sympy.solve_of_core`; a
-linear system of structure constants which is not uniquely solvable
-over the rational functions by
-:func:`~sympy_extras.solvers.factorization_sympy.solve_of_core`).
+``solve`` of the transformed derivative, of the pulled back solutions
+and of a linear system of structure constants which is not uniquely
+solvable over the rational functions are the native ports of
+:mod:`sympy_extras.solvers.solvers`.
 
 References
 ==========
@@ -276,10 +275,10 @@ def _dsolve(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
 
 
 def _solve(e: Expr, v: Symbol) -> list[Expr]:
-    """The solutions of ``e = 0`` for ``v`` by SymPy's ``solve`` under the
-    time limit of the settings (none when it gives up)."""
-    from .charpit_sympy import solve_of_core
-    return solve_of_core(e, v)
+    """The solutions of ``e = 0`` for ``v`` by the native port of SymPy's
+    ``solve`` under the time limit of the settings (none when it gives up)."""
+    from .solvers import solve_equation
+    return attempt(lambda: solve_equation(e, v), settings.timeout, native=True) or []
 
 
 def _particular(solution: Basic) -> Optional[Expr]:
@@ -523,7 +522,6 @@ def transformed_rhs(Phi: Expr, t: Expr, u: Expr, x: Symbol, y: Symbol, p: Symbol
     Examples
     ========
 
-    >>> import sympy_extras.interop  # SymPy's solve (charpit_sympy.solve_of_core)
     >>> from sympy_extras.core import symbols
     >>> from sympy_extras.solvers.second_order import transformed_rhs
     >>> x, y, p, v = symbols('x y p v')
@@ -594,12 +592,13 @@ def _combination(symmetries: Sequence[Symmetry], coefficients: Sequence[Symbol])
 def _linear_solution(equations: list[Expr], unknowns: list[Symbol]) -> Optional[list[Expr]]:
     """The values of the unknowns of a linear system: natively when they
     are unique over the rational functions, else the first solution of
-    SymPy's ``solve`` (the unknowns it leaves free set to zero)."""
+    the native port of SymPy's ``solve`` (the unknowns it leaves free set
+    to zero)."""
     unique = solve_linear_unique(equations, unknowns)
     if unique is not None:
         return unique
-    from .factorization_sympy import solve_of_core
-    solution = attempt(lambda: solve_of_core(equations, unknowns), settings.timeout, native=True)
+    from .solvers import solve_system
+    solution = attempt(lambda: solve_system(equations, unknowns), settings.timeout, native=True)
     if not solution:
         return None
     return [solution[0].get(c, _ZERO) for c in unknowns]

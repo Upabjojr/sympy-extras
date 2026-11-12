@@ -24,14 +24,15 @@ solution sets are objects of the core (:mod:`sympy_extras.core`,
 :mod:`sympy_extras.sets`) and the module imports no SymPy: the
 cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad.qe`),
 the radical forms of its roots (:mod:`sympy_extras.polys.roots`) and the
-relations linear in the unknown with real coefficients are native.
-Three steps go through SymPy at run time
+relations linear in the unknown with real coefficients are native, and
+so are the Lambert W candidates (the native port of SymPy's ``solve``,
+:mod:`sympy_extras.solvers.solvers` and :mod:`sympy_extras.solvers.bivariate`)
+and the reliable numerical values of :mod:`sympy_extras._numeric` which
+check them. One step goes through SymPy at run time
 (:mod:`sympy_extras.solvers.transcendental_sympy`, its face on SymPy
-objects, holds them, the functions ending in ``_of_core``): SymPy's
+objects, holds it, the function ending in ``_of_core``): SymPy's
 ``solveset`` of the other relations polynomial in the unknown with
-transcendental or symbolic coefficients when no solver is given, the candidates of
-SymPy's ``solve`` with the Lambert W function, and the reliable numerical
-values of :mod:`sympy_extras._numeric` which check them.
+transcendental or symbolic coefficients when no solver is given.
 
 Examples
 ========
@@ -764,9 +765,9 @@ def _solve_real(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
 
 def _lambert(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
     """Equations ``x`` appears in both inside and outside an exponential
-    or logarithm (``x*exp(x) = 1``, ``x + log(x) = 2``): SymPy's ``solve``
-    has the Lambert W patterns; its candidates are checked on the
-    equation and kept only when real."""
+    or logarithm (``x*exp(x) = 1``, ``x + log(x) = 2``): the Lambert W
+    patterns of the native port of SymPy's ``solve``; its candidates are
+    checked on the equation and kept only when real."""
     if not ctx.lambert or not isinstance(formula, Relational) or formula.rel_op != '==':
         return None
     e = formula.lhs - formula.rhs
@@ -774,8 +775,8 @@ def _lambert(formula: Boolean, x: Symbol, ctx: _Context) -> Optional[Set]:
         return None
     if not (e.has(Exp) or e.has(Log)):
         return None
-    from .transcendental_sympy import solve_of_core
-    found = attempt(lambda: solve_of_core(e, x), settings.timeout)
+    from .solvers import solve_equation
+    found = attempt(lambda: solve_equation(e, x), settings.timeout, native=True)
     if not found:
         return None
     candidates: list[Expr] = []
@@ -872,8 +873,8 @@ def solve_transcendental(formula: Boolean, x: Symbol, solver: Optional[Solver] =
     lambert : bool, optional
         Whether the equations with the unknown inside and outside an
         exponential or a logarithm are tried with the Lambert W candidates
-        of SymPy's ``solve`` (the only step which loads SymPy when a
-        ``solver`` is given); ``False`` gives ``None`` for them.
+        of the native port of SymPy's ``solve``; ``False`` gives ``None``
+        for them.
 
     Examples
     ========

@@ -2832,3 +2832,39 @@ def test_native_exact_solutions_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SOLVE_EQUATION = r'''
+import sys
+from sympy_extras.core import Eq, Function, symbols, sqrt
+from sympy_extras.functions import exp, log
+from sympy_extras.solvers.solvers import solve_equation, solve_system
+from sympy_extras.solvers.transcendental import solve_transcendental
+from sympy_extras.solvers.abel import particular_solution
+from sympy_extras.solvers.charpit import complete_integral
+assert 'sympy' not in sys.modules
+x, y, a, C1, C2 = symbols('x y a C1 C2')
+assert str(solve_equation(log(y) - C1*x - C2, y)) == '[exp(C1*x + C2)]'
+assert str(solve_equation(2*sqrt(x) - a, x)) == '[a**2/4]'
+assert str(solve_system([x*y - 1, x - y], [x, y])) == '[{x: -1, y: -1}, {x: 1, y: 1}]'
+assert str(solve_transcendental(Eq(x, exp(x) - 2), x)) == '{-2 - LambertW(-exp(-2)), -2 - LambertW(-exp(-2), -1)}'
+assert str(particular_solution((1, 0, -x**2, 1), x)) == 'x'
+u = Function('u')(x, y)
+p, q = u.diff(x), u.diff(y)
+assert str(complete_integral(Eq(u, p*x + q*y + sqrt(1 + p**2 + q**2)), u)) == \
+    'Eq(u(x, y), a*x + b*y + sqrt(a**2 + b**2 + 1))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_solve_equation_does_not_load_sympy() -> None:
+    """The native port of SymPy's ``solve`` (:mod:`sympy_extras.solvers.solvers`,
+    the Lambert W forms of :mod:`sympy_extras.solvers.bivariate`) loads no
+    SymPy, nor do the solvers which called SymPy's ``solve`` through the
+    ``solve_of_core`` functions of the faces of charpit, factorization, pde
+    and transcendental: a radical in the unknown of a Clairaut equation, the
+    undetermined coefficients of an Abel equation, the Lambert W roots of
+    ``x = exp(x) - 2``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVE_EQUATION], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
