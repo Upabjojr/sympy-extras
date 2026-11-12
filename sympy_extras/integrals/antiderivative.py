@@ -433,14 +433,17 @@ def _real_zeros(u: Expr, x: Symbol, facts: list[Boolean]) -> Optional[list[Expr]
 
 
 # PORTED FROM SYMPY: sympy/calculus/singularities.py:singularities
-def singularities(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[list[Expr]]:
+def singularities(f: Expr, x: Symbol, assumptions: Assumptions = None,
+                  zeros: Optional[Callable[[Expr], Optional[list[Expr]]]] = None) -> Optional[list[Expr]]:
     """The real isolated singularities of ``f`` in ``x`` as SymPy's
     ``singularities`` finds them, under the assumptions (``x > a`` and ``x
     < b`` for a range): the zeros of the bases of the negative powers
     once the trigonometric and hyperbolic functions are written in
     cosines, of the arguments of ``log``, ``asech``, ``acsch``, and the
     points ``1`` and ``-1`` of the arguments of ``atanh`` and ``acoth``;
-    ``None`` when a set of zeros is not finite or not found.
+    ``None`` when a set of zeros is not finite or not found. ``zeros``,
+    when given, finds the real zeros of a target first (a cheaper rule for
+    the caller's range, ``None`` when it does not apply).
 
     >>> from sympy_extras.core import Symbol, pi
     >>> from sympy_extras.functions import log, tan
@@ -470,10 +473,12 @@ def singularities(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Option
     for u in targets:
         if not u.has(x):
             continue
-        zeros = _real_zeros(u, x, facts)
-        if zeros is None:
+        found = None if zeros is None else zeros(u)
+        if found is None:
+            found = _real_zeros(u, x, facts)
+        if found is None:
             return None
-        points.extend(p for p in zeros if p not in points)
+        points.extend(p for p in found if p not in points)
     return points
 
 

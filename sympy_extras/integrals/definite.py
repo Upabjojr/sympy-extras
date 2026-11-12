@@ -2978,7 +2978,12 @@ def _singular_points(f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr
         bounds.append(x > a)
     if b != oo:
         bounds.append(x < b)
-    found = singularities(f, x, bounds)
+    def zeros(u: Expr) -> Optional[list[Expr]]:
+        # the zeros of sin(w*x + c) and cos(w*x + c) on a numeric range
+        # enumerated: the native signs of the solver spent seconds on them
+        return _trigonometric_zeros(u, x, a, b)
+
+    found = singularities(f, x, bounds, zeros)
     if found is None:
         found = singularities(f, x, None)
         if found is None:
