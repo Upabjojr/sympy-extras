@@ -442,7 +442,13 @@ impl StrPrinter {
         let mut sign: &str = "";
         let mut numerator: Vec<String> = Vec::new();
         let mut denominator: Vec<String> = Vec::new();
+        // a Mod factor is parenthesized, as SymPy prints 2*(Mod(x, 3)), except in -Mod(x, 3)
+        let bare_negation: bool = factors.len() == 2 && is_rational_value(&factors[0], -1);
         for (i, f) in factors.iter().enumerate() {
+            if f.is_function(super::basic::Function::Mod) && !bare_negation {
+                numerator.push(format!("({})", self.doprint(f)));
+                continue;
+            }
             if let (Head::Rational { value, .. }, 0) = (f.head(), i) {
                 let mut p: Int = numer(value);
                 let q: Int = denom(value);
@@ -486,6 +492,9 @@ impl StrPrinter {
     }
 
     fn print_pow(&self, base: &Basic, exp: &Basic) -> String {
+        if base.is_function(super::basic::Function::Mod) {
+            return format!("({})**{}", self.doprint(base), self.parenthesize(exp, PREC_POW, true));
+        }
         if let Head::Rational { value, .. } = exp.head() {
             let (p, q) = (numer(value), denom(value));
             if p == Int::ONE && q == int(2) {

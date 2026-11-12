@@ -570,3 +570,171 @@ pub fn polynomial_like(e: &Basic, syms: &[Basic], kind: PolynomialKind) -> Optio
     }
     None
 }
+
+/// The facts a point of [`admissible_value`] can respect (`_POINT_FACTS`).
+const POINT_FACTS: [Predicate; 25] = [
+    Predicate::commutative,
+    Predicate::complex,
+    Predicate::finite,
+    Predicate::integer,
+    Predicate::rational,
+    Predicate::real,
+    Predicate::extended_real,
+    Predicate::positive,
+    Predicate::negative,
+    Predicate::nonnegative,
+    Predicate::nonpositive,
+    Predicate::nonzero,
+    Predicate::zero,
+    Predicate::extended_positive,
+    Predicate::extended_negative,
+    Predicate::extended_nonnegative,
+    Predicate::extended_nonpositive,
+    Predicate::extended_nonzero,
+    Predicate::even,
+    Predicate::odd,
+    Predicate::algebraic,
+    Predicate::hermitian,
+    Predicate::imaginary,
+    Predicate::antihermitian,
+    Predicate::polar,
+];
+
+/// A value of the symbol respecting its assumptions; `variant` 0, 1, 2
+/// picks other signs, sizes and quadrants; `None` when a fact is not
+/// handled (`_admissible_value`).
+fn admissible_value(s: &Basic, i: i64, variant: usize) -> PolyResult<Option<Basic>> {
+    use crate::numbers::Int;
+    let facts = super::assumptions::facts_of(s);
+    if facts.iter().any(|(k, v)| *v && !POINT_FACTS.contains(k)) {
+        return Ok(None);
+    }
+    let yes = |p: Predicate| facts.get(&p) == Some(&true);
+    if yes(Predicate::zero) {
+        return Ok(Some(Basic::zero()));
+    }
+    let negative: bool = yes(Predicate::negative)
+        || yes(Predicate::nonpositive)
+        || yes(Predicate::extended_negative)
+        || yes(Predicate::extended_nonpositive);
+    let positive: bool = yes(Predicate::positive)
+        || yes(Predicate::nonnegative)
+        || yes(Predicate::extended_positive)
+        || yes(Predicate::extended_nonnegative)
+        || yes(Predicate::polar);
+    let sign: i64 = if negative {
+        -1
+    } else if positive {
+        1
+    } else {
+        [1, -1, -1][variant]
+    };
+    let scale: i64 = [1, 9, 1][variant];
+    let rational = |p: i64, q: i64| Basic::rational(Int::from(p), Int::from(q));
+    if yes(Predicate::integer) || yes(Predicate::even) || yes(Predicate::odd) {
+        if yes(Predicate::even) {
+            return Ok(Some(Basic::integer(Int::from(sign * scale * (4 + 2 * i)))));
+        }
+        return Ok(Some(Basic::integer(Int::from(sign * ((scale * (3 + 2 * i)) | 1)))));
+    }
+    if yes(Predicate::imaginary) || yes(Predicate::antihermitian) {
+        return Ok(Some(super::mul::mul(&[
+            Basic::integer(Int::from(sign)),
+            rational(scale * (7 + 2 * i), 11)?,
+            Basic::imaginary_unit(),
+        ])?));
+    }
+    if yes(Predicate::real)
+        || yes(Predicate::extended_real)
+        || yes(Predicate::rational)
+        || negative
+        || positive
+        || yes(Predicate::hermitian)
+    {
+        return Ok(Some(super::mul::mul(&[
+            Basic::integer(Int::from(sign)),
+            rational(scale * (7 + 3 * i), 11)?,
+        ])?));
+    }
+    let quadrant: (i64, i64) = [(1, 1), (-1, -1), (-1, 1)][variant];
+    Ok(Some(super::add::add(&[
+        super::mul::mul(&[
+            Basic::integer(Int::from(quadrant.0)),
+            rational(scale * (7 + 3 * i), 11)?,
+        ])?,
+        super::mul::mul(&[
+            Basic::integer(Int::from(quadrant.1)),
+            rational(scale * (5 + i), 13)?,
+            Basic::imaginary_unit(),
+        ])?,
+    ])?))
+}
+
+/// Whether `e` is shown not to be identically zero by its value at an
+/// admissible point: well above the noise and the same at two precisions
+/// (`_nonzero_at_a_point`).
+fn nonzero_at_a_point(e: &Basic) -> PolyResult<bool> {
+    let mut symbols: Vec<Basic> = e
+        .free_symbols()
+        .into_iter()
+        .filter(|s| matches!(s.head(), Head::Symbol(_)))
+        .collect();
+    symbols.sort_by_key(|s| s.to_string());
+    let variants: usize = if symbols.is_empty() { 1 } else { 3 };
+    for variant in 0..variants {
+        let mut point: std::collections::HashMap<Basic, Basic> = std::collections::HashMap::new();
+        for (i, s) in symbols.iter().enumerate() {
+            match admissible_value(s, i as i64, variant)? {
+                None => return Ok(false),
+                Some(v) => {
+                    point.insert(s.clone(), v);
+                }
+            }
+        }
+        let at: Basic = if point.is_empty() {
+            e.clone()
+        } else {
+            match super::function::xreplace_evaluated(e, &point) {
+                Ok(v) => v,
+                Err(
+                    crate::error::PolyError::ZeroDivision(_)
+                    | crate::error::PolyError::Value(_)
+                    | crate::error::PolyError::Type(_),
+                ) => continue,
+                Err(other) => return Err(other),
+            }
+        };
+        let (Some(low), Some(high)) = (
+            super::evalf::numeric_value(&at, 60),
+            super::evalf::numeric_value(&at, 200),
+        ) else {
+            continue;
+        };
+        let size = |z: &super::evalf::Complex| {
+            let (a, b) = super::evalf::parts(z);
+            (a.to_f64().value().powi(2) + b.to_f64().value().powi(2)).sqrt()
+        };
+        let difference: super::evalf::Complex = &low - &high;
+        let h: f64 = size(&high);
+        if h > 1e-30 && size(&difference) < 1e-12 * h {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Whether `a - b` is zero (`Expr.equals`): decided by the facts or by
+/// a value at a point; what Python asks SymPy (the bridge) is not ported.
+pub fn equals(a: &Basic, b: &Basic) -> PolyResult<bool> {
+    let difference: Basic = super::add::sub(a, b)?;
+    if difference.is_number_node() {
+        return Ok(difference.as_rational().is_some_and(|v| v.is_zero()));
+    }
+    if let Some(zero) = is(&difference, Predicate::zero) {
+        return Ok(zero);
+    }
+    if nonzero_at_a_point(&difference)? {
+        return Ok(false);
+    }
+    Err(crate::error::not_ported("equals by SymPy (the bridge)"))
+}

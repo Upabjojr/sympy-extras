@@ -1,5 +1,6 @@
 //! Port of `sympy_extras/functions`: the function classes on the core.
 
+pub mod combinatorial;
 pub mod elementary;
 pub mod special;
 
@@ -46,6 +47,50 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Acsch) => elementary::inverse::inverse_fdiff(g, x),
         Function::Atan2 => elementary::argument::atan2_fdiff(e, argindex),
         g @ (Function::DiracDelta | Function::Heaviside) => special::delta_functions::delta_fdiff(g, e),
+        g @ (Function::Zeta
+        | Function::DirichletEta
+        | Function::PolyLog
+        | Function::LerchPhi
+        | Function::RiemannXi
+        | Function::Stieltjes) => special::zeta_functions::zeta_fdiff(g, e, argindex),
+        g @ (Function::Beta | Function::BetaInc | Function::BetaIncRegularized) => {
+            special::beta_functions::beta_fdiff(g, e, argindex)
+        }
+        g @ (Function::Catalan
+        | Function::Fibonacci
+        | Function::Lucas
+        | Function::Harmonic
+        | Function::Bernoulli
+        | Function::Euler
+        | Function::Bell
+        | Function::Genocchi
+        | Function::Partition
+        | Function::Totient
+        | Function::ReducedTotient
+        | Function::DivisorSigma
+        | Function::UDivisorSigma
+        | Function::PrimeNu
+        | Function::PrimeOmega
+        | Function::Mobius
+        | Function::PrimePi
+        | Function::LegendreSymbol
+        | Function::JacobiSymbol
+        | Function::KroneckerSymbol
+        | Function::Tribonacci
+        | Function::Motzkin
+        | Function::Andre) => combinatorial::numbers::number_fdiff(g, e, argindex),
+        Function::Mod | Function::KroneckerDelta | Function::LeviCivita => {
+            crate::core::modulo::modulo_fdiff(e, argindex)
+        }
+        g @ (Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma) => {
+            special::gamma_functions::gamma_fdiff(g, e, argindex)
+        }
+        Function::Factorial
+        | Function::Binomial
+        | Function::RisingFactorial
+        | Function::FallingFactorial
+        | Function::Subfactorial
+        | Function::Factorial2 => combinatorial::factorials::combinatorial_derivative(f, e, argindex),
         Function::Re
         | Function::Im
         | Function::Conjugate
@@ -144,6 +189,30 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if matches!(f, Function::DiracDelta | Function::Heaviside) {
         return special::delta_functions::delta_function(f, args);
     }
+    if special::beta_functions::is_beta_function(f) {
+        return special::beta_functions::beta_function(f, args);
+    }
+    if combinatorial::numbertheory::is_number_theoretic(f) {
+        return combinatorial::numbertheory::number_theoretic(f, args);
+    }
+    if combinatorial::numbers::is_combinatorial_number(f) {
+        return combinatorial::numbers::combinatorial_number(f, args);
+    }
+    if matches!(f, Function::KroneckerDelta | Function::LeviCivita) {
+        return special::tensor_functions::tensor_function(f, args);
+    }
+    if f == Function::Mod {
+        return crate::core::modulo::modulo(&args[0], &args[1]);
+    }
+    if special::zeta_functions::is_zeta_function(f) {
+        return special::zeta_functions::zeta_function(f, args);
+    }
+    if special::gamma_functions::is_gamma_function(f) {
+        return special::gamma_functions::gamma_function(f, args);
+    }
+    if combinatorial::factorials::is_combinatorial(f) {
+        return combinatorial::factorials::combinatorial(f, args);
+    }
     let x: &Basic = &args[0];
     use elementary::{complexes as c, exponential as e, hyperbolic as h, trigonometric as t};
     match f {
@@ -180,7 +249,51 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Acsch => elementary::inverse::acsch(x),
         Function::Arg => elementary::argument::arg(x),
         g @ (Function::Floor | Function::Ceiling | Function::Frac) => elementary::integers::rounding(g, x),
+        Function::Beta | Function::BetaInc | Function::BetaIncRegularized => {
+            unreachable!("evaluated above with all their arguments")
+        }
         Function::Atan2 | Function::Max | Function::Min | Function::DiracDelta | Function::Heaviside => {
+            unreachable!("evaluated above with all their arguments")
+        }
+        Function::Factorial
+        | Function::Binomial
+        | Function::RisingFactorial
+        | Function::FallingFactorial
+        | Function::Subfactorial
+        | Function::Factorial2 => unreachable!("evaluated above with all their arguments"),
+        Function::Zeta
+        | Function::DirichletEta
+        | Function::PolyLog
+        | Function::LerchPhi
+        | Function::RiemannXi
+        | Function::Stieltjes
+        | Function::Mod
+        | Function::KroneckerDelta
+        | Function::LeviCivita => unreachable!("evaluated above with all their arguments"),
+        Function::Catalan
+        | Function::Fibonacci
+        | Function::Lucas
+        | Function::Harmonic
+        | Function::Bernoulli
+        | Function::Euler
+        | Function::Bell
+        | Function::Genocchi
+        | Function::Partition
+        | Function::Totient
+        | Function::ReducedTotient
+        | Function::DivisorSigma
+        | Function::UDivisorSigma
+        | Function::PrimeNu
+        | Function::PrimeOmega
+        | Function::Mobius
+        | Function::PrimePi
+        | Function::LegendreSymbol
+        | Function::JacobiSymbol
+        | Function::KroneckerSymbol
+        | Function::Tribonacci
+        | Function::Motzkin
+        | Function::Andre => unreachable!("evaluated above with all their arguments"),
+        Function::Gamma | Function::LogGamma | Function::PolyGamma | Function::DiGamma | Function::TriGamma => {
             unreachable!("evaluated above with all their arguments")
         }
     }
