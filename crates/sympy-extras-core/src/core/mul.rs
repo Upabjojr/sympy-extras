@@ -63,6 +63,9 @@ pub fn mul(args: &[Basic]) -> PolyResult<Basic> {
     if nonidentity.len() == 1 {
         return Ok(nonidentity[0].clone());
     }
+    if flattened(&factors).iter().any(super::accumbounds::is_bounds) {
+        return super::accumbounds::product_with_bounds(&factors);
+    }
     if let Some(result) = two_argument_rule(&factors)? {
         return Ok(result);
     }
@@ -477,6 +480,13 @@ fn single_power(collected: &Collected, base: &Rat, exponent: &Basic) -> PolyResu
 
 /// The evaluated quotient `a / b`.
 pub fn div(a: &Basic, b: &Basic) -> PolyResult<Basic> {
+    // the operators of AccumBounds (its _op_priority is the higher)
+    if evaluate() && super::accumbounds::is_bounds(a) {
+        return super::accumbounds::ab_truediv(a, b);
+    }
+    if evaluate() && super::accumbounds::is_bounds(b) {
+        return super::accumbounds::ab_rtruediv(b, a);
+    }
     if is_one(a) {
         return pow(b, &Basic::negative_one());
     }
@@ -485,6 +495,10 @@ pub fn div(a: &Basic, b: &Basic) -> PolyResult<Basic> {
 
 /// The evaluated opposite `-a`.
 pub fn neg(a: &Basic) -> PolyResult<Basic> {
+    if evaluate() && super::accumbounds::is_bounds(a) {
+        // AccumulationBounds.__neg__
+        return super::accumbounds::ab_neg(a);
+    }
     if a.is_number_node() {
         return mul(&[Basic::negative_one(), a.clone()]);
     }

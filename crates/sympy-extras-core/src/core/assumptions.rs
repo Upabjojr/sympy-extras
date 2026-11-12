@@ -634,6 +634,7 @@ pub fn is_number(e: &Basic) -> bool {
     if e.is_symbol()
         || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple)
         || crate::sets::sets::is_set(e)
+        || matches!(e.head(), Head::AccumBounds)
     {
         return false;
     }
@@ -1277,6 +1278,7 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::Tuple => FactList::new(),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
         // a boolean is not an expression: no facts
+        Head::AccumBounds => super::accumbounds::bounds_facts(e),
         _ if super::logic::is_boolean(e) || crate::sets::sets::is_set(e) => FactList::new(),
         _ => constant_facts(e),
     }

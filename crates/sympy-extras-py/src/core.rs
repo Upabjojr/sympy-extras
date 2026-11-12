@@ -173,6 +173,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "ProductSet" => Basic::new(Head::ProductSet, args()?),
         "PointSet" => Basic::new(Head::PointSet, args()?),
         "ConditionSet" => Basic::new(Head::ConditionSet, args()?),
+        "AccumBounds" | "AccumulationBounds" => Basic::new(Head::AccumBounds, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
@@ -322,6 +323,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .getattr(e.class_name())?
                 .call1(PyTuple::new(py, items)?)?
         }
+        Head::AccumBounds => rebuilt("AccumBounds", "accumbounds")?,
         Head::ConditionSet => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.sets.conditionset")?
@@ -1986,6 +1988,30 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 Some(b) => pyo3::types::PyBool::new(py, b).to_owned().into_any(),
                 None => py.None().into_bound(py),
             });
+        }
+        "accum_bounds" => sympy_extras_core::core::accumbounds::accum_bounds(&a[0], &a[1]).map_err(e)?,
+        "ab_abs" => {
+            if sympy_extras_core::core::accumbounds::is_bounds(&a[0]) {
+                sympy_extras_core::core::accumbounds::ab_abs(&a[0]).map_err(e)?
+            } else {
+                sympy_extras_core::functions::elementary::complexes::abs_(&a[0]).map_err(e)?
+            }
+        }
+        "ab_union" | "ab_intersection" => {
+            use sympy_extras_core::core::accumbounds as ab;
+            let found = if name == "ab_union" {
+                ab::union(&a[0], &a[1])
+            } else {
+                ab::intersection(&a[0], &a[1])
+            };
+            match found.map_err(e)? {
+                Some(v) => v,
+                None => return Ok(py.None().into_bound(py)),
+            }
+        }
+        "ab_contains" => {
+            let v: bool = sympy_extras_core::core::accumbounds::contains(&a[0], &a[1]).map_err(e)?;
+            return Ok(pyo3::types::PyBool::new(py, v).to_owned().into_any());
         }
         "reversed" => rl::reversed(&a[0]),
         "negated" => rl::negated(&a[0]),

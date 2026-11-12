@@ -13,7 +13,7 @@ use crate::core::evalf::{complex, numeric_value, parts, Complex, Real};
 use crate::core::expr::{as_numer_denom, is, is_true};
 use crate::core::mul::mul;
 use crate::core::parameters::evaluate;
-use crate::error::{not_ported, PolyResult};
+use crate::error::PolyResult;
 use crate::numbers::{denom, numer, Int, Rat};
 
 use super::complexes::im;
@@ -289,7 +289,7 @@ fn frac_eval(arg: &Basic) -> PolyResult<Basic> {
     let i: Basic = Basic::imaginary_unit();
     let part = |value: &Basic| -> PolyResult<Basic> {
         if matches!(value.head(), Head::Infinity | Head::NegativeInfinity) {
-            return Err(not_ported("AccumBounds (frac of an infinity)"));
+            return Ok(crate::core::accumbounds::bounds_node(&Basic::zero(), &Basic::one()));
         }
         if is_true(value, Predicate::integer) {
             return Ok(Basic::zero());

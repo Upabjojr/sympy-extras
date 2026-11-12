@@ -12,6 +12,7 @@
 // PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py (SymPy 1.14),
 // through sympy_extras; BSD 3-clause license, see sympy_extras/LICENSE-SymPy.
 
+use crate::core::accumbounds::{ab_add, accum_bounds, bounds_node, everything, is_bounds, meets_points};
 use crate::core::add::add;
 use crate::core::assumptions::{facts_of, FactList, Predicate};
 use crate::core::basic::{Basic, Function, Head};
@@ -209,11 +210,67 @@ fn chebyshev_t(n: &Int, x: &Basic) -> PolyResult<Basic> {
     expand(&current, true, true, true)
 }
 
-fn unsupported_infinite(arg: &Basic) -> PolyResult<()> {
-    if matches!(arg.head(), Head::Infinity | Head::NegativeInfinity) {
-        return Err(not_ported("accumulation bounds"));
+fn half_pi() -> PolyResult<Basic> {
+    mul(&[Basic::pi(), Basic::half()])
+}
+
+fn pi_times(p: i64, q: i64) -> PolyResult<Basic> {
+    mul(&[
+        Basic::pi(),
+        Basic::rational(crate::numbers::Int::from(p), crate::numbers::Int::from(q))?,
+    ])
+}
+
+/// `sin` of accumulation bounds: the bounds reduced into a period, the
+/// extrema included (`_sin_of_bounds`).
+fn sin_of_bounds(arg: &Basic) -> PolyResult<Basic> {
+    use crate::functions::elementary::integers::floor;
+    use crate::functions::elementary::miscellaneous::{max_, min_};
+    let (mut lo, mut hi) = (arg.args()[0].clone(), arg.args()[1].clone());
+    let two_pi: Basic = mul(&[Basic::int(2), Basic::pi()])?;
+    let d: Basic = floor(&crate::core::mul::div(&lo, &two_pi)?)?;
+    let shift: Basic = mul(&[mul(&[d, Basic::int(2)])?, Basic::pi()])?;
+    if !matches!(lo.head(), Head::NegativeInfinity) {
+        lo = crate::core::add::sub(&lo, &shift)?;
     }
-    Ok(())
+    if !matches!(hi.head(), Head::Infinity) {
+        hi = crate::core::add::sub(&hi, &shift)?;
+    }
+    let reduced: Basic = accum_bounds(&lo, &hi)?;
+    if !is_bounds(&reduced) {
+        return sin(&reduced);
+    }
+    let maxima: bool = meets_points(&reduced, &[half_pi()?, pi_times(5, 2)?])?;
+    if maxima && meets_points(&reduced, &[pi_times(3, 2)?, pi_times(7, 2)?])? {
+        return Ok(bounds_node(&Basic::negative_one(), &Basic::one()));
+    }
+    let (a, b) = (sin(&lo)?, sin(&hi)?);
+    if maxima {
+        return accum_bounds(&min_(&[a, b])?, &Basic::one());
+    }
+    if meets_points(&reduced, &[pi_times(3, 2)?, pi_times(8, 2)?])? {
+        return accum_bounds(&Basic::negative_one(), &max_(&[a, b])?);
+    }
+    accum_bounds(&min_(&[a.clone(), b.clone()])?, &max_(&[a, b])?)
+}
+
+/// `tan` of accumulation bounds (`_tan_of_bounds`).
+fn tan_of_bounds(arg: &Basic) -> PolyResult<Basic> {
+    use crate::functions::elementary::integers::floor;
+    let (mut lo, mut hi) = (arg.args()[0].clone(), arg.args()[1].clone());
+    let d: Basic = floor(&crate::core::mul::div(&lo, &Basic::pi())?)?;
+    let shift: Basic = mul(&[d, Basic::pi()])?;
+    if !matches!(lo.head(), Head::NegativeInfinity) {
+        lo = crate::core::add::sub(&lo, &shift)?;
+    }
+    if !matches!(hi.head(), Head::Infinity) {
+        hi = crate::core::add::sub(&hi, &shift)?;
+    }
+    let reduced: Basic = accum_bounds(&lo, &hi)?;
+    if is_bounds(&reduced) && meets_points(&reduced, &[half_pi()?, pi_times(3, 2)?])? {
+        return Ok(everything());
+    }
+    accum_bounds(&tan(&lo)?, &tan(&hi)?)
 }
 
 fn is_zero_value(e: &Basic) -> bool {
@@ -227,7 +284,12 @@ fn sin_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
     if is_zero_value(arg) {
         return Ok(Some(Basic::zero()));
     }
-    unsupported_infinite(arg)?;
+    if matches!(arg.head(), Head::Infinity | Head::NegativeInfinity) {
+        return Ok(Some(bounds_node(&Basic::negative_one(), &Basic::one())));
+    }
+    if is_bounds(arg) {
+        return Ok(Some(sin_of_bounds(arg)?));
+    }
     if could_extract_minus_sign(arg) {
         return Ok(Some(mul(&[
             Basic::negative_one(),
@@ -297,9 +359,14 @@ fn cos_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
     if is_zero_value(arg) {
         return Ok(Some(Basic::one()));
     }
-    unsupported_infinite(arg)?;
+    if matches!(arg.head(), Head::Infinity | Head::NegativeInfinity) {
+        return Ok(Some(bounds_node(&Basic::negative_one(), &Basic::one())));
+    }
+    if is_bounds(arg) {
+        return Ok(Some(sin(&ab_add(arg, &half_pi()?)?)?));
+    }
     if is_true(arg, extended_real) && crate::core::expr::is_false(arg, finite) {
-        return Err(not_ported("accumulation bounds"));
+        return Ok(Some(bounds_node(&Basic::negative_one(), &Basic::one())));
     }
     if could_extract_minus_sign(arg) {
         return Ok(Some(cos(&mul(&[Basic::negative_one(), arg.clone()])?)?));
@@ -427,7 +494,12 @@ fn tan_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
     if is_zero_value(arg) {
         return Ok(Some(Basic::zero()));
     }
-    unsupported_infinite(arg)?;
+    if matches!(arg.head(), Head::Infinity | Head::NegativeInfinity) {
+        return Ok(Some(everything()));
+    }
+    if is_bounds(arg) {
+        return Ok(Some(tan_of_bounds(arg)?));
+    }
     if could_extract_minus_sign(arg) {
         return Ok(Some(mul(&[
             Basic::negative_one(),
@@ -512,7 +584,12 @@ fn cot_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
     if is_zero_value(arg) {
         return Ok(Some(Basic::zoo()));
     }
-    unsupported_infinite(arg)?;
+    if matches!(arg.head(), Head::Infinity | Head::NegativeInfinity) {
+        return Ok(Some(everything()));
+    }
+    if is_bounds(arg) {
+        return Ok(Some(mul(&[Basic::negative_one(), tan(&ab_add(arg, &half_pi()?)?)?])?));
+    }
     if could_extract_minus_sign(arg) {
         return Ok(Some(mul(&[
             Basic::negative_one(),

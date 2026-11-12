@@ -26,6 +26,7 @@ pub fn err(e: PolyError) -> PyErr {
         PolyError::NotImplemented(message) => pyo3::exceptions::PyNotImplementedError::new_err(message),
         PolyError::Polys(kind, message) => crate::polyerrors::polys_error(kind, message),
         PolyError::Type(message) => pyo3::exceptions::PyTypeError::new_err(message),
+        PolyError::Recursion(message) => pyo3::exceptions::PyRecursionError::new_err(message),
     }
 }
 

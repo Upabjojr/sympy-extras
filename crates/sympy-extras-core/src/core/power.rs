@@ -681,6 +681,15 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
             }
         }
     }
+    if super::accumbounds::is_bounds(exp) && matches!(base.head(), Head::Exp1) {
+        // Pow.__new__: E**AccumBounds
+        use crate::functions::elementary::exponential::exp as exponential;
+        return super::accumbounds::accum_bounds(&exponential(&exp.args()[0])?, &exponential(&exp.args()[1])?);
+    }
+    if super::accumbounds::is_bounds(base) {
+        // AccumulationBounds._eval_power
+        return super::accumbounds::ab_pow(base, exp);
+    }
     if base.is_function(super::basic::Function::Abs) {
         if let Some(own) = crate::functions::elementary::complexes::abs_power(base, exp)? {
             return Ok(own);

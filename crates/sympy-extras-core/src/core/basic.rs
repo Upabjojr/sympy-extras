@@ -91,6 +91,8 @@ pub enum Head {
     ProductSet,
     PointSet,
     ConditionSet,
+    /// `AccumBounds(min, max)` (`core.accumbounds`).
+    AccumBounds,
 }
 
 /// The relations of `core.relational`.
@@ -437,6 +439,7 @@ impl Head {
             Head::ProductSet => "ProductSet",
             Head::PointSet => "PointSet",
             Head::ConditionSet => "ConditionSet",
+            Head::AccumBounds => "AccumBounds",
         }
     }
 
@@ -505,6 +508,7 @@ impl Head {
                 | Head::ProductSet
                 | Head::PointSet
                 | Head::ConditionSet
+                | Head::AccumBounds
         )
     }
 
