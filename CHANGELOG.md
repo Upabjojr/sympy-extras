@@ -33,6 +33,12 @@ remove public functions. Breaking changes are listed here when they happen.
   (`logic.boolsimp.simplify_boolean`, the port of SymPy's simplify of
   Booleans) instead of SymPy's `simplify` through the bridge; a formula
   with an `Xor` or with wrapped SymPy objects still goes to SymPy.
+- `Expr.equals` takes the steps of SymPy's `equals` natively before the
+  bridge: the difference simplified by the native `simplify` (zero:
+  `True`; no sum left: `False`), its factors decided one by one, a number
+  decided by its minimal polynomial; a difference with polar numbers
+  (`exp_polar(0) - 1`, which SymPy does not take for zero) or wrapped
+  SymPy objects, and the undecided ones, still go to SymPy.
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's

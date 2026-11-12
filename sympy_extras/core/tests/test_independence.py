@@ -3273,3 +3273,23 @@ def test_native_basic_simplify_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_BASIC_SIMPLIFY], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EQUALS = r'''
+import sys
+from sympy_extras.core import Symbol, sqrt
+from sympy_extras.functions import sin, cos, exp
+x = Symbol('x')
+assert ((x + 1)**2).equals(x**2 + 2*x + 1) is True and (sin(x)**2 + cos(x)**2).equals(1) is True
+assert sqrt(5 + 2*sqrt(6)).equals(sqrt(2) + sqrt(3)) is True and (exp(x)*exp(-x)).equals(2) is False
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_equals_does_not_load_sympy() -> None:
+    """``Expr.equals`` decides by the native steps of SymPy's: the
+    simplified difference, its factors, the minimal polynomial of a number
+    (the difference went to SymPy's ``equals`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EQUALS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
