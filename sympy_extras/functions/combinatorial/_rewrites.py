@@ -1,13 +1,15 @@
 """The ``rewrite`` rules of the combinatorial functions (and ``beta``) in
 terms of ``gamma`` (SymPy's ``_eval_rewrite_as_gamma``), and of ``gamma``,
 ``binomial`` and the Pochhammer symbols in terms of ``factorial`` (SymPy's
-``_eval_rewrite_as_factorial``), as a typed table for
+``_eval_rewrite_as_factorial``), and of the Pochhammer symbols and
+``binomial`` in terms of each other, as a typed table for
 :func:`sympy_extras.core.rewriting.rewrite`.
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py, sympy/functions/combinatorial/numbers.py,
 # sympy/functions/special/beta_functions.py, sympy/functions/special/gamma_functions.py (the
-# _eval_rewrite_as_gamma and _eval_rewrite_as_factorial methods) (SymPy 1.14)
+# _eval_rewrite_as_gamma and _eval_rewrite_as_factorial methods; the _eval_rewrite_as_binomial,
+# _eval_rewrite_as_FallingFactorial, _eval_rewrite_as_RisingFactorial methods) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; a table keyed by (class, target) in place of methods.
@@ -142,6 +144,47 @@ def _falling_as_factorial(node: Expr, args: tuple[Expr, ...], hints: RewriteHint
                       true))
 
 
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:RisingFactorial._eval_rewrite_as_FallingFactorial
+def _rising_as_falling(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.functions.combinatorial.factorials import ff
+    x, k = args
+    return ff(add(x, k, MINUS_ONE), k)
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:RisingFactorial._eval_rewrite_as_binomial
+def _rising_as_binomial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.functions.combinatorial.factorials import binomial, factorial
+    x, k = args
+    if not k.is_integer:
+        return None
+    return mul(factorial(k), binomial(add(x, k, MINUS_ONE), k))
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:FallingFactorial._eval_rewrite_as_RisingFactorial
+def _falling_as_rising(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.functions.combinatorial.factorials import rf
+    x, k = args
+    return rf(add(x, neg(k), ONE), k)
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:FallingFactorial._eval_rewrite_as_binomial
+def _falling_as_binomial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.functions.combinatorial.factorials import binomial, factorial
+    x, k = args
+    if not k.is_integer:
+        return None
+    return mul(factorial(k), binomial(x, k))
+
+
+# PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:binomial._eval_rewrite_as_FallingFactorial
+def _binomial_as_falling(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.functions.combinatorial.factorials import factorial, ff
+    n, k = args
+    if not k.is_integer:
+        return None
+    return mul(ff(n, k), _inv(factorial(k)))
+
+
 def rules() -> dict[tuple[type, type], Rule]:
     """The rules keyed by (the class of the node, the target class)."""
     from sympy_extras.functions.combinatorial import factorials as f, numbers as nb
@@ -154,5 +197,8 @@ def rules() -> dict[tuple[type, type], Rule]:
         (Beta, Gamma): _beta,
         (Gamma, f.Factorial): _gamma_as_factorial, (f.Binomial, f.Factorial): _binomial_as_factorial,
         (f.RisingFactorial, f.Factorial): _rising_as_factorial,
-        (f.FallingFactorial, f.Factorial): _falling_as_factorial}
+        (f.FallingFactorial, f.Factorial): _falling_as_factorial,
+        (f.RisingFactorial, f.FallingFactorial): _rising_as_falling, (f.RisingFactorial, f.Binomial): _rising_as_binomial,
+        (f.FallingFactorial, f.RisingFactorial): _falling_as_rising,
+        (f.FallingFactorial, f.Binomial): _falling_as_binomial, (f.Binomial, f.FallingFactorial): _binomial_as_falling}
     return table

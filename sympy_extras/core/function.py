@@ -571,12 +571,12 @@ class DefinedFunction(Application):
 
     def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
         if type(self).__name__ in _SYMPY_OWN_MEROMORPHIC:
-            # the rules of the special functions (Bessel functions, incomplete
-            # gamma functions) are SymPy's
-            from .bridge import bridge
-            found, own = bridge().meromorphic(self, x, a, True)
-            if found:
-                return own
+            # the ported rules of the special functions (Bessel functions,
+            # incomplete gamma functions)
+            from sympy_extras.functions._meromorphic import rules
+            rule = rules().get(type(self).__name__)
+            if rule is not None:
+                return rule(self, x, a)
         return Application._eval_is_meromorphic(self, x, a)
 
     #: the classes whose SymPy counterpart expands by the generic
@@ -2182,11 +2182,13 @@ def _generic_function_nseries(f: Expr, x: Symbol, n: int, logx: Optional[Expr]) 
     args0 = [limit(a, x, Integer(0)) for a in args]
     if any(a.is_finite is False for a in args0):
         # SymPy's asymptotic branch: the class's own _eval_aseries when the
-        # arguments go to an infinity faster than logarithmically (the
-        # classes without a ported one, and the logarithmic case, are left
-        # to the foreign system)
+        # arguments go to an infinity faster than logarithmically, SymPy's
+        # PoleError for the classes which have none (the classes with one
+        # not ported, and the logarithmic case, are left to the foreign
+        # system)
         from .numbers import oo, zoo, nan
-        if isinstance(f, Application) and type(f)._eval_aseries is not Application._eval_aseries:
+        own = isinstance(f, Application) and type(f)._eval_aseries is not Application._eval_aseries
+        if isinstance(f, Application) and (own or type(f).__name__ not in _SYMPY_OWN_ASERIES):
             a0 = [limit(a.as_leading_term(x, logx=logx), x, Integer(0)) for a in args]
             if any(t.has(oo, -oo, zoo, nan) for t in a0):
                 return f._eval_aseries(n, args0, x, logx)
@@ -2240,6 +2242,14 @@ def _generic_function_nseries(f: Expr, x: Symbol, n: int, logx: Optional[Expr]) 
     return add(*terms) + Order(x**n, x)
 
 
+#: the classes whose SymPy counterpart has an ``_eval_aseries`` of its own
+#: (the others raise SymPy's PoleError at an argument going to an infinity;
+#: checked against SymPy by a test)
+_SYMPY_OWN_ASERIES: Final[frozenset[str]] = frozenset({
+    'Acot', 'Atan', 'BesselI', 'BesselK', 'CiNode', 'DiGamma', 'EiNode', 'Erf', 'Erfc', 'Erfi', 'Expint', 'FresnelC',
+    'FresnelS', 'LogGamma', 'LowerGamma', 'PolyGamma', 'SiNode', 'TriGamma'})
+
+
 #: the classes whose SymPy counterpart has an _eval_as_leading_term of its
 #: own (the others use Function._eval_as_leading_term, ported below)
 _SYMPY_OWN_LEADING_TERM: Final[frozenset[str]] = frozenset({
@@ -2264,7 +2274,8 @@ def _generic_leading_term(f: DefinedFunction, x: Symbol, logx: Optional[Expr]) -
 
 
 #: the classes whose SymPy counterpart has an ``_eval_is_meromorphic`` of
-#: its own (not ported: asked to the bridge; the others use Application's)
+#: its own (ported in sympy_extras.functions._meromorphic; the others use
+#: Application's)
 _SYMPY_OWN_MEROMORPHIC: Final[frozenset[str]] = frozenset({
     'BesselI', 'BesselJ', 'BesselK', 'BesselY', 'Hankel1', 'Hankel2', 'LowerGamma', 'SphericalHankel1',
     'SphericalHankel2', 'SphericalJ', 'SphericalY', 'UpperGamma'})

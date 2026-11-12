@@ -31,6 +31,55 @@ remove public functions. Breaking changes are listed here when they happen.
 ### Changed
 
 - `sympy_extras.assumptions.boolsimp` is merged into `sympy_extras.logic.boolsimp` (one port of SymPy's `simplify` of Booleans, used by `refine` and, with SymPy's univariate intervals, `piecewise`; `Xor` no longer raises).
+- The core's `ask` no longer asks SymPy what its facts do not decide:
+  the last steps of SymPy's `ask` are ported in the new
+  `assumptions.handlers` (the handlers of the predicates by class of the
+  argument, `sympy/assumptions/handlers/sets.py`, `order.py`,
+  `ntheory.py`, then the SAT search of `assumptions.satask`), so the
+  bridge's `ask` is used only for questions about wrapped SymPy objects.
+  The numbers are decided by reliable values (an imaginary part below the
+  precision, as in `exp_polar(I*pi)`, decides nothing) and the integers
+  among them are proved by their minimal polynomial. SymPy's rule
+  `Real**Real -> Real` for a base which may be zero is not ported: SymPy
+  answers `ask(Q.real(sqrt(x)), Q.real(x))` and
+  `ask(Q.real(sqrt(-1 - x**2)), Q.real(x))` with `True` (here `None` and
+  `False`). SymPy's relational step (`lra_satask`) is not ported, but
+  for its frequent case: a sign of `e` decided by an assumed sign of `f`
+  with `e/f` a rational number (`Q.positive(1 - a)` from
+  `Q.negative(a - 1)`); the algebraic numbers are proved zero by their
+  minimal polynomial.
+- `is_meromorphic` of the incomplete gamma, Bessel, Hankel and spherical
+  Bessel functions, the rewrites of `ff`, `rf` and `binomial` in terms of
+  each other and of `dirichlet_eta` in terms of `zeta` are native ports
+  of SymPy's methods (they went to SymPy through the bridge); an applied
+  undefined function is not sent to the bridge to be rewritten (SymPy has
+  no rule for it).
+- `Basic.simplify` of a relation or a Boolean formula is native
+  (`logic.boolsimp.simplify_boolean`, the port of SymPy's simplify of
+  Booleans) instead of SymPy's `simplify` through the bridge; a formula
+  with an `Xor` or with wrapped SymPy objects still goes to SymPy.
+- `Expr.equals` takes the steps of SymPy's `equals` natively before the
+  bridge: the difference simplified by the native `simplify` (zero:
+  `True`; no sum left: `False`), its factors decided one by one, a number
+  decided by its minimal polynomial; a difference with polar numbers
+  (`exp_polar(0) - 1`, which SymPy does not take for zero) or wrapped
+  SymPy objects, and the undecided ones, still go to SymPy.
+- The point of an `Order` moved by a substitution (`O(x).subs(x,
+  exp(-y))` and the asymptotic series) is solved by the native
+  `solveset` (the first solution: a single element, a complement of
+  finite sets, an image of the integers at `n = 0`); SymPy's `solveset`
+  is asked only when the native one gives another set. The native solver
+  also solves `exp(1/d) = k`, where SymPy's gives a `ConditionSet`.
+- The rewrites in terms of `sin` (of `cos`, `tan`, `cot`, `sec`, `csc`,
+  `sinh`, `csch`, `exp` and `E**x`) and of `sign` in terms of `Abs` are
+  native ports of SymPy's `_eval_rewrite_as_sin` and
+  `_eval_rewrite_as_Abs`; the series of a function without an
+  `_eval_aseries` of its own in SymPy (`airyai`, ...) at an argument
+  going to an infinity raises SymPy's `PoleError` natively (they went to
+  SymPy through the bridge).
+- `core.bridge.Bridge.is_hypergeometric` (and its SymPy implementation)
+  is removed: `Expr.is_hypergeometric` is native and nothing asked it.
+
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
   `simplify` of Boolean formulas (`BooleanFunction._eval_simplify`,

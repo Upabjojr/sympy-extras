@@ -12,9 +12,12 @@ is ``(_x + 1).is_positive`` with ``_x`` positive. A relation is asked
 through ``Q.is_true`` and answered by the relational functions; a
 proposition built with the connectives is answered by three-valued
 logic; the handlers registered on a predicate are consulted first. What
-stays unanswered is asked to SymPy's ``ask`` (its SAT solver finds, for
-example, ``Q.nonzero(x)`` from ``Q.positive(x) | Q.negative(x)``), unless
-the question involves a predicate of the user. As in SymPy, relations
+stays unanswered goes to the last steps of SymPy's ``ask``, ported in
+:mod:`sympy_extras.assumptions.handlers`: the handlers of the classes of
+the arguments, then the SAT search, which finds, for example,
+``Q.nonzero(x)`` from ``Q.positive(x) | Q.negative(x)`` (not when the
+question involves a predicate of the user; a question about wrapped
+objects of SymPy is asked to SymPy's ``ask``). As in SymPy, relations
 among the assumptions are not used (``ask(Q.positive(x), x > 0)`` is
 ``None``) [1]_.
 
@@ -158,7 +161,7 @@ def ask(proposition: BooleanLike, assumptions: BooleanLike = True,
     refuted = _ask_by_refutation(prop, everything)
     if refuted is not None:
         return refuted
-    return _ask_sympy(prop, everything)
+    return _final_ask(prop, everything)
 
 
 def _inconsistent(conjunction: Boolean) -> bool:
@@ -293,9 +296,17 @@ def _has_user_predicate(b: Basic) -> bool:
     return any(isinstance(p, Predicate) and not p._defined for p in b.atoms(Predicate))
 
 
-def _ask_sympy(prop: Boolean, assumptions: Boolean) -> Truth:
-    from .bridge import bridge
-    return bridge().ask(prop, assumptions)
+def _final_ask(prop: Boolean, assumptions: Boolean) -> Truth:
+    # the handlers of the classes and the SAT search (SymPy's last steps);
+    # a question about wrapped objects of a foreign system goes to it
+    if any(node._has_foreign_class() for b in (prop, assumptions) for node in preorder_traversal(b)):
+        from .bridge import bridge
+        return bridge().ask(prop, assumptions)
+    if isinstance(assumptions, Symbol):
+        # SymPy's ask checks the kind of the assumptions first
+        raise TypeError("assumptions must be a valid logical expression")
+    from sympy_extras.assumptions.handlers import final_ask
+    return final_ask(prop, assumptions)
 
 
 class _Facts:
@@ -452,3 +463,4 @@ def _any(values: list[Truth]) -> Truth:
     if all(v is False for v in values):
         return False
     return None
+

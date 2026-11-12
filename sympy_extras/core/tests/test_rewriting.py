@@ -6,14 +6,15 @@ import sympy
 from sympy_extras.interop import expr_from_sympy, to_sympy
 from sympy_extras.core.mul import neg
 from sympy_extras.functions.elementary.exponential import Exp
-from sympy_extras.functions.elementary.trigonometric import Cos
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin
 
 s = sympy
 x, y = s.symbols('x y')
 p = s.Symbol('p', positive=True)
 
 
-def test_rewrite_exp_and_cos_match_sympy() -> None:
+def test_rewrite_exp_cos_and_sin_match_sympy() -> None:
+    # the sin target is native too (it went to SymPy through the bridge)
     rng = random.Random(2)
     fs = [s.sin, s.cos, s.tan, s.cot, s.sec, s.csc, s.sinh, s.cosh, s.tanh, s.coth, s.sech, s.csch, s.exp, s.log,
           s.sqrt, s.gamma, s.asin, lambda a: a**2, lambda a: 2**a, lambda a: 1 / a]
@@ -21,7 +22,7 @@ def test_rewrite_exp_and_cos_match_sympy() -> None:
         e = rng.choice([x, y, p, 2 * x, x + y, s.pi / 3, s.sqrt(3) / 2])
         for _ in range(rng.randint(1, 3)):
             e = rng.choice(fs)(e)
-        for theirs, ours in ((s.exp, Exp), (s.cos, Cos)):
+        for theirs, ours in ((s.exp, Exp), (s.cos, Cos), (s.sin, Sin)):
             assert str(to_sympy(expr_from_sympy(e).rewrite(ours), evaluate=False)) == str(e.rewrite(theirs)), e
 
 
@@ -228,3 +229,62 @@ def test_log_and_special_rewrites_match_sympy() -> None:
     for e, theirs, ours in pairs:
         got = to_sympy(expr_from_sympy(e).rewrite(ours), evaluate=False)
         assert str(got) == str(e.rewrite(theirs)), (e, ours)
+
+
+def test_pochhammer_binomial_and_eta_rewrites_are_native() -> None:
+    # the rules of ff, rf, binomial between themselves and of dirichlet_eta
+    # in zeta are ported (they went to SymPy through the bridge); checked
+    # against SymPy's
+    from sympy_extras.core.rewriting import _rule_for
+    from sympy_extras.functions.combinatorial.factorials import Binomial, FallingFactorial, RisingFactorial
+    from sympy_extras.functions.special.zeta_functions import DirichletEta, Zeta
+    k = s.Symbol('k', integer=True)
+    a = s.Symbol('a')
+    cases = [(s.ff(x, k, evaluate=False), s.binomial, FallingFactorial, Binomial),
+             (s.ff(x, k, evaluate=False), s.rf, FallingFactorial, RisingFactorial),
+             (s.rf(x, k, evaluate=False), s.binomial, RisingFactorial, Binomial),
+             (s.rf(x, k, evaluate=False), s.ff, RisingFactorial, FallingFactorial),
+             (s.binomial(x, k, evaluate=False), s.ff, Binomial, FallingFactorial),
+             (s.ff(x, y, evaluate=False), s.binomial, FallingFactorial, Binomial),
+             (s.dirichlet_eta(y, evaluate=False), s.zeta, DirichletEta, Zeta),
+             (s.dirichlet_eta(y, a, evaluate=False), s.zeta, DirichletEta, Zeta),
+             (s.dirichlet_eta(3, evaluate=False), s.zeta, DirichletEta, Zeta)]
+    for e, theirs, cls, target in cases:
+        assert _rule_for(cls, target) is not None
+        assert str(expr_from_sympy(e).rewrite(target)) == str(e.rewrite(theirs)), e
+
+
+def test_own_aseries_table_matches_sympy() -> None:
+    # the classes without an _eval_aseries of their own raise SymPy's
+    # PoleError natively at an argument going to an infinity (they went
+    # to SymPy's _eval_nseries through the bridge)
+    from sympy.core.function import Function as SympyFunction
+    from sympy_extras.core.function import _SYMPY_OWN_ASERIES
+    from sympy_extras.interop import _NATIVE_TO_SYMPY, _fill_function_tables
+    _fill_function_tables()
+    have = {n.__name__ for n, theirs in _NATIVE_TO_SYMPY.items()
+            if any('_eval_aseries' in vars(k) for k in theirs.__mro__ if k is not SympyFunction)}
+    assert have == set(_SYMPY_OWN_ASERIES), have ^ set(_SYMPY_OWN_ASERIES)
+
+
+def test_airy_series_at_infinity_raises_pole_error() -> None:
+    # SymPy's airyai has no _eval_aseries: Function._eval_nseries raises
+    # PoleError (natively now)
+    from sympy.testing.pytest import raises
+    from sympy_extras.core import Integer, Rational, Symbol
+    from sympy_extras.core.coreerrors import PoleError
+    from sympy_extras.functions.special.bessel import AiryAi
+    w, a = Symbol('w', positive=True), Symbol('a', positive=True)
+    node = AiryAi(-a / w**Rational(2, 3))
+    raises(PoleError, lambda: node._eval_nseries(w, 2, None, Integer(0)))
+    sw, sa = s.symbols('w a', positive=True)
+    raises(s.PoleError, lambda: s.airyai(-sa / sw**s.Rational(2, 3))._eval_nseries(sw, 2, None, 0))
+
+
+def test_sign_rewrites_as_abs_natively() -> None:
+    # sign._eval_rewrite_as_Abs is ported (it went to SymPy through the
+    # bridge); checked against SymPy's
+    from sympy_extras.functions.elementary.complexes import Abs
+    b, c = s.symbols('b c')
+    for e in [s.sign(x), s.sign(s.sqrt(x**2 + y**2)), s.sign((b + 2*c*x)/c), s.sign(x) + s.sign(y)**2]:
+        assert str(to_sympy(expr_from_sympy(e).rewrite(Abs), evaluate=False)) == str(e.rewrite(s.Abs)), e

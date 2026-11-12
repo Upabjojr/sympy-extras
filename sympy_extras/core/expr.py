@@ -862,6 +862,11 @@ class Expr(Basic):
             return zero
         if _nonzero_at_a_point(difference):
             return False
+        if not _native_zero_test_applies(difference):
+            return bridge().equals_zero(difference)
+        native = _simplified_zero_test(difference)
+        if native is not None:
+            return native
         return bridge().equals_zero(difference)
 
     # ------------------------------------------------------------------
@@ -1989,6 +1994,51 @@ def _admissible_value(s: Symbol, i: int, variant: int = 0) -> Optional[Expr]:
         return Integer(sign) * Rational(scale * (7 + 3 * i), 11)
     quadrant = ((1, 1), (-1, -1), (-1, 1))[variant]
     return Integer(quadrant[0]) * Rational(scale * (7 + 3 * i), 11) + Integer(quadrant[1]) * Rational(scale * (5 + i), 13) * I
+
+
+def _native_zero_test_applies(e: Expr) -> bool:
+    """Whether the native steps of SymPy's ``equals`` apply: not to the
+    wrapped foreign objects, nor to the polar numbers (SymPy does not take
+    ``exp_polar(0) - 1`` for zero, the native ``simplify`` would)."""
+    from sympy_extras.functions.elementary.complexes import PolarLift
+    from sympy_extras.functions.elementary.exponential import ExpPolar
+    from .basic import preorder_traversal
+    return not any(node._has_foreign_class() or isinstance(node, (ExpPolar, PolarLift))
+                   for node in preorder_traversal(e))
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps after the structural ones)
+def _simplified_zero_test(diff: Expr) -> Optional[bool]:
+    """SymPy's ``equals(0)`` of a difference by its simplified form:
+    ``True`` when it simplifies to zero, ``False`` when the simplified
+    form has no sum (nothing left to cancel), the factors decided one by
+    one, and a number decided by its minimal polynomial; ``None`` for the
+    rest of SymPy's steps (the random evaluations, the surds solved for),
+    which are left to the caller."""
+    from sympy_extras.polys.numberfields.minpoly import minimal_polynomial_coeffs
+    from sympy_extras.polys.polyerrors import NotAlgebraic
+    from sympy_extras.simplify.simplify import simplify
+    from .add import Add
+    from .exprtools import factor_terms
+    from .mod import Mod
+    d = as_expr(factor_terms(simplify(diff), radical=True))
+    if d.is_zero is True:
+        return True
+    if not d.has(Add, Mod):
+        # if there is no expanding to be done after simplifying then this
+        # can't be a zero
+        return False
+    factors = d.as_coeff_mul()[1]
+    if len(factors) > 1:
+        decided = [f.equals(0) for f in factors]
+        if None not in decided:
+            return any(decided)
+    if d.is_number:
+        try:
+            return minimal_polynomial_coeffs(d) == [1, 0]
+        except (NotAlgebraic, NotImplementedError):
+            pass
+    return None
 
 
 def _nonzero_at_a_point(e: Expr) -> bool:

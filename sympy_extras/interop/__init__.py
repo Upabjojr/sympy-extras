@@ -1422,6 +1422,9 @@ class AppliedSymPyFunction(Application):
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
                 return sympy_leading_term(self, x, logx, cdir)
 
+    def _has_foreign_class(self) -> bool:
+        return True
+
     def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
                 return meromorphic_node_through_sympy(self, x, a, False)[1]
 
@@ -1642,13 +1645,6 @@ class SymPyBridge(Bridge):
             return None
         variables = [to_sympy(w) for w in wrt]
         answer = _with_fixed_random(lambda: s.is_constant(*variables))
-        return answer if isinstance(answer, bool) else None
-
-    def is_hypergeometric(self, e: Expr, k: Symbol) -> Truth:
-        s = to_sympy(e)
-        if not isinstance(s, SymPyExpr):
-            return None
-        answer = s.is_hypergeometric(to_sympy(k))
         return answer if isinstance(answer, bool) else None
 
     def minimal_polynomial(self, e: Expr, x: Symbol) -> Expr:

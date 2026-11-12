@@ -1,12 +1,14 @@
-"""The ``rewrite`` rules of the elementary functions in terms of ``exp``
-and ``cos`` (SymPy's ``_eval_rewrite_as_exp`` and
-``_eval_rewrite_as_cos``), as a typed table for
+"""The ``rewrite`` rules of the elementary functions in terms of ``exp``,
+``cos`` and ``sin`` (SymPy's ``_eval_rewrite_as_exp``,
+``_eval_rewrite_as_cos`` and ``_eval_rewrite_as_sin``), as a typed table for
 :func:`sympy_extras.core.rewriting.rewrite`.
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py,
 # sympy/functions/elementary/hyperbolic.py, sympy/functions/elementary/exponential.py,
-# sympy/core/power.py (the _eval_rewrite_as_exp and _eval_rewrite_as_cos methods) (SymPy 1.14)
+# sympy/functions/elementary/complexes.py (sign._eval_rewrite_as_Abs),
+# sympy/core/power.py (the _eval_rewrite_as_exp, _eval_rewrite_as_cos and _eval_rewrite_as_sin
+# methods) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; a table keyed by (class, target) in place of methods.
@@ -171,6 +173,53 @@ def _pow_cos(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optiona
     return None
 
 
+# PORTED FROM SYMPY: the _eval_rewrite_as_sin methods of cos, tan, cot, sec, csc
+# (sympy/functions/elementary/trigonometric.py), sinh, csch (hyperbolic.py), exp
+# (exponential.py) and Pow (sympy/core/power.py)
+def _sin_rules() -> dict[tuple[type, type], Rule]:
+    """The trigonometric and hyperbolic functions and the exponentials in
+    terms of ``sin``."""
+    two = Integer(2)
+
+    def cos_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        return t.Sin(add(args[0], HALF_PI))
+
+    def tan_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        x = args[0]
+        return mul(two, pow(t.sin(x), two), _inv(t.sin(mul(two, x))))
+
+    def cot_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        x = args[0]
+        return mul(t.sin(mul(two, x)), _inv(mul(two, pow(t.sin(x), two))))
+
+    def sec_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        from sympy_extras.core.rewriting import rewrite
+        r = rewrite(t.cos(args[0]), (), t.Sin, hints)
+        return _inv(r) if isinstance(r, Expr) else None
+
+    def csc_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        return _inv(t.sin(args[0]))
+
+    def exp_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        a = mul(I, args[0])
+        return add(t.sin(add(a, HALF_PI)), _neg(mul(I, t.sin(a))))
+
+    def pow_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        if isinstance(e, Pow) and e.base == E:
+            return exp_sin(e, (e.exp,), hints)
+        return None
+
+    def sinh_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        return _neg(mul(I, t.sin(mul(I, args[0]))))
+
+    def csch_sin(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+        return mul(I, _inv(t.Sin(mul(I, args[0]))))
+
+    return {(t.Cos, t.Sin): cos_sin, (t.Tan, t.Sin): tan_sin, (t.Cot, t.Sin): cot_sin, (t.Sec, t.Sin): sec_sin,
+            (t.Csc, t.Sin): csc_sin, (Exp, t.Sin): exp_sin, (Pow, t.Sin): pow_sin, (h.Sinh, t.Sin): sinh_sin,
+            (h.Csch, t.Sin): csch_sin}
+
+
 # PORTED FROM SYMPY: the _eval_rewrite_as_log methods of asin, acos, atan, acot, asec, acsc
 # (sympy/functions/elementary/trigonometric.py), asinh, acosh, atanh, acoth, asech, acsch
 # (sympy/functions/elementary/hyperbolic.py), and cot._eval_rewrite_as_tan
@@ -246,7 +295,19 @@ def rules() -> dict[tuple[type, type], Rule]:
         (h.Cosh, t.Cos): _cosh_cos, (h.Sech, t.Cos): _sech_cos,
         (Exp, t.Cos): _exp_cos, (Pow, Exp): _pow_exp, (Pow, t.Cos): _pow_cos}
     table.update(_log_rules())
+    table.update(_sin_rules())
+    from .complexes import Abs, Sign
+    table[(Sign, Abs)] = _sign_abs
     return table
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:sign._eval_rewrite_as_Abs
+def _sign_abs(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.core.relational import eq
+    from .complexes import abs_
+    from .piecewise import piecewise
+    arg = args[0]
+    return piecewise((Integer(0), eq(arg, Integer(0))), (mul(arg, _inv(abs_(arg))), True))
 
 
 __all__ = ['rules', 'Rule']

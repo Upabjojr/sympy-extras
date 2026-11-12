@@ -3307,6 +3307,30 @@ def test_native_last_small_routes_do_not_load_sympy() -> None:
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
 
+_NATIVE_ASK_HANDLERS = r'''
+import sys
+from sympy_extras.core import Q, Symbol, ask, sqrt, I
+from sympy_extras.functions import log, re, Abs
+x, k, n = Symbol('x'), Symbol('k'), Symbol('n')
+assert ask(Q.real(re(k) + 1)) is True and ask(Q.real(Abs(x) - 1)) is True
+assert ask(Q.positive(log(x)), Q.positive(x) & Q.negative(x - 1)) is False
+assert ask(Q.real(sqrt(x)), Q.real(x)) is None   # SymPy's True is a bug (x = -1)
+assert ask(Q.nonzero(x), Q.positive(x) | Q.negative(x)) is True
+assert ask(Q.even(2*n), Q.integer(n)) is True and ask(Q.real(I*x), Q.real(x) & Q.nonzero(x)) is False
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ask_handlers_do_not_load_sympy() -> None:
+    """What the facts of the core's ``ask`` do not decide goes to the
+    ported handlers of the classes and the SAT search
+    (:mod:`sympy_extras.assumptions.handlers`; it went to SymPy's
+    ``ask`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ASK_HANDLERS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
 def test_native_manualintegrate_does_not_load_sympy() -> None:
     """The port of SymPy's ``manualintegrate`` loads no SymPy, nor do the
     method ``'manual'`` of the native indefinite integration (which went
@@ -3316,5 +3340,64 @@ def test_native_manualintegrate_does_not_load_sympy() -> None:
     SymPy's ``integrate`` through ``antiderivative_sympy.integrate_of_core``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_MANUALINTEGRATE], capture_output=True, text=True,
                          timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_BASIC_SIMPLIFY = r'''
+import sys
+from sympy_extras.core import Eq, symbols
+x, y = symbols('x y')
+assert str(Eq(x + x, 2*x).simplify()) == 'True' and str((y > x).simplify()) == 'x < y'
+assert str((2*x + 4 > 6*y).simplify()) == 'x - 3*y > -2'
+assert str(((x > 1) | (x > 2)).simplify()) == 'x > 1'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_basic_simplify_does_not_load_sympy() -> None:
+    """``Basic.simplify`` of the relations and formulas is the native port
+    of SymPy's simplify of Booleans (it went to SymPy's ``simplify``
+    through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_BASIC_SIMPLIFY], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EQUALS = r'''
+import sys
+from sympy_extras.core import Symbol, sqrt
+from sympy_extras.functions import sin, cos, exp
+x = Symbol('x')
+assert ((x + 1)**2).equals(x**2 + 2*x + 1) is True and (sin(x)**2 + cos(x)**2).equals(1) is True
+assert sqrt(5 + 2*sqrt(6)).equals(sqrt(2) + sqrt(3)) is True and (exp(x)*exp(-x)).equals(2) is False
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_equals_does_not_load_sympy() -> None:
+    """``Expr.equals`` decides by the native steps of SymPy's: the
+    simplified difference, its factors, the minimal polynomial of a number
+    (the difference went to SymPy's ``equals`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EQUALS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ORDER_POINT = r'''
+import sys
+from sympy_extras.core import Dummy
+from sympy_extras.functions import exp
+from sympy_extras.core.order import _solve_for
+k, d = Dummy('k'), Dummy('d')
+assert str(_solve_for(k - exp(-d), d)) == '-log(_k)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_order_point_does_not_load_sympy() -> None:
+    """The point of a substituted ``Order`` is solved by the native
+    ``solveset`` (it went to SymPy's through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ORDER_POINT], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

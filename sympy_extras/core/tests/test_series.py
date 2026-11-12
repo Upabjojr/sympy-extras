@@ -427,3 +427,25 @@ def test_loggamma_asymptotic_series_matches_sympy() -> None:
         for n in (2, 3, 4):
             got = to_sympy(expr_from_sympy(e).series(nx, 0, n), evaluate=False)
             assert str(got) == str(e.series(x, 0, n)), (e, n)
+
+
+def test_is_meromorphic_of_special_functions_matches_sympy() -> None:
+    # the rules of the incomplete gamma and Bessel functions are ported
+    # (sympy_extras.functions._meromorphic; they were SymPy's, through the
+    # bridge)
+    funcs = [s.lowergamma, s.uppergamma, s.besselj, s.bessely, s.besseli, s.besselk, s.hankel1, s.hankel2, s.jn,
+             s.yn, s.hn1, s.hn2]
+    orders = [s.Integer(0), s.Integer(1), s.Integer(-2), s.Rational(1, 2), x, x + 1, s.Symbol('n', integer=True)]
+    arguments = [x, x - 1, 1/x, s.Integer(2), x**2, s.sin(x)]
+    points = [s.Integer(0), s.Integer(1), s.oo]
+    checked = 0
+    for f in funcs:
+        for nu in orders:
+            for z in arguments:
+                e = f(nu, z, evaluate=False)
+                for a in points:
+                    want = e.is_meromorphic(x, a)
+                    got = expr_from_sympy(e).is_meromorphic(X, expr_from_sympy(a))
+                    assert want is None or got == want, (e, a, got, want)
+                    checked += 1
+    assert checked == 12 * 7 * 6 * 3

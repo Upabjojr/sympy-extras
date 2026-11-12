@@ -9,7 +9,8 @@ returns ``None`` where SymPy's leaves the node as it is.
 # _eval_rewrite_as_besselj, bessely._eval_rewrite_as_besselj, besselk.
 # _eval_rewrite_as_besseli and _eval_rewrite_as_besselj), sympy/functions/
 # special/error_functions.py (erfc, erfi, erf2 ._eval_rewrite_as_erf,
-# expint._eval_rewrite_as_Ei, Ei._eval_rewrite_as_expint) (SymPy 1.14)
+# expint._eval_rewrite_as_Ei, Ei._eval_rewrite_as_expint), sympy/functions/special/
+# zeta_functions.py (dirichlet_eta._eval_rewrite_as_zeta) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; a table keyed by (class, target class).
@@ -120,11 +121,28 @@ def _ei_expint(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional
     return -expint(Integer(1), polar_lift(Integer(-1)) * args[0]) - I * pi
 
 
+# PORTED FROM SYMPY: sympy/functions/special/zeta_functions.py:dirichlet_eta._eval_rewrite_as_zeta
+def _eta_zeta(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from sympy_extras.core.relational import eq
+    from sympy_extras.functions.elementary.exponential import log
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    from .gamma_functions import digamma
+    from .zeta_functions import zeta
+    s = args[0]
+    a = args[1] if len(args) > 1 else Integer(1)
+    two = Integer(2)
+    if a == Integer(1):
+        return piecewise((log(two), eq(s, Integer(1))), ((1 - two**(1 - s)) * zeta(s), True))
+    return piecewise((log(two) - digamma(a) + digamma((a + 1) / 2), eq(s, Integer(1))),
+                     (zeta(s, a) - two**(1 - s) * zeta(s, (a + 1) / 2), True))
+
+
 def rules() -> dict[tuple[type, type], Rule]:
     """The rules keyed by (the class of the node, the target class)."""
-    from . import bessel as b, error_functions as er
+    from . import bessel as b, error_functions as er, zeta_functions as z
     return {(b.BesselJ, b.SphericalJ): _besselj_jn, (b.BesselJ, b.BesselI): _besselj_besseli,
             (b.BesselI, b.BesselJ): _besseli_besselj, (b.BesselY, b.BesselJ): _bessely_besselj,
             (b.BesselK, b.BesselI): _besselk_besseli, (b.BesselK, b.BesselJ): _besselk_besselj,
             (er.Erfc, er.Erf): _erfc_erf, (er.Erfi, er.Erf): _erfi_erf, (er.Erf2, er.Erf): _erf2_erf,
-            (er.Expint, er.EiNode): _expint_ei, (er.EiNode, er.Expint): _ei_expint}
+            (er.Expint, er.EiNode): _expint_ei, (er.EiNode, er.Expint): _ei_expint,
+            (z.DirichletEta, z.Zeta): _eta_zeta}

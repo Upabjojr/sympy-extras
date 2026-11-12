@@ -545,7 +545,8 @@ def _solve_for(equation: Expr, d: Symbol) -> Optional[Expr]:
     """A solution of ``equation == 0`` for ``d`` (the first one of
     SymPy's ``solveset``): solved directly when ``equation`` is linear in
     ``d``, from the roots in radicals when it is rational in ``d``, by the
-    foreign ``solveset`` otherwise."""
+    native ``solveset`` otherwise (by the foreign one when the native one
+    gives no set of the forms SymPy's ``Order`` takes)."""
     from .add import add
     from .mul import mul
     from .power import pow
@@ -557,8 +558,53 @@ def _solve_for(equation: Expr, d: Symbol) -> Optional[Expr]:
     native = _solve_rational(equation, d)
     if native is not None:
         return native
+    solved, first = _solveset_first(equation, d)
+    if solved:
+        return first
     from .bridge import bridge
     return bridge().solve_first(equation, d)
+
+
+# PORTED FROM SYMPY: sympy/series/order.py:Order.__new__ (the first solution of solveset)
+def _solveset_first(equation: Expr, d: Symbol) -> tuple[bool, Optional[Expr]]:
+    """``(True, s)`` with ``s`` the first solution of the native
+    ``solveset(equation, d)`` over the complex numbers (``None`` when it
+    has none), as SymPy's ``Order`` takes it: the element of a finite set
+    (only when it is alone: the order of several is not SymPy's), the
+    elements of a complement of finite sets, the value at ``n = 0`` of an
+    image of the integers (SymPy's iteration starts there); ``(False,
+    None)`` when the native solver does not give such a set."""
+    from sympy_extras.sets.fancysets import ImageSet, IntegersClass
+    from sympy_extras.sets.sets import Complement, EmptySetClass, FiniteSet
+    from sympy_extras.sets import Complexes
+    from sympy_extras.solvers.solveset import solveset
+    from .relational import Eq
+    try:
+        solutions = solveset(Eq(equation, Integer(0)), d, Complexes)
+    except (NotImplementedError, ValueError, TypeError):
+        return False, None
+    if isinstance(solutions, EmptySetClass):
+        return True, None
+    if isinstance(solutions, Complement):
+        kept, removed = solutions.args
+        if not (isinstance(kept, FiniteSet) and isinstance(removed, FiniteSet)):
+            return False, None
+        left = [a for a in kept.args if a not in removed.args]
+        if len(left) > 1:
+            return False, None
+        first = left[0] if left else None
+        return True, first if isinstance(first, Expr) or first is None else None
+    if isinstance(solutions, FiniteSet):
+        if len(solutions.args) > 1:
+            return False, None
+        only = solutions.args[0] if solutions.args else None
+        return (True, only) if isinstance(only, Expr) or only is None else (False, None)
+    if isinstance(solutions, ImageSet) and len(solutions.variables) == 1 \
+            and len(solutions.base_sets) == 1 and isinstance(solutions.base_sets[0], IntegersClass):
+        image = solutions.image
+        if isinstance(image, Expr):
+            return True, image.subs(solutions.variables[0], Integer(0))
+    return False, None
 
 
 def _solve_rational(equation: Expr, d: Symbol) -> Optional[Expr]:
