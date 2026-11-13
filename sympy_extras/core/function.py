@@ -39,10 +39,10 @@ import inspect
 
 import mpmath
 from fractions import Fraction
-from typing import Callable, Final, Iterable, Iterator, Mapping, Optional, Sequence, TYPE_CHECKING, Union, overload
+from typing import Callable, Final, Iterable, Iterator, Mapping, Optional, Sequence, Union, overload
 
 from .add import Add, add
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .containers import Tuple
 from .coreerrors import PoleError
 from .expr import AtomicExpr, Expr, ExprLike, UnevaluatedExpr, as_expr, factors_of, terms_of, to_expr
@@ -52,9 +52,6 @@ from .numbers import Exp1, Float, Integer, Number, NumberSymbol, Rational
 from .power import Pow, pow
 from .sorting import ClassKey
 from .symbol import Dummy, Symbol
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['FunctionClass', 'Application', 'UndefinedFunction', 'AppliedUndef', 'Function',
     'WildFunction', 'Lambda', 'Derivative',
@@ -138,7 +135,7 @@ class Application(Expr):
     def class_key(cls) -> ClassKey:
         return (4, 1, cls.__name__)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '%s(%s)' % (self.name, ', '.join(printer.doprint(a) for a in self._args))
 
     def _series_nargs(self) -> Optional[frozenset[int]]:
@@ -498,7 +495,7 @@ class WildFunction(AtomicExpr):
     def __str__(self) -> str:
         return self.name + '_'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return self.name + '_'
 
 
@@ -852,7 +849,7 @@ class Lambda(Basic):
     def rcall(self, *args: Basic) -> Basic:
         return self(*[as_expr(a) for a in args])
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         if len(self._variables) == 1:
             return 'Lambda(%s, %s)' % (printer.doprint(self._variables[0]), printer.doprint(self._expr))
         return 'Lambda((%s), %s)' % (', '.join(printer.doprint(v) for v in self._variables),
@@ -996,7 +993,7 @@ class Derivative(Expr):
         commutative = facts_of(self._expr).get('commutative')
         return {} if commutative is None else {'commutative': commutative}
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         parts = [printer.doprint(self._expr)]
         for s, n in self._counts:
             parts.append(printer.doprint(s) if n == 1 else '(%s, %d)' % (printer.doprint(s), n))
@@ -1172,7 +1169,7 @@ class Subs(Expr):
         commutative = facts_of(self._expr).get('commutative')
         return {} if commutative is None else {'commutative': commutative}
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         if len(self._variables) == 1:
             return 'Subs(%s, %s, %s)' % (printer.doprint(self._expr), printer.doprint(self._variables[0]),
                                          printer.doprint(self._point[0]))

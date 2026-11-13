@@ -29,11 +29,10 @@ from __future__ import annotations
 
 from typing import Final, Iterable, Union
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, BooleanLike, Equivalent, Implies, Not, Or,
     Xor, and_, implies, not_, or_, to_boolean, xor)
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey
 from sympy_extras.core.symbol import Dummy, Symbol
 
@@ -133,7 +132,7 @@ class Quantifier(Boolean):
     def binary_symbols(self) -> set[Basic]:
         return self._formula.binary_symbols - set(self._variables)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         variables = self._variables
         v = printer.doprint(variables[0]) if len(variables) == 1 else \
             "(%s)" % ", ".join(printer.doprint(x) for x in variables)

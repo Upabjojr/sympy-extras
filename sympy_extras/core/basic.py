@@ -41,11 +41,10 @@ if TYPE_CHECKING:
     from .expr import Expr
     from .logic import Boolean
     from .function import FunctionClass
-    from .printing import StrPrinter
     from .symbol import Dummy, Symbol
 
 __all__ = ['Basic', 'Atom', 'preorder_traversal', 'SubsValue', 'SubsMapping', 'SubsRules',
-    'SubsArg', 'ReplacementRule', 'MatchDict', 'Query', 'Replacement', 'register_singleton']
+    'SubsArg', 'ReplacementRule', 'NodePrinter', 'MatchDict', 'Query', 'Replacement', 'register_singleton']
 
 #: a type pattern for :meth:`Basic.atoms` and :meth:`Basic.has`
 TypePattern = type['Basic']
@@ -99,6 +98,18 @@ class ReplacementRule(Protocol):
     def __contains__(self, item: Basic) -> bool: ...
 
     def __getitem__(self, item: Basic) -> Basic: ...
+
+
+class NodePrinter(Protocol):
+    """What :meth:`Basic._sympystr` prints its arguments with (satisfied
+    by :class:`~sympy_extras.core.printing.StrPrinter`, which prints the
+    sums, products and powers itself)."""
+
+    def doprint(self, e: Basic) -> str: ...
+
+    def parenthesize(self, e: Basic, level: int, strict: bool = False) -> str: ...
+
+    def generic(self, e: Basic) -> str: ...
 
 
 #: an assumption for ``refine``: a boolean node or a Python bool (a
@@ -305,7 +316,7 @@ class Basic:
     def __repr__(self) -> str:
         return str(self)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         """The printed form; subclasses with a special form override it."""
         return printer.generic(self)
 

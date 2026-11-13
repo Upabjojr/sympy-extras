@@ -48,18 +48,14 @@ from typing import Callable, Final, Optional, Sequence, Union
 import mpmath
 
 from sympy_extras.core.add import add, sub
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.logic import Boolean
 from sympy_extras.core.mul import div, mul
 from sympy_extras.core.numbers import ComplexInfinity, Infinity, Integer, NegativeInfinity, Rational, oo
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey, default_sort_key
 from sympy_extras.core.symbol import Symbol
-
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from sympy_extras.core.logic import Boolean
 
 __all__ = ['Hyper', 'MeijerG', 'AppellF1', 'hyper', 'meijerg', 'appellf1']
 
@@ -234,7 +230,7 @@ class Hyper(Expr):
             raise TypeError("hyper takes two parameter tuples and an expression")
         return hyper(ap, bq, z)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'hyper(%s, %s, %s)' % (printer.doprint(Tuple(*self._ap)), printer.doprint(Tuple(*self._bq)),
                                       printer.doprint(self._z))
 
@@ -508,7 +504,7 @@ class MeijerG(Expr):
         an, aother, bm, bother = (_parameters(t) for t in lists if isinstance(t, Tuple))
         return meijerg(an, aother, bm, bother, z)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         first = Tuple(Tuple(*self._an), Tuple(*self._aother))
         second = Tuple(Tuple(*self._bm), Tuple(*self._bother))
         return 'meijerg(%s, %s, %s)' % (printer.doprint(first), printer.doprint(second), printer.doprint(self._z))

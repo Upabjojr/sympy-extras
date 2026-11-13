@@ -31,7 +31,7 @@ The content-primitive split is ported from SymPy (``sympy/core/mul.py``).
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Callable, TYPE_CHECKING, Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from .add import Add, add
 from .basic import Basic
@@ -41,10 +41,7 @@ from .numbers import (ComplexInfinity, Exp1, Infinity, Integer, NaN, NegativeInf
 from .operations import AssocOp
 from .parameters import global_parameters
 from .sorting import ClassKey, compare_key
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
-    from .symbol import Symbol
+from .symbol import Symbol
 
 __all__ = ['Mul', 'mul', 'div', 'neg', 'prod']
 
@@ -180,9 +177,6 @@ class Mul(AssocOp):
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return mul(*[_as_expr(a) for a in args])
-
-    def _sympystr(self, printer: StrPrinter) -> str:
-        return printer.print_mul(self._args)
 
     def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
         if not (isinstance(old, Mul) and isinstance(new, Expr)):

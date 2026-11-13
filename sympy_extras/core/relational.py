@@ -11,19 +11,16 @@ SymPy's class names ``Equality``, ``Unequality``, ``StrictLessThan``,
 """
 from __future__ import annotations
 
-from typing import Final, TYPE_CHECKING
+from typing import Final
 
 from .add import sub
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .expr import Expr, ExprLike, to_expr
 from .kind import BooleanKind, Kind
 from .logic import Boolean, false, true
 from .numbers import ComplexInfinity, Float, Infinity, NaN, NegativeInfinity, Number, Rational
 from .parameters import global_parameters
 from .sorting import ClassKey
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['Relational', 'Eq', 'Ne', 'Lt', 'Le', 'Gt', 'Ge', 'Equality', 'Unequality',
     'StrictLessThan', 'LessThan', 'StrictGreaterThan', 'GreaterThan', 'Rel',
@@ -132,7 +129,7 @@ class Relational(Boolean):
             raise TypeError("a relation between expressions is expected")
         return _FUNCTIONS[type(self)](lhs, rhs)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         from .printing import PREC_RELATIONAL
         if self.rel_op in ('==', '!='):
             return '%s(%s, %s)' % (type(self).__name__, printer.doprint(self._lhs), printer.doprint(self._rhs))

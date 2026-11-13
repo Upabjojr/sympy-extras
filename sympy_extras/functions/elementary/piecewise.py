@@ -45,13 +45,12 @@ from typing import Callable, Final, Optional, Union
 
 from sympy_extras.core.add import sub
 from sympy_extras.core.assumptions import facts_of
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanLike, BooleanTrue, Or, and_, or_,
                                      false, to_boolean, true)
 from sympy_extras.core.mul import div
 from sympy_extras.core.numbers import Integer, Rational, nan
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.relational import Ge, Gt, Le, Lt, Relational, _FUNCTIONS, _REVERSED
 from sympy_extras.core.sorting import ClassKey
 from sympy_extras.core.symbol import Symbol
@@ -100,7 +99,7 @@ class ExprCondPair(Basic):
             raise TypeError("ExprCondPair takes an expression and a condition")
         return ExprCondPair(expr, cond)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '(%s, %s)' % (printer.doprint(self._expr), printer.doprint(self._cond))
 
 
@@ -155,7 +154,7 @@ class Piecewise(Expr):
             pairs.append(a)
         return _evaluate_pairs(pairs)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Piecewise(%s)' % ', '.join(printer.doprint(p) for p in self._args)
 
     def _eval_facts(self) -> dict[str, bool]:

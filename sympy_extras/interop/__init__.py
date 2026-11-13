@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from functools import partial
-from typing import Callable, Final, Optional, Sequence, TYPE_CHECKING, Union
+from typing import Callable, Final, Optional, Sequence, Union
 
 import mpmath
 import sympy
@@ -36,7 +36,7 @@ from sympy.functions.elementary.piecewise import ExprCondPair as SymPyExprCondPa
 
 from sympy_extras.core.add import Add
 from sympy_extras.core.assume import AppliedPredicate, Predicate
-from sympy_extras.core.basic import Basic, ReplacementRule, SubsMapping
+from sympy_extras.core.basic import Basic, NodePrinter, ReplacementRule, SubsMapping
 from sympy_extras.core.bridge import Bridge, RewriteTarget, register_bridge
 from sympy_extras.core.containers import Dict, Tuple
 from sympy_extras.core.assumptions import Facts, Truth
@@ -60,9 +60,6 @@ from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
 from sympy_extras.sets.sets import Set as NativeSet
 from sympy_extras.core.sorting import ClassKey, CompareItem
 from sympy_extras.core.symbol import Dummy, Symbol, Wild
-
-if TYPE_CHECKING:
-    from sympy_extras.core.printing import StrPrinter
 
 __all__ = ['to_sympy', 'from_sympy', 'expr_from_sympy', 'sympy_expr', 'through_sympy', 'expr_through_sympy',
     'rewrite_targets', 'SymPyNode', 'SymPyExprNode', 'SymPyBooleanNode', 'SymPySetNode', 'SymPyFunction', 'AppliedSymPyFunction', 'apply_sympy',
@@ -162,7 +159,7 @@ class _SymPyNodeMixin:
     def _sympy(self) -> SymPyBasic:
         return self._sympy_class(*[to_sympy(a) for a in self._node_args])
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return sympy.sstr(self._sympy())
 
 

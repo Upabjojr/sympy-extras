@@ -97,6 +97,14 @@ class StrPrinter:
             return e.short_str()
         self.level += 1
         try:
+            # the sums, products and powers are printed here, the other
+            # nodes print themselves through the methods of NodePrinter
+            if isinstance(e, Add):
+                return self.print_add(e.args)
+            if isinstance(e, Mul):
+                return self.print_mul(e.args)
+            if isinstance(e, Pow):
+                return self.print_pow(e.base, e.exp)
             return e._sympystr(self)
         finally:
             self.level -= 1

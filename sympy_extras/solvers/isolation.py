@@ -75,11 +75,10 @@ from typing import Final, Optional, Union
 
 import mpmath
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import Float, Infinity, Integer, NegativeInfinity, Rational, number_from_fraction
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.numberfields.qqbar import Algebraic
 from sympy_extras.polys.polyerrors import BasePolynomialError
@@ -260,7 +259,7 @@ class TranscendentalRoot(Expr):
         with mpmath.workprec(prec):
             return mpmath.mpc(mpmath.mpf(middle.numerator)/middle.denominator)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return "TranscendentalRoot(%s, %s, %s, %s)" % tuple(printer.doprint(a) for a in self.args)
 
 

@@ -42,10 +42,9 @@ from typing import Final, Optional
 
 import mpmath
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.numbers import Integer
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.symbol import Symbol
 
 __all__ = ['Integral', 'is_unevaluated']
@@ -191,7 +190,7 @@ class Integral(Expr):
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         return integral_nseries(self._function, self._variable, self._bounds, x, n, logx)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         if self._bounds is None:
             return 'Integral(%s, %s)' % (printer.doprint(self._function), printer.doprint(self._variable))
         return 'Integral(%s, (%s, %s, %s))' % (printer.doprint(self._function), printer.doprint(self._variable),

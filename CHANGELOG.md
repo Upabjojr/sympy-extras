@@ -98,6 +98,15 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The import cycles hidden behind `TYPE_CHECKING` imports are broken
+  (internal change): the `_sympystr` methods take the `NodePrinter`
+  protocol of `core.basic` (`StrPrinter` prints `Add`, `Mul` and `Pow`
+  itself), the keys of `core.sorting` the `Sortable` protocol (`ordered`
+  returns the type of its items), `Expr.as_poly` and
+  `AlgebraicNumber.minpoly` the `PolyLike` protocol of `core.expr`; the
+  type-only imports which formed no cycle are module-level imports. Only
+  `core.basic` and `core.expr` keep theirs, for the subclasses named in
+  their signatures (`Symbol`, `Number`, `Boolean`, ...).
 - The asymptotic series of `fresnels` and `fresnelc` at `oo` and `-oo`
   are native (`FresnelIntegral._eval_aseries`, ported from SymPy's
   `fresnels._eval_aseries` and `fresnelc._eval_aseries`), and so are

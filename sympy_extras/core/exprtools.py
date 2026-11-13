@@ -33,7 +33,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, Callable, Final, Optional, Sequence, Union, overload
+from typing import Callable, Final, Optional, Sequence, Union, overload
 
 from .add import Add, add
 from .basic import Basic
@@ -44,9 +44,6 @@ from .mul import Mul, _keep_coeff, mul
 from .numbers import ImaginaryUnit, Integer, Number, Rational, number_from_fraction
 from .power import Pow, pow
 from .symbol import Dummy, Symbol
-
-if TYPE_CHECKING:
-    from sympy_extras.concrete.expr_with_limits import Sum
 
 __all__ = ['factor_terms', 'gcd_terms', 'factor_nc', 'decompose_power', 'Factors', 'ExprFactors', 'Term']
 
@@ -576,9 +573,12 @@ class _FactorTerms:
         self.sign: Final[bool] = sign
 
     # PORTED FROM SYMPY: sympy/core/exprtools.py:_factor_sum_int
-    def _factor_sum(self, e: Sum) -> Expr:
-        """The factors free of the variables taken out of the sum."""
-        from sympy_extras.concrete.expr_with_limits import sum_
+    def _factor_sum(self, e: Expr) -> Optional[Expr]:
+        """The factors free of the variables taken out of the sum, or
+        ``None`` when ``e`` is not a sum."""
+        from sympy_extras.concrete.expr_with_limits import Sum, sum_
+        if not isinstance(e, Sum):
+            return None
         result = e.function
         if result == 0:
             return Integer(0)
@@ -600,9 +600,9 @@ class _FactorTerms:
         if isinstance(e, (Pow, Application, Tuple)) or not isinstance(e, Expr):
             new = tuple(self.do(a) for a in e.args)
             return e if new == e.args else e._evaluated(new)
-        from sympy_extras.concrete.expr_with_limits import Sum
-        if isinstance(e, Sum):
-            return self._factor_sum(e)
+        factored_sum = self._factor_sum(e)
+        if factored_sum is not None:
+            return factored_sum
         content, p = e.as_content_primitive(radical=self.radical, clear=self.clear)
         if isinstance(p, Add):
             terms = [_as_expr(self.do(a)) for a in p.args]
