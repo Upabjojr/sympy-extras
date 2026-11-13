@@ -324,9 +324,10 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
     >>> i = (x**2).integrate()
     >>> i
     x**3/3
-    >>> t = (1/x).integrate((x, 1, Symbol('t')))
-    >>> t, type(t).__name__, t.doit()
-    (log(t), 'Log', log(t))
+    >>> sx = sympy.Symbol('x')
+    >>> w = from_sympy(sympy.Integral(1/sx, (sx, 1, sympy.Symbol('t', positive=True))))
+    >>> w, type(w).__name__, w.doit()
+    (Integral(1/x, (x, 1, t)), 'SymPyExprNode', log(t))
     """
 
     __slots__ = ('_sympy_class', '_node_args')
