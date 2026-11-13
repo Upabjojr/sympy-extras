@@ -33,13 +33,12 @@ from __future__ import annotations
 
 from typing import Final, Optional
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.fuzzy import fuzzy_or
 from sympy_extras.core.logic import Boolean, false, true
 from sympy_extras.core.numbers import Integer, NegativeInfinity, oo
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey
 from sympy_extras.core.symbol import Symbol
 
@@ -75,7 +74,7 @@ class _NamedSet(Set):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return self
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return self.set_name
 
     @property
@@ -239,7 +238,7 @@ class ImageSet(Set):
         return result
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_ImageSet
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         variables = self.variables
         shown = printer.doprint(variables[0]) if len(variables) == 1 else \
             '(%s)' % ', '.join(printer.doprint(v) for v in variables)

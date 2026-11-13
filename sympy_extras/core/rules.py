@@ -12,10 +12,9 @@ References
 """
 from __future__ import annotations
 
-from typing import Callable, Final, TYPE_CHECKING
+from typing import Callable, Final
 
-if TYPE_CHECKING:
-    from .basic import Basic
+from .basic import Basic
 
 __all__ = ['Transform']
 

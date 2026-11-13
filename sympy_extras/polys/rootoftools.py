@@ -58,13 +58,12 @@ from typing import Final, Optional
 import mpmath
 
 from sympy_extras.core.add import add
-from sympy_extras.core.basic import Basic, ReplacementRule
+from sympy_extras.core.basic import Basic, NodePrinter, ReplacementRule
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.function import Lambda
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import Float, I, Integer, number_from_fraction
 from sympy_extras.core.power import Pow, pow
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.symbol import Symbol
 
 from .densearith import dup_mul, dup_rem
@@ -555,5 +554,5 @@ class RootSum(Expr):
                 total += value_at
             return total
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'RootSum(%s, %s)' % (printer.doprint(self._polynomial), printer.doprint(self._function))

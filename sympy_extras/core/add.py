@@ -27,7 +27,7 @@ from SymPy's ``sympy.core.add``.
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, Callable, Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 from .basic import Basic
 from .containers import Tuple
@@ -35,13 +35,10 @@ from .expr import Expr, ExprLike, factors_of, to_expr
 from .numbers import (ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Number, Rational,
     nan, number_from_fraction)
 from .operations import AssocOp
+from .order import Order
 from .parameters import distribute, global_parameters
 from .sorting import ArgsKey, ClassKey, SortKey, compare_key
-
-if TYPE_CHECKING:
-    from .order import Order
-    from .printing import StrPrinter
-    from .symbol import Symbol
+from .symbol import Symbol
 
 __all__ = ['Add', 'add', 'sub', 'to_expr']
 
@@ -213,9 +210,6 @@ class Add(AssocOp):
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return add(*[_as_expr(a) for a in args])
-
-    def _sympystr(self, printer: StrPrinter) -> str:
-        return printer.print_add(self._args)
 
     def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
         if not (isinstance(old, Add) and isinstance(new, Expr)):

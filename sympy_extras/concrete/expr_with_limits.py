@@ -39,10 +39,9 @@ from typing import Final, Optional, Sequence, Union
 
 import mpmath
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey
 from sympy_extras.core.symbol import Dummy, Symbol
 
@@ -121,7 +120,7 @@ class ExprWithLimits(Expr):
         return self._evaluated(args)
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_Sum
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         limits = ', '.join('(%s)' % ', '.join(printer.doprint(e) for e in lim) for lim in self._limits)
         return '%s(%s, %s)' % (self.name, printer.doprint(self._function), limits)
 

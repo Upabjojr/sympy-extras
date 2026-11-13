@@ -21,18 +21,15 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Final, Optional, TYPE_CHECKING
+from typing import Final, Optional
 
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .coreerrors import PoleError
 from .expr import Expr, ExprLike, as_expr, to_expr
 from .kind import Kind, NumberKind
 from .numbers import ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, nan, oo, zoo
 from .sorting import ClassKey
 from .symbol import Dummy, Symbol
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['Limit', 'limit', 'heuristics']
 
@@ -221,7 +218,7 @@ class Limit(Expr):
     def _eval_facts(self) -> dict[str, bool]:
         return {}
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return "Limit(%s, %s, %s, dir='%s')" % (printer.doprint(self._expr), printer.doprint(self._z),
                                                 printer.doprint(self._z0), self._dir)
 

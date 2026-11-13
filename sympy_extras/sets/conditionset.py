@@ -37,11 +37,10 @@ from __future__ import annotations
 
 from typing import Final, Optional
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.logic import Boolean, BooleanLike, and_, false, to_boolean, true
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.symbol import Symbol
 
 from .sets import Contains, EmptySet, EmptySetClass, FiniteSet, Set, UniversalSet, finite_set, intersection, union
@@ -112,7 +111,7 @@ class ConditionSet(Set):
     def free_symbols(self) -> set[Symbol]:
         return (self._condition.free_symbols - set(self.symbols)) | self._base_set.free_symbols
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'ConditionSet(%s, %s, %s)' % (printer.doprint(self._sym), printer.doprint(self._condition),
                                              printer.doprint(self._base_set))
 

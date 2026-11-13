@@ -47,18 +47,16 @@ returns the substitution back.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Callable, Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 import mpmath
 
+from sympy_extras.concrete.expr_with_limits import Limits, Sum
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import Integer, Number, Rational
-
-if TYPE_CHECKING:
-    from sympy_extras.concrete.expr_with_limits import Limits, Sum
 from sympy_extras.core.power import pow
 from sympy_extras.core.sorting import ordered
 from sympy_extras.core.symbol import Dummy, Symbol

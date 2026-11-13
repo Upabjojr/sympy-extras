@@ -41,11 +41,11 @@ from typing import Optional, Sequence
 import mpmath
 
 from sympy_extras.core.add import add
+from sympy_extras.core.basic import NodePrinter
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import Integer, NaN, Number, Rational, nan
-from sympy_extras.core.printing import StrPrinter
 
 __all__ = ['DiracDelta', 'Heaviside', 'dirac_delta', 'heaviside']
 
@@ -146,7 +146,7 @@ class Heaviside(DefinedFunction):
         """The arguments without the default ``H0 = 1/2`` (SymPy's)."""
         return self.args[:1] if self.args[1] == HALF else self.args
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Heaviside(%s)' % ', '.join(printer.doprint(a) for a in self.pargs)
 
     def fdiff(self, argindex: int) -> Expr:

@@ -23,12 +23,9 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import TYPE_CHECKING, Iterable, Union
+from typing import Iterable, Protocol, Sequence, TypeVar, Union
 
-if TYPE_CHECKING:
-    from .basic import Basic
-
-__all__ = ['ClassKey', 'ArgsKey', 'SortKey', 'CompareKey', 'CompareItem', 'default_sort_key', 'compare_key',
+__all__ = ['ClassKey', 'ArgsKey', 'SortKey', 'CompareKey', 'CompareItem', 'Sortable', 'default_sort_key', 'compare_key',
     'class_rank', 'ordered']
 
 #: (group, subgroup, class name): groups order numbers before atoms before
@@ -46,6 +43,21 @@ SortKey = tuple[ClassKey, ArgsKey, ExpKey, Fraction]
 CompareItem = Union['CompareKey', str, int, Fraction, tuple[str, bool]]
 #: ((rank of the class, class name), length of the content, the content)
 CompareKey = tuple[tuple[int, str], int, tuple[CompareItem, ...]]
+
+
+class Sortable(Protocol):
+    """What the keys are taken from: a node of the tree (satisfied by
+    :class:`~sympy_extras.core.basic.Basic`, which imports this module)."""
+
+    @property
+    def args(self) -> Sequence[Sortable]: ...
+
+    def sort_key(self) -> SortKey: ...
+
+    def compare_key(self) -> CompareKey: ...
+
+
+_Node = TypeVar('_Node', bound=Sortable)
 
 #: the classes which SymPy's ``compare`` orders first, in this order (the
 #: names are SymPy's); every other class follows, by name
@@ -69,7 +81,7 @@ def class_rank(name: str) -> tuple[int, str]:
     return (_CLASS_ORDER.get(name, len(_CLASS_ORDER)), name)
 
 
-def default_sort_key(item: Basic) -> SortKey:
+def default_sort_key(item: Sortable) -> SortKey:
     """The canonical key of an expression (``item.sort_key()``).
 
     Examples
@@ -83,7 +95,7 @@ def default_sort_key(item: Basic) -> SortKey:
     return item.sort_key()
 
 
-def compare_key(item: Basic) -> CompareKey:
+def compare_key(item: Sortable) -> CompareKey:
     """The key of the ``compare`` order (``item.compare_key()``), the
     order of the arguments of sums and products.
 
@@ -100,7 +112,7 @@ def compare_key(item: Basic) -> CompareKey:
     return item.compare_key()
 
 
-def ordered(items: Iterable[Basic]) -> list[Basic]:
+def ordered(items: Iterable[_Node]) -> list[_Node]:
     """The expressions sorted as SymPy's ``ordered`` sorts them: by their
     number of nodes, then by their canonical key.
 
@@ -115,6 +127,6 @@ def ordered(items: Iterable[Basic]) -> list[Basic]:
     return sorted(items, key=lambda e: (_nodes(e), e.sort_key()))
 
 
-def _nodes(e: Basic) -> int:
+def _nodes(e: Sortable) -> int:
     """The number of nodes of the tree."""
     return 1 + sum(_nodes(a) for a in e.args)

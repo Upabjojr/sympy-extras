@@ -89,11 +89,10 @@ from typing import Final, Optional, Sequence, Union
 
 import mpmath
 
-from sympy_extras.core.basic import Basic, ReplacementRule
+from sympy_extras.core.basic import Basic, NodePrinter, ReplacementRule
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import ImaginaryUnit, Integer, Rational, number_from_fraction
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import SortKey, _nodes
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.densetools import dup_shift
@@ -787,7 +786,7 @@ class ComplexRootOf(Expr):
     def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
         return _complex_value(self.algebraic(), prec)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return "CRootOf(%s, %d)" % (printer.doprint(self._polynomial), self._index)
 
 

@@ -21,27 +21,25 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Final, Iterator, Literal, Optional, Sequence, TYPE_CHECKING, Union, overload
+from typing import Final, Iterator, Literal, Optional, Protocol, Sequence, TYPE_CHECKING, Union, overload
 
 import mpmath
 
-from .basic import Atom, Basic, RefineArg, SubsArg, SubsMapping
+from sympy_extras._typing import Truth
+
+from .basic import Atom, Basic, NodePrinter, RefineArg, ReplacementRule, SubsArg, SubsMapping
 from .cache import cacheit
 from .kind import Kind, NumberKind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, SortKey
 
 if TYPE_CHECKING:
-    from .assumptions import Truth
     from .logic import Boolean
-    from .basic import ReplacementRule
     from .function import DiffSpec, FunctionClass
     from .numbers import Number
-    from .printing import StrPrinter
     from .symbol import Symbol
-    from sympy_extras.polys.polytools import Poly
 
 __all__ = ['Expr', 'AtomicExpr', 'ExprLike', 'UnevaluatedExpr', 'as_expr', 'to_expr', 'terms_of',
-    'factors_of', 'IntegrationSpec', 'TermInfo']
+    'factors_of', 'IntegrationSpec', 'TermInfo', 'PolyLike']
 
 #: what the operators and the evaluating functions accept besides ``Expr``
 ExprLike = Union['Expr', int, float, Fraction]
@@ -50,6 +48,20 @@ IntegrationSpec = Union['Symbol', tuple['Symbol', ExprLike, ExprLike]]
 #: an entry of :meth:`Expr.as_terms`: the complex coefficient, the
 #: exponents of the generators, the noncommutative factors
 TermInfo = tuple[tuple[float, float], tuple[int, ...], tuple['Expr', ...]]
+
+
+class PolyLike(Protocol):
+    """What :meth:`Expr.as_poly` returns: a polynomial (satisfied by
+    :class:`~sympy_extras.polys.polytools.Poly`, which imports this
+    module)."""
+
+    def as_expr(self) -> Expr: ...
+
+    def LC(self) -> Expr: ...
+
+    def all_coeffs(self) -> list[Expr]: ...
+
+    def degree(self, gen: Union[int, ExprLike] = 0) -> int: ...
 
 
 def as_expr(b: Basic) -> Expr:
@@ -1572,7 +1584,7 @@ class Expr(Basic):
                 return native
         return bridge().integrate(self, specs)
 
-    def as_poly(self, *gens: Symbol) -> Optional[Poly]:
+    def as_poly(self, *gens: Symbol) -> Optional[PolyLike]:
         """The polynomial of the expression (the typed ``Poly`` of
         :mod:`sympy_extras.polys.polytools`), ``None`` when it is not a
         polynomial in ``gens`` (or in its own generators).
@@ -1894,7 +1906,7 @@ class UnevaluatedExpr(Expr):
     def is_number(self) -> bool:
         return self._expr.is_number
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return printer.doprint(self._expr)
 
     def _eval_facts(self) -> dict[str, bool]:

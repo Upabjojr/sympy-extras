@@ -31,9 +31,9 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Final, Optional, TYPE_CHECKING, Union
+from typing import Final, Optional, Union
 
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .cache import cacheit
 from .coreerrors import PoleError
 from .containers import Tuple
@@ -42,9 +42,6 @@ from .kind import Kind, NumberKind
 from .numbers import Integer
 from .sorting import ClassKey
 from .symbol import Symbol
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['Order', 'order', 'O']
 
@@ -182,7 +179,7 @@ class Order(Expr):
             facts['commutative'] = True
         return facts
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         if all(p.is_Number and p == 0 for _, p in self._limits):
             if len(self._limits) <= 1:
                 return 'O(%s)' % printer.doprint(self._expr)

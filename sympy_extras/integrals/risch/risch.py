@@ -78,13 +78,12 @@ from types import TracebackType
 from typing import Callable, Final, Iterable, Iterator, Literal, Optional, Sequence, TypeVar, Union
 
 from sympy_extras.core.add import Add, add
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.function import Lambda, count_ops, expand, expand_trig
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import Float, I, Integer, Rational
 from sympy_extras.core.power import Pow, pow
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.relational import ne
 from sympy_extras.core.sorting import default_sort_key, ordered
 from sympy_extras.core.symbol import Dummy, Symbol
@@ -2959,7 +2958,7 @@ class NonElementaryIntegral(Expr):
             return _ZERO
         return None
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Integral(%s, %s)' % (printer.doprint(self._function), printer.doprint(self._variable))
 
 

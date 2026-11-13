@@ -16,15 +16,12 @@ from __future__ import annotations
 import inspect
 import itertools
 import re
-from typing import Callable, Final, Iterable, Sequence, TYPE_CHECKING, Union
+from typing import Callable, Final, Iterable, Sequence, Union
 
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .expr import AtomicExpr, Expr
 from .logic import Boolean
 from .sorting import ArgsKey, ClassKey, CompareItem
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['Symbol', 'Dummy', 'Wild', 'symbols', 'var', 'Assumptions']
 
@@ -141,7 +138,7 @@ class Symbol(AtomicExpr, Boolean):
     def __str__(self) -> str:
         return self.name
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return self.name
 
 
@@ -202,7 +199,7 @@ class Dummy(Symbol):
     def __str__(self) -> str:
         return '_' + self.name
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '_' + self.name
 
 
@@ -270,7 +267,7 @@ class Wild(Symbol):
     def __str__(self) -> str:
         return self.name + '_'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return self.name + '_'
 
 

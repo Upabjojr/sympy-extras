@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import floor
-from typing import Final, Optional, TYPE_CHECKING
+from typing import Final, Optional
 
 import mpmath
 from sympy_extras.ntheory.factor_ import factorint
@@ -44,10 +44,7 @@ from .numbers import (ComplexInfinity, Exp1, Float, ImaginaryUnit, Infinity, Int
     NegativeInfinity, Number, Rational, nan, number_from_fraction, oo, zoo)
 from .parameters import global_parameters
 from .sorting import ClassKey
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
-    from .symbol import Symbol
+from .symbol import Symbol
 
 __all__ = ['Pow', 'pow', 'sqrt', 'cbrt', 'root', 'number_pow', 'integer_root_parts', 'minus_one_pow']
 
@@ -112,9 +109,6 @@ class Pow(Expr):
         if isinstance(self._base, Rational) and self._base.p == 1 and self._base.q > 1:
             return (Integer(self._base.q), mul(Integer(-1), self._exp))
         return (self._base, self._exp)
-
-    def _sympystr(self, printer: StrPrinter) -> str:
-        return printer.print_pow(self._base, self._exp)
 
     # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_is_meromorphic
     def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:

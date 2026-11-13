@@ -41,13 +41,12 @@ from __future__ import annotations
 
 from typing import Final, Iterator, Optional, Sequence, Union as TUnion
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.fuzzy import fuzzy_and, fuzzy_not, fuzzy_or
 from sympy_extras.core.logic import Boolean, BooleanLike, and_, false, not_, or_, to_boolean, true
 from sympy_extras.core.numbers import ComplexInfinity, Float, Infinity, NaN, NegativeInfinity, oo
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey, default_sort_key, ordered
 
 __all__ = ['Set', 'EmptySetClass', 'UniversalSetClass', 'Interval', 'RealsClass', 'FiniteSet', 'Union',
@@ -242,7 +241,7 @@ class EmptySetClass(Set):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return self
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'EmptySet'
 
     @property
@@ -284,7 +283,7 @@ class UniversalSetClass(Set):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return self
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'UniversalSet'
 
     @property
@@ -382,7 +381,7 @@ class Interval(Set):
             and self.left_open and self.right_open
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_Interval
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         a, b, lo, ro = self._start, self._end, self.left_open, self.right_open
         if a.is_infinite and b.is_infinite:
             m = ''
@@ -470,7 +469,7 @@ class RealsClass(Interval):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return self
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Reals'
 
     def __eq__(self, other: object) -> bool:
@@ -539,7 +538,7 @@ class FiniteSet(Set):
         return finite_set(*[a for a in args if isinstance(a, Expr)])
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_FiniteSet
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         items = sorted(self._elements, key=default_sort_key)
         return '{' + ', '.join(printer.doprint(e) for e in items) + '}'
 
@@ -687,7 +686,7 @@ class Union(Set):
         return union(*[a for a in args if isinstance(a, Set)])
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_LatticeOp
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Union(%s)' % ', '.join(printer.doprint(s) for s in sorted(self._sets, key=default_sort_key))
 
     @property
@@ -758,7 +757,7 @@ class Intersection(Set):
         return intersection(*[a for a in args if isinstance(a, Set)])
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_LatticeOp
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Intersection(%s)' % ', '.join(printer.doprint(s) for s in sorted(self._sets, key=default_sort_key))
 
     @property
@@ -802,7 +801,7 @@ class Complement(Set):
             raise TypeError('Complement takes two sets')
         return complement(a, b)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Complement(%s, %s)' % (printer.doprint(self._a), printer.doprint(self._b))
 
     @property
@@ -846,7 +845,7 @@ class Contains(Boolean):
             raise TypeError('Contains takes an expression and a set')
         return contains(x, s)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Contains(%s, %s)' % (printer.doprint(self._x), printer.doprint(self._s))
 
 
@@ -1193,7 +1192,7 @@ class ProductSet(Set):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return product_set(*[a for a in args if isinstance(a, Set)])
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'ProductSet(%s)' % ', '.join(printer.doprint(s) for s in self._sets)
 
     @property
@@ -1249,7 +1248,7 @@ class PointSet(Set):
         return point_set(*[_as_point(a) for a in args])
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_FiniteSet
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         items = sorted(self._points, key=default_sort_key)
         return '{' + ', '.join(printer.doprint(p) for p in items) + '}'
 
