@@ -54,6 +54,7 @@ REWRITE_TARGETS: dict[str, frozenset[str]] = {
     'ChebyshevT': frozenset({'Sum', 'polynomial'}),
     'ChebyshevU': frozenset({'Sum', 'polynomial'}),
     'ChiNode': frozenset({'Ei', 'expint', 'uppergamma'}),
+    'Coeff': frozenset(),
     'CiNode': frozenset({'Ei', 'Integral', 'expint', 'uppergamma'}),
     'Complement': frozenset(),
     'ComplexInfinity': frozenset(),
