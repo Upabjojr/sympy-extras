@@ -188,7 +188,7 @@ def test_integral_node_values() -> None:
     # the value of a definite Integral node went to SymPy's evalf through
     # the bridge; now mpmath's tanh-sinh quadrature of the native
     # integrand, confirmed at a higher precision
-    from sympy_extras.functions import besselj
+    from sympy_extras.functions import besselj, floor
     with mpmath.workprec(80):
         series = mpmath.nsum(lambda n: (-1)**(n + 1) / n**n, [1, mpmath.inf])
         cases = [(Integral(exp(-x**2), x, Integer(0), oo), mpmath.sqrt(mpmath.pi) / 2),
@@ -197,7 +197,12 @@ def test_integral_node_values() -> None:
                  (Integral(besselj(0, x), x, Integer(0), Integer(3)), mpmath.quad(lambda t: mpmath.besselj(0, t), [0, 3])),
                  (Integral(x**Rational(-3, 2), x, Integer(161), oo), 2 / mpmath.sqrt(161)),
                  # a single tanh-sinh rule over (-326, 500) misses the peak and estimates no error
-                 (Integral(exp(-x**2), x, Integer(-326), Integer(500)), mpmath.sqrt(mpmath.pi))]
+                 (Integral(exp(-x**2), x, Integer(-326), Integer(500)), mpmath.sqrt(mpmath.pi)),
+                 # kinks and jumps are nodes of the subdivision (SymPy's evalf gives 5 digits)
+                 (Integral(abs_(x - Rational(1, 3)), x, Integer(0), Integer(1)), mpmath.mpf(5) / 18),
+                 (Integral(Piecewise((x, x < Rational(1, 2)), (1 - x, True)), x, Integer(0), Integer(1)),
+                  mpmath.mpf(1) / 4),
+                 (Integral(floor(2 * x), x, Integer(0), Integer(3)), mpmath.mpf(15) / 2)]
         for e, known in cases:
             assert e.is_number
             value = numeric_value(e, 80)

@@ -93,6 +93,63 @@ def _subdivision(lo: mpmath.mpf, hi: mpmath.mpf) -> list[mpmath.mpf]:
     return [lo + (hi - lo) * k / pieces for k in range(pieces)] + [hi]
 
 
+def _kinks(f: Expr, x: Symbol, prec: int, lo: mpmath.mpf, hi: mpmath.mpf) -> list[mpmath.mpf]:
+    """The real points where an argument of ``Abs``, ``sign``,
+    ``Heaviside``, ``Max``, ``Min`` or a relation of a ``Piecewise``,
+    linear in ``x``, changes sign, or one of ``floor`` and ``ceiling`` is
+    an integer (at most 400 in the range ``(lo, hi)``): nodes of the
+    subdivision (the integrand has a kink or a jump there, which SymPy's
+    single tanh-sinh rule resolves to five digits only)."""
+    from sympy_extras.core.basic import preorder_traversal
+    from sympy_extras.core.evalf import numeric_value
+    from sympy_extras.core.relational import Relational
+    from sympy_extras.functions.elementary.complexes import Abs, Sign
+    from sympy_extras.functions.elementary.integers import Ceiling, Floor
+    from sympy_extras.functions.elementary.miscellaneous import Max, Min
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    from sympy_extras.functions.special.delta_functions import Heaviside
+    arguments: list[Expr] = []
+    steps: list[Expr] = []
+    for node in preorder_traversal(f):
+        if isinstance(node, (Floor, Ceiling)) and isinstance(node.args[0], Expr):
+            steps.append(node.args[0])
+        elif isinstance(node, (Abs, Sign, Heaviside)) and isinstance(node.args[0], Expr):
+            arguments.append(node.args[0])
+        elif isinstance(node, (Max, Min)):
+            items = [a for a in node.args if isinstance(a, Expr)]
+            arguments.extend(a - b for a, b in zip(items, items[1:]))
+        elif isinstance(node, Piecewise):
+            for c in preorder_traversal(node):
+                if isinstance(c, Relational) and isinstance(c.lhs, Expr) and isinstance(c.rhs, Expr):
+                    arguments.append(c.lhs - c.rhs)
+    points: list[mpmath.mpf] = []
+    for u, step in [(u, False) for u in arguments] + [(u, True) for u in steps]:
+        if not u.has(x):
+            continue
+        slope = u.diff(x)
+        if slope.has(x) or not slope.is_number:
+            continue
+        rest = u.subs(x, 0)
+        if not isinstance(rest, Expr):
+            continue
+        a, b = numeric_value(slope, prec), numeric_value(rest, prec)
+        if a is None or b is None or a == 0 or mpmath.im(a) != 0 or mpmath.im(b) != 0:
+            continue
+        with mpmath.workprec(prec):
+            slope_, rest_ = mpmath.re(a), mpmath.re(b)
+            if not step:
+                points.append(-rest_ / slope_)
+                continue
+            # floor and ceiling jump where the argument is an integer
+            ends = sorted([slope_ * lo + rest_, slope_ * hi + rest_]) if mpmath.isfinite(lo) and mpmath.isfinite(hi) \
+                else None
+            if ends is None or ends[1] - ends[0] > 400:
+                continue
+            for n in range(int(mpmath.ceil(ends[0])), int(mpmath.floor(ends[1])) + 1):
+                points.append((n - rest_) / slope_)
+    return points
+
+
 # PORTED FROM SYMPY: sympy/core/evalf.py:do_integral
 def do_integral(f: Expr, x: Symbol, lower: Expr, upper: Expr, prec: int) -> Optional[Quadrature]:
     """The quadrature of ``f`` over ``(lower, upper)`` at ``prec`` bits with
@@ -114,8 +171,12 @@ def do_integral(f: Expr, x: Symbol, lower: Expr, upper: Expr, prec: int) -> Opti
             largest[0] = max(largest[0], _fastlog(mpmath.re(value)))
             largest[1] = max(largest[1], _fastlog(mpmath.im(value)))
             return value
+        nodes = _subdivision(lo, hi)
+        kinks = [k for k in _kinks(f, x, prec + 15, lo, hi) if min(lo, hi) < k < max(lo, hi) and k not in nodes]
+        if kinks:
+            nodes = sorted(nodes + kinks, reverse=bool(hi < lo))
         try:
-            result, error = mpmath.quad(h, _subdivision(lo, hi), method='tanh-sinh', error=True)
+            result, error = mpmath.quad(h, nodes, method='tanh-sinh', error=True)
         except (ValueError, TypeError, ZeroDivisionError, OverflowError, NotImplementedError,
                 mpmath.libmp.NoConvergence):
             return None
