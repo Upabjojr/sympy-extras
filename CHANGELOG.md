@@ -48,6 +48,18 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The asymptotic series of `fresnels` and `fresnelc` at `oo` and `-oo`
+  are native (`FresnelIntegral._eval_aseries`, ported from SymPy's
+  `fresnels._eval_aseries` and `fresnelc._eval_aseries`): they went to
+  SymPy through the bridge of the core.
+- The native code sets its time limits with `native=True`: the series and
+  simplifications of `solvers.kovacic`, the antiderivatives of
+  `solvers.darboux` and the transfer from the reals of
+  `assumptions.resolve` set limits which prepared SymPy's tables, and so
+  imported SymPy; `_numeric`'s check of a hidden zero by the foreign
+  minimal polynomial sets none when no foreign system is registered. A
+  test of `core/tests/test_independence.py` checks every limit of the
+  native modules.
 - `piecewise_simplify_arguments` no longer sends a condition with an
   `Xor` to SymPy: the new `sympy_extras.logic.anf` ports SymPy's
   algebraic normal form (`to_anf`, `is_anf`, `distribute_xor_over_and`,

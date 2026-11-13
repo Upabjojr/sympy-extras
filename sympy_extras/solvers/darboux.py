@@ -1601,7 +1601,7 @@ def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
     integrand = e.xreplace(forward)
     limit = remaining_time()
     budget = settings.timeout if limit is None else limit/2
-    result = attempt(lambda: closed_antiderivative(integrand, variable), budget)
+    result = attempt(lambda: closed_antiderivative(integrand, variable), budget, native=True)
     if result is not None:
         generic = _generic_branch(result)
         if generic is not None:
@@ -1610,7 +1610,7 @@ def _integrate(e: Expr, v: Symbol, x: Symbol, y: Symbol) -> Optional[Expr]:
                 return candidate
     limit = remaining_time()
     budget = settings.timeout if limit is None else limit/2
-    result = attempt(lambda: closed_antiderivative(e, v), budget)
+    result = attempt(lambda: closed_antiderivative(e, v), budget, native=True)
     if result is None:
         return None
     generic = _generic_branch(result)

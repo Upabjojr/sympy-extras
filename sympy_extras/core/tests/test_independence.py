@@ -4,6 +4,7 @@ functions, and running the usual operations leave ``sympy`` out of
 through :mod:`sympy_extras.core.bridge`)."""
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 
@@ -3572,3 +3573,59 @@ def test_native_meijerint_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_MEIJERINT], capture_output=True, text=True, timeout=900)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def _native_module(rel: str) -> bool:
+    """Whether the file ``rel`` (relative to the package) is native code:
+    not a SymPy face, not the interop package, not a test."""
+    parts = rel.split('/')
+    if 'tests' in parts or parts[-1].endswith('_sympy.py') or 'interop' in parts:
+        return False
+    return not any(p.endswith('_sympy') for p in parts[:-1]) and parts[-1] != '_testing.py'
+
+
+def test_native_time_limits_do_not_prepare_sympy() -> None:
+    """A limit without ``native=True`` prepares SymPy's tables, importing
+    SymPy: native code sets its limits with ``native=True`` (the bug: the
+    series and simplifications of ``solvers.kovacic``, the antiderivatives
+    of ``solvers.darboux`` and the transfer of ``assumptions.resolve``
+    imported SymPy that way). The one exception asks the foreign system,
+    when one is registered."""
+    import os
+    import sympy_extras
+    root = os.path.dirname(sympy_extras.__file__)
+    allowed = {('_timeout.py', 'attempt'), ('_numeric.py', '_foreign_minimal_polynomial_is_x')}
+    found: list[str] = []
+    for directory, _, files in os.walk(root):
+        for name in files:
+            path = os.path.join(directory, name)
+            rel = os.path.relpath(path, root).replace(os.sep, '/')
+            if not name.endswith('.py') or not _native_module(rel):
+                continue
+            with open(path) as handle:
+                tree = ast.parse(handle.read())
+            for function in ast.walk(tree):
+                if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.iter_child_nodes(function):
+                    found.extend(_unprepared_limits(node, rel, function.name, allowed))
+    assert not found, sorted(set(found))
+
+
+def _unprepared_limits(tree: ast.AST, rel: str, function: str, allowed: set[tuple[str, str]]) -> list[str]:
+    """The calls of ``attempt`` and ``time_limit`` in ``tree`` without
+    ``native=True``, outside the ``allowed`` functions."""
+    if (rel, function) in allowed:
+        return []
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        called = callee.id if isinstance(callee, ast.Name) else callee.attr if isinstance(callee, ast.Attribute) else ''
+        if called not in ('attempt', 'time_limit') or len(node.args) >= 3:
+            continue
+        native = [k.value for k in node.keywords if k.arg == 'native']
+        if not (native and isinstance(native[0], ast.Constant) and native[0].value is True):
+            found.append('%s:%d' % (rel, node.lineno))
+    return found

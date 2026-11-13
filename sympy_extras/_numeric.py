@@ -172,6 +172,10 @@ def _foreign_minimal_polynomial_is_x(part: Expr) -> bool:
     (SymPy's ``minimal_polynomial`` knows ``CRootOf``, the native one
     does not); ``False`` when it cannot tell."""
     from sympy_extras.core.bridge import bridge
+    if not bridge().available():
+        # no foreign system: nothing to ask, and no limit set (a limit
+        # without native prepares SymPy's tables, importing SymPy)
+        return False
     x = Symbol('x')
 
     def foreign() -> bool:

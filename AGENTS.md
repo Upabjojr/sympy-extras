@@ -160,7 +160,8 @@ sympy_extras/
     _special_values_sympy.py the SymPy face of _special_values (used by integrals/definite, indefinite, concrete/karr_sympy;
                              not the solvers/_special_values_sympy of the ODE cases)
     _timeout.py              attempt, time_limit, remaining_time, prepare_sympy: time limits (no SymPy imported; SymPy's
-                             tables prepared lazily by limits without native=True)
+                             tables prepared lazily by limits without native=True, so native code passes native=True:
+                             test_independence checks every limit of the native modules)
     _typing.py               the type aliases which need no SymPy (Dup, Dmp, Monomial, Sign, Truth, Weights, ...)
     _typing_sympy.py         the aliases written with SymPy's classes (ExprLike, OrderSpec, QuantifierPrefix) and the
                              narrowing helpers of the SymPy-side code (as_expr, as_boolean, as_symbol, as_set,
@@ -222,7 +223,8 @@ sympy_extras/
             delta_functions.py DiracDelta, Heaviside / dirac_delta, heaviside, PORTED FROM SYMPY
             zeta_functions.py Zeta, DirichletEta, PolyLog / zeta, dirichlet_eta, polylog; Bernoulli numbers, PORTED FROM SYMPY
             error_functions.py Erf, ..., Expint, EiNode, SiNode, CiNode, ShiNode, ChiNode, LiNode, OffsetLiNode / erf, ..., Ei, Si, Ci, Shi, Chi, li, Li;
-                             Erfs, Eis / erfs, eis (SymPy's _erfs, _eis of the Gruntz algorithm), PORTED FROM SYMPY
+                             Erfs, Eis / erfs, eis (SymPy's _erfs, _eis of the Gruntz algorithm); FresnelS, FresnelC with
+                             their asymptotic series, PORTED FROM SYMPY
             beta_functions.py Beta / beta, PORTED FROM SYMPY
             bessel.py        BesselJ, ..., Hankel1, Hankel2, SphericalJ, SphericalY, AiryAi, ... / besselj, ..., jn, yn, airyai, ...;
                              BesselIs, BesselKs (SymPy's _besseli, _besselk), PORTED FROM SYMPY

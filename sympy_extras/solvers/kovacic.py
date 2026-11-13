@@ -379,11 +379,11 @@ def _laurent_sqrt(r: Expr, c: Expr, order: int, x: Symbol) -> Optional[tuple[Exp
     nu = order//2
     t = Dummy('t')
     shifted = _replaced(r, {x: c + t})
-    expansion = attempt(lambda: shifted.series(t, 0, 1).removeO(), settings.timeout)
+    expansion = attempt(lambda: shifted.series(t, 0, 1).removeO(), settings.timeout, native=True)
     if expansion is None:
         return None
     # r = a**2/t**(2 nu) (1 + ...): sqrt as a Laurent polynomial in t
-    root = attempt(lambda: sqrt(shifted).series(t, 0, 0).removeO(), settings.timeout)
+    root = attempt(lambda: sqrt(shifted).series(t, 0, 0).removeO(), settings.timeout, native=True)
     if root is None:
         return None
     polar = _sum([term for term in Add.make_args(root) if _t_degree(term, t) + nu < nu])
@@ -427,7 +427,7 @@ def _case1_kovacic(r: Expr, num: _Polynomial, den: _Polynomial, poles: dict[Expr
         nu = -o//2
         t = Dummy('t')
         at_infinity = _replaced(r, {x: 1/t})
-        found = attempt(lambda: sqrt(at_infinity).series(t, 0, 1).removeO(), settings.timeout)
+        found = attempt(lambda: sqrt(at_infinity).series(t, 0, 1).removeO(), settings.timeout, native=True)
         if found is None:
             return None
         polynomial_part = _sum([term for term in Add.make_args(found) if _t_degree(term, t) + nu <= nu])
@@ -692,7 +692,7 @@ def _algebraic_root(polynomial: Expr, w: Symbol) -> Optional[Expr]:
     cleared of its denominator)."""
     limit_ = None if settings.timeout is None else min(settings.timeout, 5.0)
     numerator = polynomial.as_numer_denom()[0]
-    found = attempt(lambda: _roots(numerator, w), limit_)
+    found = attempt(lambda: _roots(numerator, w), limit_, native=True)
     if not found:
         return None
     for root in found:
@@ -742,7 +742,7 @@ def _is_constant(e: Expr, x: Symbol) -> bool:
     derivative simplified to zero."""
     if not e.has(x):
         return True
-    derivative = attempt(lambda: simplify(e.diff(x)), settings.timeout)
+    derivative = attempt(lambda: simplify(e.diff(x)), settings.timeout, native=True)
     return derivative is not None and derivative == _ZERO
 
 
@@ -762,7 +762,7 @@ def _second_solution(y1: Expr, p: Expr, x: Symbol) -> Optional[Expr]:
         candidate = simplify(y1*outer)
         # verified against the original equation y'' + p y' + q y = 0 through
         # the Wronskian: (y2/y1)' = exp(-Integral(p))/y1**2
-        difference = attempt(lambda: simplify((candidate/y1).diff(x) - integrand), settings.timeout)
+        difference = attempt(lambda: simplify((candidate/y1).diff(x) - integrand), settings.timeout, native=True)
         if difference is not None and difference == _ZERO:
             return candidate
     return y1*Integral(integrand, x)
