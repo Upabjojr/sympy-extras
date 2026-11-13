@@ -841,7 +841,9 @@ class Basic:
     def simplify(self) -> Basic:
         """SymPy's ``simplify`` of the node: natively for the relations and
         the formulas (:func:`sympy_extras.logic.boolsimp.simplify_boolean`),
-        through SymPy for the other nodes.
+        the other nodes rebuilt with their arguments simplified (as SymPy's
+        ``simplify`` does with them); through the foreign system only for
+        a node with wrapped foreign objects.
 
         Examples
         ========
@@ -866,9 +868,16 @@ class Basic:
                 return simplify_boolean(self)
             except NotImplementedError:
                 pass
-        # the other nodes: SymPy's
-        from .bridge import bridge
-        return bridge().simplify(self)
+        if any(node._has_foreign_class() for node in preorder_traversal(self)):
+            # a node with wrapped foreign objects: the foreign simplify
+            from .bridge import bridge
+            return bridge().simplify(self)
+        # PORTED FROM SYMPY: sympy/simplify/simplify.py:simplify (a node which
+        # is not an Add, Mul, Pow or exp: rebuilt with its arguments simplified)
+        args = tuple(a.simplify() for a in self.args)
+        if all(new is old for new, old in zip(args, self.args)):
+            return self
+        return self._evaluated(args)
 
     def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Basic:
         """SymPy's ``rewrite`` of the node, in terms of the given functions.

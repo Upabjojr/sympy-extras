@@ -27,14 +27,11 @@ except SympifyError:
     pass
 else:
     raise AssertionError('should not parse without the bridge')
-try:
-    from sympy_extras.core import Symbol
-    assert str(Symbol('x').integrate(Symbol('x'))) == 'x**2/2'   # native (term by term)
-    (1/(Symbol('x') + 1)).integrate(Symbol('x'))
-except ForeignOperationUnavailable:
-    pass
-else:
-    raise AssertionError('integrate should need the bridge')
+from sympy_extras.core import Symbol
+assert str(Symbol('x').integrate(Symbol('x'))) == 'x**2/2'   # native (term by term)
+# native (indefinite_integral), no bridge: it raised ForeignOperationUnavailable before
+assert str((1/(Symbol('x') + 1)).integrate(Symbol('x'))) == 'log(x + 1)'
+assert ForeignOperationUnavailable is not None
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -3629,3 +3626,37 @@ def _unprepared_limits(tree: ast.AST, rel: str, function: str, allowed: set[tupl
         if not (native and isinstance(native[0], ast.Constant) and native[0].value is True):
             found.append('%s:%d' % (rel, node.lineno))
     return found
+
+
+_NATIVE_GENERIC_FALLBACKS = r'''
+import sys
+from sympy_extras.core import symbols, Symbol, Integer, Rational, oo, sqrt, pi
+from sympy_extras.core.order import _solve_for
+from sympy_extras.functions import exp, log, sin, cos, harmonic
+from sympy_extras.concrete.expr_with_limits import Sum
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.sets.sets import FiniteSet
+x, y, k, d = symbols('x y k d')
+i = Symbol('i', integer=True)
+assert str(Sum(1/i**Rational(3, 2), (i, 1, oo)).evalf(20)) == '2.6123753486854883434'
+assert str(Sum(harmonic(i)/i**3, (i, 1, oo)).evalf(15)) == '1.35290404213892'
+assert str(Integral(exp(-x**2), x, Integer(0), oo).evalf(20)) == '0.88622692545275801365'
+assert (sqrt(2) + sqrt(3)).equals(sqrt(5 + 2*sqrt(6))) is True
+assert (sin(x)**2 + cos(x)**2 + y).is_constant(x) is True and (log(x) + y).is_constant(x) is False
+assert str((x + y).invert(x**2 + 1, x)) == '-x/(y**2 + 1) + y/(y**2 + 1)'
+assert str((1/(x + 1)).integrate(x)) == 'log(x + 1)' and str(exp(-x**2).integrate((x, 0, oo))) == 'sqrt(pi)/2'
+assert str(_solve_for(log(d) - k, d)) == 'exp(k)'
+assert FiniteSet(sin(x)**2 + cos(x)**2).simplify() == FiniteSet(Integer(1))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_generic_fallbacks_do_not_load_sympy() -> None:
+    """The Euler-Maclaurin values of sums, the quadrature of integrals,
+    equals, is_constant, invert with parameters, integrate, the first
+    solution of an Order and simplify of other nodes are native (they went
+    to SymPy through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_GENERIC_FALLBACKS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

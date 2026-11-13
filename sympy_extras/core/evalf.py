@@ -106,8 +106,9 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
         own = e._numeric_node(prec)
         if own is not None:
             return own
-        if e.args and e.is_number:
-            # a number node with no numeric rule here: the foreign system's
+        if e.args and e.is_number and e._has_foreign_class():
+            # a wrapped foreign node with no numeric rule here: the
+            # foreign system's (a native node without one has no value)
             from .bridge import bridge
             parts = [numeric_value(a, prec) for a in e.args if isinstance(a, Expr)]
             if any(p is None for p in parts):

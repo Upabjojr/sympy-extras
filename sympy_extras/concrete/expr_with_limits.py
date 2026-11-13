@@ -142,6 +142,11 @@ class ExprWithLimits(Expr):
     def is_number(self) -> bool:
         return not self.free_symbols
 
+    def _is_number_node(self) -> Optional[bool]:
+        # SymPy's ExprWithLimits.is_number inside other nodes too (the
+        # variables are bound)
+        return not self.free_symbols
+
     # PORTED FROM SYMPY: sympy/concrete/expr_with_limits.py:ExprWithLimits.has_finite_limits
     @property
     def has_finite_limits(self) -> Optional[bool]:
@@ -207,6 +212,29 @@ class Sum(ExprWithLimits):
             return None
         i, a, b = self._limits[0]
         return evalf_sum(self._function, i, a, b, prec)
+
+    # PORTED FROM SYMPY: sympy/concrete/summations.py:Sum.euler_maclaurin
+    def euler_maclaurin(self, m: int = 0, n: int = 0, eps: ExprLike = 0,
+                        eval_integral: bool = True) -> tuple[Expr, Expr]:
+        """SymPy's ``Sum.euler_maclaurin``: ``(s, e)``, the
+        Euler-Maclaurin approximation with ``m`` leading terms summed
+        directly and ``n`` terms in the tail, and the estimated error
+        (:func:`~sympy_extras.concrete._evalf.euler_maclaurin`).
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.concrete.expr_with_limits import Sum
+        >>> k, b = Symbol('k'), Symbol('b')
+        >>> Sum(k, (k, 2, b)).euler_maclaurin()
+        (b**2/2 + b/2 - 1, 0)
+        """
+        from ._evalf import euler_maclaurin
+        if len(self._limits) != 1:
+            raise ValueError("More than 1 limit")
+        i, a, b = self._limits[0]
+        found = euler_maclaurin(self._function, i, a, b, m, n, eps, eval_integral)
+        if found is None:
+            raise TypeError("cannot determine truth value of Relational")
+        return found
 
     def _eval_facts(self) -> dict[str, bool]:
         facts = ExprWithLimits._eval_facts(self)

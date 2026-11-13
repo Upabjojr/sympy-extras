@@ -9,7 +9,7 @@ from sympy.testing.pytest import raises
 
 from sympy_extras.core import Integer, Rational, Symbol, oo, pi, sqrt
 from sympy_extras.concrete.expr_with_limits import Sum
-from sympy_extras.functions import binomial, exp, factorial, sin
+from sympy_extras.functions import binomial, exp, factorial, harmonic, log, sin
 
 i = Symbol('i', integer=True)
 
@@ -77,7 +77,64 @@ def test_numeric_values_match_sympy() -> None:
         assert abs(complex(value) - complex(e.evalf(25))) < 1e-15, e
 
 
-def test_sums_without_a_native_rule_are_left_to_the_caller() -> None:
-    # SymPy's Euler-Maclaurin summation is not ported
-    assert Sum(i / factorial(i), (i, 0, oo))._numeric_node(53) is None
-    assert Sum(exp(-i**2), (i, 0, oo))._numeric_node(53) is None
+def test_euler_maclaurin_sums() -> None:
+    # these went to SymPy's evalf through the bridge (the Euler-Maclaurin
+    # summation was not ported, the native value was None)
+    with mpmath.workprec(80):
+        theta = (1 + mpmath.jtheta(3, 0, mpmath.exp(-1))) / 2
+        cases = [(Sum(i / factorial(i), (i, 0, oo)), mpmath.e), (Sum(exp(-i**2), (i, 0, oo)), theta),
+                 (Sum(1 / i**Rational(3, 2), (i, 1, oo)), mpmath.zeta(1.5)),
+                 (Sum(harmonic(i) / i**3, (i, 1, oo)), mpmath.pi**4 / 72),
+                 (Sum(log(i) / i**3, (i, 1, oo)), -mpmath.zeta(3, derivative=1)),
+                 (Sum(1 / i, (i, 1, 1000)), mpmath.harmonic(1000)),
+                 (Sum(1 / (i**2 + log(i)), (i, 1, oo)),
+                  mpmath.nsum(lambda k: 1 / (k**2 + mpmath.log(k)), [1, mpmath.inf], method='euler-maclaurin'))]
+        for e, known in cases:
+            assert abs(_value(e) - known) < mpmath.mpf(10)**-18, e
+
+
+def test_euler_maclaurin_symbolic() -> None:
+    # SymPy's docstring examples of Sum.euler_maclaurin
+    k = Symbol('k', integer=True)
+    b = Symbol('b')
+    s, e = Sum(1 / k, (k, 2, 5)).euler_maclaurin()
+    assert abs(complex(s.evalf()) - 1.26629073187415) < 1e-12 and e == Rational(7, 400)
+    assert Sum(k, (k, 2, b)).euler_maclaurin() == (b**2 / 2 + b / 2 - 1, 0)
+    # a reversed range is the negated sum over the swapped one; an empty one is zero
+    assert Sum(k, (k, 5, 4)).euler_maclaurin() == (0, 0)
+    assert Sum(k**2, (k, 5, 1)).euler_maclaurin() == (Rational(-86, 3), Rational(1, 3))
+    assert Sum(k**2, (k, 5, 1)).euler_maclaurin(m=10) == (-Sum(k**2, (k, 2, 4)).doit(), 0)
+
+
+def test_zero_term_ratio_pole_is_summed() -> None:
+    # SymPy's hypsum divides by zero (i**2/(i**4 + 1) from i = 0: the first
+    # term is zero, the term ratio has a pole at 0), sympy-extras#25
+    with mpmath.workprec(80):
+        known = mpmath.nsum(lambda k: k**2 / (k**4 + 1), [1, mpmath.inf])
+        assert abs(_value(Sum(i**2 / (i**4 + 1), (i, 0, oo))) - known) < mpmath.mpf(10)**-18
+
+
+def test_symmetric_finite_sum_is_not_zero() -> None:
+    # SymPy's evalf gives 0 for Sum(exp(-i**2), (i, -50, 50)) (its
+    # Euler-Maclaurin integral over (-50, 50) evaluated as 0, sympy-extras#25)
+    with mpmath.workprec(80):
+        known = mpmath.jtheta(3, 0, mpmath.exp(-1))
+        assert abs(_value(Sum(exp(-i**2), (i, -50, 50))) - known) < mpmath.mpf(10)**-18
+
+
+def test_wide_finite_sums_with_a_peak() -> None:
+    # SymPy's Euler-Maclaurin summation stops at the first term below eps
+    # (exp(-250000) at i = -500) and gives 0; over (-5000, 5000) it would
+    # give the integral sqrt(pi): the terms are added one by one up to
+    # 4000 of them, and a summand with a peak is not summed by
+    # Euler-Maclaurin at all
+    with mpmath.workprec(80):
+        known = mpmath.jtheta(3, 0, mpmath.exp(-1))
+        assert abs(_value(Sum(exp(-i**2), (i, -500, 500))) - known) < mpmath.mpf(10)**-18
+    assert Sum(exp(-(i - 3)**2), (i, -5000, 5000))._numeric_node(53) is None
+
+
+def test_inaccurate_sums_are_left_to_the_caller() -> None:
+    # an oscillating summand: the quadrature of the tail does not reach the
+    # precision, so no value (SymPy prints a few digits of a wrong value)
+    assert Sum(sin(i) / i**2, (i, 1, oo))._numeric_node(53) is None

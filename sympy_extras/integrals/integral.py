@@ -22,10 +22,18 @@ Examples
 >>> G = Integral(exp(-y*x**2), x, Integer(0), oo)
 >>> G, G.free_symbols == {y}, G.subs(y, 2)
 (Integral(exp(-x**2*y), (x, 0, oo)), True, Integral(exp(-2*x**2), (x, 0, oo)))
+>>> G.subs(y, 1).evalf(20)
+0.88622692545275801365
+
+A definite integral without free symbols is a number, evaluated by
+mpmath's tanh-sinh quadrature (:mod:`sympy_extras.integrals._evalf`, a
+port of SymPy's ``evalf_integral``).
 """
 from __future__ import annotations
 
 from typing import Final, Optional
+
+import mpmath
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr
@@ -103,6 +111,18 @@ class Integral(Expr):
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return self._rebuild(args)
+
+    def _is_number_node(self) -> Optional[bool]:
+        # SymPy's Integral.is_number: a definite integral without free
+        # symbols is a number (its variable is bound)
+        return not self.free_symbols if self._bounds is not None else False
+
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        # PORTED FROM SYMPY: sympy/core/evalf.py:evalf_integral (sympy_extras.integrals._evalf)
+        if self._bounds is None or self.free_symbols:
+            return None
+        from ._evalf import evalf_integral
+        return evalf_integral(self._function, self._variable, self._bounds[0], self._bounds[1], prec)
 
     def _eval_facts(self) -> dict[str, bool]:
         commutative = self._function.is_commutative

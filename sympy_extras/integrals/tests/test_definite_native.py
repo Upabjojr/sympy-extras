@@ -182,3 +182,26 @@ def test_samples_at_quadratic_roots_in_radicals() -> None:
     assert verify_numerically(value, sqrt(3 - y**2), y, b, sqrt(3), [eq(b**2 - 3, 0)]) is True
     found = definite_integral(2 * sqrt(3 - y**2), (y, b, sqrt(3)), [eq(b**2 - 3, 0)], special_values=False)
     assert not is_unevaluated(found)
+
+
+def test_integral_node_values() -> None:
+    # the value of a definite Integral node went to SymPy's evalf through
+    # the bridge; now mpmath's tanh-sinh quadrature of the native
+    # integrand, confirmed at a higher precision
+    from sympy_extras.functions import besselj
+    with mpmath.workprec(80):
+        series = mpmath.nsum(lambda n: (-1)**(n + 1) / n**n, [1, mpmath.inf])
+        cases = [(Integral(exp(-x**2), x, Integer(0), oo), mpmath.sqrt(mpmath.pi) / 2),
+                 (Integral(log(x), x, Integer(0), Integer(1)), mpmath.mpf(-1)),
+                 (Integral(x**x, x, Integer(0), Integer(1)), series),
+                 (Integral(besselj(0, x), x, Integer(0), Integer(3)), mpmath.quad(lambda t: mpmath.besselj(0, t), [0, 3])),
+                 (Integral(x**Rational(-3, 2), x, Integer(161), oo), 2 / mpmath.sqrt(161)),
+                 # a single tanh-sinh rule over (-326, 500) misses the peak and estimates no error
+                 (Integral(exp(-x**2), x, Integer(-326), Integer(500)), mpmath.sqrt(mpmath.pi))]
+        for e, known in cases:
+            assert e.is_number
+            value = numeric_value(e, 80)
+            assert value is not None and abs(value - known) < mpmath.mpf(10)**-20, e
+    # not accurate: no value (SymPy's evalf prints garbage digits)
+    assert numeric_value(Integral(sin(x) / x, x, Integer(0), oo), 53) is None
+    assert Integral(exp(-x), x).is_number is False
