@@ -7,7 +7,8 @@ returns its ``Integral``; the indefinite one is the integral which no
 antiderivative checks. The node never evaluates (its ``doit`` runs the
 integrator), the derivative of an indefinite integral in its variable is
 its integrand, and :mod:`sympy_extras.interop` converts it to SymPy's
-``Integral(f, x)`` or ``Integral(f, (x, a, b))``.
+``Integral(f, x)`` or ``Integral(f, (x, a, b))``. Its series is ported
+from SymPy's ``Integral._eval_nseries`` (``sympy/integrals/integrals.py``).
 
 Examples
 ========
@@ -23,6 +24,12 @@ Examples
 >>> G, G.free_symbols == {y}, G.subs(y, 2)
 (Integral(exp(-x**2*y), (x, 0, oo)), True, Integral(exp(-2*x**2), (x, 0, oo)))
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/integrals/integrals.py (Integral._eval_nseries) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; one variable of integration.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from typing import Final, Optional
@@ -159,11 +166,36 @@ class Integral(Expr):
         from .definite import definite_integral
         return definite_integral(self._function, (self._variable, self._bounds[0], self._bounds[1]))
 
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        return integral_nseries(self._function, self._variable, self._bounds, x, n, logx)
+
     def _sympystr(self, printer: StrPrinter) -> str:
         if self._bounds is None:
             return 'Integral(%s, %s)' % (printer.doprint(self._function), printer.doprint(self._variable))
         return 'Integral(%s, (%s, %s, %s))' % (printer.doprint(self._function), printer.doprint(self._variable),
                                               printer.doprint(self._bounds[0]), printer.doprint(self._bounds[1]))
+
+
+# PORTED FROM SYMPY: sympy/integrals/integrals.py:Integral._eval_nseries
+def integral_nseries(function: Expr, variable: Symbol, bounds: Optional[tuple[Expr, Expr]], x: Symbol, n: int,
+                     logx: Optional[Expr]) -> Expr:
+    """The series of an integral: the series of the integrand (in the
+    variable of integration when ``x`` is a bound) integrated term by term,
+    its order term multiplied by ``x``."""
+    from sympy_extras.core.add import add
+    from sympy_extras.core.expr import terms_of
+    from sympy_extras.core.order import Order
+    symb = variable if bounds is not None and x in bounds else x
+    series = function.nseries(symb, n=n, logx=logx)
+    terms = add(*[t for t in terms_of(series) if not t.has(Order)])
+    orders: list[Expr] = []
+    for o in terms_of(series):
+        if o.has(Order):
+            moved = o.subs(symb, x)
+            assert isinstance(moved, Expr)
+            orders.append(moved)
+    integral = Integral(terms, variable) if bounds is None else Integral(terms, variable, bounds[0], bounds[1])
+    return integral.doit() + add(*orders) * x
 
 
 def is_unevaluated(e: Basic) -> bool:

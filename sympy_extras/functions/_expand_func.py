@@ -1,15 +1,14 @@
 """The ``expand(func=True)`` rules of the special functions (SymPy's
 ``_eval_expand_func``), as a typed table for
 :func:`sympy_extras.core.function.expand`; a rule returns ``None`` where
-the port stops (a ``Sum`` or a derivative of ``zeta`` would be needed):
-SymPy expands that node.
+SymPy's rule does not apply (the node is left as it is).
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: the _eval_expand_func methods of sympy/functions/special/gamma_functions.py
 # (gamma, polygamma, loggamma, digamma, trigamma), beta_functions.py (beta), zeta_functions.py (zeta,
 # polylog), error_functions.py (erfc, erfi, erf2, expint), sympy/functions/combinatorial/factorials.py
-# (binomial), numbers.py (harmonic) and sympy/core/numbers.py (GoldenRatio, TribonacciConstant)
-# (SymPy 1.14)
+# (binomial), numbers.py (harmonic), sympy/functions/special/hyper.py (hyper, meijerg) and
+# sympy/core/numbers.py (GoldenRatio, TribonacciConstant) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; a table keyed by class in place of methods.
@@ -111,7 +110,12 @@ def _polygamma(node: Expr, hints: ExpandHints) -> Optional[Expr]:
     if isinstance(n, Integer) and n.p == -1:
         return add(loggamma(z), neg(mul(log(mul(Integer(2), pi)), Rational(1, 2))))
     if n.is_integer is False or n.is_nonnegative is False:
-        return None  # a derivative of zeta: SymPy's
+        # a derivative of zeta in its first argument
+        from sympy_extras.functions import digamma, gamma, zeta
+        s = Dummy('s')
+        dzt = zeta(s, z).diff(s).subs(s, add(n, ONE))
+        assert isinstance(dzt, Expr)
+        return mul(add(dzt, mul(add(EulerGamma, digamma(neg(n))), zeta(add(n, ONE), z))), _inv(gamma(neg(n))))
     return polygamma(n, z)
 
 
@@ -198,7 +202,15 @@ def _harmonic(node: Expr, hints: ExpandHints) -> Optional[Expr]:
             u = p // q
             p = p - u * q
             if u >= 0 and 0 < p < q:
-                return None  # Sums: SymPy's
+                from sympy_extras.concrete.expr_with_limits import sum_
+                from sympy_extras.functions import cos, cot, floor, log, sin
+                k = Dummy('k')
+                qq, pp = Integer(q), Integer(p)
+                t1 = mul(qq, sum_(_inv(add(mul(qq, k), pp)), (k, Integer(0), Integer(u))))
+                t2 = mul(Integer(2), sum_(mul(cos(mul(Integer(2), pi, pp, k, _inv(qq))), log(sin(mul(pi, k, _inv(qq))))),
+                                          (k, ONE, floor(mul(add(qq, MINUS_ONE), Rational(1, 2))))))
+                t3 = add(mul(mul(pi, Rational(1, 2)), cot(mul(pi, pp, _inv(qq)))), log(mul(Integer(2), qq)))
+                return add(t1, t2, neg(t3))
     return node
 
 
@@ -428,6 +440,25 @@ def _bessel(node: Expr, hints: ExpandHints) -> Optional[Expr]:
     return node
 
 
+# PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper._eval_expand_func
+def _hyper(node: Expr, hints: ExpandHints) -> Optional[Expr]:
+    from sympy_extras.functions.special.gamma_functions import gamma
+    from sympy_extras.functions.special.hyper import Hyper
+    from sympy_extras.simplify.hyperexpand import hyperexpand
+    assert isinstance(node, Hyper)
+    if len(node.ap) == 2 and len(node.bq) == 1 and node.argument == ONE:
+        a, b = node.ap
+        c = node.bq[0]
+        return mul(gamma(c), gamma(add(c, neg(a), neg(b))), _inv(gamma(add(c, neg(a)))), _inv(gamma(add(c, neg(b)))))
+    return hyperexpand(node)
+
+
+# PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg._eval_expand_func
+def _meijerg(node: Expr, hints: ExpandHints) -> Optional[Expr]:
+    from sympy_extras.simplify.hyperexpand import hyperexpand
+    return hyperexpand(node)
+
+
 def rules() -> dict[type, Rule]:
     """The rules keyed by the class of the node."""
     from sympy_extras.core.numbers import GoldenRatioType, TribonacciConstantType
@@ -436,12 +467,15 @@ def rules() -> dict[type, Rule]:
     from sympy_extras.functions.special import error_functions as er, gamma_functions as g
     from sympy_extras.functions.special import bessel as bs
     from sympy_extras.functions.special.beta_functions import Beta
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG
     from sympy_extras.functions.special.zeta_functions import PolyLog, Zeta
     bessel: dict[type, Rule] = {c: _bessel for c in (bs.BesselJ, bs.BesselY, bs.BesselI, bs.BesselK, bs.Hankel1, bs.Hankel2)}
     bessel.update({c: _spherical for c in (bs.SphericalJ, bs.SphericalY, bs.SphericalHankel1, bs.SphericalHankel2)})
     from sympy_extras.functions.special.zeta_functions import LerchPhi
     bessel[LerchPhi] = _lerchphi
+    from sympy_extras.functions.special._expand_func_bessel import rules as airy_ynm_rules
+    bessel.update(airy_ynm_rules())
     return bessel | {g.Gamma: _gamma, g.PolyGamma: _polygamma, g.LogGamma: _loggamma, g.DiGamma: _digamma,
             g.TriGamma: _trigamma, Beta: _beta, Binomial: _binomial, Harmonic: _harmonic, er.Erfc: _to_erf,
             er.Erfi: _to_erf, er.Erf2: _to_erf, er.Expint: _expint, Zeta: _zeta, PolyLog: _polylog,
-            GoldenRatioType: _golden_ratio, TribonacciConstantType: _tribonacci}
+            GoldenRatioType: _golden_ratio, TribonacciConstantType: _tribonacci, Hyper: _hyper, MeijerG: _meijerg}

@@ -86,7 +86,11 @@ def target_name(target: RewriteTarget) -> str:
         return target.name
     if isinstance(target, Basic):
         return _class_name(type(target))
-    return _class_name(target)
+    if isinstance(target, type):
+        return _class_name(target)
+    # a foreign object (SymPy's S.GoldenRatio): its class, as SymPy names it
+    name: str = type(target).__name__
+    return name
 
 
 def _class_name(cls: type) -> str:
@@ -119,8 +123,10 @@ def _rules() -> dict[tuple[type, str], Rule]:
 def _node_rules() -> dict[tuple[type, str], NodeRule]:
     if not _NODE_RULES:
         from sympy_extras.functions._rewrites_misc import node_rules
-        for (cls, t), rule in node_rules().items():
-            _NODE_RULES[(cls, _name_key(t))] = rule
+        from sympy_extras.functions.special._rewrites import node_rules as special_node_rules
+        for table in (node_rules(), special_node_rules()):
+            for (cls, t), rule in table.items():
+                _NODE_RULES[(cls, _name_key(t))] = rule
     return _NODE_RULES
 
 

@@ -24,7 +24,7 @@ Examples
 (Min(x, Max(1, y)), Max(1, 2), Max(x, y))
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py (SymPy 1.14)
+# PORTED FROM SYMPY: sympy/functions/elementary/miscellaneous.py, sympy/core/expr.py (Expr._eval_nseries) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: unevaluating classes with evaluating functions (SymPy's
@@ -82,6 +82,13 @@ class MinMaxBase(DefinedFunction):
     variadic = True
     nargs = frozenset()
     call_nargs = frozenset()
+
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_nseries (SymPy's MinMaxBase is an Expr first,
+    # whose series raises)
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        raise NotImplementedError('The _eval_nseries method should be added to %s to give terms up to O(x**n) at '
+                                  'x=0 from the positive direction so it is available when nseries calls it.'
+                                  % (type(self).__name__,))
 
     @classmethod
     def zero(cls) -> Expr:
