@@ -47,10 +47,15 @@ does:
    relations, is structural here: ``-b`` matches only once ``b`` is
    bound, as in SymPy.
 
-``Xor`` and the other connectives take step 1 and 2 only (SymPy rewrites
-``Xor`` in algebraic normal form first, which is not ported); a Boolean
-which is not a connective or a relation (``Contains``) is left as it is,
-as SymPy does.
+An ``Xor`` takes neither the intervals nor ``simplify_logic`` (which
+would write it with ``And`` and ``Or``): its arguments are simplified, it
+is written in algebraic normal form
+(:func:`~sympy_extras.logic.anf.to_anf`) and the pairs of its relations
+are replaced by SymPy's patterns of ``Xor`` (``(a <= b) ^ (a < b)`` is
+``Eq(a, b)``). A relation whose sides are not atoms is a variable of the
+normal form, where SymPy raises ``AttributeError``. The other connectives
+take step 1 and 2 only; a Boolean which is not a connective or a relation
+(``Contains``) is left as it is, as SymPy does.
 
 Examples
 ========
@@ -71,14 +76,15 @@ Examples
 # And._eval_simplify, Or._eval_simplify, simplify_univariate,
 # _apply_patternbased_simplification, _apply_patternbased_twoterm_simplification,
 # _apply_patternbased_threeterm_simplification, _simplify_patterns_and,
-# _simplify_patterns_and3, _simplify_patterns_or), sympy/core/relational.py
+# _simplify_patterns_and3, _simplify_patterns_or, Xor._eval_simplify,
+# _simplify_patterns_xor), sympy/core/relational.py
 # (_canonical) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: strict typing on the core's Booleans; structural matching of
 # the patterns instead of Wild; the univariate intervals computed natively
 # (maximal, polynomial relations, the endpoints tested on the formula);
-# Xor without the algebraic normal form.
+# the relations of compound sides of an Xor taken as variables.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -157,6 +163,8 @@ def _simplify(b: Boolean, options: _Options) -> Boolean:
         return _simplify_and(b, options)
     if isinstance(b, Or):
         return _simplify_or(b, options)
+    if isinstance(b, Xor):
+        return _simplify_xor(b, options)
     if isinstance(b, BooleanFunction):
         return _simplify_function(b, options)
     return b
@@ -292,6 +300,19 @@ def _strict(r: Relational) -> Boolean:
     if isinstance(r, Ge):
         return gt(r.lhs, r.rhs)
     return r
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:Xor._eval_simplify
+def _simplify_xor(b: Xor, options: _Options) -> Boolean:
+    """The arguments simplified, the formula in algebraic normal form
+    (:func:`~sympy_extras.logic.anf.to_anf`), then the patterns of
+    ``Xor``; no univariate intervals and no ``simplify_logic``, which
+    would write it with ``And`` and ``Or``."""
+    from sympy_extras.logic.anf import to_anf, xor_evaluated
+    rv = to_anf(xor_evaluated(*[_simplify(a, options) for a in b.args]))
+    if not isinstance(rv, Xor):
+        return rv
+    return _apply_xor_patterns(rv, options.measure)
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +471,58 @@ def _threeterm(rels_: list[Relational], patterns: Sequence[_Pattern], combine: C
     return rels
 
 
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:_apply_patternbased_simplification (Xor)
+def _apply_xor_patterns(rv: Xor, measure: Measure) -> Boolean:
+    """SymPy's ``_apply_patternbased_simplification`` for ``Xor``, which
+    has no dominating value: the pairs of relations replaced by the
+    patterns of ``Xor`` while it shortens the formula. A replacement which
+    is not a relation (a conjunction) is not matched again: SymPy fails on
+    it (``AttributeError``) when two terms are left to match."""
+    from sympy_extras.logic.anf import xor_evaluated
+    relations = [a for a in rv.args if isinstance(a, Relational)]
+    others = [a for a in rv.args if not isinstance(a, Relational)]
+    if len(relations) <= 1:
+        return rv
+    real = [r for r in relations if not any(s.is_real is False for s in r.free_symbols)]
+    nonreal: list[Boolean] = [r for r in relations if any(s.is_real is False for s in r.free_symbols)]
+    rels = [r.canonical for r in real]
+    replaced: list[Boolean] = []
+
+    def combine(*args: Boolean) -> Boolean:
+        return xor_evaluated(*args)
+    changed = True
+    while changed and len(rels) >= 2:
+        changed = False
+        rels = [r.reversed if isinstance(r, (Ge, Gt)) else r for r in rels]
+        rels = [r for r in ordered(rels) if isinstance(r, Relational)]
+        candidates = [(r,) if not isinstance(r, (Eq, Ne)) else (r, r.reversed) for r in rels]
+        results: list[tuple[int, list[int], Boolean]] = []
+        for (i, pi), (j, pj) in combinations(list(enumerate(candidates)), 2):
+            for pattern in _XOR_PATTERNS:
+                for p1, p2 in product(pi, pj):
+                    bound = _match(pattern, (p1, p2))
+                    if bound is None:
+                        continue
+                    new = pattern.replacement(bound)
+                    if not isinstance(new, ITE) and not new.has(Min, Max):
+                        saving = measure(combine(p1, p2)) - measure(new)
+                        if saving > 0:
+                            results.append((saving, [i, j], new))
+        if results:
+            _, indices, new = sorted(results, key=lambda r: -r[0])[0]
+            for index in sorted(indices, reverse=True):
+                del rels[index]
+            parts = list(new.args) if isinstance(new, Xor) else [new]
+            for part in parts:
+                if isinstance(part, Relational):
+                    rels.append(part)
+                else:
+                    replaced.append(part)
+            changed = True
+    ordered_rels: list[Boolean] = [r for r in ordered(rels) if isinstance(r, Relational)]
+    return combine(*([_canonical(r) for r in ordered_rels + replaced] + others + nonreal))
+
+
 def _p(relations: Sequence[RelationPattern], replacement: Callable[[Bindings], Boolean]) -> _Pattern:
     return _Pattern(relations, replacement)
 
@@ -553,6 +626,32 @@ _OR_PATTERNS: Final[tuple[_Pattern, ...]] = (
 )
 
 
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:_simplify_patterns_xor
+_XOR_PATTERNS: Final[tuple[_Pattern, ...]] = (
+    _p(((Eq, 'a', 'b'), (Le, 'a', 'b')), lambda w: lt(w['a'], w['b'])),
+    _p(((Eq, 'a', 'b'), (Lt, 'a', 'b')), lambda w: le(w['a'], w['b'])),
+    _p(((Le, 'a', 'b'), (Lt, 'a', 'b')), lambda w: eq(w['a'], w['b'])),
+    _p(((Le, 'a', 'b'), (Le, 'b', 'a')), lambda w: ne(w['a'], w['b'])),
+    _p(((Le, 'b', 'a'), (Ne, 'a', 'b')), lambda w: le(w['a'], w['b'])),
+    _p(((Lt, 'b', 'a'), (Ne, 'a', 'b')), lambda w: lt(w['a'], w['b'])),
+    # Min/Max/ITE
+    _p(((Le, 'b', 'a'), (Le, 'c', 'a')),
+       lambda w: and_(ge(w['a'], min_(w['b'], w['c'])), lt(w['a'], max_(w['b'], w['c'])))),
+    _p(((Le, 'b', 'a'), (Lt, 'c', 'a')),
+       lambda w: ite(gt(w['b'], w['c']), and_(gt(w['a'], w['c']), lt(w['a'], w['b'])),
+                     and_(ge(w['a'], w['b']), le(w['a'], w['c'])))),
+    _p(((Lt, 'b', 'a'), (Lt, 'c', 'a')),
+       lambda w: and_(gt(w['a'], min_(w['b'], w['c'])), le(w['a'], max_(w['b'], w['c'])))),
+    _p(((Le, 'a', 'b'), (Le, 'a', 'c')),
+       lambda w: and_(le(w['a'], max_(w['b'], w['c'])), gt(w['a'], min_(w['b'], w['c'])))),
+    _p(((Le, 'a', 'b'), (Lt, 'a', 'c')),
+       lambda w: ite(lt(w['b'], w['c']), and_(lt(w['a'], w['c']), gt(w['a'], w['b'])),
+                     and_(le(w['a'], w['b']), ge(w['a'], w['c'])))),
+    _p(((Lt, 'a', 'b'), (Lt, 'a', 'c')),
+       lambda w: and_(lt(w['a'], max_(w['b'], w['c'])), ge(w['a'], min_(w['b'], w['c'])))),
+)
+
+
 # ---------------------------------------------------------------------------
 # univariate formulas
 
@@ -600,9 +699,7 @@ def simplify_univariate(expr: Boolean, sympy_intervals: bool = False) -> Boolean
         # (its Piecewise._intervals drops the point: simplify of
         # (x**2 <= 0) & (x < 2) is False there)
         return expr
-    if sympy_intervals and not expr.has(Xor):
-        # (SymPy's Piecewise._intervals does not take an Xor: such a
-        # formula takes the native intervals)
+    if sympy_intervals:
         return _sympy_univariate(expr, x)
     if truth is None:
         return expr

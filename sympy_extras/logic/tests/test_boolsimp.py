@@ -9,6 +9,7 @@ import random
 
 import sympy
 from sympy.core.cache import clear_cache
+from sympy.testing.pytest import raises
 
 from sympy_extras.core import Eq, Integer, Ne, Rational, Symbol
 from sympy_extras.core.expr import Expr
@@ -153,12 +154,48 @@ def test_other_booleans() -> None:
     c = Contains(x - 1, Naturals0)
     assert simplify_boolean(c) is c
     assert simplify_boolean(true) is true
-    # Xor takes the univariate intervals and simplify_logic only (SymPy's
-    # Xor._eval_simplify, by the algebraic normal form, is not ported)
+    # Xor by its algebraic normal form and the patterns of Xor, as SymPy:
+    # no univariate intervals
     f = Xor(x > 1, y > 1)
     assert _same_truth(simplify_boolean(f), f)
-    assert str(simplify_boolean(Xor(x > 1, x > 2))) == "(x <= 2) & (x > 1)"
+    assert str(simplify_boolean(Xor(x > 1, x > 2))) == str(_sympy_simplify(Xor(x > 1, x > 2))) == \
+        "(x > 1) ^ (x > 2)"
     assert isinstance(simplify_boolean(Not(and_(x > 0, y > 0))), Boolean)
+
+
+def test_xor_agrees_with_sympy() -> None:
+    # SymPy's Xor._eval_simplify: the arguments simplified, the algebraic
+    # normal form, the patterns of Xor; Not, And and Or of an Xor go
+    # through simplify_logic
+    a, b, c = Symbol('a'), Symbol('b'), Symbol('c')
+    cases: list[tuple[Boolean, str]] = [
+        (Xor(a, or_(b, c)), 'a ^ b ^ c ^ (b & c)'),
+        (Xor(a, b, and_(a, c)), 'a ^ b ^ (a & c)'),
+        (Xor(2*x > 1, a), 'a ^ (x > 1/2)'),
+        (Xor(Eq(x, 1), x <= 1, y > 3, y < 2), '(y > 3) ^ (x < 1) ^ (y < 2)'),
+        (Xor(x <= 1, x < 2), '(x <= 1) ^ (x < 2)'),
+        (Not(Xor(x > 1, y > 1)), '((x <= 1) & (y <= 1)) | ((x > 1) & (y > 1))'),
+        (and_(Xor(x > 1, y > 1), y < 3), '(y < 3) & ((x <= 1) | (y <= 1)) & ((x > 1) | (y > 1))'),
+    ]
+    for f, expected in cases:
+        s = simplify_boolean(f, sympy_intervals=True)
+        assert str(s) == expected, (f, s)
+        assert str(_sympy_simplify(f)) == expected, f
+    # the patterns of Xor: (a <= b) ^ (a < b) is Eq(a, b), Eq(a, b) ^ (a <= b)
+    # is a < b
+    assert str(simplify_boolean(Xor(x <= y, x < y))) == 'Eq(x, y)'
+    assert str(simplify_boolean(Xor(Eq(x, y), x <= y))) == 'x < y'
+    # univariate: SymPy's Piecewise._intervals writes the Xor in
+    # conjunctive normal form (an empty term (x <= 1) & (x > 2) is an 'Eq
+    # condition' there, and the formula is left to simplify_logic)
+    f = and_(Xor(x > 1, x > 2), x < 3)
+    assert str(simplify_boolean(f, sympy_intervals=True)) == str(_sympy_simplify(f)) == \
+        '(x < 3) & ((x <= 1) | (x <= 2)) & ((x > 1) | (x > 2))'
+    # a relation with compound sides is a variable of the normal form;
+    # SymPy's simplify raises AttributeError (a Relational has no to_anf)
+    f = Xor(x + y > 1, a)
+    assert str(simplify_boolean(f)) == 'a ^ (x + y > 1)'
+    raises(AttributeError, lambda: sympy.simplify(to_sympy(f)))
 
 
 def test_sympy_intervals() -> None:

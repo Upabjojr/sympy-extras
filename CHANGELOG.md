@@ -30,6 +30,17 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `piecewise_simplify_arguments` no longer sends a condition with an
+  `Xor` to SymPy: the new `sympy_extras.logic.anf` ports SymPy's
+  algebraic normal form (`to_anf`, `is_anf`, `distribute_xor_over_and`,
+  `ANFform`, `anf_coeffs`, `bool_monomial` and the `Xor` constructor,
+  `xor_evaluated`), and `logic.boolsimp.simplify_boolean` simplifies an
+  `Xor` as SymPy's `Xor._eval_simplify` (its normal form and the patterns
+  of `Xor`, no longer the univariate intervals and `simplify_logic`);
+  `Piecewise._intervals` writes `Xor`, `Implies`, `Equivalent` and `ITE`
+  in conjunctive normal form as SymPy does. A relation whose sides are
+  not atoms is a variable of the normal form (SymPy's `simplify` and
+  `to_anf` raise `AttributeError` on it).
 - `sympy_extras.assumptions.boolsimp` is merged into `sympy_extras.logic.boolsimp` (one port of SymPy's `simplify` of Booleans, used by `refine` and, with SymPy's univariate intervals, `piecewise`; `Xor` no longer raises).
 - The core's `ask` no longer asks SymPy what its facts do not decide:
   the last steps of SymPy's `ask` are ported in the new
