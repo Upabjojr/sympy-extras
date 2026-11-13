@@ -101,6 +101,12 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         }
         Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
         g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
+        g @ (Function::Legendre
+        | Function::ChebyshevT
+        | Function::ChebyshevU
+        | Function::Hermite
+        | Function::Laguerre
+        | Function::AssocLaguerre) => special::polynomials::orthogonal_fdiff(g, e, argindex),
         g @ (Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi) => {
             special::elliptic_integrals::elliptic_fdiff(g, e, argindex)
         }
@@ -247,6 +253,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::elliptic_integrals::is_elliptic(f) && special::elliptic_integrals::arity_fits(f, args.len()) {
         return special::elliptic_integrals::elliptic(f, args);
     }
+    if special::polynomials::is_orthogonal(f) && special::polynomials::arity_fits(f, args.len()) {
+        return special::polynomials::orthogonal(f, args);
+    }
     if special::spherical_harmonics::is_spherical_harmonic(f) && args.len() == 4 {
         return special::spherical_harmonics::spherical_harmonic(f, args);
     }
@@ -364,6 +373,12 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         }
         Function::SingularityFunction => unreachable!("evaluated above with all their arguments"),
         Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
+        Function::Legendre
+        | Function::ChebyshevT
+        | Function::ChebyshevU
+        | Function::Hermite
+        | Function::Laguerre
+        | Function::AssocLaguerre => unreachable!("evaluated above with all their arguments"),
         Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
             unreachable!("evaluated above with all their arguments")
         }

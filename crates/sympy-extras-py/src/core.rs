@@ -205,6 +205,12 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "PolyGamma" => Basic::new(Head::Function(Function::PolyGamma), args()?),
         "SingularityFunctionNode" => Basic::new(Head::Function(Function::SingularityFunction), args()?),
         "YnmNode" => Basic::new(Head::Function(Function::Ynm), args()?),
+        "Legendre" => Basic::new(Head::Function(Function::Legendre), args()?),
+        "ChebyshevT" => Basic::new(Head::Function(Function::ChebyshevT), args()?),
+        "ChebyshevU" => Basic::new(Head::Function(Function::ChebyshevU), args()?),
+        "Hermite" => Basic::new(Head::Function(Function::Hermite), args()?),
+        "Laguerre" => Basic::new(Head::Function(Function::Laguerre), args()?),
+        "AssocLaguerre" => Basic::new(Head::Function(Function::AssocLaguerre), args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
         "EllipticF" => Basic::new(Head::Function(Function::EllipticF), args()?),
         "EllipticE" => Basic::new(Head::Function(Function::EllipticE), args()?),
@@ -485,6 +491,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::FresnelC => "error_functions",
                 Function::SingularityFunction => "singularity_functions",
                 Function::Ynm | Function::Znm => "spherical_harmonics",
+                Function::Legendre
+                | Function::ChebyshevT
+                | Function::ChebyshevU
+                | Function::Hermite
+                | Function::Laguerre
+                | Function::AssocLaguerre => "polynomials",
                 Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
                     "elliptic_integrals"
                 }
@@ -521,6 +533,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || *f == Function::SingularityFunction
                 || sympy_extras_core::functions::special::spherical_harmonics::is_spherical_harmonic(*f)
                 || sympy_extras_core::functions::special::mathieu_functions::is_mathieu(*f)
+                || sympy_extras_core::functions::special::polynomials::is_orthogonal(*f)
                 || sympy_extras_core::functions::special::elliptic_integrals::is_elliptic(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
@@ -2342,6 +2355,22 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
             }
             ei::elliptic(f, &a).map_err(e)?
+        }
+        "legendre" | "chebyshevt" | "chebyshevu" | "hermite" | "laguerre" | "assoc_laguerre" => {
+            use sympy_extras_core::core::basic::Function as F;
+            use sympy_extras_core::functions::special::polynomials as op;
+            let f: F = match name {
+                "legendre" => F::Legendre,
+                "chebyshevt" => F::ChebyshevT,
+                "chebyshevu" => F::ChebyshevU,
+                "hermite" => F::Hermite,
+                "laguerre" => F::Laguerre,
+                _ => F::AssocLaguerre,
+            };
+            if !op::arity_fits(f, a.len()) {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
+            }
+            op::orthogonal(f, &a).map_err(e)?
         }
         "mathieus" | "mathieuc" | "mathieusprime" | "mathieucprime" => {
             use sympy_extras_core::core::basic::Function as F;

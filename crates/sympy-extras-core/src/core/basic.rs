@@ -267,6 +267,12 @@ pub enum Function {
     PolyGamma,
     SingularityFunction,
     Ynm,
+    Legendre,
+    ChebyshevT,
+    ChebyshevU,
+    Hermite,
+    Laguerre,
+    AssocLaguerre,
     EllipticK,
     EllipticF,
     EllipticE,
@@ -391,6 +397,12 @@ impl Function {
             Function::PolyGamma => "polygamma",
             Function::SingularityFunction => "SingularityFunction",
             Function::Ynm => "Ynm",
+            Function::Legendre => "legendre",
+            Function::ChebyshevT => "chebyshevt",
+            Function::ChebyshevU => "chebyshevu",
+            Function::Hermite => "hermite",
+            Function::Laguerre => "laguerre",
+            Function::AssocLaguerre => "assoc_laguerre",
             Function::EllipticK => "elliptic_k",
             Function::EllipticF => "elliptic_f",
             Function::EllipticE => "elliptic_e",
@@ -514,6 +526,12 @@ impl Function {
             Function::PolyGamma => "PolyGamma",
             Function::SingularityFunction => "SingularityFunctionNode",
             Function::Ynm => "YnmNode",
+            Function::Legendre => "Legendre",
+            Function::ChebyshevT => "ChebyshevT",
+            Function::ChebyshevU => "ChebyshevU",
+            Function::Hermite => "Hermite",
+            Function::Laguerre => "Laguerre",
+            Function::AssocLaguerre => "AssocLaguerre",
             Function::EllipticK => "EllipticK",
             Function::EllipticF => "EllipticF",
             Function::EllipticE => "EllipticE",
@@ -658,6 +676,12 @@ impl Function {
             | Function::PolyGamma
             | Function::SingularityFunction
             | Function::Ynm
+            | Function::Legendre
+            | Function::ChebyshevT
+            | Function::ChebyshevU
+            | Function::Hermite
+            | Function::Laguerre
+            | Function::AssocLaguerre
             | Function::EllipticK
             | Function::EllipticF
             | Function::EllipticE

@@ -1389,6 +1389,12 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::EllipticPi) => {
             crate::functions::special::elliptic_integrals::elliptic_facts(g, e.args())
         }
+        super::basic::Function::Legendre
+        | super::basic::Function::ChebyshevT
+        | super::basic::Function::ChebyshevU
+        | super::basic::Function::Hermite
+        | super::basic::Function::Laguerre
+        | super::basic::Function::AssocLaguerre => crate::functions::special::polynomials::orthogonal_facts(),
         super::basic::Function::Ynm | super::basic::Function::Znm => {
             crate::functions::special::spherical_harmonics::spherical_facts()
         }

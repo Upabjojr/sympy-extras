@@ -568,6 +568,14 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Stieltjes => {
                     unreachable!("evaluated above with all their arguments")
                 }
+                // no value of their own in the Rust core: mpmath's hypergeometric
+                // continuations for a non-integer order are not ported
+                super::basic::Function::Legendre
+                | super::basic::Function::ChebyshevT
+                | super::basic::Function::ChebyshevU
+                | super::basic::Function::Hermite
+                | super::basic::Function::Laguerre
+                | super::basic::Function::AssocLaguerre => return None,
                 // no numerical value (neither SymPy nor mpmath has one)
                 super::basic::Function::MathieuS
                 | super::basic::Function::MathieuC
