@@ -879,8 +879,11 @@ class Basic:
             return self
         return self._evaluated(args)
 
-    def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Basic:
-        """SymPy's ``rewrite`` of the node, in terms of the given functions.
+    def rewrite(self, *args: Union[Basic, FunctionClass, type, str], piecewise: bool = True) -> Basic:
+        """SymPy's ``rewrite`` of the node, in terms of the last argument
+        (a class, a function object, a node or a SymPy name such as
+        ``'sqrt'``), the others the classes of the nodes to rewrite
+        (:func:`~sympy_extras.core.rewriting.rewrite`).
 
         Examples
         ========
@@ -894,14 +897,13 @@ class Basic:
         """
         if not args:
             return self
-        from .function import DefinedFunction
-        classes = [a for a in args if isinstance(a, type)]
-        target = args[-1]
-        if len(classes) == len(args) and isinstance(target, type) and issubclass(target, DefinedFunction):
-            from .rewriting import RewriteHints, rewrite
-            return rewrite(self, tuple(classes[:-1]), target, RewriteHints(piecewise))
-        from .bridge import bridge
-        return bridge().rewrite(self, args, piecewise)
+        from .rewriting import Pattern, RewriteHints, rewrite
+        patterns: list[Pattern] = []
+        for a in args[:-1]:
+            if isinstance(a, str):
+                raise TypeError('a pattern of rewrite is a class, not %r' % (a,))
+            patterns.append(type(a) if isinstance(a, Basic) else a)
+        return rewrite(self, tuple(patterns), args[-1], RewriteHints(piecewise))
 
     def refine(self, assumption: RefineArg = True) -> Basic:
         """The node simplified under the assumption (and the global ones):

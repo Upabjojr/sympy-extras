@@ -47,6 +47,19 @@ remove public functions. Breaking changes are listed here when they happen.
   right series (SymPy's rational algorithm read the quadratic denominator as linear),
   and the scaled and shifted finite Fourier series keep all their terms (SymPy's kept
   the first three).
+- Every SymPy 1.14 `_eval_rewrite_as_*` rule of the native classes is native, targets
+  which are not function classes included (Piecewise, Integral, Sum, Product, hyper,
+  meijerg, and names such as `'sqrt'`, `'polynomial'`, `'Nor'`), except Piecewise↔ITE
+  and PowerSet; `rewrite` accepts SymPy's names as strings; `Bridge.rewrite` is removed.
+  `expand_func` of the Airy functions, `Ynm`, `hyper`, `meijerg`, `polygamma` of a
+  non-integer order and `harmonic` at rationals is native. The series of `Piecewise`,
+  `Derivative`, `Subs`, `Integral` and `NonElementaryIntegral` are native; the functions
+  without a rule use the port of `Function._eval_nseries`, and `Max`, `Min`, `Sum`,
+  `Product` and the other nodes without one raise `NotImplementedError`, as in SymPy.
+  Unlike SymPy: `erfi` → `expint`, `li` → `Shi`/`Chi`, `hn1`/`hn2` → `hankel`,
+  `airyaiprime` → `besseli`, the phase of `assoc_legendre` → `Sum`, and `genocchi` →
+  `bernoulli` (no float) are right, and `sec`/`csc` of the special angles rewrite to
+  `sqrt` and `pow` (SymPy raises).
 - `sympy_extras.integrals.meijerint`: a native port of SymPy's Meijer
   G-function integration (`sympy/integrals/meijerint.py`, SymPy 1.14) on
   the typed core: the table of G-function representations

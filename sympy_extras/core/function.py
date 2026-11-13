@@ -233,7 +233,7 @@ class Application(Expr):
                     raise PoleError("Cannot expand %s around 0" % (self,))
                 result: Expr = term
                 fact = 1
-                _x = Dummy('xi')
+                _x = _uniquely_named_symbol('xi', self)
                 e = e.subs(x, _x)
                 for i in range(1, n):
                     fact *= i
@@ -598,8 +598,13 @@ class DefinedFunction(Application):
             found = _generic_function_nseries(self, x, n, logx)
             if found is not None:
                 return found
-        # the classes whose expansion is not ported: the foreign system's
-        return bridge().nseries(self, x, n, logx, cdir)
+            # an argument going to an infinity logarithmically (SymPy's
+            # branch of Function._eval_nseries not ported)
+            return Application._eval_nseries(self, x, n, logx, cdir)
+        if self._has_foreign_class():
+            # a wrapped foreign function: the foreign system's expansion
+            return bridge().nseries(self, x, n, logx, cdir)
+        return Application._eval_nseries(self, x, n, logx, cdir)
 
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         if type(self).__name__ not in _SYMPY_OWN_LEADING_TERM:
@@ -900,6 +905,17 @@ class Derivative(Expr):
     def args(self) -> tuple[Basic, ...]:
         return (self._expr,) + tuple(Tuple(s, Integer(n)) for s, n in self._counts)
 
+    # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The derivatives of the terms of the series of the expression
+        (unevaluated, as SymPy's), the order term divided by ``x``."""
+        arg = self.expr.nseries(x, n=n, logx=logx)
+        o = arg.getO()
+        terms: list[Expr] = [Derivative(a, *self._counts) for a in terms_of(arg.removeO())]
+        if o is not None:
+            terms.append(o / x)
+        return add(*terms)
+
     # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         """The derivative of the first term of the series of the expression
@@ -1057,6 +1073,20 @@ class Subs(Expr):
     @property
     def args(self) -> tuple[Basic, ...]:
         return (self._expr, Tuple(*self._variables), Tuple(*self._point))
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Subs._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The substitution in the terms of the series of the expression (in
+        the substituted variable when ``x`` is its point)."""
+        other = self.variables[self.point.index(x)] if x in self.point else x
+        arg = self.expr.nseries(other, n=n, logx=logx)
+        o = arg.getO()
+        rv = add(*[Subs(a, self._variables, self._point) for a in terms_of(arg.removeO())])
+        if o is not None:
+            moved = o.subs(other, x)
+            assert isinstance(moved, Expr)
+            rv = rv + moved
+        return rv
 
     # PORTED FROM SYMPY: sympy/core/function.py:Subs._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
@@ -1372,8 +1402,8 @@ _FUNC_RULES: dict[type, Callable[[Expr, ExpandHints], Optional[Expr]]] = {}
 # PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with the _eval_expand_func methods
 def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
     """The special functions (their arguments first) expanded by their
-    rules; a node without a ported rule is expanded by SymPy (that node
-    only) when SymPy has one."""
+    rules; a wrapped foreign node is expanded by the foreign system (that
+    node only)."""
     from .bridge import bridge
     if not _FUNC_RULES:
         from sympy_extras.functions._expand_func import rules
@@ -1386,8 +1416,8 @@ def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
         return e
     rule = _FUNC_RULES.get(type(e))
     new: Optional[Basic] = rule(e, hints) if rule is not None else None
-    if new is None and (e._is_foreign_node() or type(e).__name__ in _SYMPY_EXPAND_FUNC):
-        # a class with a SymPy rule not ported (or a wrapped foreign node)
+    if new is None and e._has_foreign_class():
+        # a wrapped foreign node: the foreign system's rule
         new = bridge().expand_func_node(e)
     if new is not None and new != e:
         return new
@@ -1479,6 +1509,11 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
     if power_exp and _is_exp_node(e) and isinstance(e.args[0], Add):
         from .numbers import E
         return mul(*[pow(E, t) for t in e.args[0].args])
+    if power_exp and isinstance(e, Application) and type(e).__name__ == 'ExpPolar' and isinstance(e.args[0], Add) \
+            and e.args[0].is_commutative is not False:
+        # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:ExpBase._eval_expand_power_exp
+        # (exp_polar is an ExpBase: exp_polar(a + b) is exp_polar(a)*exp_polar(b))
+        return mul(*[e._rebuilt([t]) for t in e.args[0].args])
     if log and _is_log_node(e):
         from sympy_extras.functions.elementary.exponential import Log
         if isinstance(e, Log):
@@ -1493,7 +1528,6 @@ def _expand_power_base_node(e: Pow, force: bool) -> Expr:
     the others kept together (the signs and the powers of ``I`` sorted
     out first)."""
     from .numbers import I as _I, ImaginaryUnit
-    from .fuzzy import fuzzy_and
     b, ex = e.base, e.exp
     if not isinstance(b, Mul):
         return e

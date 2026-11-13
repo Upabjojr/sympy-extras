@@ -938,12 +938,16 @@ def expr_through_sympy(e: Expr, f: Callable[[SymPyExpr], SymPyBasic]) -> Expr:
     return as_expr(from_sympy(f(_sympy_expr(to_sympy(e)))))
 
 
-def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type]]) -> list[Union[SymPyBasic, type]]:
+def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type, str]]) -> list[Union[SymPyBasic, type, str]]:
     """The arguments of ``rewrite`` as SymPy objects: nodes converted,
-    function objects replaced by their SymPy class."""
-    targets: list[Union[SymPyBasic, type]] = []
+    function objects replaced by their SymPy class, the other native
+    classes and the names by their SymPy names."""
+    from sympy_extras.core.rewriting import target_name
+    targets: list[Union[SymPyBasic, type, str]] = []
     for a in args:
-        if isinstance(a, Basic):
+        if isinstance(a, str):
+            targets.append(a)
+        elif isinstance(a, Basic):
             targets.append(to_sympy(a))
         elif isinstance(a, SymPyFunction):
             targets.append(a.sympy_class)
@@ -957,7 +961,7 @@ def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type]]) -> list[U
                 if a in _NATIVE_TO_SYMPY:
                     targets.append(_NATIVE_TO_SYMPY[a])
                     continue
-            targets.append(a)
+            targets.append(target_name(a) if issubclass(a, Basic) else a)
         else:
             raise TypeError("cannot rewrite in terms of %r" % (a,))
     return targets
@@ -1122,31 +1126,17 @@ def solveset_first_through_sympy(equation: Expr, d: Symbol) -> Optional[Expr]:
     return None
 
 
-def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: type,
+def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: Union[Basic, FunctionClass, type, str],
                                piecewise: bool = True) -> Optional[Basic]:
-    """The node, rebuilt with ``args``, rewritten by its SymPy rule for
-    ``target`` (not deep); ``None`` when SymPy has no rule or the target
-    has no SymPy class."""
-    if not issubclass(target, DefinedFunction):
-        return None
-    if not _NATIVE_TO_SYMPY:
-        _fill_function_tables()
-    sympy_target = _NATIVE_TO_SYMPY.get(target)
-    if sympy_target is None:
+    """The wrapped SymPy node, rebuilt with ``args``, rewritten by its
+    SymPy rule for ``target`` (not deep); ``None`` when SymPy has no rule."""
+    from sympy_extras.core.rewriting import target_name
+    sympy_target = rewrite_targets([target])[0]
+    original = to_sympy(node)
+    if not _sympy_has_rule(type(original), target_name(target)):
         return None
     sympy_args = [to_sympy(a) for a in args]
-    if isinstance(node, DefinedFunction) and type(node) in _NATIVE_TO_SYMPY:
-        # the node's own class, unevaluated (SymPy calls the rule of the
-        # node itself with the rewritten arguments)
-        sympy_class = _NATIVE_TO_SYMPY[type(node)]
-        if not _sympy_has_rule(sympy_class, sympy_target.__name__):
-            return None
-        rebuilt = sympy_class(*sympy_args, evaluate=False)
-    else:
-        original = to_sympy(node)
-        if not _sympy_has_rule(type(original), sympy_target.__name__):
-            return None
-        rebuilt = original.func(*sympy_args) if args else original
+    rebuilt = original.func(*sympy_args) if args else original
     return from_sympy(rebuilt.rewrite(sympy_target, deep=False, piecewise=piecewise))
 
 
@@ -1713,11 +1703,8 @@ class SymPyBridge(Bridge):
     def meromorphic(self, node: Expr, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Truth]:
         return meromorphic_node_through_sympy(node, x, a, own_only)
 
-    def rewrite(self, e: Basic, targets: Sequence[RewriteTarget], piecewise: bool) -> Basic:
-        sympy_targets = rewrite_targets(targets)
-        return through_sympy(e, lambda s: s.rewrite(*sympy_targets, piecewise=piecewise))
-
-    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: type, piecewise: bool) -> Optional[Basic]:
+    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: RewriteTarget, piecewise: bool
+                     ) -> Optional[Basic]:
         return rewrite_node_through_sympy(e, args, target, piecewise)
 
     def rewrite_named_node(self, e: Basic, args: tuple[Basic, ...], name: str, limitvar: Optional[Symbol]

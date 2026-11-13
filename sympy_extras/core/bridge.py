@@ -20,7 +20,7 @@ a node:
 - ``numeric``: ``numeric_value`` of a foreign number node;
 - ``ask``, ``equals_zero``, ``is_constant``, ``minimal_polynomial``,
   ``meromorphic``: questions about expressions with foreign nodes;
-- ``nseries``, ``rewrite``, ``rewrite_node``, ``rewrite_named_node``,
+- ``nseries``, ``rewrite_node``, ``rewrite_named_node``,
   ``expand_func_node``: the rules of a foreign node;
 - ``solve_first``, ``simplify``, ``factor_foreign_integrals``,
   ``integrate``, ``invert``, ``fps``, ``fourier_series``: the operations
@@ -54,8 +54,8 @@ __all__ = ['Bridge', 'ForeignOperationUnavailable', 'bridge', 'register_bridge']
 
 #: a truth value of three states
 Truth = Optional[bool]
-#: the target of a rewrite: a node, a function class or a class
-RewriteTarget = Union[Basic, FunctionClass, type]
+#: the target of a rewrite: a node, a function class, a class or a name
+RewriteTarget = Union[Basic, FunctionClass, type, str]
 
 
 class ForeignOperationUnavailable(NotImplementedError):
@@ -107,6 +107,7 @@ class Bridge:
     # -- operations on nodes whose rules are not ported
 
     def nseries(self, node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The series of a wrapped foreign node."""
         raise self._missing('the series of %s' % (type(node).__name__,))
 
     def meromorphic(self, node: Expr, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Truth]:
@@ -114,11 +115,10 @@ class Bridge:
         ``own_only``) and its answer."""
         return (False, None)
 
-    def rewrite(self, e: Basic, targets: Sequence[RewriteTarget], piecewise: bool) -> Basic:
-        raise self._missing('rewrite')
-
-    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: type, piecewise: bool) -> Optional[Basic]:
-        """The node rewritten by the foreign class's rule, ``None`` without one."""
+    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: RewriteTarget, piecewise: bool
+                     ) -> Optional[Basic]:
+        """The wrapped foreign node, rebuilt with ``args``, rewritten by the
+        foreign class's rule, ``None`` without one."""
         return None
 
     def rewrite_named_node(self, e: Basic, args: tuple[Basic, ...], name: str, limitvar: Optional[Symbol]
@@ -126,6 +126,8 @@ class Bridge:
         return None
 
     def expand_func_node(self, e: Basic) -> Optional[Basic]:
+        """The wrapped foreign node expanded by its class's rule, ``None``
+        without one."""
         return None
 
     def solve_first(self, equation: Expr, x: Symbol) -> Optional[Expr]:

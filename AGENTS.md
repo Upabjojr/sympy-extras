@@ -206,6 +206,12 @@ sympy_extras/
         limits_sympy.py      the SymPy face of limits
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
+        _rewrites_misc.py    the rewrite rules of the complex, integer, Max/Min, delta and singularity functions, KroneckerDelta,
+                             Piecewise, the logical connectives, Eq, Sum and Product, PORTED FROM SYMPY
+        special/_rewrites_bessel.py, _rewrites_polynomials.py, _expand_func_bessel.py: the rewrite rules of the Bessel,
+                             Airy and Ynm functions and of the orthogonal polynomials, the expand_func rules of Airy and Ynm,
+                             PORTED FROM SYMPY (core/rewriting.py: rules keyed by (class, SymPy name of the target), node
+                             rules for nodes which are not expressions, the bridge only for foreign nodes)
         _meromorphic.py      is_meromorphic of the incomplete gamma and Bessel functions, PORTED FROM SYMPY
         elementary/
             exponential.py   Exp, Log, LambertW (nodes) and exp, log, lambertw (evaluating), PORTED FROM SYMPY

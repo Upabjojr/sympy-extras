@@ -269,7 +269,7 @@ functions), whose rules only SymPy knows:
 | `is_foreign`, `from_foreign`, `parse` | `sympify`, `refine` | a SymPy object, a string outside the native grammar |
 | `numeric` | `numeric_value` | a foreign number node |
 | `ask`, `equals_zero`, `is_constant`, `minimal_polynomial`, `meromorphic` | `ask`, `Expr.equals`, `Expr.is_constant`, the reliable values, `is_meromorphic` | expressions with foreign nodes |
-| `nseries`, `rewrite`, `rewrite_node`, `rewrite_named_node`, `expand_func_node` | the series, `rewrite`, the tractable rewrites, `expand_func` | a foreign node's rule |
+| `nseries`, `rewrite_node`, `rewrite_named_node`, `expand_func_node` | the series, `rewrite`, the tractable rewrites, `expand_func` | a foreign node's rule |
 | `solve_first`, `simplify`, `factor_foreign_integrals`, `integrate`, `invert`, `fps`, `fourier_series` | `Order`, `simplify`, `Expr.integrate`, `Expr.invert`, `Expr.fps`, `Expr.fourier_series` | expressions with foreign nodes |
 
 A native node without a native rule is decided natively as SymPy decides a

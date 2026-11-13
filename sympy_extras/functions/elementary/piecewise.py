@@ -50,7 +50,7 @@ from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanLike, BooleanTrue, Or, and_, or_,
                                      false, to_boolean, true)
 from sympy_extras.core.mul import div
-from sympy_extras.core.numbers import Rational, nan
+from sympy_extras.core.numbers import Integer, Rational, nan
 from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.relational import Ge, Gt, Le, Lt, Relational, _FUNCTIONS, _REVERSED
 from sympy_extras.core.sorting import ClassKey
@@ -122,6 +122,11 @@ class Piecewise(Expr):
             raise TypeError("At least one (expr, cond) pair expected.")
         self._args: Final[tuple[ExprCondPair, ...]] = tuple(_pair(p) for p in pairs)
         Basic.__init__(self)
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The series of each expression, under its condition."""
+        return piecewise(*[(ec.expr._eval_nseries(x, n, logx, Integer(0)), ec.cond) for ec in self.args])
 
     # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
