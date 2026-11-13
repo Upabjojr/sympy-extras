@@ -10,6 +10,32 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The last SymPy fallbacks of the native core are closed: the bridge
+  (`sympy_extras.core.bridge`) now serves only wrapped foreign (SymPy)
+  objects. `Sum` values by SymPy's Euler–Maclaurin summation
+  (`Sum.euler_maclaurin` and the branch of `evalf_sum`, ported to
+  `concrete/_evalf.py`), with guards against SymPy's wrong values (no early
+  stop at a small term when the terms grow again: SymPy's
+  `Sum(exp(-i**2), (i, -50, 50)).evalf()` is `0`; no Euler–Maclaurin for a
+  summand with a peak or an oscillation; no `hypsum` when the term ratio
+  has a pole at a natural number, SymPy's `ZeroDivisionError` on
+  `Sum(i**2/(i**4 + 1), (i, 0, oo))`); the definite `Integral` node has a
+  value (`integrals/_evalf.py`, a port of `evalf_integral`: mpmath's
+  tanh-sinh quadrature of the native integrand, the range subdivided at
+  the kinks of `Abs`, `Piecewise`, `floor`, the value confirmed at a
+  higher precision, `None` when not accurate) and is a number
+  (`is_number`) inside other nodes, as `Sum` and `Product` are now.
+  `Expr.equals` and `Expr.is_constant` finish SymPy's steps natively (the
+  derivatives, the surds solved for by the native `solve`, the minimal
+  polynomial, the simplified derivatives); `Expr.integrate` is the native
+  `indefinite_integral` / `definite_integral`; `Expr.invert` with one
+  generator and parameters inverts over their rational functions (several
+  generators raise `ValueError`, as SymPy does); the first solution of an
+  `Order`'s change of variable takes the first element of several, or the
+  native `solve`'s solution of a `ConditionSet`; `Basic.simplify` of a node
+  which is not an expression rebuilds it with its arguments simplified;
+  `numeric_value` of a native node without a numerical rule is `None`.
+  `meijerint_inversion` stays unported: no native code calls it.
 - `sympy_extras.integrals.meijerint`: a native port of SymPy's Meijer
   G-function integration (`sympy/integrals/meijerint.py`, SymPy 1.14) on
   the typed core: the table of G-function representations

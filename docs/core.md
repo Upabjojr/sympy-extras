@@ -256,6 +256,28 @@ Add(Pow(Symbol('p', positive=True), Integer(2)), sin(Symbol('x')))
 
 ```
 
+### The bridge serves foreign objects only
+
+`sympy_extras.core.bridge` is the interface through which the core asks a
+foreign system (SymPy, registered by `import sympy_extras.interop`). Every
+operation of the core is native; the bridge is asked only about the
+**wrapped foreign objects** (SymPy objects wrapped in nodes, applied SymPy
+functions), whose rules only SymPy knows:
+
+| bridge method | asked by | for |
+|---|---|---|
+| `is_foreign`, `from_foreign`, `parse` | `sympify`, `refine` | a SymPy object, a string outside the native grammar |
+| `numeric` | `numeric_value` | a foreign number node |
+| `ask`, `equals_zero`, `is_constant`, `minimal_polynomial`, `meromorphic` | `ask`, `Expr.equals`, `Expr.is_constant`, the reliable values, `is_meromorphic` | expressions with foreign nodes |
+| `nseries`, `rewrite`, `rewrite_node`, `rewrite_named_node`, `expand_func_node` | the series, `rewrite`, the tractable rewrites, `expand_func` | a foreign node's rule |
+| `solve_first`, `simplify`, `factor_foreign_integrals`, `integrate`, `invert`, `fps`, `fourier_series` | `Order`, `simplify`, `Expr.integrate`, `Expr.invert`, `Expr.fps`, `Expr.fourier_series` | expressions with foreign nodes |
+
+A native node without a native rule is decided natively as SymPy decides a
+node without a rule (unchanged, `None`, `NotImplementedError`).
+`core/tests/test_independence.py` runs each feature with no bridge
+registered, and `core/tests/test_bridge_foreign_only.py` checks that the
+native nodes never reach it.
+
 ## Functions of the core
 
 The functions of SymPy were wrapped (`SymPyFunction(sympy.sin)`), their

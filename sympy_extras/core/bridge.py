@@ -1,13 +1,33 @@
-"""The operations the core delegates to a foreign computer algebra system
-until they are ported: an interface with the core's own types only.
+"""The operations the core delegates to a foreign computer algebra system:
+an interface with the core's own types only.
 
 The core never imports SymPy. :mod:`sympy_extras.interop` implements this
 interface with SymPy and registers it when imported (``import
 sympy_extras.interop``). Without it the queries of knowledge answer
 "unknown" (``None``, no facts, no rule) and the operations which must
 produce a result raise :class:`ForeignOperationUnavailable`, naming the
-operation. Every method is a debt: the goal is to port each one and
-remove it from here.
+operation.
+
+Every operation is ported: the bridge serves only the **wrapped foreign
+objects** (the SymPy objects which :mod:`sympy_extras.interop` wraps in
+nodes of the core, ``node._is_foreign_node()``, and the applied SymPy
+functions, ``node._has_foreign_class()``), whose rules only the foreign
+system knows. The callers ask it only for an expression containing such
+a node:
+
+- ``is_foreign``, ``from_foreign``, ``parse``: ``sympify`` of a foreign
+  object, or of a string outside the native grammar;
+- ``numeric``: ``numeric_value`` of a foreign number node;
+- ``ask``, ``equals_zero``, ``is_constant``, ``minimal_polynomial``,
+  ``meromorphic``: questions about expressions with foreign nodes;
+- ``nseries``, ``rewrite``, ``rewrite_node``, ``rewrite_named_node``,
+  ``expand_func_node``: the rules of a foreign node;
+- ``solve_first``, ``simplify``, ``factor_foreign_integrals``,
+  ``integrate``, ``invert``, ``fps``, ``fourier_series``: the operations
+  on expressions with foreign nodes.
+
+A native node is decided natively, also when no native rule applies (SymPy's
+behaviour without a rule: the node unchanged, ``None``, ``NotImplementedError``).
 
 Examples
 ========

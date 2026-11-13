@@ -240,14 +240,16 @@ sympy_extras/
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,
                              order, ...), typed; Wild/match/replace, the full set of is_* predicates, Q/ask/refine,
-                             the Expr methods of SymPy (integrate, aseries, ... through the conversion),
+                             the Expr methods of SymPy (integrate, equals, is_constant, invert, aseries, ..., native;
+                             core/bridge.py serves only the wrapped foreign objects, see docs/core.md),
                              native Order, series driver and limits (order.py, series.py, gruntz.py, limits.py; per-class _eval_nseries and
                              _eval_as_leading_term, SymPy's per node for the functions not ported),
                              factor_terms, a native rewrite (rewriting.py), SymPy's order of the arguments, to_sympy/from_sympy with generic wrappers
                              of any SymPy object; nodes pickle with their hash recomputed and the singletons
                              (register_singleton: true, false, oo, pi, ...) unpickled as themselves; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
-        _evalf.py            evalf_sum, hypsum: the numerical values of sums (native), PORTED FROM SYMPY
+        _evalf.py            evalf_sum, hypsum, euler_maclaurin: the numerical values of sums, Euler–Maclaurin summation
+                             (Sum.euler_maclaurin) (native), PORTED FROM SYMPY
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation, the cases of the
                              isolated values of the parameters of sums (_sum_special_values_native) (native)
@@ -303,6 +305,8 @@ sympy_extras/
         deltafunctions.py    deltaintegrate, change_mul, expand_diracdelta: antiderivatives of delta functions (native),
                              PORTED FROM SYMPY
         integral.py          Integral (node): the unevaluated indefinite or definite integral; is_unevaluated (native)
+        _evalf.py            evalf_integral, do_integral: the value of a definite Integral by mpmath's tanh-sinh quadrature,
+                             subdivided at kinks, confirmed at a higher precision (native), PORTED FROM SYMPY
         regions.py           IntegralByRanges, integrate_by_ranges, Integrator: integrals over semialgebraic regions through
                              the CAD (native: the native CAD, ask, refine, solve, simplify, roots and simplex; the
                              one-dimensional integrals by a typed integrator, the native definite's by default)
