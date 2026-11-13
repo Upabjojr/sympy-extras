@@ -289,9 +289,15 @@ sympy_extras/
         definite.py          definite_integral, conditional_integral, verify_numerically, DefiniteIntegrator: splitting,
                              range mappings, the cases of the parameters, the methods in turn (native: every method of the
                              package called natively, the native solve, ask, SAT, limits, singularities and simplification,
-                             quadratures by the numerical rules of the nodes, the native indefinite; SymPy's integrate, the
-                             last method, through definite_sympy)
-        definite_sympy.py    the SymPy face of definite, and integrate_of_core
+                             quadratures by the numerical rules of the nodes, the native indefinite; the last method the
+                             native meijerint and an antiderivative at the endpoints, the delta functions by deltafunctions)
+        definite_sympy.py    the SymPy face of definite
+        meijerint.py         meijerint_indefinite, meijerint_definite, meijer_antiderivative, rewrite_single, lookup_table:
+                             integration by Meijer G-functions, the table of representations, the recursive Mellin transform,
+                             the theorems for one and two G-functions with their conditions (native: the native hyperexpand,
+                             gammasimp, powdenest, mellin and slater), PORTED FROM SYMPY (meijerint, parts of transforms)
+        deltafunctions.py    deltaintegrate, change_mul, expand_diracdelta: antiderivatives of delta functions (native),
+                             PORTED FROM SYMPY
         integral.py          Integral (node): the unevaluated indefinite or definite integral; is_unevaluated (native)
         regions.py           IntegralByRanges, integrate_by_ranges, Integrator: integrals over semialgebraic regions through
                              the CAD (native: the native CAD, ask, refine, solve, simplify, roots and simplex; the
@@ -401,11 +407,10 @@ sympy_extras/
                              and the Euler substitutions (native, with the native ratint)
         radicals_sympy.py    the SymPy face of radicals
         indefinite.py        indefinite_integral, verified_antiderivative, is_antiderivative, real_form, conjugate_logarithms:
-                             the typed methods in turn, then SymPy's, each antiderivative checked by differentiation (native:
-                             the native methods, cancel, simplify, structure theorem, reliable values and special values;
-                             the native manualintegrate; SymPy's meijerint and integrate last, through indefinite_sympy;
-                             not SymPy's heurisch, whose port is the native heurisch)
-        indefinite_sympy.py  the SymPy face of indefinite, used by definite, and meijerint_of_core, integrate_of_core
+                             the typed methods in turn, each antiderivative checked by differentiation (native: the native
+                             methods, cancel, simplify, structure theorem, reliable values and special values; the native
+                             manualintegrate and meijerint last; no SymPy method is left)
+        indefinite_sympy.py  the SymPy face of indefinite, used by definite
         manualintegrate.py   integral_steps, manualintegrate, IntegralSolver, the rules (frozen dataclasses: URule,
                              PartsRule, ...): integration by the rules of a calculus course with the tree of the steps,
                              generator rules driven by the solver (native), PORTED FROM SYMPY

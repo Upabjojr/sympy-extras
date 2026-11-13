@@ -10,6 +10,24 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.integrals.meijerint`: a native port of SymPy's Meijer
+  G-function integration (`sympy/integrals/meijerint.py`, SymPy 1.14) on
+  the typed core: the table of G-function representations
+  (`lookup_table`, typed `TableEntry` records), `rewrite_single` (the
+  table, the recursive Mellin transform of a product by the theorem for
+  two G-functions, ported with `_rewrite_gamma` and the inverse Mellin
+  transform of `transforms.py`, and the Mellin kernels of `.mellin`
+  inverted by `slater.mellin_barnes`), `meijerint_indefinite` and
+  `meijerint_definite` (the Mellin-convolution theorems with the
+  convergence conditions of Prudnikov 2.24.1-2 and Luke 5.6, the changes
+  of range), and `meijer_antiderivative`, SymPy's `integrate(f, x,
+  meijerg=True, risch=False)`; values come with their conditions as pairs.
+  Not ported: `meijerint_inversion`.
+- `sympy_extras.integrals.deltafunctions`: a native port of SymPy's
+  `deltaintegrate` and `change_mul`, with `DiracDelta.is_simple` and the
+  expansion of a delta by the roots of its argument.
+- `MeijerG.ap`, `bq`, `nu`, `delta`, `get_period` (ported from SymPy).
+
 - `sympy_extras.integrals.manualintegrate`: a native port of SymPy's
   `manualintegrate` (SymPy 1.14) on the typed core, with the steps:
   `integral_steps(f, x)` returns the tree of the rules (frozen dataclasses,
@@ -41,6 +59,18 @@ remove public functions. Breaking changes are listed here when they happen.
   in conjunctive normal form as SymPy does. A relation whose sides are
   not atoms is a variable of the normal form (SymPy's `simplify` and
   `to_anf` raise `AttributeError` on it).
+- **Breaking**: the integrators reach SymPy no more. The method
+  `'meijer'` of `sympy_extras.integrals.indefinite` is the native
+  `meijerint.meijer_antiderivative`, and the method `'sympy'` (SymPy's
+  `integrate`) is removed, with `indefinite.SYMPY_METHODS`; the exact
+  methods of the antiderivative route of definite integration take
+  `'manual'` and `'meijer'` in its place. The last method of the native definite
+  integration, SymPy's `integrate` and `meijerint`, is native: the
+  theorems of `meijerint_definite` and an antiderivative at the endpoints
+  (cut at its discontinuities on real ranges; the delta functions by the
+  native `deltaintegrate`), checked numerically as before. Removed:
+  `indefinite_sympy.meijerint_of_core`, `indefinite_sympy.integrate_of_core`,
+  `definite_sympy.integrate_of_core`.
 - `sympy_extras.assumptions.boolsimp` is merged into `sympy_extras.logic.boolsimp` (one port of SymPy's `simplify` of Booleans, used by `refine` and, with SymPy's univariate intervals, `piecewise`; `Xor` no longer raises).
 - The core's `ask` no longer asks SymPy what its facts do not decide:
   the last steps of SymPy's `ask` are ported in the new
@@ -3246,6 +3276,10 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- The native `Ei` of a positive number times `polar_lift(-1)` evaluates
+  above the cut, `Ei(-x) + I*pi` (SymPy's `Ei._eval_evalf`); it gave
+  `Ei(-x)`. `exp_polar` of a real number is positive (`exp_polar(0)`
+  was not known positive).
 - `polys.regularchains_sympy.solutions.exact_solutions` with `real=True`
   returned the complex points whose coordinate is a root times an integer
   basis (`4*CRootOf(x**2 - x + 1, 0)` for `y**3 + 64`, taken for a real

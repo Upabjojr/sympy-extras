@@ -487,10 +487,17 @@ class EiNode(DefinedFunction):
         z = self.args[0]
         return div(exp(z), z)
 
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Ei._eval_evalf
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         if values[0] == 0:
             return None
-        return mpmath.mpc(mpmath.ei(values[0]))
+        from sympy_extras.functions.elementary.complexes import polar_lift
+        value = mpmath.mpc(mpmath.ei(values[0]))
+        if div(self.args[0], polar_lift(MINUS_ONE)).is_positive:
+            # a positive number times polar_lift(-1): the branch above the
+            # cut, Ei(-x) + I*pi
+            return value + mpmath.mpc(0, mpmath.pi)
+        return value
 
     def _eval_facts(self) -> dict[str, bool]:
         return {'commutative': True}

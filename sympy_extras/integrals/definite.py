@@ -65,11 +65,11 @@ native ``solve``, ``ask``, SAT solver, limits, factorisation and
 simplification, the verified antiderivatives of the native
 :mod:`.indefinite`, the native cases of the special values of the
 parameters), and the numerical checks evaluate the integrands by the
-numerical rules of the nodes. One step stays on SymPy and is reached at
-run time through :mod:`.definite_sympy`, SymPy being loaded on that path
-only: SymPy's ``integrate`` and ``meijerint``, the last of the methods
-(:func:`~sympy_extras.integrals.definite_sympy.integrate_of_core`).
-The functions on SymPy objects are in :mod:`.definite_sympy`.
+numerical rules of the nodes. The last of the methods, where SymPy's
+``integrate`` and ``meijerint`` were, is the native Meijer G-function
+integration (:mod:`.meijerint`) with an antiderivative at the endpoints
+(the delta functions by :mod:`.deltafunctions`). The functions on SymPy
+objects are in :mod:`.definite_sympy`.
 
 Examples
 ========
@@ -424,9 +424,10 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     parameters under which it holds, or ``None``.
 
     The methods of this package run under half of the time limit of the
-    settings, so that SymPy's ``integrate`` gets the other half when they
+    settings, so that the last method (the Meijer G-function theorems and
+    an antiderivative at the endpoints) gets the other half when they
     fail; a value they find under a condition the assumptions do not
-    settle is kept unless SymPy finds an unconditional one.
+    settle is kept unless the last method finds an unconditional one.
 
     >>> from sympy_extras.core import symbols, oo
     >>> from sympy_extras.functions import exp
@@ -439,7 +440,7 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
     integrator = _Integrator(assumptions, principal_value=principal_value, finite_part=finite_part,
                              regularize=regularize)
     if not _real_bounds(a, b) or _nested_complex_powers(f):
-        return integrator._sympy(f, x, a, b)
+        return integrator._last(f, x, a, b)
     # a singularity or a kink whose position against the endpoints the
     # assumptions do not settle: the cases of the parameters get the whole
     # time limit, and SymPy's integrate is not asked on the whole range
@@ -453,7 +454,7 @@ def conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
         return found
     if parametric:
         return found
-    fallback = integrator._sympy(f, x, a, b)
+    fallback = integrator._last(f, x, a, b)
     if fallback is not None and found is not None and fallback.condition is true and settings.numerical_checks \
             and not _holds_outside(fallback.value, found.condition, f, x, a, b, assumptions):
         # an unconditional answer of SymPy against a condition of the
@@ -1221,7 +1222,7 @@ class _Integrator:
             return ConditionalValue(f * (b - a))
         f = piecewise_fold(f) if f.has(Piecewise) else f
         if f.has(DiracDelta):
-            return self._sympy(f, x, a, b)
+            return self._last(f, x, a, b)
         f = _combined_exponentials(f, x)
         f = _sums_to_products(f, x)
         f = self._arctangent_pairs(f, x, a, b)
@@ -1339,7 +1340,7 @@ class _Integrator:
                     continue
                 return found
         if fallback:
-            return self._sympy(f, x, a, b, depth)
+            return self._last(f, x, a, b, depth)
         return None
 
     # -- splitting ----------------------------------------------------------
@@ -1878,7 +1879,7 @@ class _Integrator:
                 branch = integrator._branch(f, x, lower, upper)
                 if branch is not None:
                     f = branch
-        found = integrator._sympy(f, x, a, b, depth)
+        found = integrator._last(f, x, a, b, depth)
         if found is not None and not found.value.has(Piecewise):
             return found
         if ordered is not None and not ordered[1] and known is not None:
@@ -2862,44 +2863,170 @@ class _Integrator:
                 return self._finish(found)
         return None
 
-    def _sympy(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int = 0) -> Optional[ConditionalValue]:
-        """SymPy's ``integrate`` under the time limit, checked numerically
-        (through :func:`~sympy_extras.integrals.definite_sympy.integrate_of_core`,
-        SymPy being loaded on this path only)."""
-        from .definite_sympy import integrate_of_core
-        # a quarter of the time limit for each of the two forms: SymPy's
-        # half of the limit in all (each ran under the whole limit, and an
-        # integral no method takes cost 75 s under a limit of 30)
+    def _last(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int = 0,
+              endpoints: bool = True) -> Optional[ConditionalValue]:
+        """The last of the methods, where SymPy's ``integrate`` was: the
+        Meijer G-function theorems (:func:`.meijerint.meijerint_definite`)
+        and an antiderivative evaluated at the endpoints, in SymPy's order
+        (the theorems first over an infinite range), each under a quarter
+        of the time limit and checked numerically."""
         budget = None if settings.timeout is None else settings.timeout / 4
-        for meijerg in (False, True):
-            value = integrate_of_core(f, x, a, b, meijerg, budget)
-            if value is None:
+        infinite = a in (oo, -oo) or b in (oo, -oo)
+        routes: list[Callable[[Expr, Symbol, Expr, Expr], Optional[ConditionalValue]]] = \
+            [self._meijer_value, self._endpoint_value] if endpoints else [self._meijer_value]
+        if not infinite:
+            routes.reverse()
+        for route in routes:
+            try:
+                value = attempt(lambda: route(f, x, a, b), budget, native=True)
+            except (ZeroDivisionError, AttributeError, AssertionError, OverflowError, IndexError):
+                value = None
+            if value is None or value.value.has(nan, zoo) or value.condition.has(x):
                 continue
-            found = _from_integrate(value, x)
-            if found is None:
-                continue
-            found = self._finish(ConditionalValue(found.value, self._real_parts(found.condition)))
+            found = self._finish(ConditionalValue(value.value, self._real_parts(value.condition)))
             if found is None:
                 continue
             if settings.numerical_checks and not f.has(DiracDelta):
-                if found.value.has(oo, -oo, zoo, nan):
+                if found.value.has(oo, -oo):
                     continue
                 if verify_numerically(found.value, f, x, a, b, self.assumptions) is not True:
-                    # an answer of integrate which the quadrature cannot
-                    # confirm is not kept: the branch cuts of the
-                    # antiderivative make such answers wrong too often
-                    # (a delta function cannot be integrated numerically
-                    # and is handled by integrate symbolically)
+                    # an answer which the quadrature cannot confirm is not
+                    # kept: the branch cuts of the antiderivatives and the
+                    # conditions of the theorems make such answers wrong
+                    # too often (a delta function cannot be integrated
+                    # numerically and is integrated symbolically)
                     continue
             tidied = tidy(found.value, self.assumptions)
             if tidied != found.value and settings.numerical_checks and not f.has(DiracDelta) \
                     and verify_numerically(tidied, f, x, a, b, self.assumptions) is False:
                 # the simplification is checked too: it turned the
-                # log(-exp_polar(I*pi)) of integrate's answer for
-                # u**3*exp(-u)*log(u) over (1, oo) into 2*I*pi
+                # log(-exp_polar(I*pi)) of an answer for u**3*exp(-u)*log(u)
+                # over (1, oo) into 2*I*pi
                 tidied = found.value
             return ConditionalValue(tidied, found.condition)
         return None
+
+    def _meijer_value(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[ConditionalValue]:
+        """The integral by the theorems on Meijer G-functions, with their
+        convergence condition."""
+        from .meijerint import meijerint_definite
+        found = meijerint_definite(f, x, a, b)
+        if found is None or isinstance(found[1], BooleanFalse):
+            return None
+        return ConditionalValue(found[0], found[1])
+
+    def _endpoint_value(self, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[ConditionalValue]:
+        """An antiderivative (the verified methods of :mod:`.indefinite`,
+        the delta functions by :func:`.deltafunctions.deltaintegrate`) at
+        the endpoints, by limits, as SymPy's ``integrate`` evaluates it:
+        the exact methods and the rules first, then the heuristics (as in
+        SymPy's integrate: 2**log(z) from -I to I and
+        log(1 - z)*atanh(sqrt(z)) over (0, 1) by heurisch); never the
+        Meijer G route, which the theorems cover and whose antiderivatives
+        took the budget to check (lerchphi of polar arguments for
+        x**k/(x + 3))."""
+        from .antiderivative import _METHODS as EXACT
+        from .deltafunctions import deltaintegrate
+        from .indefinite import METHODS, verified_antiderivative
+        if f.has(DiracDelta):
+            F = deltaintegrate(f, x)
+            return None if F is None else self._evaluated_antiderivative(F, f, x, a, b)
+        exact = [name for name in EXACT if name != 'meijer']
+        heuristics = [name for name, _ in METHODS if name != 'meijer' and name not in EXACT]
+        # with parameters on a real range the exact methods only: a
+        # heuristic antiderivative there lacks the cases of the parameters
+        # (the generic value of x*y**x over (0, 2) replaced the methods'
+        # cases, and was nan at y = 0)
+        passes = [exact] if _real_bounds(a, b) and f.free_symbols - {x} else [exact, heuristics]
+        for names in passes:
+            found = verified_antiderivative(f, x, self.assumptions, names)
+            if found is None:
+                continue
+            value = self._evaluated_antiderivative(found[0], f, x, a, b)
+            if value is not None:
+                return value
+        return None
+
+    def _evaluated_antiderivative(self, F: Expr, f: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[ConditionalValue]:
+        """The antiderivative ``F`` of ``f`` between the endpoints."""
+        if is_unevaluated(F) or F.has(Integral):
+            return None
+        if F.has(Piecewise) and not f.has(Piecewise):
+            # an antiderivative with cases of the parameters: the driver
+            # writes the cases of the integral itself (the case log(y) = 0
+            # of x*y**x became y <= 0 once simplified, and the endpoint
+            # value was wrong at y = -2)
+            return None
+        if _real_bounds(a, b) and not f.has(DiracDelta):
+            # cut at the discontinuities of F inside the range (the
+            # antiderivative of 1/(cos(x) + 2) jumps at pi)
+            from .antiderivative import antiderivative_integral
+            found_value = antiderivative_integral(f, x, a, b, self.assumptions, known=F)
+            if found_value is not None and not found_value.value.has(oo, -oo):
+                return found_value
+            # the values at the endpoints, as SymPy's integrate takes them,
+            # when no singularity of f lies inside the range (1/x over (-1,
+            # 2) came out log(2) - log(-1), which the quadrature of the
+            # divergent integral did not refuse)
+            inside = singularities(f, x, self.assumptions)
+            if inside is None:
+                return None
+            lower, upper = cancel(a), cancel(b)
+            for point in inside:
+                if self.ask(lower < point) is not False and self.ask(point < upper) is not False:
+                    return None
+        values: list[Expr] = []
+        for point, direction in ((b, '-'), (a, '+')):
+            value = _endpoint(F, x, point, direction)
+            if value is None:
+                return None
+            values.append(value)
+        total = values[0] - values[1]
+        if total.has(oo, -oo):
+            return None
+        return ConditionalValue(total)
+
+
+def _endpoint(F: Expr, x: Symbol, point: Expr, direction: str) -> Optional[Expr]:
+    """``F`` at an endpoint: its value when it is finite there and no step
+    function jumps there (the antiderivatives of delta functions are steps:
+    the limit of ``E*Heaviside(x - 1)`` at ``0`` does not finish), the
+    limit from inside the range otherwise; ``None`` when neither is
+    known."""
+    if point not in (oo, -oo):
+        steps = [h for h in F.atoms(Heaviside) if isinstance(h, Heaviside)]
+        value = F.subs(x, point)
+        if not value.has(nan, zoo, oo, -oo):
+            # a step at the endpoint takes its value there, Heaviside(0) =
+            # 1/2, as in SymPy's integrate: half of a delta at an endpoint
+            return value
+        if steps:
+            return None
+    else:
+        # the steps at an infinite endpoint: 1 or 0 by the limit of their
+        # argument (the limit of Heaviside(x - 1/2)/4 at oo does not finish)
+        rule: dict[Basic, Basic] = {}
+        for h in F.atoms(Heaviside):
+            if not isinstance(h, Heaviside):
+                continue
+            side = limit(_expr_arg(h), x, point)
+            if side == oo:
+                rule[h] = S.One
+            elif side == -oo:
+                rule[h] = S.Zero
+            else:
+                return None
+        if rule:
+            F = as_expr(F.xreplace(rule))
+    value = limit(F, x, point) if point in (oo, -oo) or point.is_extended_real is not True \
+        else limit(F, x, point, direction)
+    if isinstance(value, Limit) or value.has(nan, zoo):
+        return None
+    return value
+
+
+def _expr_arg(node: Heaviside) -> Expr:
+    return node.args[0]
 
 
 class DefiniteIntegrator(ParametricIntegrator):

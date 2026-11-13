@@ -12,7 +12,8 @@ infinite parameters and an ``a_i - b_j`` that is a positive integer.
 Both have the derivative in the argument (``Derivative`` when a
 parameter depends on the variable: SymPy's derivatives in the
 parameters are not available either), mpmath values, and ``hyper`` its
-radius of convergence. Not ported: ``hyperexpand``, the series,
+radius of convergence; ``meijerg`` its quantities ``nu``, ``delta`` and
+``get_period`` of the integration theorems. Not ported: ``hyperexpand``, the series,
 ``convergence_statement`` and the polar arguments. Appell's ``appellf1``
 (a function of the core, its parameters being plain arguments) is here
 too.
@@ -30,7 +31,7 @@ Examples
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/special/hyper.py (hyper, meijerg, _prep_tuple,
-# TupleParametersBase._eval_derivative), sympy/core/function.py
+# TupleParametersBase._eval_derivative, meijerg.nu, delta, get_period), sympy/core/function.py
 # (Function._eval_nseries, the asymptotic branch) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
@@ -387,6 +388,89 @@ class MeijerG(Expr):
     @property
     def bother(self) -> tuple[Expr, ...]:
         return self._bother
+
+    @property
+    def ap(self) -> tuple[Expr, ...]:
+        """All the ``a`` parameters, ``an`` then ``aother``."""
+        return self._an + self._aother
+
+    @property
+    def bq(self) -> tuple[Expr, ...]:
+        """All the ``b`` parameters, ``bm`` then ``bother``."""
+        return self._bm + self._bother
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg.nu
+    @property
+    def nu(self) -> Expr:
+        """``sum(bq) - sum(ap)``, a quantity of the convergence region of the
+        Mellin–Barnes integral."""
+        total: Expr = Integer(0)
+        for b in self.bq:
+            total = add(total, b)
+        for a in self.ap:
+            total = sub(total, a)
+        return total
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg.delta
+    @property
+    def delta(self) -> Rational:
+        """``m + n - (p + q)/2``, a quantity of the convergence region of the
+        Mellin–Barnes integral.
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions.special.hyper import meijerg
+        >>> g = meijerg([], [], [Symbol('a')], [Symbol('b')], Symbol('z'))
+        >>> g.delta, g.nu
+        (0, a + b)
+        """
+        return Rational(2 * (len(self._bm) + len(self._an)) - len(self.ap) - len(self.bq), 2)
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg.get_period
+    def get_period(self) -> Expr:
+        """The period of the function in ``log(z)``: ``2*pi`` times the least
+        common multiple of the denominators of the rational ``bm`` (``an``,
+        for ``p > q``; both for ``p = q``), ``oo`` when a parameter is not
+        rational or two of them differ by an integer.
+
+        >>> from sympy_extras.core import Rational, Symbol
+        >>> from sympy_extras.functions.special.hyper import meijerg
+        >>> z = Symbol('z')
+        >>> meijerg([], [], [0], [], z).get_period(), meijerg([], [], [Rational(1, 2)], [0], z).get_period()
+        (2*pi, 4*pi)
+        >>> meijerg([], [], [0, 1], [], z).get_period()
+        oo
+        """
+        from math import lcm
+        from sympy_extras.core.mod import mod
+        from sympy_extras.core.numbers import pi
+        from sympy_extras.simplify.simplify import simplify
+
+        def compute(parameters: Sequence[Expr]) -> Optional[int]:
+            # None for SymPy's oo: a parameter not rational, or two
+            # differing by an integer
+            for i, b in enumerate(parameters):
+                if not isinstance(b, Rational):
+                    return None
+                for other in parameters[i + 1:]:
+                    r = mod(simplify(sub(b, other)), Integer(1))
+                    if isinstance(r, Integer) and r == 0:
+                        return None
+            period = 1
+            for b in parameters:
+                if isinstance(b, Rational):
+                    period = lcm(period, b.q)
+            return period
+
+        beta = compute(self._bm)
+        alpha = compute(self._an)
+        p, q = len(self.ap), len(self.bq)
+        if p == q:
+            if alpha is None or beta is None:
+                return oo
+            return mul(Integer(2), mul(pi, Integer(lcm(alpha, beta))))
+        if p < q:
+            return oo if beta is None else mul(Integer(2), mul(pi, Integer(beta)))
+        return oo if alpha is None else mul(Integer(2), mul(pi, Integer(alpha)))
 
     # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries (meijerg has none of its own)
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:

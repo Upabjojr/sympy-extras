@@ -981,7 +981,8 @@ class ExpPolar(DefinedFunction):
 
     def _eval_facts(self) -> dict[str, bool]:
         facts: dict[str, bool] = {'commutative': True, 'polar': True, 'zero': False}
-        if facts_of(self.args[0]).get('extended_real'):
+        argument = facts_of(self.args[0])
+        if argument.get('extended_real'):
             facts['extended_real'] = True
         z = self.args[0]
         if z.is_number and not z.free_symbols:

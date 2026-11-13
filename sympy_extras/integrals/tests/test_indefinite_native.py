@@ -31,17 +31,15 @@ def test_the_typed_methods_answer_on_core_objects() -> None:
     assert indefinite_integral(sqrt(1 - x**2), x) == x * sqrt(1 - x**2) / 2 + asin(x) / 2
 
 
-def test_sympys_routes_come_last_and_are_checked() -> None:
-    # SymPy's integrate (the face, loaded at run time) gives a core expression
-    found = verified_antiderivative(sin(x), x, methods=['sympy'])
-    assert found == (-cos(x), 'sympy')
-    # every native method (the port of manualintegrate the last of them)
-    # comes before SymPy's routes
+def test_the_meijer_route_comes_last_and_is_checked() -> None:
+    # the native Meijer G-function route (SymPy's meijerint and integrate
+    # were the last methods, through the face) answers on core objects
+    found = verified_antiderivative(sin(x), x, methods=['meijer'])
+    assert found == (-cos(x), 'meijer')
     names = [name for name, _ in indefinite.METHODS]
-    tail = names[names.index(indefinite.SYMPY_METHODS[0]):]
-    assert tail == list(indefinite.SYMPY_METHODS)
-    assert names[names.index(indefinite.SYMPY_METHODS[0]) - 1] == 'manual'
-    assert [name for name in names if name in indefinite.SYMPY_METHODS] == list(indefinite.SYMPY_METHODS)
+    assert names[-2:] == ['manual', 'meijer']
+    # SymPy's integrate is no longer a method
+    assert 'sympy' not in names
 
 
 def test_manual_method_is_native() -> None:

@@ -25,9 +25,9 @@ def test_classic_integrands_by_the_typed_methods() -> None:
     # the error function from the exponential table
     found = verified_antiderivative(exp(-x**2), x)
     assert found is not None and found[1] == 'exponential' and found[0].has(erf)
-    # SymPy's methods stay the last resort, still checked
-    found = verified_antiderivative(sin(x), x, methods=['sympy'])
-    assert found == (-cos(x), 'sympy')
+    # the Meijer G-function route is the last resort, still checked
+    found = verified_antiderivative(sin(x), x, methods=['meijer'])
+    assert found == (-cos(x), 'meijer')
 
 
 def test_is_antiderivative() -> None:
