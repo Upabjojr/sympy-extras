@@ -219,7 +219,8 @@ sympy_extras/
             factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial / factorial, binomial, rf, ff, PORTED FROM SYMPY
             numbers.py       Catalan, Fibonacci, Lucas, Harmonic, Bernoulli, Euler, Bell, Genocchi, Partition / catalan, ..., PORTED FROM SYMPY
         special/
-            gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma / gamma, ..., PORTED FROM SYMPY
+            gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma / gamma, ... (with their
+                             asymptotic series), PORTED FROM SYMPY
             delta_functions.py DiracDelta, Heaviside / dirac_delta, heaviside, PORTED FROM SYMPY
             zeta_functions.py Zeta, DirichletEta, PolyLog / zeta, dirichlet_eta, polylog; Bernoulli numbers, PORTED FROM SYMPY
             error_functions.py Erf, ..., Expint, EiNode, SiNode, CiNode, ShiNode, ChiNode, LiNode, OffsetLiNode / erf, ..., Ei, Si, Ci, Shi, Chi, li, Li;

@@ -32,8 +32,9 @@ Examples
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: unevaluating classes with evaluating functions, strict typing;
-# the general expand_func, lowergamma, uppergamma,
-# multigamma and the series not ported.
+# the general expand_func of lowergamma, uppergamma and multigamma not
+# ported; the asymptotic series of loggamma, polygamma, digamma, trigamma
+# and lowergamma ported.
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
@@ -368,6 +369,11 @@ class DiGamma(DefinedFunction):
     def fdiff(self, argindex: int) -> Expr:
         return polygamma(ONE, self.args[0])
 
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:digamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series of ``polygamma(0, z)``."""
+        return PolyGamma(ZERO, self.args[0])._eval_aseries(n, [ZERO, *args0], x, logx)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return None if _poles(values[0]) else mpmath.mpc(mpmath.digamma(values[0]))
 
@@ -389,6 +395,11 @@ class TriGamma(DefinedFunction):
 
     def fdiff(self, argindex: int) -> Expr:
         return polygamma(Integer(2), self.args[0])
+
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:trigamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series of ``polygamma(1, z)``."""
+        return PolyGamma(ONE, self.args[0])._eval_aseries(n, [ONE, *args0], x, logx)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return None if _poles(values[0]) else mpmath.mpc(mpmath.polygamma(1, values[0]))
@@ -499,6 +510,21 @@ class LowerGamma(DefinedFunction):
         if x.is_zero or isinstance(x, NegativeInfinity):
             return None
         return lowergamma(conjugate(a), conjugate(x))
+
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:lowergamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series as the order ``s`` goes to ``oo`` with the
+        argument ``z`` fixed: ``z**s*exp(-z)`` times the sum of
+        ``z**k/rf(s, k + 1)`` (Abramowitz & Stegun 6.5.29)."""
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import rf
+        s, z = self.args
+        if isinstance(args0[0], Infinity) and not z.has(x):
+            coeff = z**s * exp(-z)
+            sum_expr = add(*[z**k / rf(s, Integer(k + 1)) for k in range(n - 1)])
+            # SymPy's O with the free symbols of the expression
+            return coeff * sum_expr + order(z**s * s**(-n))
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         try:

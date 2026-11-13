@@ -50,8 +50,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 - The asymptotic series of `fresnels` and `fresnelc` at `oo` and `-oo`
   are native (`FresnelIntegral._eval_aseries`, ported from SymPy's
-  `fresnels._eval_aseries` and `fresnelc._eval_aseries`): they went to
-  SymPy through the bridge of the core.
+  `fresnels._eval_aseries` and `fresnelc._eval_aseries`), and so are
+  those of the nodes `DiGamma`, `TriGamma` (through `PolyGamma`) and of
+  `LowerGamma(s, z)` as `s` goes to `oo` (SymPy's `digamma`, `trigamma`,
+  `lowergamma._eval_aseries`): they went to SymPy through the bridge of
+  the core. Every class of SymPy with an `_eval_aseries` of its own now
+  has a native one.
 - The native code sets its time limits with `native=True`: the series and
   simplifications of `solvers.kovacic`, the antiderivatives of
   `solvers.darboux` and the transfer from the reals of
