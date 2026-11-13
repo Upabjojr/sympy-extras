@@ -9,7 +9,7 @@ returns ``None`` where SymPy's leaves the node as it is.
 # _eval_rewrite_as_besselj, bessely._eval_rewrite_as_besselj, besselk.
 # _eval_rewrite_as_besseli and _eval_rewrite_as_besselj), sympy/functions/
 # special/error_functions.py (erfc, erfi, erf2 ._eval_rewrite_as_erf,
-# expint._eval_rewrite_as_Ei, Ei._eval_rewrite_as_expint), sympy/functions/special/
+# expint._eval_rewrite_as_Ei, Ei._eval_rewrite_as_expint, Li._eval_rewrite_as_li), sympy/functions/special/
 # zeta_functions.py (dirichlet_eta._eval_rewrite_as_zeta) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
@@ -121,6 +121,12 @@ def _ei_expint(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional
     return -expint(Integer(1), polar_lift(Integer(-1)) * args[0]) - I * pi
 
 
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Li._eval_rewrite_as_li
+def _offset_li_li(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
+    from .error_functions import li
+    return li(args[0]) - li(Integer(2))
+
+
 # PORTED FROM SYMPY: sympy/functions/special/zeta_functions.py:dirichlet_eta._eval_rewrite_as_zeta
 def _eta_zeta(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from sympy_extras.core.relational import eq
@@ -145,4 +151,5 @@ def rules() -> dict[tuple[type, type], Rule]:
             (b.BesselK, b.BesselI): _besselk_besseli, (b.BesselK, b.BesselJ): _besselk_besselj,
             (er.Erfc, er.Erf): _erfc_erf, (er.Erfi, er.Erf): _erfi_erf, (er.Erf2, er.Erf): _erf2_erf,
             (er.Expint, er.EiNode): _expint_ei, (er.EiNode, er.Expint): _ei_expint,
+            (er.OffsetLiNode, er.LiNode): _offset_li_li,
             (z.DirichletEta, z.Zeta): _eta_zeta}

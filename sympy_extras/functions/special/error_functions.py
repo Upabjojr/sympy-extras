@@ -9,9 +9,10 @@ compositions with the inverses, the odd symmetry (``erf(-x) =
 SymPy's ``real_to_real_as_real_imag`` complex parts and the facts.
 ``Si``, ``Ci``, ``Shi``, ``Chi``, ``li``, ``Li`` and ``expint``, ``Ei``
 are in the same module, as in SymPy. ``erfcinv`` of a float is evaluated (as ``erfinv(1 - x)``), where SymPy,
-lacking it in mpmath, leaves the node. Not
-ported: ``erf2``, ``erf2inv``, the Fresnel, exponential and
-trigonometric integrals of the same module, the rewrites and series.
+lacking it in mpmath, leaves the node. SymPy's helpers
+``_erfs`` and ``_eis`` of the Gruntz algorithm are the nodes ``Erfs`` and
+``Eis`` (functions ``erfs``, ``eis``), with their asymptotic series and
+their rewrites back.
 
 Examples
 ========
@@ -26,11 +27,11 @@ Examples
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/special/error_functions.py (erf, erfc, erfi,
-# erfinv, erfcinv, real_to_real_as_real_imag) (SymPy 1.14)
+# erfinv, erfcinv, real_to_real_as_real_imag, the integrals, _erfs, _eis) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: unevaluating classes with evaluating functions, strict typing;
-# erf2, erf2inv, the other integrals, the rewrites and series not ported.
+# the helpers _erfs, _eis as the nodes Erfs, Eis.
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
@@ -46,12 +47,13 @@ from sympy_extras.core.function import DefinedFunction, ExpandHints
 from sympy_extras.core.mul import div, mul
 from sympy_extras.core.numbers import I, Infinity, Integer, NaN, NegativeInfinity, Rational, nan, oo, pi, zoo
 from sympy_extras.core.power import pow, sqrt
+from sympy_extras.core.symbol import Symbol
 from sympy_extras.functions.elementary.exponential import exp
 
 __all__ = ['Erf', 'Erfc', 'Erfi', 'Erfinv', 'Erfcinv', 'Expint', 'EiNode', 'erf', 'erfc', 'erfi', 'erfinv', 'erfcinv',
            'expint', 'Ei', 'TrigonometricIntegral', 'SiNode', 'CiNode', 'ShiNode', 'ChiNode', 'LiNode', 'OffsetLiNode',
            'Si', 'Ci', 'Shi', 'Chi', 'li', 'Li', 'FresnelIntegral', 'FresnelS', 'FresnelC', 'fresnels', 'fresnelc', 'E1', 'Erf2', 'Erf2inv', 'erf2',
-           'erf2inv']
+           'erf2inv', 'Erfs', 'Eis', 'erfs', 'eis']
 
 ONE = Integer(1)
 ZERO = Integer(0)
@@ -89,6 +91,32 @@ class _ErrorFunction(DefinedFunction):
         return _real_to_real_parts(self, deep)
 
 
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erf._eval_aseries
+def _erf_aseries(f: DefinedFunction, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+    """The asymptotic series of ``erf(z)`` at an argument going to an
+    infinity faster than logarithmically (the node itself when the leading
+    term of the argument is not found, as SymPy)."""
+    from sympy_extras.core.order import order
+    from sympy_extras.functions.combinatorial.factorials import factorial2
+    from sympy_extras.functions.elementary.integers import ceiling
+    if isinstance(args0[0], (Infinity, NegativeInfinity)):
+        z = f.args[0]
+        assert isinstance(z, Expr)
+        try:
+            _, ex = z.leadterm(x)
+        except (ValueError, NotImplementedError):
+            return f
+        ex = -ex  # as x -> 1/x for the aseries
+        if ex.is_positive:
+            count = ceiling(Integer(n) / ex)
+            if not isinstance(count, Integer):
+                raise TypeError('the number of terms is not an integer: %s' % (count,))
+            newn = count.p
+            s = [MINUS_ONE**k * factorial2(Integer(2 * k - 1)) / (z**(2 * k + 1) * Integer(2)**k) for k in range(newn)]
+            return ONE - (exp(-z**2) / sqrt(pi)) * add(*s, order(1 / z**newn, x))
+    return DefinedFunction._eval_aseries(f, n, args0, x, logx)
+
+
 # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erf
 class Erf(_ErrorFunction):
     """The error function, unevaluated (``erf`` evaluates)."""
@@ -118,6 +146,10 @@ class Erf(_ErrorFunction):
         if a.could_extract_minus_sign():
             return mul(MINUS_ONE, erf(mul(MINUS_ONE, a)))
         return None
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erf._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        return _erf_aseries(self, n, args0, x, logx)
 
     def fdiff(self, argindex: int) -> Expr:
         return div(mul(Integer(2), exp(mul(MINUS_ONE, pow(self.args[0], Integer(2))))), sqrt(pi))
@@ -167,6 +199,10 @@ class Erfc(_ErrorFunction):
             return sub(Integer(2), erfc(mul(MINUS_ONE, a)))
         return None
 
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erfc._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        return sub(ONE, _erf_aseries(Erf(self._args[0]), n, args0, x, logx))
+
     def fdiff(self, argindex: int) -> Expr:
         return div(mul(Integer(-2), exp(mul(MINUS_ONE, pow(self.args[0], Integer(2))))), sqrt(pi))
 
@@ -213,6 +249,16 @@ class Erfi(_ErrorFunction):
             if isinstance(rotated, Erfcinv):
                 return mul(I, sub(ONE, rotated.args[0]))
         return None
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erfi._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import factorial2
+        if isinstance(args0[0], Infinity):
+            z = self._args[0]
+            s = [factorial2(Integer(2 * k - 1)) / (Integer(2)**k * z**(2 * k + 1)) for k in range(n)]
+            return -I + (exp(z**2) / sqrt(pi)) * add(*s, order(1 / z**n, x))
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
 
     def fdiff(self, argindex: int) -> Expr:
         return div(mul(Integer(2), exp(pow(self.args[0], Integer(2)))), sqrt(pi))
@@ -373,6 +419,16 @@ class Expint(DefinedFunction):
         return add(mul(sub(exp(mul(Integer(2), I, pi, nu, n)), ONE), pow(z, sub(nu, ONE)), gamma(sub(ONE, nu))),
                    expint(nu, z))
 
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:expint._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import rf
+        if isinstance(args0[1], Infinity):
+            nu, z = self._args
+            s = [MINUS_ONE**k * rf(nu, Integer(k)) / z**k for k in range(n)]
+            return (exp(-z) / z) * add(*s, order(1 / z**n, x))
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+
     def fdiff(self, argindex: int) -> Expr:
         nu, z = self.args
         if argindex == 2:
@@ -408,6 +464,24 @@ class EiNode(DefinedFunction):
         if n != 0:
             return add(Ei(nz), mul(Integer(2), I, pi, n))
         return None
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Ei._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        from sympy_extras.core.coreerrors import PoleError
+        from sympy_extras.functions.elementary.complexes import PolarLift
+        from sympy_extras.functions.elementary.exponential import ExpPolar
+        if isinstance(args0[0], (Infinity, NegativeInfinity)):
+            z = self._args[0]
+            if z.has(ExpPolar, PolarLift):
+                # SymPy's series forgets the branch: its expansion of
+                # Ei(exp_polar(I*pi)/w) misses I*pi, so that of expint(2, 1/w)
+                # is -I*pi/w + O(w**4) (the function is exponentially small)
+                raise PoleError('Asymptotic expansion of Ei of the polar number %s is not implemented.' % (z,))
+            s = [factorial(Integer(k)) / z**k for k in range(n)]
+            return (exp(z) / z) * add(*s, order(1 / z**n, x))
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
 
     def fdiff(self, argindex: int) -> Expr:
         z = self.args[0]
@@ -539,6 +613,19 @@ class SiNode(TrigonometricIntegral):
         from sympy_extras.functions.elementary.trigonometric import sin
         return sin(z)
 
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Si._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        from sympy_extras.functions.elementary.trigonometric import cos, sin
+        if isinstance(args0[0], Infinity):
+            z = self._args[0]
+            p = [MINUS_ONE**k * factorial(Integer(2 * k)) / z**(2 * k + 1) for k in range(n // 2 + 1)]
+            q = [MINUS_ONE**k * factorial(Integer(2 * k + 1)) / z**(2 * (k + 1)) for k in range(n // 2)]
+            o = order(1 / z**n, x)
+            return pi / 2 - cos(z) * add(*p, o) - sin(z) * add(*q, o)
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.si(values[0]))
 
@@ -574,6 +661,23 @@ class CiNode(TrigonometricIntegral):
     def integrand(cls, z: Expr) -> Expr:
         from sympy_extras.functions.elementary.trigonometric import cos
         return cos(z)
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Ci._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        from sympy_extras.functions.elementary.trigonometric import cos, sin
+        point = args0[0]
+        if isinstance(point, (Infinity, NegativeInfinity)):
+            z = self._args[0]
+            p = [MINUS_ONE**k * factorial(Integer(2 * k)) / z**(2 * k + 1) for k in range(n // 2 + 1)]
+            q = [MINUS_ONE**k * factorial(Integer(2 * k + 1)) / z**(2 * (k + 1)) for k in range(n // 2)]
+            o = order(1 / z**n, x)
+            result = sin(z) * add(*p, o) - cos(z) * add(*q, o)
+            if isinstance(point, NegativeInfinity):
+                result += I * pi
+            return result
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return None if values[0] == 0 else mpmath.mpc(mpmath.ci(values[0]))
@@ -981,3 +1085,111 @@ def erf2(x: ExprLike, y: ExprLike) -> Expr:
 def erf2inv(x: ExprLike, y: ExprLike) -> Expr:
     """``erf2inv(x, y)``, evaluated."""
     return Erf2inv.apply(to_expr(x), to_expr(y))
+
+
+# ---------------------------------------------------------------------
+# the helpers which make erf, Ei and li tractable for the Gruntz algorithm
+
+def _helper_aseries(terms: list[Expr], o: Expr, x: Symbol, n: int, logx: Optional[Expr]) -> Expr:
+    """The terms expanded and the order added (SymPy: "it is very
+    inefficient to first add the order and then do the nseries")."""
+    return add(*terms)._eval_nseries(x, n, logx, ZERO) + o
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_erfs
+class Erfs(DefinedFunction):
+    """SymPy's helper ``_erfs(z) = (1 - erf(z))*exp(z**2)``, which makes
+    ``erf`` tractable for the Gruntz algorithm, unevaluated (``erfs``
+    evaluates). As SymPy's, it has no numerical value."""
+
+    function_name = '_erfs'
+    generic_nseries = True
+
+    @classmethod
+    def eval(cls, *args: Expr) -> Optional[Expr]:
+        [a] = args
+        if a.is_zero:
+            return ONE
+        return None
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_erfs._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        point = args0[0]
+        # the expansion at oo, and at I*oo (SymPy: "is the series really correct?")
+        if isinstance(point, Infinity) or isinstance(point.extract_multiplicatively(I), Infinity):
+            z = self._args[0]
+            terms = [div(factorial(Integer(2 * k)) * pow(Integer(-4), Integer(-k)), sqrt(pi) * factorial(Integer(k)))
+                     * pow(div(ONE, z), Integer(2 * k + 1)) for k in range(n)]
+            return _helper_aseries(terms, order(div(ONE, pow(z, Integer(2 * n + 1))), x), x, n, logx)
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+
+    def fdiff(self, argindex: int) -> Expr:
+        z = self._args[0]
+        return -2 / sqrt(pi) + 2 * z * erfs(z)
+
+    def rewrite_intractable(self, args: tuple[Expr, ...]) -> Expr:
+        """SymPy's ``_eval_rewrite_as_intractable``: ``(1 - erf(z))*exp(z**2)``."""
+        z = args[0]
+        return mul(sub(ONE, erf(z)), exp(pow(z, Integer(2))))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def erfs(z: ExprLike) -> Expr:
+    """``_erfs(z)``, evaluated."""
+    return Erfs.apply(to_expr(z))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_eis
+class Eis(DefinedFunction):
+    """SymPy's helper ``_eis(z) = exp(-z)*Ei(z)``, which makes ``Ei`` and
+    ``li`` tractable for the Gruntz algorithm, unevaluated (``eis``
+    evaluates). As SymPy's, it has no numerical value."""
+
+    function_name = '_eis'
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_eis._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import factorial
+        if not isinstance(args0[0], (Infinity, NegativeInfinity)):
+            return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+        z = self._args[0]
+        terms = [factorial(Integer(k)) * pow(div(ONE, z), Integer(k + 1)) for k in range(n)]
+        return _helper_aseries(terms, order(div(ONE, pow(z, Integer(n + 1))), x), x, n, logx)
+
+    def fdiff(self, argindex: int) -> Expr:
+        z = self._args[0]
+        return sub(div(ONE, z), eis(z))
+
+    def rewrite_intractable(self, args: tuple[Expr, ...]) -> Expr:
+        """SymPy's ``_eval_rewrite_as_intractable``: ``exp(-z)*Ei(z)``."""
+        z = args[0]
+        return mul(exp(mul(MINUS_ONE, z)), Ei(z))
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_eis._eval_as_leading_term
+    def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        x0 = self._args[0].limit(x, ZERO)
+        if x0.is_zero:
+            return self.rewrite_intractable(self._args)._eval_as_leading_term(x, logx, cdir)
+        return Application._eval_as_leading_term(self, x, logx, cdir)
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_eis._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        x0 = self._args[0].limit(x, ZERO)
+        if x0.is_zero:
+            return self.rewrite_intractable(self._args)._eval_nseries(x, n, logx, ZERO)
+        return Application._eval_nseries(self, x, n, logx, ZERO)
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def eis(z: ExprLike) -> Expr:
+    """``_eis(z)``, evaluated (nothing to evaluate: the node)."""
+    return Eis.apply(to_expr(z))

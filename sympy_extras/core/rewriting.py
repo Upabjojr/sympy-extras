@@ -214,15 +214,24 @@ def rewrite_tractable(e: Basic, limitvar: Optional[Symbol], intractable: bool = 
         gamma_form = _tractable_special(e, args, limitvar)
         if gamma_form is not None:
             return gamma_form
+        special = _tractable_error_and_bessel(e, args, limitvar)
+        if special is not None:
+            return special
     if intractable and isinstance(e, Expr):
+        from sympy_extras.functions.special.bessel import BesselIs, BesselKs
+        from sympy_extras.functions.special.error_functions import Eis, Erfs
         from sympy_extras.functions.special.gamma_functions import LogGamma, gamma
         if isinstance(e, LogGamma) and isinstance(args[0], Expr):
             # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:loggamma._eval_rewrite_as_intractable
             from sympy_extras.functions.elementary.exponential import log
             return log(gamma(args[0]))
+        if isinstance(e, (Erfs, Eis, BesselIs, BesselKs)):
+            expr_args = tuple(a for a in args if isinstance(a, Expr))
+            if len(expr_args) == len(args):
+                return e.rewrite_intractable(expr_args)
     name = 'intractable' if intractable else 'tractable'
-    if e.args and (e._is_foreign_node() or type(e).__name__ in _SYMPY_NAMED_RULES[name]):
-        # the classes with a rule of that name in SymPy, not ported: SymPy's
+    if e.args and e._is_foreign_node():
+        # a wrapped foreign node: the foreign system's rule of that name
         through = bridge().rewrite_named_node(e, args, name, limitvar)
         if through is not None:
             return through
@@ -231,16 +240,78 @@ def rewrite_tractable(e: Basic, limitvar: Optional[Symbol], intractable: bool = 
     return e._evaluated(args)
 
 
+def _tractable_error_and_bessel(e: Expr, args: tuple[Basic, ...], limitvar: Optional[Symbol]) -> Optional[Basic]:
+    """SymPy's ``_eval_rewrite_as_tractable`` of the error functions, the
+    exponential and logarithmic integrals, the upper incomplete gamma
+    function, ``besseli``, ``besselk`` and ``fibonacci`` (``args`` already
+    rewritten, ``e`` the node before, as SymPy's ``self``); ``None`` for
+    the other nodes and where SymPy's rule gives ``None``."""
+    from sympy_extras.functions.special.bessel import BesselI, BesselK, besselis, besselks
+    from sympy_extras.functions.special.error_functions import (EiNode, Erf, Erfc, Erfi, LiNode, OffsetLiNode, eis,
+                                                                 erfs)
+    from sympy_extras.functions.special.gamma_functions import UpperGamma, loggamma, lowergamma
+    from sympy_extras.functions.combinatorial.numbers import Fibonacci
+    from sympy_extras.functions.elementary.exponential import exp, log
+    from .numbers import Integer, NegativeInfinity, oo
+    expr_args = tuple(a for a in args if isinstance(a, Expr))
+    if len(expr_args) != len(args):
+        return None
+    if isinstance(e, Erf):
+        # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erf._eval_rewrite_as_tractable
+        from .limits import limit
+        z = expr_args[0]
+        if limitvar is not None and isinstance(limit(z, limitvar, oo), NegativeInfinity):
+            return -1 + erfs(-z) * exp(-z**2)
+        return 1 - erfs(z) * exp(-z**2)
+    if isinstance(e, (Erfc, Erfi)):
+        # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erfc._eval_rewrite_as_tractable,
+        # erfi._eval_rewrite_as_tractable (self.rewrite(erf).rewrite("tractable", deep=True))
+        return rewrite_tractable(_rewrite(e, (), Erf, RewriteHints()), limitvar)
+    if isinstance(e, EiNode):
+        # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Ei._eval_rewrite_as_tractable
+        z = expr_args[0]
+        return exp(z) * eis(z)
+    if isinstance(e, LiNode):
+        # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:li._eval_rewrite_as_tractable
+        z = expr_args[0]
+        return z * eis(log(z))
+    if isinstance(e, OffsetLiNode):
+        # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Li._eval_rewrite_as_tractable
+        # (self.rewrite(li).rewrite("tractable", deep=True), without the limit variable)
+        return rewrite_tractable(_rewrite(e, (), LiNode, RewriteHints()), None)
+    if isinstance(e, UpperGamma):
+        # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:uppergamma._eval_rewrite_as_tractable
+        s, x = expr_args
+        return exp(loggamma(s)) - lowergamma(s, x)
+    if isinstance(e, BesselI):
+        # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besseli._eval_rewrite_as_tractable
+        nu, z = expr_args
+        return exp(z) * besselis(nu, z) if z.is_extended_real is True else None
+    if isinstance(e, BesselK):
+        # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besselk._eval_rewrite_as_tractable
+        nu, z = expr_args
+        return exp(-z) * besselks(nu, z) if z.is_extended_real is True else None
+    if isinstance(e, Fibonacci) and len(expr_args) == 1:
+        # PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:fibonacci._eval_rewrite_as_tractable
+        from sympy_extras.functions.elementary.trigonometric import cos
+        from .numbers import GoldenRatio, pi
+        from .power import sqrt
+        n = expr_args[0]
+        return (GoldenRatio**n - cos(pi * n) / GoldenRatio**n) / sqrt(Integer(5))
+    return None
+
+
 #: the classes whose SymPy counterpart has ``_eval_rewrite_as_tractable``
 #: or ``_eval_rewrite_as_intractable`` (the others, sums, products and
-#: powers among them, have no such rule: the node is rebuilt here)
+#: powers among them, have no such rule: the node is rebuilt here; all
+#: are ported, checked against SymPy by a test)
 _SYMPY_NAMED_RULES: dict[str, frozenset[str]] = {
     'tractable': frozenset({
         'Acos', 'Acosh', 'Acot', 'Acoth', 'Acsc', 'Acsch', 'Asec', 'Asech', 'Asin', 'Asinh', 'Atan', 'Atanh',
         'BesselI', 'BesselK', 'Binomial', 'Cosh', 'Coth', 'Csch', 'EiNode', 'Erf', 'Erfc', 'Erfi',
         'FallingFactorial', 'Fibonacci', 'Gamma', 'Harmonic', 'LiNode', 'OffsetLiNode', 'RisingFactorial',
         'Sech', 'Sinh', 'Tanh', 'UpperGamma'}),
-    'intractable': frozenset({'LogGamma'}),
+    'intractable': frozenset({'BesselIs', 'BesselKs', 'Eis', 'Erfs', 'LogGamma'}),
 }
 
 

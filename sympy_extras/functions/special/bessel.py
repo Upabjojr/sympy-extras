@@ -32,12 +32,12 @@ Examples
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/special/bessel.py (BesselBase, besselj, bessely,
-# besseli, besselk, hankel1, hankel2, jn, yn, the Airy functions) (SymPy 1.14)
+# besseli, besselk, hankel1, hankel2, jn, yn, the Airy functions, _besseli, _besselk) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: unevaluating classes with evaluating functions, strict typing;
-# the polar branch factors, Hankel, spherical and Airy functions, rewrites
-# and series not ported.
+# the helpers _besseli, _besselk of the Gruntz algorithm as the nodes
+# BesselIs, BesselKs; the asymptotic series of besseli, besselk.
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
@@ -50,14 +50,16 @@ from sympy_extras.core.add import add, sub
 from sympy_extras.core.assumptions import facts_of
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import DefinedFunction, ExpandHints
-from sympy_extras.core.mul import mul
+from sympy_extras.core.mul import div, mul
 from sympy_extras.core.numbers import (I, Infinity, Integer, NegativeInfinity, Rational, nan, oo, pi, zoo)
-from sympy_extras.core.power import pow
+from sympy_extras.core.power import pow, sqrt
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions.elementary.exponential import exp
 
 __all__ = ['BesselBase', 'BesselJ', 'BesselY', 'BesselI', 'BesselK', 'Hankel1', 'Hankel2', 'SphericalJ', 'SphericalY',
            'AiryAi', 'AiryBi', 'AiryAiPrime', 'AiryBiPrime', 'besselj', 'bessely', 'besseli', 'besselk', 'hankel1',
            'hankel2', 'jn', 'yn', 'airyai', 'airybi', 'airyaiprime', 'airybiprime', 'SphericalHankel1', 'SphericalHankel2',
-           'MarcumQ', 'hn1', 'hn2', 'marcumq', 'jn_zeros']
+           'MarcumQ', 'hn1', 'hn2', 'marcumq', 'jn_zeros', 'BesselIs', 'BesselKs', 'besselis', 'besselks']
 
 ONE = Integer(1)
 MINUS_ONE = Integer(-1)
@@ -266,6 +268,14 @@ class BesselI(BesselBase):
                 return mul(pow(I, mul(MINUS_ONE, nu)), besselj(nu, mul(MINUS_ONE, rotated)))
         return _branch(nu, z, besseli)
 
+    # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besseli._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        if isinstance(args0[1], (Infinity, NegativeInfinity)):
+            nu, z = self._args
+            terms, o = _bessel_asymptotic_terms(nu, z, n, x, Integer(2))
+            return mul(div(exp(z), sqrt(2 * pi)), add(*terms, o))
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.besseli(values[0], values[1]))
 
@@ -292,10 +302,119 @@ class BesselK(BesselBase):
             return besselk(mul(MINUS_ONE, nu), z)
         return None
 
+    # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besselk._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        if isinstance(args0[1], (Infinity, NegativeInfinity)):
+            nu, z = self._args
+            terms, o = _bessel_asymptotic_terms(nu, z, n, x, Integer(-2))
+            return mul(exp(-z), sqrt(pi / 2), add(*terms, o))
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         if values[1] == 0:
             return None
         return mpmath.mpc(mpmath.besselk(values[0], values[1]))
+
+
+def _half(numerator: Expr) -> Rational:
+    """SymPy's ``Rational(numerator, 2)``, which raises ``TypeError`` for
+    a numerator which is not a rational number (a symbolic order)."""
+    if not isinstance(numerator, Rational):
+        raise TypeError('invalid input: %s' % (numerator,))
+    half = numerator / 2
+    assert isinstance(half, Rational)
+    return half
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:besseli._eval_aseries (the sum)
+def _bessel_asymptotic_terms(nu: Expr, z: Expr, n: int, x: Symbol, base: Integer) -> tuple[list[Expr], Expr]:
+    """``sum((2nu - 1)/2)_k ((2nu + 1)/2)_k/(base**k z**((2k + 1)/2) k!) +
+    O(1/z**((2n + 1)/2))``, its terms and its order: the common factor of the asymptotic series of
+    ``besseli`` (``base = 2``), ``besselk`` (``base = -2``) and their
+    helpers of the Gruntz algorithm."""
+    from sympy_extras.core.order import order
+    from sympy_extras.functions.combinatorial.factorials import factorial, rf
+    lower, upper = _half(2 * nu - 1), _half(2 * nu + 1)
+    s = [div(rf(lower, Integer(k)) * rf(upper, Integer(k)),
+             pow(base, Integer(k)) * pow(z, Rational(2 * k + 1, 2)) * factorial(Integer(k))) for k in range(n)]
+    return s, order(div(ONE, pow(z, Rational(2 * n + 1, 2))), x)
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:_besseli
+class BesselIs(DefinedFunction):
+    """SymPy's helper ``_besseli(nu, z) = exp(-z)*besseli(nu, z)``, which
+    makes ``besseli`` tractable for the Gruntz algorithm, unevaluated
+    (``besselis`` evaluates). As SymPy's, it has no numerical value."""
+
+    function_name = '_besseli'
+    nargs = frozenset({2})
+
+    # PORTED FROM SYMPY: sympy/functions/special/bessel.py:_besseli._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        if isinstance(args0[1], (Infinity, NegativeInfinity)):
+            nu, z = self._args
+            terms, o = _bessel_asymptotic_terms(nu, z, n, x, Integer(2))
+            return add(mul(sqrt(pi / 2), add(*terms)), o)
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+
+    def rewrite_intractable(self, args: tuple[Expr, ...]) -> Expr:
+        """SymPy's ``_eval_rewrite_as_intractable``: ``exp(-z)*besseli(nu, z)``."""
+        nu, z = args
+        return mul(exp(-z), besseli(nu, z))
+
+    # PORTED FROM SYMPY: sympy/functions/special/bessel.py:_besseli._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        # SymPy takes the limit of the order (its first argument)
+        from sympy_extras.core.function import Application
+        if self._args[0].limit(x, Integer(0)).is_zero:
+            return self.rewrite_intractable(self._args)._eval_nseries(x, n, logx, Integer(0))
+        return Application._eval_nseries(self, x, n, logx, Integer(0))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def besselis(nu: ExprLike, z: ExprLike) -> Expr:
+    """``_besseli(nu, z)``, evaluated (nothing to evaluate: the node)."""
+    return BesselIs.apply(to_expr(nu), to_expr(z))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/bessel.py:_besselk
+class BesselKs(DefinedFunction):
+    """SymPy's helper ``_besselk(nu, z) = exp(z)*besselk(nu, z)``, which
+    makes ``besselk`` tractable for the Gruntz algorithm, unevaluated
+    (``besselks`` evaluates). As SymPy's, it has no numerical value."""
+
+    function_name = '_besselk'
+    nargs = frozenset({2})
+
+    # PORTED FROM SYMPY: sympy/functions/special/bessel.py:_besselk._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        if isinstance(args0[1], (Infinity, NegativeInfinity)):
+            nu, z = self._args
+            terms, o = _bessel_asymptotic_terms(nu, z, n, x, Integer(-2))
+            return add(mul(sqrt(pi / 2), add(*terms)), o)
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+
+    def rewrite_intractable(self, args: tuple[Expr, ...]) -> Expr:
+        """SymPy's ``_eval_rewrite_as_intractable``: ``exp(z)*besselk(nu, z)``."""
+        nu, z = args
+        return mul(exp(z), besselk(nu, z))
+
+    # PORTED FROM SYMPY: sympy/functions/special/bessel.py:_besselk._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.core.function import Application
+        if self._args[0].limit(x, Integer(0)).is_zero:
+            return self.rewrite_intractable(self._args)._eval_nseries(x, n, logx, Integer(0))
+        return Application._eval_nseries(self, x, n, logx, Integer(0))
+
+    def _eval_facts(self) -> dict[str, bool]:
+        return {'commutative': True}
+
+
+def besselks(nu: ExprLike, z: ExprLike) -> Expr:
+    """``_besselk(nu, z)``, evaluated (nothing to evaluate: the node)."""
+    return BesselKs.apply(to_expr(nu), to_expr(z))
 
 
 def besselj(nu: ExprLike, z: ExprLike) -> Expr:

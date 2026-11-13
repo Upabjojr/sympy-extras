@@ -94,6 +94,20 @@ remove public functions. Breaking changes are listed here when they happen.
   a ratio of the terms with irrational coefficients is summed numerically
   (SymPy truncates the coefficients to integers: its value of
   `Sum(pi**i/factorial(i), (i, 0, oo))` is `exp(3)`).
+- The Gruntz algorithm's tractable rewrites of the special functions are
+  native: SymPy's helpers `_erfs`, `_eis`, `_besseli`, `_besselk` are the
+  nodes `Erfs`, `Eis` (`functions.special.error_functions`), `BesselIs`,
+  `BesselKs` (`functions.special.bessel`) with their asymptotic series,
+  derivatives and rewrites back (`intractable`), and the rules of `erf`,
+  `erfc`, `erfi`, `Ei`, `li`, `Li`, `uppergamma`, `besseli`, `besselk`
+  and `fibonacci` are ported (they went to SymPy, whose helpers came back
+  wrapped). The asymptotic series (`_eval_aseries`) of `erf`, `erfc`,
+  `erfi`, `Ei`, `expint`, `Si`, `Ci`, `besseli` and `besselk` are ported
+  too, and `Li` rewrites in terms of `li` natively. Against SymPy: the
+  series of `Ei` of a polar argument going to an infinity raises
+  `PoleError` (SymPy's forgets the branch term `I*pi`: its series of
+  `expint(2, 1/w)` is `-I*pi/w + O(w**3)` and its
+  `limit(x*exp(x)*expint(2, x), x, oo)` is `-oo*I`; the limit is 1).
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's

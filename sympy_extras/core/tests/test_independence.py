@@ -3456,3 +3456,31 @@ def test_native_sum_values_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_SUM_VALUES], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_TRACTABLE_LIMITS = r'''
+import sys
+from sympy_extras.core import Symbol, oo, sqrt
+from sympy_extras.core.limits import limit
+from sympy_extras.core.rewriting import rewrite_tractable
+from sympy_extras.functions import exp, log
+from sympy_extras.functions.special.error_functions import erf, Ei, li, Si
+from sympy_extras.functions.special.bessel import besselk
+x = Symbol('x', positive=True)
+assert str(rewrite_tractable(erf(x), x)) == '1 - exp(-x**2)*_erfs(x)'
+assert str(rewrite_tractable(Ei(x), x)) == 'exp(x)*_eis(x)'
+assert str(limit((erf(x) - 1)*exp(x**2)*x, x, oo)) == '-1/sqrt(pi)'
+assert str(limit(Ei(x)*exp(-x)*x, x, oo)) == '1' and str(limit(li(x)*log(x)/x, x, oo)) == '1'
+assert str(limit(besselk(1, x)*exp(x)*sqrt(x), x, oo)) == 'sqrt(2)*sqrt(pi)/2'
+assert str(Si(1/x).nseries(x, n=3)) == '-(x + O(x**3))*cos(1/x) - (x**2 + O(x**3))*sin(1/x) + pi/2'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_tractable_limits_do_not_load_sympy() -> None:
+    """The Gruntz algorithm's helpers ``_erfs``, ``_eis``, ``_besseli``,
+    ``_besselk`` and the tractable rewrites and asymptotic series of the
+    special functions are native (they went to SymPy through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRACTABLE_LIMITS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

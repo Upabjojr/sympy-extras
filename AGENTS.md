@@ -221,9 +221,11 @@ sympy_extras/
             gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma / gamma, ..., PORTED FROM SYMPY
             delta_functions.py DiracDelta, Heaviside / dirac_delta, heaviside, PORTED FROM SYMPY
             zeta_functions.py Zeta, DirichletEta, PolyLog / zeta, dirichlet_eta, polylog; Bernoulli numbers, PORTED FROM SYMPY
-            error_functions.py Erf, ..., Expint, EiNode, SiNode, CiNode, ShiNode, ChiNode, LiNode, OffsetLiNode / erf, ..., Ei, Si, Ci, Shi, Chi, li, Li, PORTED FROM SYMPY
+            error_functions.py Erf, ..., Expint, EiNode, SiNode, CiNode, ShiNode, ChiNode, LiNode, OffsetLiNode / erf, ..., Ei, Si, Ci, Shi, Chi, li, Li;
+                             Erfs, Eis / erfs, eis (SymPy's _erfs, _eis of the Gruntz algorithm), PORTED FROM SYMPY
             beta_functions.py Beta / beta, PORTED FROM SYMPY
-            bessel.py        BesselJ, ..., Hankel1, Hankel2, SphericalJ, SphericalY, AiryAi, ... / besselj, ..., jn, yn, airyai, ..., PORTED FROM SYMPY
+            bessel.py        BesselJ, ..., Hankel1, Hankel2, SphericalJ, SphericalY, AiryAi, ... / besselj, ..., jn, yn, airyai, ...;
+                             BesselIs, BesselKs (SymPy's _besseli, _besselk), PORTED FROM SYMPY
             polynomials.py   Legendre, ChebyshevT, ChebyshevU, Hermite, Laguerre, AssocLaguerre, Jacobi, Gegenbauer, AssocLegendre, HermiteProb / legendre, ..., PORTED FROM SYMPY
             spherical_harmonics.py YnmNode, ZnmNode / Ynm, Znm, Ynm_c, PORTED FROM SYMPY
             tensor_functions.py KroneckerDeltaNode, LeviCivitaNode / KroneckerDelta, LeviCivita, PORTED FROM SYMPY
