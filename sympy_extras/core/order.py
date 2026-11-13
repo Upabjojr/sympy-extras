@@ -545,8 +545,8 @@ def _solve_for(equation: Expr, d: Symbol) -> Optional[Expr]:
     """A solution of ``equation == 0`` for ``d`` (the first one of
     SymPy's ``solveset``): solved directly when ``equation`` is linear in
     ``d``, from the roots in radicals when it is rational in ``d``, by the
-    native ``solveset`` otherwise (by the foreign one when the native one
-    gives no set of the forms SymPy's ``Order`` takes)."""
+    native ``solveset`` otherwise (by the foreign one only for an
+    equation with wrapped foreign nodes)."""
     from .add import add
     from .mul import mul
     from .power import pow
@@ -561,8 +561,15 @@ def _solve_for(equation: Expr, d: Symbol) -> Optional[Expr]:
     solved, first = _solveset_first(equation, d)
     if solved:
         return first
-    from .bridge import bridge
-    return bridge().solve_first(equation, d)
+    from .basic import preorder_traversal
+    if any(node._has_foreign_class() for node in preorder_traversal(equation)):
+        # an equation with wrapped foreign nodes: the foreign solveset
+        from .bridge import bridge
+        return bridge().solve_first(equation, d)
+    # several solutions: the first of the native finite set (ordered as
+    # SymPy's FiniteSet, by the infimum); nothing for the other sets (a
+    # ConditionSet, a union of images), as SymPy's Order finds none
+    return _solveset_first_of_many(equation, d)
 
 
 # PORTED FROM SYMPY: sympy/series/order.py:Order.__new__ (the first solution of solveset)
@@ -605,6 +612,44 @@ def _solveset_first(equation: Expr, d: Symbol) -> tuple[bool, Optional[Expr]]:
         if isinstance(image, Expr):
             return True, image.subs(solutions.variables[0], Integer(0))
     return False, None
+
+
+# PORTED FROM SYMPY: sympy/series/order.py:Order.__new__ (the first solution of solveset)
+def _solveset_first_of_many(equation: Expr, d: Symbol) -> Optional[Expr]:
+    """The first element of the native ``solveset(equation, d)`` when it is
+    a finite set (or a complement of finite sets) of several elements, in
+    the order of SymPy's ``FiniteSet`` (:func:`~sympy_extras.sets.sets._infimum_key`);
+    the only solution of the native ``solve`` for a ``ConditionSet``;
+    ``None`` for any other set (a union of images: SymPy's Order takes
+    none either)."""
+    from sympy_extras.sets.sets import Complement, FiniteSet
+    from sympy_extras.sets import Complexes
+    from sympy_extras.solvers.solveset import solveset
+    from .relational import Eq
+    try:
+        solutions = solveset(Eq(equation, Integer(0)), d, Complexes)
+    except (NotImplementedError, ValueError, TypeError):
+        return None
+    from sympy_extras.sets.conditionset import ConditionSet
+    elements: list[Basic] = []
+    if isinstance(solutions, Complement):
+        kept, removed = solutions.args
+        if isinstance(kept, FiniteSet) and isinstance(removed, FiniteSet):
+            elements = [a for a in kept.args if a not in removed.args]
+    elif isinstance(solutions, FiniteSet):
+        elements = list(solutions.args)
+    elif isinstance(solutions, ConditionSet):
+        # what the native solveset leaves unsolved (log(d) - k, which
+        # SymPy's solveset inverts): the native solve's solutions
+        from sympy_extras.solvers.solvers import solve_equation
+        try:
+            found = solve_equation(equation, d)
+        except (NotImplementedError, ValueError, TypeError, ZeroDivisionError):
+            found = None
+        if found is not None and len(found) == 1:
+            elements = list(found)
+    first = elements[0] if elements else None
+    return first if isinstance(first, Expr) else None
 
 
 def _solve_rational(equation: Expr, d: Symbol) -> Optional[Expr]:

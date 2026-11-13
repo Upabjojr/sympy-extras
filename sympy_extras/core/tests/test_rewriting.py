@@ -328,3 +328,83 @@ def test_rewrite_of_nodes_without_a_rule_matches_sympy() -> None:
              (s.Max(s.factorial(a), x), s.gamma, Gamma)]
     for e, theirs, ours in cases:
         assert str(to_sympy(expr_from_sympy(e).rewrite(ours), evaluate=False)) == str(e.rewrite(theirs)), e
+
+
+def _native_classes() -> dict[str, list[type]]:
+    """The native classes of the package by name (the modules which define
+    nodes imported)."""
+    import importlib
+    import pkgutil
+    import sympy_extras
+    from sympy_extras.core.basic import Basic
+    for m in pkgutil.walk_packages(sympy_extras.__path__, 'sympy_extras.'):
+        if 'tests' in m.name or m.name.endswith('_sympy') or 'interop' in m.name:
+            continue
+        try:
+            importlib.import_module(m.name)
+        except Exception:
+            pass
+    out: dict[str, list[type]] = {}
+    todo: list[type] = [Basic]
+    seen: set[type] = set()
+    while todo:
+        c = todo.pop()
+        for sub in c.__subclasses__():
+            if sub in seen:
+                continue
+            seen.add(sub)
+            if sub.__module__.startswith('sympy_extras') and 'interop' not in sub.__module__:
+                out.setdefault(sub.__name__, []).append(sub)
+            todo.append(sub)
+    return out
+
+
+def test_every_sympy_rewrite_rule_is_native() -> None:
+    # the nodes of a native class without a native rule for a target went
+    # to SymPy's rule through the bridge; now every rule of SymPy 1.14 is
+    # ported but those needing a class the core has not (a piecewise
+    # function with boolean values, PowerSet); 'tractable' and
+    # 'intractable' are rewrite_tractable's
+    from sympy_extras.core._rewrite_rules import REWRITE_TARGETS
+    from sympy_extras.core.rewriting import _SYMPY_NAMED_RULES, has_rule
+    left_out = {('Piecewise', 'ITE'), ('ITE', 'Piecewise'), ('FiniteSet', 'PowerSet'), ('PointSet', 'PowerSet')}
+    classes = _native_classes()
+    missing: list[tuple[str, str]] = []
+    for name, targets in REWRITE_TARGETS.items():
+        for cls in classes.get(name, []):
+            for t in targets:
+                if t in _SYMPY_NAMED_RULES:
+                    assert name in _SYMPY_NAMED_RULES[t], (name, t)
+                elif not has_rule(cls, t) and (name, t) not in left_out:
+                    missing.append((name, t))
+    assert missing == [], missing
+
+
+def test_every_sympy_expand_func_rule_is_native() -> None:
+    from sympy_extras.core.function import _SYMPY_EXPAND_FUNC
+    from sympy_extras.functions._expand_func import rules
+    table = rules()
+    classes = _native_classes()
+    missing = [n for n in _SYMPY_EXPAND_FUNC for c in classes.get(n, []) if c not in table]
+    assert missing == [], missing
+
+
+def test_series_fallbacks_match_sympy() -> None:
+    # the native functions without a series rule expand by the port of
+    # Function._eval_nseries, as their SymPy classes do; the other nodes
+    # without one raise NotImplementedError, as SymPy's Expr._eval_nseries
+    # (they went to SymPy through the bridge)
+    from sympy.core.function import Function as SympyFunction
+    from sympy_extras.core.expr import Expr
+    from sympy_extras.core.function import DefinedFunction
+    from sympy_extras.functions._series_rules import rules
+    from sympy_extras.interop import _NATIVE_TO_SYMPY, _fill_function_tables
+    _fill_function_tables()
+    series_rules = rules()
+    for native, theirs in _NATIVE_TO_SYMPY.items():
+        owner = next(k for k in native.__mro__ if '_eval_nseries' in k.__dict__)
+        their_owner = next(k for k in theirs.__mro__ if '_eval_nseries' in k.__dict__)
+        if owner is DefinedFunction and native.__name__ not in series_rules and not native.generic_nseries:
+            assert their_owner is SympyFunction, (native, their_owner)
+        if owner is Expr:
+            assert their_owner is s.Expr, (native, their_owner)

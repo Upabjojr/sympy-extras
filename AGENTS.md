@@ -206,6 +206,12 @@ sympy_extras/
         limits_sympy.py      the SymPy face of limits
         tests/
     functions/               functions of the typed core on core.function.DefinedFunction (ports of sympy.functions)
+        _rewrites_misc.py    the rewrite rules of the complex, integer, Max/Min, delta and singularity functions, KroneckerDelta,
+                             Piecewise, the logical connectives, Eq, Sum and Product, PORTED FROM SYMPY
+        special/_rewrites_bessel.py, _rewrites_polynomials.py, _expand_func_bessel.py: the rewrite rules of the Bessel,
+                             Airy and Ynm functions and of the orthogonal polynomials, the expand_func rules of Airy and Ynm,
+                             PORTED FROM SYMPY (core/rewriting.py: rules keyed by (class, SymPy name of the target), node
+                             rules for nodes which are not expressions, the bridge only for foreign nodes)
         _meromorphic.py      is_meromorphic of the incomplete gamma and Bessel functions, PORTED FROM SYMPY
         elementary/
             exponential.py   Exp, Log, LambertW (nodes) and exp, log, lambertw (evaluating), PORTED FROM SYMPY
@@ -240,14 +246,16 @@ sympy_extras/
     core/                    an experimental core: unevaluating classes (Add, Mul, Pow, Mod, Eq, And, Or, Derivative,
                              Subs, Order, ...) and evaluating functions (add, mul, pow, mod, eq, and_, or_, diff,
                              order, ...), typed; Wild/match/replace, the full set of is_* predicates, Q/ask/refine,
-                             the Expr methods of SymPy (integrate, aseries, ... through the conversion),
+                             the Expr methods of SymPy (integrate, equals, is_constant, invert, aseries, ..., native;
+                             core/bridge.py serves only the wrapped foreign objects, see docs/core.md),
                              native Order, series driver and limits (order.py, series.py, gruntz.py, limits.py; per-class _eval_nseries and
                              _eval_as_leading_term, SymPy's per node for the functions not ported),
                              factor_terms, a native rewrite (rewriting.py), SymPy's order of the arguments, to_sympy/from_sympy with generic wrappers
                              of any SymPy object; nodes pickle with their hash recomputed and the singletons
                              (register_singleton: true, false, oo, pi, ...) unpickled as themselves; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
-        _evalf.py            evalf_sum, hypsum: the numerical values of sums (native), PORTED FROM SYMPY
+        _evalf.py            evalf_sum, hypsum, euler_maclaurin: the numerical values of sums, Euler–Maclaurin summation
+                             (Sum.euler_maclaurin) (native), PORTED FROM SYMPY
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
         karr.py              summand analysis (build_pisigma_field), karr_sum, karr_term, summation, the cases of the
                              isolated values of the parameters of sums (_sum_special_values_native) (native)
@@ -303,6 +311,8 @@ sympy_extras/
         deltafunctions.py    deltaintegrate, change_mul, expand_diracdelta: antiderivatives of delta functions (native),
                              PORTED FROM SYMPY
         integral.py          Integral (node): the unevaluated indefinite or definite integral; is_unevaluated (native)
+        _evalf.py            evalf_integral, do_integral: the value of a definite Integral by mpmath's tanh-sinh quadrature,
+                             subdivided at kinks, confirmed at a higher precision (native), PORTED FROM SYMPY
         regions.py           IntegralByRanges, integrate_by_ranges, Integrator: integrals over semialgebraic regions through
                              the CAD (native: the native CAD, ask, refine, solve, simplify, roots and simplex; the
                              one-dimensional integrals by a typed integrator, the native definite's by default)
@@ -577,7 +587,12 @@ sympy_extras/
         tests/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
     calculus/                periodicity, lcim (util.py): the period of a function (ported from SymPy)
-    series/                  residue; limit_seq, difference_delta, dominant (limitseq.py) (ported from SymPy)
+    series/                  residue; limit_seq, difference_delta, dominant (limitseq.py); fps, FormalPowerSeries,
+                             FormalPowerSeriesProduct/Compose/Inverse (formal.py: the rational and hypergeometric
+                             algorithms, the full partial fractions by Taylor coefficients at the roots, rsolve_linear);
+                             fourier_series, FourierSeries, FiniteFourierSeries (fourier.py: the coefficients by the
+                             native definite_integral, the index a positive integer); SeqFormula, SeqPer, SeqAdd, SeqMul,
+                             sequence (sequences.py); SeriesBase (series_class.py) (native, ported from SymPy)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
                              Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)

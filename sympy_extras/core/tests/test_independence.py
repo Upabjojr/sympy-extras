@@ -27,14 +27,11 @@ except SympifyError:
     pass
 else:
     raise AssertionError('should not parse without the bridge')
-try:
-    from sympy_extras.core import Symbol
-    assert str(Symbol('x').integrate(Symbol('x'))) == 'x**2/2'   # native (term by term)
-    (1/(Symbol('x') + 1)).integrate(Symbol('x'))
-except ForeignOperationUnavailable:
-    pass
-else:
-    raise AssertionError('integrate should need the bridge')
+from sympy_extras.core import Symbol
+assert str(Symbol('x').integrate(Symbol('x'))) == 'x**2/2'   # native (term by term)
+# native (indefinite_integral), no bridge: it raised ForeignOperationUnavailable before
+assert str((1/(Symbol('x') + 1)).integrate(Symbol('x'))) == 'log(x + 1)'
+assert ForeignOperationUnavailable is not None
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -3538,6 +3535,62 @@ def test_native_tractable_limits_do_not_load_sympy() -> None:
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
 
+_NATIVE_LAST_RULES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, Rational
+from sympy_extras.core.function import Derivative, Subs, expand_func
+from sympy_extras.core.logic import Or, Xor
+from sympy_extras.functions import cos, sin, exp, factorial, polygamma, harmonic
+from sympy_extras.functions.elementary import complexes as c, integers as n, trigonometric as t, hyperbolic as h
+from sympy_extras.functions.elementary.miscellaneous import Max
+from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
+from sympy_extras.functions.special import bessel as b, error_functions as er, gamma_functions as g
+from sympy_extras.functions.special.delta_functions import Heaviside
+from sympy_extras.functions.special.hyper import Hyper, hyper, meijerg
+from sympy_extras.functions.combinatorial import numbers as nb
+from sympy_extras.functions.special.polynomials import Legendre
+from sympy_extras.integrals.integral import Integral
+x, y = Symbol('x'), Symbol('y')
+r, p = Symbol('r', real=True), Symbol('p', real=True)
+assert t.Cos(x).rewrite(t.Tan) != t.Cos(x) and t.Acos(x).rewrite(t.Asin).has(t.Asin)
+assert h.Cosh(x).rewrite(h.Tanh).has(h.Tanh) and t.Cos(t.pi / 5).rewrite('sqrt').is_Atom is False
+assert c.Abs(r).rewrite(Heaviside).has(Heaviside) and c.Abs(r).rewrite('Piecewise').has(Piecewise)
+assert n.Floor(x).rewrite(n.Ceiling).has(n.Ceiling) and Max(r, p).rewrite('Piecewise').has(Piecewise)
+assert Xor(x > 0, y > 0).rewrite(Or).has(Or)
+assert er.Erf(x).rewrite(er.FresnelS).has(er.FresnelS) and er.Erf(x).rewrite('hyper').has(Hyper)
+assert er.SiNode(x).rewrite('Integral').has(Integral) and g.LowerGamma(x, y).rewrite(g.UpperGamma).has(g.UpperGamma)
+assert b.SphericalJ(x, y).rewrite(b.BesselJ).has(b.BesselJ) and b.AiryAi(x).rewrite('hyper').has(Hyper)
+assert nb.Fibonacci(x).rewrite('sqrt') != nb.Fibonacci(x) and Legendre(x, y).rewrite('Sum') != Legendre(x, y)
+assert expand_func(b.AiryAi((3 * x**3)**Rational(1, 3))) != b.AiryAi((3 * x**3)**Rational(1, 3))
+assert expand_func(meijerg([], [], [Integer(0)], [], x)) == exp(-x)
+assert not expand_func(hyper([Integer(1), Integer(1)], [Integer(2)], x)).has(Hyper)
+assert expand_func(polygamma(Rational(1, 2), x)).has(Subs)
+assert expand_func(harmonic(Rational(7, 3))) != harmonic(Rational(7, 3))
+assert factorial(x).nseries(x, n=3).getO() is not None
+assert Derivative(sin(x) * y, x).nseries(x, n=3).getO() is not None
+assert Subs(cos(y), y, x).nseries(x, n=3).getO() is not None
+assert piecewise((sin(x), y > 0), (cos(x), True)).nseries(x, n=3).has(Piecewise)
+assert Integral(exp(y), y, Integer(0), x).nseries(x, n=3).getO() is not None
+try:
+    Max(x, Integer(1)).nseries(x, n=3)
+    raise AssertionError('no NotImplementedError')
+except NotImplementedError:
+    pass
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_last_rewrites_expand_func_series_do_not_load_sympy() -> None:
+    """A sample of the rewrites, ``expand_func`` rules and series of the
+    native nodes which went to SymPy through the bridge (rules into
+    function classes, into ``Piecewise``, ``Integral``, ``Sum``, ``hyper``
+    and names; ``hyperexpand``; ``Function._eval_nseries``), with no bridge
+    registered."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LAST_RULES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
 _NATIVE_POLAR_NUMBERS = r'''
 import sys
 from sympy_extras.core import Symbol, I, pi, sqrt
@@ -3629,3 +3682,66 @@ def _unprepared_limits(tree: ast.AST, rel: str, function: str, allowed: set[tupl
         if not (native and isinstance(native[0], ast.Constant) and native[0].value is True):
             found.append('%s:%d' % (rel, node.lineno))
     return found
+
+
+_NATIVE_GENERIC_FALLBACKS = r'''
+import sys
+from sympy_extras.core import symbols, Symbol, Integer, Rational, oo, sqrt, pi
+from sympy_extras.core.order import _solve_for
+from sympy_extras.functions import exp, log, sin, cos, harmonic
+from sympy_extras.concrete.expr_with_limits import Sum
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.sets.sets import FiniteSet
+x, y, k, d = symbols('x y k d')
+i = Symbol('i', integer=True)
+assert str(Sum(1/i**Rational(3, 2), (i, 1, oo)).evalf(20)) == '2.6123753486854883434'
+assert str(Sum(harmonic(i)/i**3, (i, 1, oo)).evalf(15)) == '1.35290404213892'
+assert str(Integral(exp(-x**2), x, Integer(0), oo).evalf(20)) == '0.88622692545275801365'
+assert (sqrt(2) + sqrt(3)).equals(sqrt(5 + 2*sqrt(6))) is True
+assert (sin(x)**2 + cos(x)**2 + y).is_constant(x) is True and (log(x) + y).is_constant(x) is False
+assert str((x + y).invert(x**2 + 1, x)) == '-x/(y**2 + 1) + y/(y**2 + 1)'
+assert str((1/(x + 1)).integrate(x)) == 'log(x + 1)' and str(exp(-x**2).integrate((x, 0, oo))) == 'sqrt(pi)/2'
+assert str(_solve_for(log(d) - k, d)) == 'exp(k)'
+assert FiniteSet(sin(x)**2 + cos(x)**2).simplify() == FiniteSet(Integer(1))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_generic_fallbacks_do_not_load_sympy() -> None:
+    """The Euler-Maclaurin values of sums, the quadrature of integrals,
+    equals, is_constant, invert with parameters, integrate, the first
+    solution of an Order and simplify of other nodes are native (they went
+    to SymPy through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_GENERIC_FALLBACKS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_FPS_FOURIER = r'''
+import sys
+from sympy_extras.core import Symbol, pi
+from sympy_extras.core.bridge import Bridge, bridge
+from sympy_extras.functions import atan, exp, log, piecewise, sin
+assert type(bridge()) is Bridge   # no bridge registered
+x = Symbol('x')
+assert str(sin(x).fps(x).truncate()) == 'x - x**3/6 + x**5/120 + O(x**6)'
+assert str((log(1 + x)*exp(x)).fps(x).truncate(3)) == 'x + x**2/2 + O(x**3)'
+from sympy_extras.series.formal import fps
+assert str(fps(atan(x), x, full=True).truncate()) == 'x - x**3/3 + x**5/5 + O(x**6)'
+assert str(fps(exp(x)).compose(fps(sin(x)), x).truncate(4)) == '1 + x + x**2/2 + O(x**4)'
+assert str((x**2).fourier_series((x, -pi, pi)).truncate()) == '-4*cos(x) + cos(2*x) + pi**2/3'
+s = piecewise((0, x < 0), (pi, True)).fourier_series((x, -pi, pi))
+assert str(s.truncate()) == '2*sin(x) + 2*sin(3*x)/3 + pi/2', s.truncate()
+assert str((sin(x)**3).fourier_series().truncate()) == '3*sin(x)/4 - sin(3*x)/4'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_fps_and_fourier_series_do_not_load_sympy() -> None:
+    """``Expr.fps`` and ``Expr.fourier_series`` of native expressions run
+    the native ports (:mod:`sympy_extras.series.formal`, ``fourier``;
+    SymPy's ``fps`` and ``fourier_series`` through the bridge before)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_FPS_FOURIER], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

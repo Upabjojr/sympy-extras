@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from functools import lru_cache
-from math import comb, factorial as integer_factorial
+from math import comb, factorial as integer_factorial, gcd
 from typing import Optional, Sequence
 
 import mpmath
@@ -83,9 +83,19 @@ def bernoulli_polynomial(n: int, x: Expr) -> Expr:
     return add(*terms)
 
 
+@lru_cache(maxsize=4096)
 def harmonic_number(n: int, m: int) -> Fraction:
-    """The generalised harmonic number ``sum(1/k**m, k = 1..n)``."""
-    return sum((Fraction(1)/Fraction(k)**m for k in range(1, n + 1)), Fraction(0))
+    """The generalised harmonic number ``sum(1/k**m, k = 1..n)`` (cached:
+    the Euler-Maclaurin corrections of a sum of harmonic numbers need
+    ``zeta(m, n + 1)`` for many orders ``m`` at one ``n``)."""
+    if n <= 0:
+        return Fraction(0)
+    # the common denominator built once (a sum of Fractions reduces at
+    # every step)
+    denominator = 1
+    for k in range(1, n + 1):
+        denominator = denominator * k**m // gcd(denominator, k**m)
+    return Fraction(sum(denominator // k**m for k in range(1, n + 1)), denominator)
 
 
 def _int(e: Expr) -> Optional[int]:

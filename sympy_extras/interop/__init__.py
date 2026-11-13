@@ -324,9 +324,10 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
     >>> i = (x**2).integrate()
     >>> i
     x**3/3
-    >>> t = (1/x).integrate((x, 1, Symbol('t')))
-    >>> t, type(t).__name__, t.doit()
-    (log(t), 'Log', log(t))
+    >>> sx = sympy.Symbol('x')
+    >>> w = from_sympy(sympy.Integral(1/sx, (sx, 1, sympy.Symbol('t', positive=True))))
+    >>> w, type(w).__name__, w.doit()
+    (Integral(1/x, (x, 1, t)), 'SymPyExprNode', log(t))
     """
 
     __slots__ = ('_sympy_class', '_node_args')
@@ -533,6 +534,9 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         # factor, already preprocessed) and function gives the same node
         return sympy.RootSum(sympy.Poly(to_sympy(e.expr), to_sympy(e.variable)),
                              sympy.Lambda(tuple(to_sympy(v) for v in e.fun.variables), to_sympy(e.fun.expr, evaluate)))
+    series = _series_to_sympy(e, evaluate)
+    if series is not None:
+        return series
     from sympy_extras.integrals.risch.risch import NonElementaryIntegral
     if isinstance(e, NonElementaryIntegral):
         from sympy_extras.integrals.risch.risch_sympy import NonElementaryIntegral as SymPyNonElementaryIntegral
@@ -614,6 +618,53 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         from sympy_extras.assumptions.quantifiers_sympy import sympy_quantifier
         return sympy_quantifier(e)
     raise TypeError("cannot convert %s to SymPy" % (e,))
+
+
+def _series_to_sympy(e: Basic, evaluate: bool) -> Optional[SymPyBasic]:
+    """The SymPy counterparts of the native sequences and series
+    (:mod:`sympy_extras.series.sequences`, ``formal``, ``fourier``);
+    ``None`` for the other nodes."""
+    from sympy_extras.series import sequences as seq
+    from sympy_extras.series.series_class import SeriesBase
+    if not isinstance(e, (seq.SeqBase, SeriesBase)):
+        return None
+    from sympy.series.formal import (FormalPowerSeries as SymPyFPS, FormalPowerSeriesCompose as SymPyFPSCompose,
+                                     FormalPowerSeriesInverse as SymPyFPSInverse,
+                                     FormalPowerSeriesProduct as SymPyFPSProduct)
+    from sympy.series.fourier import FiniteFourierSeries as SymPyFiniteFourier, FourierSeries as SymPyFourier
+    from sympy_extras.series import formal, fourier
+    if isinstance(e, seq.EmptySequence):
+        return sympy.S.EmptySequence
+    if isinstance(e, (seq.SeqFormula, seq.SeqPer)):
+        limits = sympy.Tuple(*[to_sympy(a) for a in e.limits.args])
+        if isinstance(e, seq.SeqFormula):
+            return sympy.SeqFormula(to_sympy(e.formula, evaluate), limits)
+        return sympy.SeqPer(sympy.Tuple(*[to_sympy(a, evaluate) for a in e.periodical]), limits)
+    if isinstance(e, (seq.SeqAdd, seq.SeqMul)):
+        parts = [to_sympy(a, evaluate) for a in e.sequences]
+        return sympy.SeqAdd(*parts) if isinstance(e, seq.SeqAdd) else sympy.SeqMul(*parts)
+    if isinstance(e, formal.FormalPowerSeries):
+        return SymPyFPS(to_sympy(e.function, evaluate), to_sympy(e.x), to_sympy(e.x0),
+                                              to_sympy(e.direction),
+                                              sympy.Tuple(to_sympy(e.ak, evaluate), to_sympy(e.xk, evaluate),
+                                                          to_sympy(e.ind, evaluate)))
+    if isinstance(e, formal.FormalPowerSeriesProduct):
+        return SymPyFPSProduct(to_sympy(e.ffps, evaluate), to_sympy(e.gfps, evaluate))
+    if isinstance(e, formal.FormalPowerSeriesCompose):
+        return SymPyFPSCompose(to_sympy(e.ffps, evaluate), to_sympy(e.gfps, evaluate))
+    if isinstance(e, formal.FormalPowerSeriesInverse):
+        return SymPyFPSInverse(to_sympy(e.ffps, evaluate))
+    limits = sympy.Tuple(*[to_sympy(a) for a in e.args[1].args])
+    if isinstance(e, fourier.FourierSeries):
+        return SymPyFourier(to_sympy(e.function, evaluate), limits,
+                                           sympy.Tuple(to_sympy(e.a0, evaluate), to_sympy(e.an, evaluate),
+                                                       to_sympy(e.bn, evaluate)))
+    if isinstance(e, fourier.FiniteFourierSeries):
+        an = sympy.Dict({to_sympy(k): to_sympy(v, evaluate) for k, v in e.an.items()})
+        bn = sympy.Dict({to_sympy(k): to_sympy(v, evaluate) for k, v in e.bn.items()})
+        return SymPyFiniteFourier(to_sympy(e.function, evaluate), limits,
+                                                 sympy.Tuple(to_sympy(e.a0, evaluate), an, bn))
+    return None
 
 
 def _sympy_predicate(p: Predicate) -> SymPyPredicate:
@@ -888,12 +939,16 @@ def expr_through_sympy(e: Expr, f: Callable[[SymPyExpr], SymPyBasic]) -> Expr:
     return as_expr(from_sympy(f(_sympy_expr(to_sympy(e)))))
 
 
-def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type]]) -> list[Union[SymPyBasic, type]]:
+def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type, str]]) -> list[Union[SymPyBasic, type, str]]:
     """The arguments of ``rewrite`` as SymPy objects: nodes converted,
-    function objects replaced by their SymPy class."""
-    targets: list[Union[SymPyBasic, type]] = []
+    function objects replaced by their SymPy class, the other native
+    classes and the names by their SymPy names."""
+    from sympy_extras.core.rewriting import target_name
+    targets: list[Union[SymPyBasic, type, str]] = []
     for a in args:
-        if isinstance(a, Basic):
+        if isinstance(a, str):
+            targets.append(a)
+        elif isinstance(a, Basic):
             targets.append(to_sympy(a))
         elif isinstance(a, SymPyFunction):
             targets.append(a.sympy_class)
@@ -907,7 +962,7 @@ def rewrite_targets(args: Sequence[Union[Basic, FunctionClass, type]]) -> list[U
                 if a in _NATIVE_TO_SYMPY:
                     targets.append(_NATIVE_TO_SYMPY[a])
                     continue
-            targets.append(a)
+            targets.append(target_name(a) if issubclass(a, Basic) else a)
         else:
             raise TypeError("cannot rewrite in terms of %r" % (a,))
     return targets
@@ -1072,31 +1127,17 @@ def solveset_first_through_sympy(equation: Expr, d: Symbol) -> Optional[Expr]:
     return None
 
 
-def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: type,
+def rewrite_node_through_sympy(node: Basic, args: tuple[Basic, ...], target: Union[Basic, FunctionClass, type, str],
                                piecewise: bool = True) -> Optional[Basic]:
-    """The node, rebuilt with ``args``, rewritten by its SymPy rule for
-    ``target`` (not deep); ``None`` when SymPy has no rule or the target
-    has no SymPy class."""
-    if not issubclass(target, DefinedFunction):
-        return None
-    if not _NATIVE_TO_SYMPY:
-        _fill_function_tables()
-    sympy_target = _NATIVE_TO_SYMPY.get(target)
-    if sympy_target is None:
+    """The wrapped SymPy node, rebuilt with ``args``, rewritten by its
+    SymPy rule for ``target`` (not deep); ``None`` when SymPy has no rule."""
+    from sympy_extras.core.rewriting import target_name
+    sympy_target = rewrite_targets([target])[0]
+    original = to_sympy(node)
+    if not _sympy_has_rule(type(original), target_name(target)):
         return None
     sympy_args = [to_sympy(a) for a in args]
-    if isinstance(node, DefinedFunction) and type(node) in _NATIVE_TO_SYMPY:
-        # the node's own class, unevaluated (SymPy calls the rule of the
-        # node itself with the rewritten arguments)
-        sympy_class = _NATIVE_TO_SYMPY[type(node)]
-        if not _sympy_has_rule(sympy_class, sympy_target.__name__):
-            return None
-        rebuilt = sympy_class(*sympy_args, evaluate=False)
-    else:
-        original = to_sympy(node)
-        if not _sympy_has_rule(type(original), sympy_target.__name__):
-            return None
-        rebuilt = original.func(*sympy_args) if args else original
+    rebuilt = original.func(*sympy_args) if args else original
     return from_sympy(rebuilt.rewrite(sympy_target, deep=False, piecewise=piecewise))
 
 
@@ -1236,6 +1277,9 @@ def _fill_function_tables() -> None:
                 pairs.append((native_rep, sympy_rep))
     from sympy_extras.concrete import qhyper, qhyper_sympy
     pairs.append((qhyper.QPochhammer, qhyper_sympy.QPochhammer))
+    from sympy.series.formal import Coeff as SymPyCoeff
+    from sympy_extras.series import formal
+    pairs.append((formal.Coeff, SymPyCoeff))
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native
@@ -1660,11 +1704,8 @@ class SymPyBridge(Bridge):
     def meromorphic(self, node: Expr, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Truth]:
         return meromorphic_node_through_sympy(node, x, a, own_only)
 
-    def rewrite(self, e: Basic, targets: Sequence[RewriteTarget], piecewise: bool) -> Basic:
-        sympy_targets = rewrite_targets(targets)
-        return through_sympy(e, lambda s: s.rewrite(*sympy_targets, piecewise=piecewise))
-
-    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: type, piecewise: bool) -> Optional[Basic]:
+    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: RewriteTarget, piecewise: bool
+                     ) -> Optional[Basic]:
         return rewrite_node_through_sympy(e, args, target, piecewise)
 
     def rewrite_named_node(self, e: Basic, args: tuple[Basic, ...], name: str, limitvar: Optional[Symbol]

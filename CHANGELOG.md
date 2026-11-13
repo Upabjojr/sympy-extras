@@ -10,6 +10,56 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- The last SymPy fallbacks of the native core are closed: the bridge
+  (`sympy_extras.core.bridge`) now serves only wrapped foreign (SymPy)
+  objects. `Sum` values by SymPy's Euler–Maclaurin summation
+  (`Sum.euler_maclaurin` and the branch of `evalf_sum`, ported to
+  `concrete/_evalf.py`), with guards against SymPy's wrong values (no early
+  stop at a small term when the terms grow again: SymPy's
+  `Sum(exp(-i**2), (i, -50, 50)).evalf()` is `0`; no Euler–Maclaurin for a
+  summand with a peak or an oscillation; no `hypsum` when the term ratio
+  has a pole at a natural number, SymPy's `ZeroDivisionError` on
+  `Sum(i**2/(i**4 + 1), (i, 0, oo))`); the definite `Integral` node has a
+  value (`integrals/_evalf.py`, a port of `evalf_integral`: mpmath's
+  tanh-sinh quadrature of the native integrand, the range subdivided at
+  the kinks of `Abs`, `Piecewise`, `floor`, the value confirmed at a
+  higher precision, `None` when not accurate) and is a number
+  (`is_number`), as SymPy's.
+  `Expr.equals` and `Expr.is_constant` finish SymPy's steps natively (the
+  derivatives, the surds solved for by the native `solve`, the minimal
+  polynomial, the simplified derivatives); `Expr.integrate` is the native
+  `indefinite_integral` / `definite_integral`; `Expr.invert` with one
+  generator and parameters inverts over their rational functions (several
+  generators raise `ValueError`, as SymPy does); the first solution of an
+  `Order`'s change of variable takes the first element of several, or the
+  native `solve`'s solution of a `ConditionSet`; `Basic.simplify` of a node
+  which is not an expression rebuilds it with its arguments simplified;
+  `numeric_value` of a native node without a numerical rule is `None`.
+  `meijerint_inversion` stays unported: no native code calls it.
+- `sympy_extras.series.formal`, `sympy_extras.series.fourier`: native ports of SymPy's
+  formal power series (`fps`, `FormalPowerSeries` with truncate, sums, derivatives,
+  integrals, `product`, `compose`, `inverse`) and Fourier series (`fourier_series`,
+  `FourierSeries`, `FiniteFourierSeries`: truncate, sigma_approximation, shift, shiftx,
+  scale, scalex), with the sequences they use (`sympy_extras.series.sequences`:
+  `SeqFormula`, `SeqPer`, `SeqAdd`, `SeqMul`, `sequence`); `Expr.fps` and
+  `Expr.fourier_series` no longer go through SymPy (only for wrapped foreign nodes);
+  `to_sympy` converts the new classes. Unlike SymPy, `fps(1/(x**2 + x + 1))` is the
+  right series (SymPy's rational algorithm read the quadratic denominator as linear),
+  and the scaled and shifted finite Fourier series keep all their terms (SymPy's kept
+  the first three).
+- Every SymPy 1.14 `_eval_rewrite_as_*` rule of the native classes is native, targets
+  which are not function classes included (Piecewise, Integral, Sum, Product, hyper,
+  meijerg, and names such as `'sqrt'`, `'polynomial'`, `'Nor'`), except Piecewise↔ITE
+  and PowerSet; `rewrite` accepts SymPy's names as strings; `Bridge.rewrite` is removed.
+  `expand_func` of the Airy functions, `Ynm`, `hyper`, `meijerg`, `polygamma` of a
+  non-integer order and `harmonic` at rationals is native. The series of `Piecewise`,
+  `Derivative`, `Subs`, `Integral` and `NonElementaryIntegral` are native; the functions
+  without a rule use the port of `Function._eval_nseries`, and `Max`, `Min`, `Sum`,
+  `Product` and the other nodes without one raise `NotImplementedError`, as in SymPy.
+  Unlike SymPy: `erfi` → `expint`, `li` → `Shi`/`Chi`, `hn1`/`hn2` → `hankel`,
+  `airyaiprime` → `besseli`, the phase of `assoc_legendre` → `Sum`, and `genocchi` →
+  `bernoulli` (no float) are right, and `sec`/`csc` of the special angles rewrite to
+  `sqrt` and `pow` (SymPy raises).
 - `sympy_extras.integrals.meijerint`: a native port of SymPy's Meijer
   G-function integration (`sympy/integrals/meijerint.py`, SymPy 1.14) on
   the typed core: the table of G-function representations

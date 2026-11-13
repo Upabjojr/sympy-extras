@@ -52,7 +52,7 @@ References
    Functions*, 2nd edition, Springer, 2005.
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/integrals/risch.py (SymPy 1.14 and Aaron Meurer's pull requests)
+# PORTED FROM SYMPY: sympy/integrals/risch.py, sympy/integrals/integrals.py (Integral._eval_nseries) (SymPy 1.14 and Aaron Meurer's pull requests)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: the typed core and the polynomials of integrals.risch.tower
@@ -2958,6 +2958,12 @@ class NonElementaryIntegral(Expr):
         if s not in self._function.free_symbols:
             return _ZERO
         return None
+
+    # PORTED FROM SYMPY: sympy/integrals/integrals.py:Integral._eval_nseries (SymPy's NonElementaryIntegral is an
+    # Integral)
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        from sympy_extras.integrals.integral import integral_nseries
+        return integral_nseries(self._function, self._variable, None, x, n, logx)
 
     def _sympystr(self, printer: StrPrinter) -> str:
         return 'Integral(%s, %s)' % (printer.doprint(self._function), printer.doprint(self._variable))
