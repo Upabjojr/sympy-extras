@@ -53,7 +53,7 @@ remove public functions. Breaking changes are listed here when they happen.
   `meijerint.meijer_antiderivative`, and the method `'sympy'` (SymPy's
   `integrate`) is removed, with `indefinite.SYMPY_METHODS`; the exact
   methods of the antiderivative route of definite integration take
-  `'manual'` in its place. The last method of the native definite
+  `'manual'` and `'meijer'` in its place. The last method of the native definite
   integration, SymPy's `integrate` and `meijerint`, is native: the
   theorems of `meijerint_definite` and an antiderivative at the endpoints
   (cut at its discontinuities on real ranges; the delta functions by the
