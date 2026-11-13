@@ -288,3 +288,43 @@ def test_sign_rewrites_as_abs_natively() -> None:
     b, c = s.symbols('b c')
     for e in [s.sign(x), s.sign(s.sqrt(x**2 + y**2)), s.sign((b + 2*c*x)/c), s.sign(x) + s.sign(y)**2]:
         assert str(to_sympy(expr_from_sympy(e).rewrite(Abs), evaluate=False)) == str(e.rewrite(s.Abs)), e
+
+
+def test_rewrite_table_of_the_nodes_with_parameters_matches_sympy() -> None:
+    # Hyper, MeijerG, ExprCondPair, IndexedRoot, the sets, ... were not in
+    # the table, so every rewrite of them asked SymPy through the bridge,
+    # which answered None (they have no rule for a function target)
+    from sympy.core.basic import Basic as SympyBasic
+    from sympy.functions.elementary.piecewise import ExprCondPair as SympyExprCondPair
+    from sympy_extras.core._rewrite_rules import OWN_REWRITE, REWRITE_TARGETS
+    from sympy_extras.integrals.risch.risch_sympy import NonElementaryIntegral
+    from sympy_extras.polys.cad.indexedroot_sympy import IndexedRoot
+    from sympy_extras.solvers.isolation_sympy import TranscendentalRoot
+    theirs: dict[str, type[SympyBasic]] = {
+        'Hyper': s.hyper, 'MeijerG': s.meijerg, 'ExprCondPair': SympyExprCondPair, 'IndexedRoot': IndexedRoot,
+        'ComplexRootOf': s.CRootOf, 'Integral': s.Integral, 'RootSum': s.RootSum, 'Max': s.Max, 'Min': s.Min,
+        'UnevaluatedExpr': s.UnevaluatedExpr, 'AlgebraicNumber': s.AlgebraicNumber,
+        'TranscendentalRoot': TranscendentalRoot, 'NonElementaryIntegral': NonElementaryIntegral,
+        'ConditionSet': s.ConditionSet, 'ImageSet': s.ImageSet, 'Interval': s.Interval, 'FiniteSet': s.FiniteSet,
+        'PointSet': s.FiniteSet, 'Union': s.Union, 'Intersection': s.Intersection, 'Complement': s.Complement,
+        'Contains': s.Contains, 'ProductSet': s.ProductSet}
+    for name, cls in theirs.items():
+        targets = {m[len('_eval_rewrite_as_'):] for k in cls.__mro__ for m in k.__dict__
+                   if m.startswith('_eval_rewrite_as_')}
+        assert REWRITE_TARGETS[name] == targets, name
+        assert (name in OWN_REWRITE) == any('_eval_rewrite' in k.__dict__ for k in cls.__mro__
+                                            if k is not SympyBasic), name
+
+
+def test_rewrite_of_nodes_without_a_rule_matches_sympy() -> None:
+    # the nodes are rebuilt with their arguments rewritten, as SymPy does
+    from sympy_extras.functions.elementary.trigonometric import Cos
+    from sympy_extras.functions.special.gamma_functions import Gamma
+    a, u, n = s.symbols('a u n')
+    cases = [(s.hyper((a / 2, s.sin(a)), (s.Rational(1, 2),), -1), s.cos, Cos),
+             (s.hyper((s.Rational(1, 6),), (s.Rational(1, 2),), s.factorial(a)), s.gamma, Gamma),
+             (s.meijerg(((-1, n + 1), ()), ((), (-1, 0)), u / a * s.factorial(n)), s.gamma, Gamma),
+             (s.Piecewise((s.factorial(a), a > 0), (0, True)), s.gamma, Gamma),
+             (s.Max(s.factorial(a), x), s.gamma, Gamma)]
+    for e, theirs, ours in cases:
+        assert str(to_sympy(expr_from_sympy(e).rewrite(ours), evaluate=False)) == str(e.rewrite(theirs)), e

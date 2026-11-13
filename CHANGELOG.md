@@ -90,6 +90,45 @@ remove public functions. Breaking changes are listed here when they happen.
   SymPy through the bridge).
 - `core.bridge.Bridge.is_hypergeometric` (and its SymPy implementation)
   is removed: `Expr.is_hypergeometric` is native and nothing asked it.
+- The rewrites of `hyper`, `meijerg`, the pairs of `Piecewise`,
+  `IndexedRoot`, `CRootOf`, `RootSum`, `Max`, `Min`, the integrals and
+  the sets are decided by the table of SymPy's rules (none for a function
+  target but `Max`/`Min` in terms of `Abs`, `Heaviside`, `Piecewise`):
+  they are rebuilt natively instead of asking SymPy, which answered
+  `None`.
+- The numerical value of a `Sum` is native (`concrete._evalf`, a port of
+  SymPy's `evalf_sum`, `hypsum` and `check_convergence`): the infinite
+  hypergeometric sums by direct summation or Richardson extrapolation,
+  SymPy's `ValueError` for the divergent ones (`Sum(1, (i, 1, oo))`), the
+  finite sums of a few terms term by term; SymPy's Euler–Maclaurin
+  summation is not ported (those sums still go to SymPy). Against SymPy:
+  a ratio of the terms with irrational coefficients is summed numerically
+  (SymPy truncates the coefficients to integers: its value of
+  `Sum(pi**i/factorial(i), (i, 0, oo))` is `exp(3)`).
+- The Gruntz algorithm's tractable rewrites of the special functions are
+  native: SymPy's helpers `_erfs`, `_eis`, `_besseli`, `_besselk` are the
+  nodes `Erfs`, `Eis` (`functions.special.error_functions`), `BesselIs`,
+  `BesselKs` (`functions.special.bessel`) with their asymptotic series,
+  derivatives and rewrites back (`intractable`), and the rules of `erf`,
+  `erfc`, `erfi`, `Ei`, `li`, `Li`, `uppergamma`, `besseli`, `besselk`
+  and `fibonacci` are ported (they went to SymPy, whose helpers came back
+  wrapped). The asymptotic series (`_eval_aseries`) of `erf`, `erfc`,
+  `erfi`, `Ei`, `expint`, `Si`, `Ci`, `besseli` and `besselk` are ported
+  too, and `Li` rewrites in terms of `li` natively. Against SymPy: the
+  series of `Ei` of a polar argument going to an infinity raises
+  `PoleError` (SymPy's forgets the branch term `I*pi`: its series of
+  `expint(2, 1/w)` is `-I*pi/w + O(w**3)` and its
+  `limit(x*exp(x)*expint(2, x), x, oo)` is `-oo*I`; the limit is 1).
+- Polar numbers are decided natively: `equals` of a difference with
+  `exp_polar` or `polar_lift` takes SymPy's steps (no sum: `False`; the
+  factors one by one; the values with the symbols `0` and `1` compared,
+  as SymPy's `is_constant`; a derivative which is never zero) instead of
+  SymPy's `equals`, and answers `None` like SymPy for `exp_polar(0) - 1`;
+  `exp_polar(z)` of a number with `-pi < im(z) <= pi` has the sign of
+  `exp(z)` (`exp_polar(I*pi)` is negative, `sign` of it `-1`, as in
+  SymPy) and its value is that of `exp(z)` evaluated exactly;
+  `periodic_argument` and `principal_branch` have numerical values (ports
+  of their `_eval_evalf`).
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's

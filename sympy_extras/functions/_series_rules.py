@@ -180,8 +180,14 @@ def _ei(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Optiona
     from sympy_extras.functions.special.error_functions import Chi, Shi
     z = _arg(f)
     if _is_zero(_limit0(z, x)):
-        # Ei._eval_rewrite_as_Si
-        g = Shi(z) + Chi(z) - I * pi if z.is_negative is True else Shi(z) + Chi(z)
+        # Ei._eval_rewrite_as_Si; a polar argument is not negative here
+        # (Chi takes its branch out: SymPy's -I*pi on x*exp_polar(I*pi), a
+        # negative number for it, counts the branch twice and makes its
+        # series of expint(2, x) complex)
+        from sympy_extras.functions.elementary.complexes import PolarLift
+        from sympy_extras.functions.elementary.exponential import ExpPolar
+        negative = z.is_negative is True and not z.has(ExpPolar, PolarLift)
+        g = Shi(z) + Chi(z) - I * pi if negative else Shi(z) + Chi(z)
         return _ns(g, x, n, logx)
     return _generic(f, x, n, logx)
 

@@ -455,7 +455,15 @@ the base `exp_polar(1)` as SymPy's `as_base_exp` makes them), and in
 `unbranched` flag, now on `DefinedFunction` and set on the 35 functions
 SymPy marks). One API difference: `polarify` always returns the pair
 (expression, substitution map), the map empty without `subs`, where
-SymPy returns the expression alone. `adjoint` and `transpose` (`Adjoint`, `Transpose`, in
+SymPy returns the expression alone. The polar numbers are decided
+natively: `equals` of a difference with polar parts takes SymPy's steps
+(`exp_polar(0) - 1` is not taken for zero, as in SymPy), `exp_polar(z)`
+of a number with `-pi < im(z) <= pi` has the sign and the value of
+`exp(z)`, and `periodic_argument` and `principal_branch` have numerical
+values. The helpers of the Gruntz algorithm, SymPy's `_erfs`, `_eis`,
+`_besseli` and `_besselk`, are the nodes `Erfs`, `Eis`, `BesselIs` and
+`BesselKs`, with their asymptotic series, so that the tractable rewrites
+of the error, exponential and Bessel functions are native. `adjoint` and `transpose` (`Adjoint`, `Transpose`, in
 `complexes.py`) follow SymPy's rules, the products of noncommutative
 factors reversed; the conjugate of a noncommutative argument is now
 noncommutative too (it claimed commutativity). `piecewise_fold` brings

@@ -1179,6 +1179,8 @@ def _fill_function_tables() -> None:
     from sympy_extras.functions.special import mathieu_functions as mat, singularity_functions as sing
     from sympy_extras.functions.special import hyper as hy
     from sympy_extras.functions.combinatorial import numbers as cn
+    import sympy.functions.special.bessel as sympy_bessel
+    import sympy.functions.special.error_functions as sympy_error_functions
     pairs: list[tuple[type[DefinedFunction], type[SymPyFunctionClass]]] = [
         (Exp, sympy.exp), (Log, sympy.log), (LambertW, sympy.LambertW), (ExpPolar, sympy.exp_polar),
         (c.PolarLift, sympy.polar_lift), (c.PeriodicArgument, sympy.periodic_argument),
@@ -1221,6 +1223,8 @@ def _fill_function_tables() -> None:
         (mat.MathieuS, sympy.mathieus), (mat.MathieuC, sympy.mathieuc), (mat.MathieuSPrime, sympy.mathieusprime),
         (mat.MathieuCPrime, sympy.mathieucprime), (sing.SingularityFunctionNode, sympy.SingularityFunction),
         (e.FresnelS, sympy.fresnels), (e.FresnelC, sympy.fresnelc), (el.EllipticK, sympy.elliptic_k),
+        (e.Erfs, sympy_error_functions._erfs), (e.Eis, sympy_error_functions._eis),
+        (bs.BesselIs, sympy_bessel._besseli), (bs.BesselKs, sympy_bessel._besselk),
         (el.EllipticF, sympy.elliptic_f), (el.EllipticE, sympy.elliptic_e), (el.EllipticPi, sympy.elliptic_pi)]
     import sympy.functions.special.hyper as sympy_hyper
     from sympy_extras.functions.special import hyperrep

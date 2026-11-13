@@ -3429,3 +3429,111 @@ def test_native_order_point_does_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_ORDER_POINT], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REWRITE_OF_PARAMETER_NODES = r'''
+import sys
+from sympy_extras.core import Symbol, Rational
+from sympy_extras.functions import factorial
+from sympy_extras.functions.elementary.trigonometric import Cos
+from sympy_extras.functions.special.gamma_functions import Gamma
+from sympy_extras.functions.special.hyper import hyper, meijerg
+from sympy_extras.functions.elementary.piecewise import piecewise
+from sympy_extras.polys.cad.indexedroot import IndexedRoot
+a, u, x = Symbol('a'), Symbol('u'), Symbol('x')
+assert str(hyper([a/2], [Rational(1, 2)], -1).rewrite(Cos)) == 'hyper((a/2,), (1/2,), -1)'
+assert str(meijerg([-1], [], [], [0], u*factorial(a)).rewrite(Gamma)) == 'meijerg(((-1,), ()), ((), (0,)), u*gamma(a + 1))'
+assert str(piecewise((factorial(a), a > 0), (0, True)).rewrite(Gamma)) == 'Piecewise((gamma(a + 1), a > 0), (0, True))'
+assert str(IndexedRoot(x**3 - x - 1, x, 0).rewrite(Gamma)) == 'IndexedRoot(x**3 - x - 1, x, 0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_rewrite_of_parameter_nodes_does_not_load_sympy() -> None:
+    """``hyper``, ``meijerg``, the pairs of ``Piecewise`` and ``IndexedRoot``
+    have no rule for a function target in SymPy: they are rebuilt with
+    their arguments rewritten (SymPy was asked through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REWRITE_OF_PARAMETER_NODES], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SUM_VALUES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, oo
+from sympy_extras.concrete.expr_with_limits import Sum
+from sympy_extras.functions import factorial
+i = Symbol('i', integer=True)
+assert str(Sum(1/factorial(i), (i, 0, oo)).evalf(20)) == '2.7182818284590452354'
+assert str(Sum(1/i**2, (i, 1, oo)).evalf()) == '1.64493406684823'
+try:
+    Sum(Integer(1), (i, 1, oo)).evalf()
+except ValueError as e:
+    assert str(e) == 'Sum diverges like n^0', e
+else:
+    raise AssertionError('a divergent sum has no value')
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_sum_values_do_not_load_sympy() -> None:
+    """The values of the hypergeometric sums are the port of SymPy's
+    ``evalf_sum`` (a divergent sum raises SymPy's ``ValueError``; it went
+    to SymPy's ``evalf`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SUM_VALUES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_TRACTABLE_LIMITS = r'''
+import sys
+from sympy_extras.core import Symbol, oo, sqrt
+from sympy_extras.core.limits import limit
+from sympy_extras.core.rewriting import rewrite_tractable
+from sympy_extras.functions import exp, log
+from sympy_extras.functions.special.error_functions import erf, Ei, li, Si
+from sympy_extras.functions.special.bessel import besselk
+x = Symbol('x', positive=True)
+assert str(rewrite_tractable(erf(x), x)) == '1 - exp(-x**2)*_erfs(x)'
+assert str(rewrite_tractable(Ei(x), x)) == 'exp(x)*_eis(x)'
+assert str(limit((erf(x) - 1)*exp(x**2)*x, x, oo)) == '-1/sqrt(pi)'
+assert str(limit(Ei(x)*exp(-x)*x, x, oo)) == '1' and str(limit(li(x)*log(x)/x, x, oo)) == '1'
+assert str(limit(besselk(1, x)*exp(x)*sqrt(x), x, oo)) == 'sqrt(2)*sqrt(pi)/2'
+assert str(Si(1/x).nseries(x, n=3)) == '-(x + O(x**3))*cos(1/x) - (x**2 + O(x**3))*sin(1/x) + pi/2'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_tractable_limits_do_not_load_sympy() -> None:
+    """The Gruntz algorithm's helpers ``_erfs``, ``_eis``, ``_besseli``,
+    ``_besselk`` and the tractable rewrites and asymptotic series of the
+    special functions are native (they went to SymPy through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRACTABLE_LIMITS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_POLAR_NUMBERS = r'''
+import sys
+from sympy_extras.core import Symbol, I, pi, sqrt
+from sympy_extras.core.evalf import numeric_value
+from sympy_extras.functions.elementary.exponential import exp_polar
+from sympy_extras.functions.elementary.complexes import PrincipalBranch, polar_lift, sign
+z = Symbol('z')
+assert (sqrt(z)*exp_polar(3*I*pi/2) - 1).equals(0) is False
+assert (exp_polar(0) - 1).equals(0) is None   # SymPy's answer
+assert sign(exp_polar(I*pi)) == -1 and exp_polar(I*pi).is_negative is True
+value = numeric_value(PrincipalBranch(exp_polar(5*I*pi/2)*polar_lift(2 + I), 2*pi), 53)
+assert value is not None and abs(value - (-1 + 2j)) < 1e-12, value
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_polar_numbers_do_not_load_sympy() -> None:
+    """``equals`` of differences with polar numbers, the signs of polar
+    numbers and the values of ``periodic_argument`` and
+    ``principal_branch`` are native ports of SymPy's."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_POLAR_NUMBERS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

@@ -1019,6 +1019,25 @@ class PeriodicArgument(DefinedFunction):
             return sub(unbranched, n)
         return None
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:periodic_argument._eval_evalf
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        """The argument from the unbranched one of the polar factors,
+        reduced into the period (``None`` when it is not known)."""
+        from sympy_extras.core.evalf import numeric_value
+        z, period = self._args
+        if period == oo:
+            unbranched = _unbranched(z)
+            if unbranched is None:
+                return None
+            return numeric_value(unbranched, prec)
+        ub = PeriodicArgument(z, oo)._numeric_node(prec)
+        p = numeric_value(period, prec)
+        if ub is None or p is None or mpmath.im(ub) != 0 or mpmath.im(p) != 0 or p == 0:
+            return None
+        with mpmath.workprec(prec):
+            u, q = mpmath.re(ub), mpmath.re(p)
+            return mpmath.mpc(u - mpmath.ceil(u / q - mpmath.mpf(1) / 2) * q)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return None
 
@@ -1086,6 +1105,24 @@ class PrincipalBranch(DefinedFunction):
                 and not others:
             return mul(exp_polar(mul(angle, I)), abs_(c))
         return None
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:principal_branch._eval_evalf
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        """``|z|*exp(I*p)`` with ``p`` the argument of ``z`` in the period,
+        ``None`` for an argument outside ``(-pi, pi]``."""
+        from sympy_extras.core.evalf import numeric_value
+        z, period = self._args
+        p = PeriodicArgument(z, period)._numeric_node(prec)
+        if p is None or mpmath.im(p) != 0:
+            return None
+        modulus = numeric_value(abs_(z), prec)
+        if modulus is None:
+            return None
+        with mpmath.workprec(prec):
+            angle = mpmath.re(p)
+            if abs(angle) > mpmath.pi or angle == -mpmath.pi:
+                return None
+            return mpmath.mpc(modulus * mpmath.exp(mpmath.mpc(0, 1) * angle))
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return None
