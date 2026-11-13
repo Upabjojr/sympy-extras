@@ -60,6 +60,7 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
+from functools import lru_cache
 from itertools import combinations, product
 from typing import Sequence, Union
 
@@ -84,6 +85,14 @@ def _toggle(found: list[Boolean], b: Boolean) -> None:
         found.remove(b)
     else:
         found.append(b)
+
+
+@lru_cache(maxsize=4096)
+def _canonical_forms(r: Relational) -> tuple[Relational, Relational]:
+    """The canonical forms of a relation and of its negation (remembered:
+    the distribution over ``Xor`` builds the same conjunctions many
+    times)."""
+    return r.canonical, r.negated.canonical
 
 
 # PORTED FROM SYMPY: sympy/logic/boolalg.py:Xor.__new__
@@ -119,8 +128,7 @@ def xor_evaluated(*args: BooleanLike, remove_true: bool = True) -> Boolean:
         else:
             _toggle(found, b)
     # the relations: (relation, canonical form, canonical form of the negation)
-    relations = [(r, r.canonical, r.negated.canonical) for r in _ordered_booleans(found)
-                 if isinstance(r, Relational)]
+    relations = [(r,) + _canonical_forms(r) for r in _ordered_booleans(found) if isinstance(r, Relational)]
     odd = False
     used: set[int] = set()
     remove: list[tuple[Relational, Relational]] = []
@@ -169,16 +177,16 @@ def and_evaluated(*args: BooleanLike) -> Boolean:
     (a & (x > 1), False)
     """
     r = and_(*args)
-    if not isinstance(r, And):
+    if not isinstance(r, And) or sum(1 for a in r.args if isinstance(a, Relational)) < 2:
         return r
     kept: list[Boolean] = []
     canonical: list[Relational] = []
-    for a in _ordered_booleans(r.args):
+    for a in r.args:   # (sorted by and_)
         if isinstance(a, Relational):
-            c = a.canonical
+            c, nc = _canonical_forms(a)
             if c in canonical:
                 continue
-            if c.negated.canonical in canonical:
+            if nc in canonical:
                 return false
             canonical.append(c)
         kept.append(a)
