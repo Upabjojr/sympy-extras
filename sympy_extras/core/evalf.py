@@ -94,6 +94,10 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
                 return None
             return mpmath.mpc(mpmath.power(b, x))
         if isinstance(e, DefinedFunction):
+            whole = e._numeric_node(prec)
+            if whole is not None:
+                # a rule on the node itself (periodic_argument of a polar number)
+                return whole
             values = [numeric_value(a, prec) for a in e.args]
             known = [v for v in values if v is not None]
             if len(known) != len(values):

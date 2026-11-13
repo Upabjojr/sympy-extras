@@ -3484,3 +3484,28 @@ def test_native_tractable_limits_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_TRACTABLE_LIMITS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_POLAR_NUMBERS = r'''
+import sys
+from sympy_extras.core import Symbol, I, pi, sqrt
+from sympy_extras.core.evalf import numeric_value
+from sympy_extras.functions.elementary.exponential import exp_polar
+from sympy_extras.functions.elementary.complexes import PrincipalBranch, polar_lift, sign
+z = Symbol('z')
+assert (sqrt(z)*exp_polar(3*I*pi/2) - 1).equals(0) is False
+assert (exp_polar(0) - 1).equals(0) is None   # SymPy's answer
+assert sign(exp_polar(I*pi)) == -1 and exp_polar(I*pi).is_negative is True
+value = numeric_value(PrincipalBranch(exp_polar(5*I*pi/2)*polar_lift(2 + I), 2*pi), 53)
+assert value is not None and abs(value - (-1 + 2j)) < 1e-12, value
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_polar_numbers_do_not_load_sympy() -> None:
+    """``equals`` of differences with polar numbers, the signs of polar
+    numbers and the values of ``periodic_argument`` and
+    ``principal_branch`` are native ports of SymPy's."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_POLAR_NUMBERS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

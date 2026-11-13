@@ -108,6 +108,16 @@ remove public functions. Breaking changes are listed here when they happen.
   `PoleError` (SymPy's forgets the branch term `I*pi`: its series of
   `expint(2, 1/w)` is `-I*pi/w + O(w**3)` and its
   `limit(x*exp(x)*expint(2, x), x, oo)` is `-oo*I`; the limit is 1).
+- Polar numbers are decided natively: `equals` of a difference with
+  `exp_polar` or `polar_lift` takes SymPy's steps (no sum: `False`; the
+  factors one by one; the values with the symbols `0` and `1` compared,
+  as SymPy's `is_constant`; a derivative which is never zero) instead of
+  SymPy's `equals`, and answers `None` like SymPy for `exp_polar(0) - 1`;
+  `exp_polar(z)` of a number with `-pi < im(z) <= pi` has the sign of
+  `exp(z)` (`exp_polar(I*pi)` is negative, `sign` of it `-1`, as in
+  SymPy) and its value is that of `exp(z)` evaluated exactly;
+  `periodic_argument` and `principal_branch` have numerical values (ports
+  of their `_eval_evalf`).
 
 - `piecewise_simplify_arguments` simplifies its conditions natively by
   the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's

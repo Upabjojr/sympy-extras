@@ -157,3 +157,53 @@ def test_expint_series_through_a_polar_ei_is_not_sympys() -> None:
     e, v = expr_from_sympy(x * s.exp(x) * s.expint(2, x)), expr_from_sympy(x)
     assert isinstance(v, Symbol)
     assert str(limit(e, v, expr_from_sympy(s.oo))) != '-oo*I'
+
+
+def test_equals_of_polar_differences_needs_no_bridge() -> None:
+    # the differences with exp_polar went to SymPy's equals (the native
+    # simplify would take exp_polar(0) - 1 for zero; SymPy does not)
+    import random
+    z, x = s.symbols('z x')
+    I, pi = s.I, s.pi
+    logged = [-1 + s.exp_polar(0), z**s.Rational(1, 3) * s.exp_polar(4 * I * pi / 3) - 1,
+              s.sqrt(z) * s.exp_polar(3 * I * pi / 2) - 1, z**(s.exp_polar(0) / 2) * s.exp_polar(3 * I * pi / 2) - 1,
+              x * s.exp_polar(2 * I * pi) - 1]
+    rng = random.Random(3)
+    polars = [s.exp_polar(0), s.exp_polar(I * pi), s.exp_polar(2 * I * pi), s.exp_polar(3 * I * pi / 2),
+              s.exp_polar(-I * pi), s.polar_lift(-1), s.exp_polar(I * pi / 2), s.exp_polar(1)]
+    atoms = [z, x, s.sqrt(z), z**s.Rational(1, 3), s.Integer(2), s.sqrt(2), z**2]
+    drawn = [rng.choice(polars) * rng.choice(atoms) - rng.choice([1, 2, z, rng.choice(polars) * rng.choice(atoms)])
+             for _ in range(40)]
+    for e in logged + drawn:
+        if e == 0:
+            continue
+        native = expr_from_sympy(e)
+        assert isinstance(native, Expr)
+        with _recording() as recorder:
+            ours = native.equals(0)
+        assert recorder.calls == [], (e, recorder.calls)
+        theirs = e.equals(0)
+        # undecided where SymPy decides is allowed, a different decision is not
+        assert ours is None or theirs is None or ours == theirs, (e, ours, theirs)
+        if e in logged:
+            assert ours == theirs, (e, ours, theirs)
+
+
+def test_values_and_signs_of_polar_numbers_match_sympy() -> None:
+    # periodic_argument, principal_branch had no value; the sign of
+    # exp_polar(I*pi) was unknown (SymPy's is -1, by its value)
+    from sympy_extras.core.evalf import numeric_value
+    from sympy_extras.functions.elementary.complexes import sign as native_sign
+    I, pi = s.I, s.pi
+    for e in [s.principal_branch(s.exp_polar(5 * I * pi / 2) * s.polar_lift(2 + I), 2 * pi),
+              s.exp_polar(I * pi / 3), s.polar_lift(2 + I) * s.exp_polar(0), s.exp_polar(I * pi / 2) + 1]:
+        native = expr_from_sympy(e)
+        assert isinstance(native, Expr)
+        value = numeric_value(native, 80)
+        assert value is not None and abs(complex(value) - complex(e.evalf(25))) < 1e-15, e
+    for e in [s.exp_polar(1), s.exp_polar(I * pi), s.exp_polar(1 + I * pi), s.exp_polar(-I * pi),
+              s.exp_polar(3 * I * pi)]:
+        native = expr_from_sympy(e)
+        assert isinstance(native, Expr)
+        assert (native.is_positive, native.is_negative) == (e.is_positive, e.is_negative), e
+        assert str(to_sympy(native_sign(native))) == str(s.sign(e)), e

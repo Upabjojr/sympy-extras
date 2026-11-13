@@ -863,6 +863,8 @@ class Expr(Basic):
         if _nonzero_at_a_point(difference):
             return False
         if not _native_zero_test_applies(difference):
+            if not any(node._has_foreign_class() for node in _preorder(difference)):
+                return _native_polar_zero_test(difference)
             return bridge().equals_zero(difference)
         native = _simplified_zero_test(difference)
         if native is not None:
@@ -2005,6 +2007,61 @@ def _native_zero_test_applies(e: Expr) -> bool:
     from .basic import preorder_traversal
     return not any(node._has_foreign_class() or isinstance(node, (ExpPolar, PolarLift))
                    for node in preorder_traversal(e))
+
+
+def _preorder(e: Expr) -> list[Basic]:
+    from .basic import preorder_traversal
+    return list(preorder_traversal(e))
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps for a difference with polar numbers)
+def _native_polar_zero_test(diff: Expr) -> Optional[bool]:
+    """SymPy's ``equals(0)`` of a difference with polar numbers
+    (``exp_polar``, ``polar_lift``), which the native ``simplify`` would
+    take for ordinary numbers: ``False`` when there is no sum or
+    ``Mod`` (no cancellation), the factors decided one by one, ``False``
+    when the difference depends on a symbol (a derivative which is never
+    zero), ``None`` otherwise. SymPy answers ``None`` for a number with
+    polar parts which does not evaluate away from zero (its
+    ``minimal_polynomial`` does not take polar numbers: ``exp_polar(0) - 1``
+    is not zero for it) and ``False`` for ``x*exp_polar(2*I*pi) - 1``."""
+    from .add import Add
+    from .mod import Mod
+    from .symbol import Symbol as _Symbol
+    if diff.is_zero is True:
+        return True
+    if not diff.has(Add, Mod):
+        return False
+    factors = diff.as_coeff_mul()[1]
+    if len(factors) > 1:
+        decided = [f.equals(0) for f in factors]
+        if None not in decided:
+            return any(decided)
+    symbols = sorted((s for s in diff.free_symbols if isinstance(s, _Symbol)), key=lambda s: s.name)
+    if symbols and _polar_values_differ(diff, symbols):
+        return False
+    for s in symbols:
+        if diff.diff(s).is_zero is False:
+            return False
+    return None
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.is_constant (the values at 0 and at 1)
+def _polar_values_differ(e: Expr, symbols: list[Symbol]) -> bool:
+    """Whether the values of ``e`` with its symbols all ``0`` and all ``1``
+    are shown different by ``equals`` (SymPy's first step of
+    ``is_constant``, which decides ``sqrt(z)*exp_polar(3*I*pi/2) - 1``)."""
+    from .numbers import Integer, NaN
+    values: list[Expr] = []
+    for k in (0, 1):
+        try:
+            at = e.subs({s: Integer(k) for s in symbols})
+        except ZeroDivisionError:
+            return False
+        if not isinstance(at, Expr) or isinstance(at, NaN) or at.free_symbols:
+            return False
+        values.append(at)
+    return values[1].equals(values[0]) is False
 
 
 # PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps after the structural ones)
