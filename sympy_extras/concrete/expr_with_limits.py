@@ -142,11 +142,6 @@ class ExprWithLimits(Expr):
     def is_number(self) -> bool:
         return not self.free_symbols
 
-    def _is_number_node(self) -> Optional[bool]:
-        # SymPy's ExprWithLimits.is_number inside other nodes too (the
-        # variables are bound)
-        return not self.free_symbols
-
     # PORTED FROM SYMPY: sympy/concrete/expr_with_limits.py:ExprWithLimits.has_finite_limits
     @property
     def has_finite_limits(self) -> Optional[bool]:

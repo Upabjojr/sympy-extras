@@ -119,10 +119,12 @@ class Integral(Expr):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return self._rebuild(args)
 
-    def _is_number_node(self) -> Optional[bool]:
+    @property
+    def is_number(self) -> bool:
         # SymPy's Integral.is_number: a definite integral without free
-        # symbols is a number (its variable is bound)
-        return not self.free_symbols if self._bounds is not None else False
+        # symbols is a number (its variable is bound); not inside other
+        # nodes, whose facts would run the quadrature (as for Sum)
+        return self._bounds is not None and not self.free_symbols
 
     def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
         # PORTED FROM SYMPY: sympy/core/evalf.py:evalf_integral (sympy_extras.integrals._evalf)

@@ -490,7 +490,10 @@ def test_the_new_methods_of_expr() -> None:
     assert sqrt(x**2).refine(sympy.Q.positive(to_sympy(x))) == x
     assert list(islice(expr('sin(x)').lseries(x), 2)) == [x, -x**3/6]
     integral = (1/x).integrate((x, 1, Symbol('t')))
-    assert integral == expr('log(t)')
+    # native now (SymPy's integrate through the bridge gave log(t)): the
+    # value with its conditions on t, log(t) where they hold
+    for value in (3, Rational(1, 2), 7):
+        assert (integral.subs(Symbol('t'), value) - expr('log(%s)' % value)).simplify() == 0
 
 
 def test_expand_hints_and_count_ops() -> None:

@@ -24,7 +24,7 @@ remove public functions. Breaking changes are listed here when they happen.
   tanh-sinh quadrature of the native integrand, the range subdivided at
   the kinks of `Abs`, `Piecewise`, `floor`, the value confirmed at a
   higher precision, `None` when not accurate) and is a number
-  (`is_number`) inside other nodes, as `Sum` and `Product` are now.
+  (`is_number`), as SymPy's.
   `Expr.equals` and `Expr.is_constant` finish SymPy's steps natively (the
   derivatives, the surds solved for by the native `solve`, the minimal
   polynomial, the simplified derivatives); `Expr.integrate` is the native
