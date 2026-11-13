@@ -21,27 +21,25 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Final, Iterator, Literal, Optional, Sequence, TYPE_CHECKING, Union, overload
+from typing import Final, Iterator, Literal, Optional, Protocol, Sequence, TYPE_CHECKING, Union, overload
 
 import mpmath
 
-from .basic import Atom, Basic, RefineArg, SubsArg, SubsMapping
+from sympy_extras._typing import Truth
+
+from .basic import Atom, Basic, NodePrinter, RefineArg, ReplacementRule, SubsArg, SubsMapping
 from .cache import cacheit
 from .kind import Kind, NumberKind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, SortKey
 
 if TYPE_CHECKING:
-    from .assumptions import Truth
     from .logic import Boolean
-    from .basic import ReplacementRule
     from .function import DiffSpec, FunctionClass
     from .numbers import Number
-    from .printing import StrPrinter
     from .symbol import Symbol
-    from sympy_extras.polys.polytools import Poly
 
 __all__ = ['Expr', 'AtomicExpr', 'ExprLike', 'UnevaluatedExpr', 'as_expr', 'to_expr', 'terms_of',
-    'factors_of', 'IntegrationSpec', 'TermInfo']
+    'factors_of', 'IntegrationSpec', 'TermInfo', 'PolyLike']
 
 #: what the operators and the evaluating functions accept besides ``Expr``
 ExprLike = Union['Expr', int, float, Fraction]
@@ -50,6 +48,20 @@ IntegrationSpec = Union['Symbol', tuple['Symbol', ExprLike, ExprLike]]
 #: an entry of :meth:`Expr.as_terms`: the complex coefficient, the
 #: exponents of the generators, the noncommutative factors
 TermInfo = tuple[tuple[float, float], tuple[int, ...], tuple['Expr', ...]]
+
+
+class PolyLike(Protocol):
+    """What :meth:`Expr.as_poly` returns: a polynomial (satisfied by
+    :class:`~sympy_extras.polys.polytools.Poly`, which imports this
+    module)."""
+
+    def as_expr(self) -> Expr: ...
+
+    def LC(self) -> Expr: ...
+
+    def all_coeffs(self) -> list[Expr]: ...
+
+    def degree(self, gen: Union[int, ExprLike] = 0) -> int: ...
 
 
 def as_expr(b: Basic) -> Expr:
@@ -838,13 +850,15 @@ class Expr(Basic):
         return None
 
     def equals(self, other: ExprLike, failing_expression: bool = False) -> Optional[bool]:
-        """Whether ``self - other`` simplifies to zero (SymPy decides what
-        the structural rules of this core cannot).
+        """Whether ``self - other`` simplifies to zero: SymPy's steps,
+        native (the structural rules, a value at a point, the simplified
+        difference, its derivatives, the surds solved for and the minimal
+        polynomial); SymPy decides only a difference with wrapped foreign
+        nodes.
 
         Examples
         ========
 
-        >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
         >>> from sympy_extras.core import Symbol, sqrt
         >>> x = Symbol('x')
         >>> ((x + 1)**2).equals(x**2 + 2*x + 1), (sqrt(2)*sqrt(3)).equals(sqrt(6)), x.equals(x + 1)
@@ -862,7 +876,14 @@ class Expr(Basic):
             return zero
         if _nonzero_at_a_point(difference):
             return False
-        return bridge().equals_zero(difference)
+        if not _native_zero_test_applies(difference):
+            if not any(node._has_foreign_class() for node in _preorder(difference)):
+                return _native_polar_zero_test(difference)
+            return bridge().equals_zero(difference)
+        native = _simplified_zero_test(difference)
+        if native is not None:
+            return native
+        return _remaining_zero_test(difference)
 
     # ------------------------------------------------------------------
     # complex structure
@@ -953,12 +974,13 @@ class Expr(Basic):
 
     def is_constant(self, *wrt: Symbol) -> Optional[bool]:
         """Whether the expression does not depend on ``wrt`` (on any symbol
-        when none is given); SymPy decides the non-structural cases.
+        when none is given): SymPy's steps, native (values at points, the
+        derivatives, simplified); SymPy decides only an expression with
+        wrapped foreign nodes.
 
         Examples
         ========
 
-        >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
         >>> from sympy_extras.core import symbols, Integer
         >>> x, y = symbols('x y')
         >>> Integer(2).is_constant(), (x + y).is_constant(), (x + y).is_constant(y), (x - x).is_constant()
@@ -969,11 +991,14 @@ class Expr(Basic):
             free = free & set(wrt)
         if not free:
             return True
-        native = _constant_natively(self, sorted((w for w in free if isinstance(w, _symbol_class())), key=str))
+        symbols = sorted((w for w in free if isinstance(w, _symbol_class())), key=str)
+        native = _constant_natively(self, symbols)
         if native is not None:
             return native
-        from .bridge import bridge
-        return bridge().is_constant(self, list(wrt))
+        if _has_foreign_node(self):
+            from .bridge import bridge
+            return bridge().is_constant(self, list(wrt))
+        return _constant_by_simplified_derivatives(self, symbols)
 
     # PORTED FROM SYMPY: sympy/core/basic.py:Basic.is_hypergeometric
     def is_hypergeometric(self, k: Symbol) -> Optional[bool]:
@@ -1182,12 +1207,18 @@ class Expr(Basic):
         from .series import lseries
         return lseries(self, x, to_expr(x0), dir, logx, to_expr(cdir))
 
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_nseries
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         """The terms of the series up to ``O(x**n)`` at zero from the
-        right (overridden by the classes; the classes whose expansion is
-        not ported use the foreign system's)."""
-        from .bridge import bridge
-        return bridge().nseries(self, x, n, logx, cdir)
+        right (overridden by the classes; a wrapped foreign node uses the
+        foreign system's, the other nodes raise ``NotImplementedError``,
+        as SymPy's ``Expr._eval_nseries`` does)."""
+        if self._has_foreign_class():
+            from .bridge import bridge
+            return bridge().nseries(self, x, n, logx, cdir)
+        raise NotImplementedError('The _eval_nseries method should be added to %s to give terms up to O(x**n) at '
+                                  'x=0 from the positive direction so it is available when nseries calls it.'
+                                  % (type(self).__name__,))
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_lseries
     def _eval_lseries(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Iterator[Expr]:
@@ -1235,16 +1266,44 @@ class Expr(Basic):
             x = next(iter(syms))
         return aseries(self, x, n, bound, hir)
 
-    def fps(self, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: int = 1) -> Expr:
-        """The formal power series (SymPy's ``fps``, wrapped)."""
-        from .bridge import bridge
-        return bridge().fps(self, x, to_expr(x0), dir)
+    def fps(self, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: int = 1, hyper: bool = True, order: int = 4,
+            rational: bool = True, full: bool = False) -> Expr:
+        """The formal power series (:func:`~sympy_extras.series.formal.fps`;
+        SymPy's ``fps`` for an expression with wrapped foreign nodes).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions import sin
+        >>> x = Symbol('x')
+        >>> sin(x).fps(x).truncate()
+        x - x**3/6 + x**5/120 + O(x**6)
+        """
+        if any(node._has_foreign_class() for node in _preorder(self)):
+            from .bridge import bridge
+            return bridge().fps(self, x, to_expr(x0), dir)
+        from sympy_extras.series.formal import fps
+        return fps(self, x, x0, dir, hyper, order, rational, full)
 
     def fourier_series(self, limits: Optional[tuple[Symbol, ExprLike, ExprLike]] = None) -> Expr:
-        """The Fourier series (SymPy's ``fourier_series``, wrapped)."""
-        from .bridge import bridge
+        """The Fourier series (:func:`~sympy_extras.series.fourier.fourier_series`;
+        SymPy's ``fourier_series`` for an expression with wrapped foreign nodes).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol, pi
+        >>> x = Symbol('x')
+        >>> (x**2).fourier_series((x, -pi, pi)).truncate()
+        -4*cos(x) + cos(2*x) + pi**2/3
+        """
         bounds = None if limits is None else (limits[0], to_expr(limits[1]), to_expr(limits[2]))
-        return bridge().fourier_series(self, bounds)
+        if any(node._has_foreign_class() for node in _preorder(self)):
+            from .bridge import bridge
+            return bridge().fourier_series(self, bounds)
+        from sympy_extras.series.fourier import fourier_series
+        return fourier_series(self, bounds)
 
     def limit(self, x: Symbol, xlim: ExprLike, dir: str = '+') -> Expr:
         """The limit as ``x`` goes to ``xlim`` (:func:`~sympy_extras.core.limits.limit`).
@@ -1544,18 +1603,21 @@ class Expr(Basic):
         return nsimplify(self, tuple(constants), tolerance, full, rational)
 
     def integrate(self, *args: IntegrationSpec) -> Expr:
-        """SymPy's ``integrate``.
+        """SymPy's ``integrate``: the integrals in the variables in turn, by
+        :func:`~sympy_extras.integrals.indefinite.indefinite_integral` and
+        :func:`~sympy_extras.integrals.definite.definite_integral` (an
+        unevaluated :class:`~sympy_extras.integrals.integral.Integral`
+        when no antiderivative or value is found). An expression with
+        wrapped foreign nodes is integrated by the foreign system.
 
         Examples
         ========
 
-        >>> import sympy_extras.interop  # SymPy for what is not ported (core.bridge)
         >>> from sympy_extras.core import Symbol
         >>> x = Symbol('x')
-        >>> (x**2).integrate(x), (x**2).integrate((x, 0, 1))
-        (x**3/3, 1/3)
+        >>> (x**2).integrate(x), (x**2).integrate((x, 0, 1)), (1/(x + 1)).integrate(x)
+        (x**3/3, 1/3, log(x + 1))
         """
-        from .bridge import bridge
         specs: list[Union[Symbol, tuple[Symbol, Expr, Expr]]] = []
         for a in args:
             specs.append((a[0], to_expr(a[1]), to_expr(a[2])) if isinstance(a, tuple) else a)
@@ -1563,9 +1625,27 @@ class Expr(Basic):
             native = _integrate_terms(self, specs[0])
             if native is not None:
                 return native
-        return bridge().integrate(self, specs)
+        bounds = [b for spec in specs if isinstance(spec, tuple) for b in spec[1:]]
+        if _has_foreign_node(self) or any(_has_foreign_node(b) for b in bounds):
+            from .bridge import bridge
+            return bridge().integrate(self, specs)
+        if not specs:
+            # SymPy integrates in the only free symbol
+            free = sorted((s for s in self.free_symbols if isinstance(s, _symbol_class())), key=str)
+            if len(free) != 1:
+                raise ValueError("specify integration variables to integrate %s" % (self,))
+            specs = [free[0]]
+        from sympy_extras.integrals.definite import definite_integral
+        from sympy_extras.integrals.indefinite import indefinite_integral
+        result: Expr = self
+        for spec in specs:
+            if isinstance(spec, tuple):
+                result = definite_integral(result, spec)
+            else:
+                result = indefinite_integral(result, spec)
+        return result
 
-    def as_poly(self, *gens: Symbol) -> Optional[Poly]:
+    def as_poly(self, *gens: Symbol) -> Optional[PolyLike]:
         """The polynomial of the expression (the typed ``Poly`` of
         :mod:`sympy_extras.polys.polytools`), ``None`` when it is not a
         polynomial in ``gens`` (or in its own generators).
@@ -1586,13 +1666,28 @@ class Expr(Basic):
             return None
 
     def invert(self, g: ExprLike, *gens: Symbol) -> Expr:
-        """SymPy's ``invert``: the inverse of ``self`` modulo ``g``."""
+        """SymPy's ``invert``: the inverse of ``self`` modulo ``g``. With
+        several generators SymPy's ``DMP.invert`` raises ``ValueError``
+        (no inverse modulo a polynomial in several variables); with one
+        generator and other symbols, the inverse over the field of
+        rational functions in them (:func:`_invert_with_parameters`).
+
+        >>> from sympy_extras.core import symbols
+        >>> x, y = symbols('x y')
+        >>> (x + y).invert(x**2 + 1, x)
+        -x/(y**2 + 1) + y/(y**2 + 1)
+        """
         ge = to_expr(g)
         if not gens or (len(gens) == 1 and (self.free_symbols | ge.free_symbols) <= {gens[0]}):
             from sympy_extras.polys.polytools import invert
             return invert(self, g)
-        from .bridge import bridge
-        return bridge().invert(self, ge, list(gens))
+        if _has_foreign_node(self) or _has_foreign_node(ge):
+            from .bridge import bridge
+            return bridge().invert(self, ge, list(gens))
+        if len(gens) > 1:
+            # SymPy's DMP.invert
+            raise ValueError('univariate polynomial expected')
+        return _invert_with_parameters(self, ge, gens[0])
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr.extract_branch_factor
     def extract_branch_factor(self, allow_half: bool = False) -> tuple[Expr, Expr]:
@@ -1663,7 +1758,7 @@ class Expr(Basic):
             res = res * exp_polar(newexp)
         return res, n
 
-    def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Expr:
+    def rewrite(self, *args: Union[Basic, FunctionClass, type, str], piecewise: bool = True) -> Expr:
         return as_expr(super().rewrite(*args, piecewise=piecewise))
 
     def refine(self, assumption: RefineArg = True) -> Expr:
@@ -1887,7 +1982,7 @@ class UnevaluatedExpr(Expr):
     def is_number(self) -> bool:
         return self._expr.is_number
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return printer.doprint(self._expr)
 
     def _eval_facts(self) -> dict[str, bool]:
@@ -1991,6 +2086,227 @@ def _admissible_value(s: Symbol, i: int, variant: int = 0) -> Optional[Expr]:
     return Integer(quadrant[0]) * Rational(scale * (7 + 3 * i), 11) + Integer(quadrant[1]) * Rational(scale * (5 + i), 13) * I
 
 
+def _native_zero_test_applies(e: Expr) -> bool:
+    """Whether the native steps of SymPy's ``equals`` apply: not to the
+    wrapped foreign objects, nor to the polar numbers (SymPy does not take
+    ``exp_polar(0) - 1`` for zero, the native ``simplify`` would)."""
+    from sympy_extras.functions.elementary.complexes import PolarLift
+    from sympy_extras.functions.elementary.exponential import ExpPolar
+    from .basic import preorder_traversal
+    return not any(node._has_foreign_class() or isinstance(node, (ExpPolar, PolarLift))
+                   for node in preorder_traversal(e))
+
+
+def _preorder(e: Expr) -> list[Basic]:
+    from .basic import preorder_traversal
+    return list(preorder_traversal(e))
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps for a difference with polar numbers)
+def _native_polar_zero_test(diff: Expr) -> Optional[bool]:
+    """SymPy's ``equals(0)`` of a difference with polar numbers
+    (``exp_polar``, ``polar_lift``), which the native ``simplify`` would
+    take for ordinary numbers: ``False`` when there is no sum or
+    ``Mod`` (no cancellation), the factors decided one by one, ``False``
+    when the difference depends on a symbol (a derivative which is never
+    zero), ``None`` otherwise. SymPy answers ``None`` for a number with
+    polar parts which does not evaluate away from zero (its
+    ``minimal_polynomial`` does not take polar numbers: ``exp_polar(0) - 1``
+    is not zero for it) and ``False`` for ``x*exp_polar(2*I*pi) - 1``."""
+    from .add import Add
+    from .mod import Mod
+    from .symbol import Symbol as _Symbol
+    if diff.is_zero is True:
+        return True
+    if not diff.has(Add, Mod):
+        return False
+    factors = diff.as_coeff_mul()[1]
+    if len(factors) > 1:
+        decided = [f.equals(0) for f in factors]
+        if None not in decided:
+            return any(decided)
+    symbols = sorted((s for s in diff.free_symbols if isinstance(s, _Symbol)), key=lambda s: s.name)
+    if symbols and _polar_values_differ(diff, symbols):
+        return False
+    for s in symbols:
+        if diff.diff(s).is_zero is False:
+            return False
+    return None
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.is_constant (the values at 0 and at 1)
+def _polar_values_differ(e: Expr, symbols: list[Symbol]) -> bool:
+    """Whether the values of ``e`` with its symbols all ``0`` and all ``1``
+    are shown different by ``equals`` (SymPy's first step of
+    ``is_constant``, which decides ``sqrt(z)*exp_polar(3*I*pi/2) - 1``)."""
+    from .numbers import Integer, NaN
+    values: list[Expr] = []
+    for k in (0, 1):
+        try:
+            at = e.subs({s: Integer(k) for s in symbols})
+        except ZeroDivisionError:
+            return False
+        if not isinstance(at, Expr) or isinstance(at, NaN) or at.free_symbols:
+            return False
+        values.append(at)
+    return values[1].equals(values[0]) is False
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps after the structural ones)
+def _simplified_zero_test(diff: Expr) -> Optional[bool]:
+    """SymPy's ``equals(0)`` of a difference by its simplified form:
+    ``True`` when it simplifies to zero, ``False`` when the simplified
+    form has no sum (nothing left to cancel), the factors decided one by
+    one, and a number decided by its minimal polynomial; ``None`` for the
+    rest of SymPy's steps (the random evaluations, the surds solved for),
+    which are left to the caller."""
+    from sympy_extras.polys.numberfields.minpoly import minimal_polynomial_coeffs
+    from sympy_extras.polys.polyerrors import NotAlgebraic
+    from sympy_extras.simplify.simplify import simplify
+    from .add import Add
+    from .exprtools import factor_terms
+    from .mod import Mod
+    d = as_expr(factor_terms(simplify(diff), radical=True))
+    if d.is_zero is True:
+        return True
+    if not d.has(Add, Mod):
+        # if there is no expanding to be done after simplifying then this
+        # can't be a zero
+        return False
+    factors = d.as_coeff_mul()[1]
+    if len(factors) > 1:
+        decided = [f.equals(0) for f in factors]
+        if None not in decided:
+            return any(decided)
+    if d.is_number:
+        try:
+            return minimal_polynomial_coeffs(d) == [1, 0]
+        except (NotAlgebraic, NotImplementedError):
+            pass
+    return None
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps after the simplification)
+def _remaining_zero_test(diff: Expr) -> Optional[bool]:
+    """The rest of SymPy's ``equals(0)`` after the simplified form decided
+    nothing: ``False`` for a difference which depends on its symbols (a
+    derivative not zero) with a nonzero value where they are all zero
+    (SymPy's ``is_constant(failing_number=True)``); for a number, the
+    surds solved for (a surd ``s`` which solves ``diff = 0`` in ``s`` is
+    the self-consistent zero, integer or other surd solutions show it is
+    not) and the minimal polynomial; ``None`` otherwise."""
+    from sympy_extras.polys.numberfields.minpoly import minimal_polynomial_coeffs
+    from sympy_extras.polys.polyerrors import NotAlgebraic
+    from .function import diff as derivative
+    from .numbers import Integer, NaN
+    if not diff.is_number:
+        symbols = sorted((s for s in diff.free_symbols if isinstance(s, _symbol_class())), key=str)
+        if any(not (lambda d: isinstance(d, Integer) and d.p == 0)(derivative(diff, w)) for w in symbols):
+            try:
+                at_zero = diff.subs({w: Integer(0) for w in symbols})
+            except ZeroDivisionError:
+                return None
+            if isinstance(at_zero, Expr) and not isinstance(at_zero, NaN) and at_zero.is_number \
+                    and _nonzero_at_a_point(at_zero):
+                return False
+        return None
+    surd_zero = _surds_zero_test(diff)
+    if surd_zero is not None:
+        return surd_zero
+    try:
+        return minimal_polynomial_coeffs(diff) == [1, 0]
+    except (NotAlgebraic, NotImplementedError, ValueError):
+        return None
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the surds solved for)
+def _surds_zero_test(diff: Expr) -> Optional[bool]:
+    """SymPy's self-consistency test of a number: each surd (an integer to
+    a rational power), largest base first, solved for in ``diff = 0`` by
+    the native ``solve``."""
+    from fractions import Fraction
+    from sympy_extras.simplify.simplify import nsimplify, simplify
+    from sympy_extras.solvers.solvers import solve_equation
+    from .numbers import Integer
+    from .power import Pow
+    from .symbol import Dummy
+    surds = [p for p in _preorder(diff) if isinstance(p, Pow) and isinstance(p.base, Integer)]
+    unique: list[Pow] = []
+    for p in surds:
+        if p not in unique:
+            unique.append(p)
+    def size(p: Pow) -> Fraction:
+        base = p.base
+        return -base.as_fraction() if isinstance(base, Integer) else Fraction(0)
+    unique.sort(key=size)
+    for surd in unique:
+        d = Dummy('s')
+        rule: dict[Basic, Basic] = {surd: d}
+        equation = diff.xreplace(rule)
+        if not isinstance(equation, Expr) or d not in equation.free_symbols:
+            continue
+        try:
+            solutions = solve_equation(equation, d)
+        except (NotImplementedError, ValueError, TypeError, ZeroDivisionError):
+            continue
+        if not solutions:
+            continue
+        if surd in solutions:
+            # the self-consistent result is present
+            return True
+        if all(isinstance(si, Integer) for si in solutions):
+            # perfect powers are removed at instantiation: a surd is no integer
+            return False
+        if all(si.is_algebraic is False for si in solutions):
+            # a surd is algebraic
+            return False
+        if any(si in unique for si in solutions):
+            # different surds are not equal
+            return False
+        if any(nsimplify(surd - si).is_zero is True and simplify(surd - si).is_zero is True for si in solutions):
+            return True
+        if surd.is_real is True:
+            if any(nsimplify(si, (surd,)) == surd and simplify(si) == surd for si in solutions):
+                return True
+    return None
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.is_constant (the simplified derivatives)
+def _constant_by_simplified_derivatives(e: Expr, wrt: list[Symbol]) -> Optional[bool]:
+    """The rest of SymPy's ``is_constant`` after the values at points:
+    ``True`` when the simplified expression is zero; ``False`` when a
+    simplified derivative is not zero; otherwise not constant only where
+    a denominator vanishes (SymPy's ``fuzzy_not(fuzzy_or(den.is_zero for
+    den in denoms(self)))``)."""
+    from sympy_extras.simplify.radsimp import denom
+    from sympy_extras.simplify.simplify import simplify
+    from .function import diff as derivative
+    from .mul import Mul
+    from .numbers import Integer
+    expr = simplify(e)
+    if expr.is_zero is True:
+        return True
+    for w in wrt:
+        d = simplify(derivative(expr, w))
+        if not (isinstance(d, Integer) and d.p == 0):
+            return False
+    zeros: list[Optional[bool]] = []
+    for node in _preorder(e):
+        if not isinstance(node, Expr):
+            continue
+        den = denom(node)
+        if isinstance(den, Integer) and den.p == 1:
+            continue
+        for factor in (den.args if isinstance(den, Mul) else (den,)):
+            if isinstance(factor, Expr):
+                zeros.append(factor.is_zero)
+    if any(z is True for z in zeros):
+        return False
+    if any(z is None for z in zeros):
+        return None
+    return True
+
+
 def _nonzero_at_a_point(e: Expr) -> bool:
     """Whether ``e`` is shown not to be identically zero by its value at an
     admissible point of its symbols: a value well above the noise and the
@@ -2083,6 +2399,87 @@ def _constant_natively(e: Expr, wrt: list[Symbol]) -> Optional[bool]:
     if all((lambda d: isinstance(d, Integer) and d.p == 0)(diff(e, w)) for w in wrt):
         return True
     return None
+
+
+def _has_foreign_node(e: Expr) -> bool:
+    """Whether ``e`` has a node wrapping an object, or applying a function,
+    of a foreign system: only those go to the bridge."""
+    return any(node._has_foreign_class() for node in _preorder(e))
+
+
+# PORTED FROM SYMPY: sympy/polys/polytools.py:invert (one generator, the other symbols in the domain)
+def _invert_with_parameters(f: Expr, g: Expr, x: Symbol) -> Expr:
+    """The inverse of ``f`` modulo ``g`` as polynomials in ``x`` over the
+    rational functions of the other symbols (SymPy's ``invert(f, g, x)``
+    over ``ZZ(y)``, its ring domain made a field): the extended Euclidean
+    algorithm with the coefficients cancelled; ``NotInvertible`` when the
+    gcd is not a constant, ``PolynomialError`` when ``f`` or ``g`` is not
+    a polynomial in ``x``."""
+    from sympy_extras.polys.polyerrors import NotInvertible, PolynomialError
+    from sympy_extras.polys.polytools import Poly, cancel
+    from .add import add
+    from .mul import mul
+    from .numbers import Integer
+    from .power import pow
+
+    def coefficients(e: Expr) -> list[Expr]:
+        try:
+            p = Poly(e, x)
+        except (PolynomialError, ValueError) as exc:
+            raise PolynomialError("%s is not a polynomial in %s" % (e, x)) from exc
+        out = [cancel(c) for c in reversed(p.all_coeffs())]
+        while out and out[-1].is_zero is True:
+            out.pop()
+        return out
+
+    def strip(p: list[Expr]) -> list[Expr]:
+        q = [cancel(c) for c in p]
+        while q and q[-1].is_zero is True:
+            q.pop()
+        return q
+
+    def sub(p: list[Expr], q: list[Expr]) -> list[Expr]:
+        n = max(len(p), len(q))
+        return strip([(p[k] if k < len(p) else Integer(0)) - (q[k] if k < len(q) else Integer(0)) for k in range(n)])
+
+    def mul_poly(p: list[Expr], q: list[Expr]) -> list[Expr]:
+        if not p or not q:
+            return []
+        out: list[Expr] = [Integer(0)] * (len(p) + len(q) - 1)
+        for i, a in enumerate(p):
+            for j, b in enumerate(q):
+                out[i + j] = out[i + j] + a * b
+        return strip(out)
+
+    def divmod_poly(p: list[Expr], q: list[Expr]) -> tuple[list[Expr], list[Expr]]:
+        r = list(p)
+        quotient: list[Expr] = [Integer(0)] * max(len(p) - len(q) + 1, 1)
+        lead = q[-1]
+        while r and len(r) >= len(q):
+            c = cancel(r[-1] / lead)
+            k = len(r) - len(q)
+            quotient[k] = c
+            r = sub(r, [Integer(0)] * k + [c * b for b in q])
+        return strip(quotient), r
+
+    a, b = coefficients(f), coefficients(g)
+    if not b:
+        raise NotInvertible('zero divisor')
+    # the extended Euclidean algorithm: s*f = r (mod g)
+    r0, r1 = b, divmod_poly(a, b)[1]
+    s0: list[Expr] = []
+    s1: list[Expr] = [Integer(1)]
+    if not r1:
+        raise NotInvertible('zero divisor')
+    while len(r1) > 1:
+        q, r = divmod_poly(r0, r1)
+        r0, r1 = r1, r
+        s0, s1 = s1, sub(s0, mul_poly(q, s1))
+        if not r1:
+            raise NotInvertible('zero divisor')
+    unit = r1[0]
+    terms = [mul(cancel(c / unit), pow(x, Integer(k))) for k, c in enumerate(s1)]
+    return add(*terms)
 
 
 def _integrate_terms(e: Expr, spec: Union[Symbol, tuple[Symbol, Expr, Expr]]) -> Optional[Expr]:

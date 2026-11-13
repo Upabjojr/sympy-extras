@@ -1,5 +1,4 @@
-"""The SymPy face of satisfiability (:mod:`sympy_extras.assumptions.sat`),
-and the steps of the SAT and theory check which are not ported.
+"""The SymPy face of satisfiability (:mod:`sympy_extras.assumptions.sat`).
 
 :func:`satisfiable`, :func:`tautology` and :func:`find_instance` take and
 return SymPy objects (relations, memberships in SymPy's sets, predicates
@@ -7,21 +6,11 @@ of SymPy's ``Q``, the quantifiers of
 :mod:`sympy_extras.assumptions.quantifiers_sympy`), converted by
 :mod:`sympy_extras.interop` around the native functions.
 
-The steps of the native functions which stay written on SymPy are called
-from them at run time (the functions ending in ``_of_core``, which take
-and return objects of the core): SymPy's SAT solver
-(:func:`sympy.logic.inference.satisfiable`) on the propositional
-abstraction, the consistency of predicates with SymPy's known facts
-(:func:`sympy_extras.assumptions.facts_sympy.predicates_consistent`), the
-sample points and the solution sets of the cylindrical algebraic
-decomposition (:func:`sympy_extras.polys.cad.sample_points`,
-:func:`sympy_extras.polys.cad.solution_set`), and the floor and the
-comparison of real algebraic numbers
-(:mod:`sympy_extras.polys.cad.samplepoints_sympy`, on SymPy's ``CRootOf``).
+The native functions import no SymPy: their steps are all native.
 """
 from __future__ import annotations
 
-from typing import Iterator, Literal, Optional, Sequence, Union, overload
+from typing import Literal, Optional, Sequence, Union, overload
 
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
@@ -30,62 +19,20 @@ from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import Truth, as_symbol
-from sympy_extras.core.basic import Basic as CoreBasic
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.logic import Boolean as CoreBoolean
-from sympy_extras.interop import from_sympy, to_sympy
+from sympy_extras._typing_sympy import Truth, as_symbol
+from sympy_extras.interop import to_sympy
 
 from . import sat as native
-from .ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions, core_boolean, core_domain, \
-    sympy_boolean
+from .ask_sympy import Assumptions, _core_symbol, _sympy_symbol, core_assumptions, core_boolean, core_domain
 from .intervals_sympy import sympy_expr
 
-__all__ = ['satisfiable', 'tautology', 'find_instance', 'Model', 'Witness', 'propositional_models_of_core',
-    'predicates_consistent_of_core', 'floor_of_core', 'compare_real_of_core']
+__all__ = ['satisfiable', 'tautology', 'find_instance', 'Model', 'Witness']
 
 
 #: a model: Boolean variables to truth values, real variables to values
 Model = dict[Basic, Union[bool, Expr]]
 #: a witness point
 Witness = dict[Symbol, Expr]
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native functions which stay on SymPy
-
-def propositional_models_of_core(formula: CoreBoolean) -> Iterator[dict[CoreBasic, bool]]:
-    """The models of a propositional formula, one at a time, by SymPy's
-    SAT solver (:func:`sympy.logic.inference.satisfiable` with
-    ``all_models=True``); none when it is unsatisfiable."""
-    from sympy.logic.inference import satisfiable as sympy_satisfiable
-    models = sympy_satisfiable(sympy_boolean(formula), all_models=True)
-    if models is False:
-        return
-    for model in models:
-        if not isinstance(model, dict):
-            return
-        yield {from_sympy(k): bool(v) for k, v in model.items()}
-
-
-def predicates_consistent_of_core(predicates: CoreBoolean) -> bool:
-    """:func:`sympy_extras.assumptions.facts_sympy.predicates_consistent`."""
-    from .facts_sympy import predicates_consistent
-    return predicates_consistent(sympy_boolean(predicates))
-
-
-def floor_of_core(a: CoreExpr) -> int:
-    """The floor of a real algebraic number (a rational number, a real
-    ``CRootOf`` or a product of the two), exactly."""
-    from sympy_extras.polys.cad.samplepoints_sympy import _floor_scaled
-    return _floor_scaled(sympy_expr(a), 0)
-
-
-def compare_real_of_core(a: CoreExpr, b: CoreExpr) -> int:
-    """:func:`sympy_extras.polys.cad.samplepoints_sympy.compare_real`: the sign
-    of ``a - b`` for real algebraic numbers."""
-    from sympy_extras.polys.cad.samplepoints_sympy import compare_real
-    return compare_real(sympy_expr(a), sympy_expr(b))
 
 
 # ---------------------------------------------------------------------------

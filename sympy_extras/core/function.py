@@ -39,10 +39,10 @@ import inspect
 
 import mpmath
 from fractions import Fraction
-from typing import Callable, Final, Iterable, Iterator, Mapping, Optional, Sequence, TYPE_CHECKING, Union, overload
+from typing import Callable, Final, Iterable, Iterator, Mapping, Optional, Sequence, Union, overload
 
 from .add import Add, add
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .containers import Tuple
 from .coreerrors import PoleError
 from .expr import AtomicExpr, Expr, ExprLike, UnevaluatedExpr, as_expr, factors_of, terms_of, to_expr
@@ -52,9 +52,6 @@ from .numbers import Exp1, Float, Integer, Number, NumberSymbol, Rational
 from .power import Pow, pow
 from .sorting import ClassKey
 from .symbol import Dummy, Symbol
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['FunctionClass', 'Application', 'UndefinedFunction', 'AppliedUndef', 'Function',
     'WildFunction', 'Lambda', 'Derivative',
@@ -138,7 +135,7 @@ class Application(Expr):
     def class_key(cls) -> ClassKey:
         return (4, 1, cls.__name__)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '%s(%s)' % (self.name, ', '.join(printer.doprint(a) for a in self._args))
 
     def _series_nargs(self) -> Optional[frozenset[int]]:
@@ -233,7 +230,7 @@ class Application(Expr):
                     raise PoleError("Cannot expand %s around 0" % (self,))
                 result: Expr = term
                 fact = 1
-                _x = Dummy('xi')
+                _x = _uniquely_named_symbol('xi', self)
                 e = e.subs(x, _x)
                 for i in range(1, n):
                     fact *= i
@@ -498,7 +495,7 @@ class WildFunction(AtomicExpr):
     def __str__(self) -> str:
         return self.name + '_'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return self.name + '_'
 
 
@@ -571,12 +568,12 @@ class DefinedFunction(Application):
 
     def _eval_is_meromorphic(self, x: Symbol, a: Expr) -> Optional[bool]:
         if type(self).__name__ in _SYMPY_OWN_MEROMORPHIC:
-            # the rules of the special functions (Bessel functions, incomplete
-            # gamma functions) are SymPy's
-            from .bridge import bridge
-            found, own = bridge().meromorphic(self, x, a, True)
-            if found:
-                return own
+            # the ported rules of the special functions (Bessel functions,
+            # incomplete gamma functions)
+            from sympy_extras.functions._meromorphic import rules
+            rule = rules().get(type(self).__name__)
+            if rule is not None:
+                return rule(self, x, a)
         return Application._eval_is_meromorphic(self, x, a)
 
     #: the classes whose SymPy counterpart expands by the generic
@@ -598,8 +595,13 @@ class DefinedFunction(Application):
             found = _generic_function_nseries(self, x, n, logx)
             if found is not None:
                 return found
-        # the classes whose expansion is not ported: the foreign system's
-        return bridge().nseries(self, x, n, logx, cdir)
+            # an argument going to an infinity logarithmically (SymPy's
+            # branch of Function._eval_nseries not ported)
+            return Application._eval_nseries(self, x, n, logx, cdir)
+        if self._has_foreign_class():
+            # a wrapped foreign function: the foreign system's expansion
+            return bridge().nseries(self, x, n, logx, cdir)
+        return Application._eval_nseries(self, x, n, logx, cdir)
 
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         if type(self).__name__ not in _SYMPY_OWN_LEADING_TERM:
@@ -847,7 +849,7 @@ class Lambda(Basic):
     def rcall(self, *args: Basic) -> Basic:
         return self(*[as_expr(a) for a in args])
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         if len(self._variables) == 1:
             return 'Lambda(%s, %s)' % (printer.doprint(self._variables[0]), printer.doprint(self._expr))
         return 'Lambda((%s), %s)' % (', '.join(printer.doprint(v) for v in self._variables),
@@ -899,6 +901,17 @@ class Derivative(Expr):
     @property
     def args(self) -> tuple[Basic, ...]:
         return (self._expr,) + tuple(Tuple(s, Integer(n)) for s, n in self._counts)
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The derivatives of the terms of the series of the expression
+        (unevaluated, as SymPy's), the order term divided by ``x``."""
+        arg = self.expr.nseries(x, n=n, logx=logx)
+        o = arg.getO()
+        terms: list[Expr] = [Derivative(a, *self._counts) for a in terms_of(arg.removeO())]
+        if o is not None:
+            terms.append(o / x)
+        return add(*terms)
 
     # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
@@ -980,7 +993,7 @@ class Derivative(Expr):
         commutative = facts_of(self._expr).get('commutative')
         return {} if commutative is None else {'commutative': commutative}
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         parts = [printer.doprint(self._expr)]
         for s, n in self._counts:
             parts.append(printer.doprint(s) if n == 1 else '(%s, %d)' % (printer.doprint(s), n))
@@ -1057,6 +1070,20 @@ class Subs(Expr):
     @property
     def args(self) -> tuple[Basic, ...]:
         return (self._expr, Tuple(*self._variables), Tuple(*self._point))
+
+    # PORTED FROM SYMPY: sympy/core/function.py:Subs._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The substitution in the terms of the series of the expression (in
+        the substituted variable when ``x`` is its point)."""
+        other = self.variables[self.point.index(x)] if x in self.point else x
+        arg = self.expr.nseries(other, n=n, logx=logx)
+        o = arg.getO()
+        rv = add(*[Subs(a, self._variables, self._point) for a in terms_of(arg.removeO())])
+        if o is not None:
+            moved = o.subs(other, x)
+            assert isinstance(moved, Expr)
+            rv = rv + moved
+        return rv
 
     # PORTED FROM SYMPY: sympy/core/function.py:Subs._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
@@ -1142,7 +1169,7 @@ class Subs(Expr):
         commutative = facts_of(self._expr).get('commutative')
         return {} if commutative is None else {'commutative': commutative}
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         if len(self._variables) == 1:
             return 'Subs(%s, %s, %s)' % (printer.doprint(self._expr), printer.doprint(self._variables[0]),
                                          printer.doprint(self._point[0]))
@@ -1372,8 +1399,8 @@ _FUNC_RULES: dict[type, Callable[[Expr, ExpandHints], Optional[Expr]]] = {}
 # PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with the _eval_expand_func methods
 def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
     """The special functions (their arguments first) expanded by their
-    rules; a node without a ported rule is expanded by SymPy (that node
-    only) when SymPy has one."""
+    rules; a wrapped foreign node is expanded by the foreign system (that
+    node only)."""
     from .bridge import bridge
     if not _FUNC_RULES:
         from sympy_extras.functions._expand_func import rules
@@ -1386,8 +1413,8 @@ def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
         return e
     rule = _FUNC_RULES.get(type(e))
     new: Optional[Basic] = rule(e, hints) if rule is not None else None
-    if new is None and (e._is_foreign_node() or type(e).__name__ in _SYMPY_EXPAND_FUNC):
-        # a class with a SymPy rule not ported (or a wrapped foreign node)
+    if new is None and e._has_foreign_class():
+        # a wrapped foreign node: the foreign system's rule
         new = bridge().expand_func_node(e)
     if new is not None and new != e:
         return new
@@ -1479,6 +1506,11 @@ def _expand(e: Expr, deep: bool, distribute: bool, multinomial: bool, power_exp:
     if power_exp and _is_exp_node(e) and isinstance(e.args[0], Add):
         from .numbers import E
         return mul(*[pow(E, t) for t in e.args[0].args])
+    if power_exp and isinstance(e, Application) and type(e).__name__ == 'ExpPolar' and isinstance(e.args[0], Add) \
+            and e.args[0].is_commutative is not False:
+        # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:ExpBase._eval_expand_power_exp
+        # (exp_polar is an ExpBase: exp_polar(a + b) is exp_polar(a)*exp_polar(b))
+        return mul(*[e._rebuilt([t]) for t in e.args[0].args])
     if log and _is_log_node(e):
         from sympy_extras.functions.elementary.exponential import Log
         if isinstance(e, Log):
@@ -1493,7 +1525,6 @@ def _expand_power_base_node(e: Pow, force: bool) -> Expr:
     the others kept together (the signs and the powers of ``I`` sorted
     out first)."""
     from .numbers import I as _I, ImaginaryUnit
-    from .fuzzy import fuzzy_and
     b, ex = e.base, e.exp
     if not isinstance(b, Mul):
         return e
@@ -2182,11 +2213,13 @@ def _generic_function_nseries(f: Expr, x: Symbol, n: int, logx: Optional[Expr]) 
     args0 = [limit(a, x, Integer(0)) for a in args]
     if any(a.is_finite is False for a in args0):
         # SymPy's asymptotic branch: the class's own _eval_aseries when the
-        # arguments go to an infinity faster than logarithmically (the
-        # classes without a ported one, and the logarithmic case, are left
-        # to the foreign system)
+        # arguments go to an infinity faster than logarithmically, SymPy's
+        # PoleError for the classes which have none (the classes with one
+        # not ported, and the logarithmic case, are left to the foreign
+        # system)
         from .numbers import oo, zoo, nan
-        if isinstance(f, Application) and type(f)._eval_aseries is not Application._eval_aseries:
+        own = isinstance(f, Application) and type(f)._eval_aseries is not Application._eval_aseries
+        if isinstance(f, Application) and (own or type(f).__name__ not in _SYMPY_OWN_ASERIES):
             a0 = [limit(a.as_leading_term(x, logx=logx), x, Integer(0)) for a in args]
             if any(t.has(oo, -oo, zoo, nan) for t in a0):
                 return f._eval_aseries(n, args0, x, logx)
@@ -2240,6 +2273,14 @@ def _generic_function_nseries(f: Expr, x: Symbol, n: int, logx: Optional[Expr]) 
     return add(*terms) + Order(x**n, x)
 
 
+#: the classes whose SymPy counterpart has an ``_eval_aseries`` of its own
+#: (the others raise SymPy's PoleError at an argument going to an infinity;
+#: checked against SymPy by a test)
+_SYMPY_OWN_ASERIES: Final[frozenset[str]] = frozenset({
+    'Acot', 'Atan', 'BesselI', 'BesselIs', 'BesselK', 'BesselKs', 'CiNode', 'DiGamma', 'EiNode', 'Eis', 'Erf', 'Erfc',
+    'Erfi', 'Erfs', 'Expint', 'FresnelC', 'FresnelS', 'LogGamma', 'LowerGamma', 'PolyGamma', 'SiNode', 'TriGamma'})
+
+
 #: the classes whose SymPy counterpart has an _eval_as_leading_term of its
 #: own (the others use Function._eval_as_leading_term, ported below)
 _SYMPY_OWN_LEADING_TERM: Final[frozenset[str]] = frozenset({
@@ -2264,7 +2305,8 @@ def _generic_leading_term(f: DefinedFunction, x: Symbol, logx: Optional[Expr]) -
 
 
 #: the classes whose SymPy counterpart has an ``_eval_is_meromorphic`` of
-#: its own (not ported: asked to the bridge; the others use Application's)
+#: its own (ported in sympy_extras.functions._meromorphic; the others use
+#: Application's)
 _SYMPY_OWN_MEROMORPHIC: Final[frozenset[str]] = frozenset({
     'BesselI', 'BesselJ', 'BesselK', 'BesselY', 'Hankel1', 'Hankel2', 'LowerGamma', 'SphericalHankel1',
     'SphericalHankel2', 'SphericalJ', 'SphericalY', 'UpperGamma'})

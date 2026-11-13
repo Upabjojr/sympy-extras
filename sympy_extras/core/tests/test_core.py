@@ -167,6 +167,12 @@ def test_assumptions() -> None:
     assert sqrt(Symbol('c', complex=True)).is_extended_negative is False and sqrt(p).is_negative is False
     assert pi.is_positive and pi.is_irrational and (pi + 2).is_rational is False and I.is_real is False
     assert I.is_imaginary and (2*I).is_imaginary and (1 + I).is_real is False and (1 + I).is_zero is False
+    # a sum of imaginary terms which cancel was imaginary, so not zero:
+    # I - 4*w**3 with w = 2**(1/3)*(I - sqrt(3))/4 is 0, and solve(4*x**3 - I, x)
+    # dropped two of the three roots (SymPy's Add._eval_is_imaginary says None)
+    w = -Integer(2)**Rational(1, 3)*sqrt(3)/4 + Integer(2)**Rational(1, 3)*I/4
+    assert (I - 4*w**3).is_zero is None and (I - 4*w**3).is_imaginary is None
+    assert (I*p + I*sqrt(2)).is_imaginary is True and (I + I*Symbol('r', real=True)).is_imaginary is None
     assert oo.is_finite is False and oo.is_extended_real and oo.is_real is False and zoo.is_finite is False
     assert (x + 1).is_number is False and (pi + 2).is_number and sqrt(2).is_number
     assert Symbol('p', positive=True, real=True) == p and Symbol('x', real=True) != x
@@ -321,6 +327,47 @@ def test_pattern_matching() -> None:
     assert result == x + y + 3 and mapping[x] == x + 1  # the rebuilt sum matches too, as in SymPy
 
 
+def test_a_product_pattern_with_a_bound_wild() -> None:
+    # the bug: z against p*z**q with p bound to 1 gave None, the 1 being
+    # looked for among the factors of z (meijerint matched its table
+    # factor by factor instead)
+    from sympy_extras.core import Wild
+    from sympy_extras.core.matching import match
+    p, q = Wild('p'), Wild('q')
+    assert match(z, p * z**q, {p: Integer(1)}) == {p: 1, q: 1}
+    assert match(z**3, p * z**q, {p: Integer(1)}) == {p: 1, q: 3}
+    assert match(2 * z, p * z**q, {p: Integer(2)}) == {p: 2, q: 1}
+    assert match(x * y * z, p * z**q, {p: x * y}) == {p: x * y, q: 1}
+    assert match(z, p * z**q, {p: Integer(2)}) is None
+    # a sum with a bound wild, bound to the identity
+    assert match(z, p + z**q, {p: Integer(0)}) == {p: 0, q: 1}
+
+
+def test_pickling_keeps_singletons_and_hashes() -> None:
+    # the bug: an unpickled Piecewise had a last condition which was a new
+    # BooleanTrue, not true itself, so that every test of identity (cond
+    # is true) failed on it; and a node kept the hash of the process which
+    # pickled it, wrong under another hash seed
+    import os
+    import pickle
+    import subprocess
+    import sys
+    from sympy_extras.functions import Piecewise
+    from sympy_extras.functions.elementary.piecewise import ExprCondPair
+    pw = Piecewise((x, x > 1), (x**2, True))
+    back = pickle.loads(pickle.dumps(pw))
+    assert back == pw and all(isinstance(pair, ExprCondPair) for pair in back.args)
+    assert back.args[-1].cond is true and pickle.loads(pickle.dumps(false)) is false
+    assert all(pickle.loads(pickle.dumps(c)) is c for c in (oo, zoo, nan, pi, E, I))
+    assert pickle.loads(pickle.dumps(x + 2*y)) == x + 2*y
+    code = ('import pickle, sys; from sympy_extras.core import Symbol; from sympy_extras.functions import Piecewise; '
+            'x = Symbol("x"); sys.stdout.buffer.write(pickle.dumps(Piecewise((x, x > 1), (x**2, True))))')
+    env = dict(os.environ, PYTHONHASHSEED='1' if os.environ.get('PYTHONHASHSEED') == '2' else '2')
+    data = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, check=True).stdout
+    other = pickle.loads(data)
+    assert other == pw and hash(other) == hash(pw) and other in {pw}
+
+
 def test_mod() -> None:
     from sympy_extras.core import Mod, mod
     assert Mod(7, 3).args == (Integer(7), Integer(3)) and Mod(7, 3).doit() == 1 and mod(7, 3) == 1
@@ -443,7 +490,10 @@ def test_the_new_methods_of_expr() -> None:
     assert sqrt(x**2).refine(sympy.Q.positive(to_sympy(x))) == x
     assert list(islice(expr('sin(x)').lseries(x), 2)) == [x, -x**3/6]
     integral = (1/x).integrate((x, 1, Symbol('t')))
-    assert integral == expr('log(t)')
+    # native now (SymPy's integrate through the bridge gave log(t)): the
+    # value with its conditions on t, log(t) where they hold
+    for value in (3, Rational(1, 2), 7):
+        assert (integral.subs(Symbol('t'), value) - expr('log(%s)' % value)).simplify() == 0
 
 
 def test_expand_hints_and_count_ops() -> None:
@@ -529,6 +579,31 @@ def test_every_sympy_object_converts() -> None:
     assert type(integral).__name__ == 'SymPyExprNode' and integral.doit() == Rational(1, 3)
     assert str(integral.evalf()) == '0.333333333333333' and integral.free_symbols == set()
     assert from_sympy(sympy.Sum(sx, (sx, 1, 10))).doit() == 55
+
+
+def test_a_wrapped_integral_differentiates() -> None:
+    # the derivative of a wrapped unevaluated Integral(f, x) by x was the
+    # unevaluated Derivative(Integral(f, x), x) (the native linear ODE
+    # solvers differentiate their solutions with quadratures), SymPy's is f
+    from sympy_extras.functions import exp
+    sx = sympy.Symbol('x')
+    integral = as_expr(from_sympy(sympy.Integral(sympy.exp(sx)/sx, sx)))
+    assert type(integral).__name__ == 'SymPyExprNode'
+    assert diff(integral, x) == exp(x)/x
+    assert diff(x*integral, x) == integral + exp(x)
+    assert diff(integral, y) == 0
+
+
+def test_a_wrapped_integral_substitutes_its_bound_variable() -> None:
+    # the variable of a wrapped Integral(f(r), r) substituted by sqrt(x) was
+    # replaced in the limits too, and SymPy refused to rebuild the node
+    # (ValueError: Invalid limits given: ((sqrt(x),),)); SymPy's subs gives
+    # Integral(f(r), (r, sqrt(x))) (dsolve_lie's quadratures)
+    sr, sx = sympy.symbols('r x')
+    r = Symbol('r')
+    integral = as_expr(from_sympy(sympy.Integral(sympy.exp(sr**2), sr)))
+    assert to_sympy(integral.subs(r, sqrt(x))) == sympy.Integral(sympy.exp(sr**2), (sr, sympy.sqrt(sx)))
+    assert to_sympy(as_expr(from_sympy(sympy.Integral(sx*sr, sr))).subs(x, 2)) == sympy.Integral(2*sr, sr)
 
 
 def test_the_connectives() -> None:
@@ -907,3 +982,16 @@ def test_expand_splits_logarithms_before_distributing() -> None:
     assert expand(e) == log(-a) + log(2)/2 + I*pi/4
     assert str(to_sympy(expand(e))) == str(sympy.expand(to_sympy(e)))
     assert cancel(I*log(MulNode(a, -1 + I))/2 - I*log(MulNode(a, -1 - I))/2) == pi/4
+
+
+def test_the_integer_content_of_an_integer_is_an_integer() -> None:
+    from sympy_extras.core import Integer, Symbol, factor_terms
+    from sympy_extras.core.power import Pow
+    x, a = Symbol('x'), Symbol('a')
+    # Integer(2).as_content_primitive() was (Rational(2, 1), 1), a Rational which
+    # is not an Integer: factor_terms(a*x**2) had x**Rational(2, 1), and the
+    # exponential integrator took the exponent 2 for a non-integer
+    assert type(Integer(2).as_content_primitive()[0]) is Integer
+    assert type(Integer(-6).as_content_primitive()[0]) is Integer
+    power = [f for f in factor_terms(a*x**2).args if isinstance(f, Pow)][0]
+    assert type(power.exp) is Integer

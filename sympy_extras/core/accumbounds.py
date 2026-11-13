@@ -26,16 +26,13 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Final, Optional, TYPE_CHECKING, Union
+from typing import Final, Optional, Union
 
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .expr import Expr, ExprLike, as_expr, to_expr
 from .kind import Kind, NumberKind
 from .numbers import ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, nan, oo, zoo
 from .sorting import ClassKey
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['AccumBounds', 'AccumulationBounds', 'accum_bounds']
 
@@ -134,7 +131,7 @@ class AccumBounds(Expr):
             facts['real'] = True
         return facts
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'AccumBounds(%s, %s)' % (printer.doprint(self._min), printer.doprint(self._max))
 
     # the operators: the interval arithmetic

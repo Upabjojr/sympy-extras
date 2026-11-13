@@ -47,10 +47,19 @@ functions which are right for `x > 0` and wrong for `x < 0`.
 Every antiderivative is checked by differentiation before it is
 returned, symbolically or at random points where the integrand is real.
 
+The module works on the objects of the core (:mod:`sympy_extras.core`, the
+functions of :mod:`sympy_extras.functions`) with the native polynomials,
+``simplify``, ``ask``, :mod:`.conditions` and the rational integrator
+:func:`~sympy_extras.integrals.risch.rationaltools.ratint` of the fourth
+route, and imports no SymPy.
+:mod:`sympy_extras.integrals.exponential_sympy` is the face of the module
+on SymPy objects.
+
 Examples
 ========
 
->>> from sympy import symbols, exp
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.functions import exp
 >>> from sympy_extras.integrals.exponential import exponential_antiderivative
 >>> x = symbols('x')
 >>> v = symbols('v', positive=True)
@@ -71,40 +80,41 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.exprtools import factor_terms
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, Rational, pi
-from sympy.functions.combinatorial.factorials import factorial
-from sympy.core.power import Pow
-from sympy.core.function import expand
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.special.error_functions import erf, erfi, Ei
-from sympy.functions.special.gamma_functions import uppergamma
-from sympy.functions.special.hyper import hyper
-from sympy.logic.boolalg import Boolean
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polyroots import roots
-from sympy.polys.polytools import Poly, cancel, gcd
-from sympy.polys.polytools import factor as factored_form
-from sympy.simplify.powsimp import powsimp
-from sympy.solvers.solvers import solve
-from sympy.simplify.simplify import simplify
+from typing import Callable, Optional
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.exprtools import factor_terms
+from sympy_extras.core.function import expand
+from sympy_extras.core.logic import Boolean, to_boolean
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer, Rational, pi
+from sympy_extras.core.power import Pow, sqrt
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.combinatorial.factorials import factorial
+from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
+from sympy_extras.functions.elementary.piecewise import piecewise
+from sympy_extras.functions.special.error_functions import Ei, erf, erfi
+from sympy_extras.functions.special.gamma_functions import uppergamma
+from sympy_extras.functions.special.hyper import hyper
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.polyroots import roots
+from sympy_extras.polys.polytools import Poly, cancel, gcd
+from sympy_extras.polys.polytools import factor as factored_form
 from sympy_extras.settings import settings
+from sympy_extras.simplify.powsimp import powsimp
+from sympy_extras.simplify.simplify import simplify
 from .conditions import numerically_equal
 
-__all__ = ['exponential_antiderivative', 'power_exponential', 'exponential_rational']
+__all__ = ['exponential_antiderivative', 'power_exponential', 'exponential_rational', 'nested_power_exponential',
+           'rational_exponential', 'composite_gaussian', 'reciprocal_square_exponential']
+
+#: a route of :func:`exponential_antiderivative`
+Route = Callable[[Expr, Symbol, Assumptions], Optional[Expr]]
 
 
 def _budget() -> Optional[float]:
@@ -115,21 +125,142 @@ def _facts(assumptions: Assumptions) -> list[Boolean]:
     if assumptions is None:
         return []
     if isinstance(assumptions, (Boolean, bool)):
-        return [as_boolean(assumptions)]
-    return [as_boolean(a) for a in assumptions]
+        return [to_boolean(assumptions)]
+    return [to_boolean(a) for a in assumptions]
+
+
+def _argument(node: Basic) -> Expr:
+    """The first argument of a function node, an expression."""
+    return as_expr(node.args[0])
 
 
 def _checks(F: Expr, f: Expr, x: Symbol, facts: list[Boolean]) -> bool:
     """Whether ``F`` is an antiderivative of ``f``: ``F' - f`` cancels or
     simplifies to zero, or vanishes numerically under the facts."""
-    difference = as_expr(F.diff(x) - f)
-    reduced = attempt(lambda: as_expr(cancel(difference)), _budget())
+    difference = F.diff(x) - f
+    reduced = attempt(lambda: cancel(difference), _budget(), native=True)
     if reduced is not None and reduced == 0:
         return True
-    simpler = attempt(lambda: as_expr(simplify(reduced if reduced is not None else difference)), _budget())
+    simpler = attempt(lambda: simplify(reduced if reduced is not None else difference), _budget(), native=True)
     if simpler is not None and simpler == 0:
         return True
-    return numerically_equal(as_expr(F.diff(x)), f, facts)
+    return numerically_equal(F.diff(x), f, facts)
+
+
+def _is_power_of(e: Expr, x: Symbol) -> bool:
+    """Whether ``e`` is ``x**k`` with ``k`` free of ``x``."""
+    return isinstance(e, Pow) and e.base == x and not e.exp.has(x)
+
+
+def _integer(e: Expr) -> Optional[int]:
+    return int(e) if isinstance(e, Integer) else None
+
+
+def _coefficients(e: Expr, x: Symbol) -> Optional[dict[int, Expr]]:
+    """The coefficients of ``e`` as a polynomial in ``x`` (``{degree:
+    coefficient}``, the coefficients expanded as SymPy's ``Poly`` gives
+    them, of any kind: ``pi``, ``exp(c)``, ``sqrt(2)``); ``None`` when
+    ``e`` is not a polynomial in ``x``."""
+    coefficients: dict[int, Expr] = {}
+    for term in Add.make_args(expand(e)):
+        c, monomial = term.as_independent(x, as_Add=False)
+        if monomial == 1:
+            k = 0
+        elif monomial == x:
+            k = 1
+        elif isinstance(monomial, Pow) and monomial.base == x and _integer(monomial.exp) is not None \
+                and int(monomial.exp) > 0:
+            k = int(monomial.exp)
+        else:
+            return None
+        coefficients[k] = coefficients.get(k, S.Zero) + c
+    return {k: c for k, c in coefficients.items() if c != 0}
+
+
+def _degree(coefficients: dict[int, Expr]) -> int:
+    return max(coefficients) if coefficients else -1
+
+
+def _from_coefficients(coefficients: dict[int, Expr], x: Expr) -> Expr:
+    total: Expr = S.Zero
+    for k, c in coefficients.items():
+        total = total + c * x**k
+    return total
+
+
+def _divmod(P: dict[int, Expr], Q: dict[int, Expr]) -> tuple[dict[int, Expr], dict[int, Expr]]:
+    """The quotient and the remainder of the polynomials ``P`` and ``Q``
+    (``Q`` not zero) over the field of their coefficients."""
+    remainder = dict(P)
+    quotient: dict[int, Expr] = {}
+    n = _degree(Q)
+    leading = Q[n]
+    while remainder and _degree(remainder) >= n:
+        m = _degree(remainder)
+        c = cancel(remainder[m] / leading)
+        quotient[m - n] = c
+        for k, q in Q.items():
+            value = cancel(remainder.get(k + m - n, S.Zero) - c * q)
+            if value == 0:
+                remainder.pop(k + m - n, None)
+            else:
+                remainder[k + m - n] = value
+        remainder.pop(m, None)
+    return quotient, remainder
+
+
+class _Generalizer:
+    """Every part of a coefficient which is not a polynomial in symbols
+    (``pi``, ``exp(c)``, ``sqrt(2)``, ``I``) replaced by a dummy, so that
+    the polynomial layer takes it; the substitution back is a ring
+    homomorphism, so roots and quotients computed formally stay so."""
+
+    def __init__(self) -> None:
+        self.dummies: dict[Expr, Expr] = {}
+
+    def __call__(self, e: Expr) -> Expr:
+        if isinstance(e, (Add, Mul)):
+            if isinstance(e, Add):
+                total: Expr = S.Zero
+                for a in e.args:
+                    total = total + self(as_expr(a))
+                return total
+            product: Expr = S.One
+            for a in e.args:
+                product = product * self(as_expr(a))
+            return product
+        if isinstance(e, Pow) and isinstance(e.exp, Integer):
+            return self(e.base)**e.exp
+        if isinstance(e, (Symbol, Rational)):
+            return e
+        if e not in self.dummies:
+            self.dummies[e] = Dummy('g')
+        return self.dummies[e]
+
+    def back(self, e: Expr) -> Expr:
+        back: dict[Basic, Basic] = {d: original for original, d in self.dummies.items()}
+        return as_expr(e._xreplace_evaluated(back))
+
+
+def _roots(coefficients: dict[int, Expr], x: Symbol) -> Optional[dict[Expr, int]]:
+    """The roots of a polynomial in ``x`` with their multiplicities
+    (``roots`` of the native polynomials, symbolic ones too); ``None``
+    when they are not all found."""
+    general = _Generalizer()
+    polynomial = _from_coefficients({k: general(c) for k, c in coefficients.items()}, x)
+    try:
+        found = roots(Poly(polynomial, x))
+    except BasePolynomialError:
+        return None
+    if not isinstance(found, dict):
+        return None
+    if sum(found.values()) != _degree(coefficients):
+        return None
+    restored: dict[Expr, int] = {}
+    for root, multiplicity in found.items():
+        r = general.back(root)
+        restored[r] = restored.get(r, 0) + multiplicity
+    return restored
 
 
 # ---------------------------------------------------------------------------
@@ -138,51 +269,51 @@ def _checks(F: Expr, f: Expr, x: Symbol, facts: list[Boolean]) -> bool:
 def _power_exponential_raw(v: Expr, a: Expr, n: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     """``Integral(x**(v - 1)*exp(a*x**n), x)`` without the constant factors,
     in the real form the case allows; ``None`` when there is none."""
-    s = as_expr(cancel(v / n))
+    s = cancel(v / n)
     if v == 0:
-        return as_expr(Ei(a * x**n) / n)
-    if isinstance(s, Integer) and s > 0:
+        return Ei(a * x**n) / n
+    if isinstance(s, Integer) and int(s) > 0:
         # downwards to Integral(x**(n-1) exp(a x**n)) = exp(a x**n)/(a n)
-        if s == 1:
-            return as_expr(exp(a * x**n) / (a * n))
+        if int(s) == 1:
+            return exp(a * x**n) / (a * n)
         lower = _power_exponential_raw(v - n, a, n, x, assumptions)
         if lower is None:
             return None
-        return as_expr(x**(v - n) * exp(a * x**n) / (a * n) - (v - n) * lower / (a * n))
-    if isinstance(s, Integer) and s < 0:
+        return x**(v - n) * exp(a * x**n) / (a * n) - (v - n) * lower / (a * n)
+    if isinstance(s, Integer) and int(s) < 0:
         # upwards to s = 0, the exponential integral
         higher = _power_exponential_raw(v + n, a, n, x, assumptions)
         if higher is None:
             return None
-        return as_expr(x**v * exp(a * x**n) / v - a * n * higher / v)
-    if n == 2 and isinstance(v, Integer) and v % 2 == 1 and v != 1:
+        return x**v * exp(a * x**n) / v - a * n * higher / v
+    if n == 2 and isinstance(v, Integer) and int(v) % 2 == 1 and int(v) != 1:
         # an odd power with the Gaussian: the recurrences reach the error function
-        if v > 1:
+        if int(v) > 1:
             lower = _power_exponential_raw(v - 2, a, n, x, assumptions)
             if lower is None:
                 return None
-            return as_expr(x**(v - 2) * exp(a * x**2) / (2 * a) - (v - 2) * lower / (2 * a))
+            return x**(v - 2) * exp(a * x**2) / (2 * a) - (v - 2) * lower / (2 * a)
         higher = _power_exponential_raw(v + 2, a, n, x, assumptions)
         if higher is None:
             return None
-        return as_expr(x**v * exp(a * x**2) / v - 2 * a * higher / v)
-    negative = ask(as_boolean(a < 0), assumptions)
-    positive = ask(as_boolean(a > 0), assumptions)
+        return x**v * exp(a * x**2) / v - 2 * a * higher / v
+    negative = ask(a < 0, assumptions)
+    positive = ask(a > 0, assumptions)
     # the incomplete gamma form is real where -a*x**n > 0: for every x when n is
     # even, for x > 0 otherwise (x*exp(-x**3) at x < -1 needs the confluent form)
-    real_everywhere = (isinstance(n, Integer) and n % 2 == 0) or ask(as_boolean(x > 0), assumptions) is True
+    real_everywhere = (isinstance(n, Integer) and int(n) % 2 == 0) or ask(x > 0, assumptions) is True
     if n == 2 and v == 1:
-        below = as_expr(sqrt(pi) * erf(sqrt(-a) * x) / (2 * sqrt(-a)))
-        above = as_expr(sqrt(pi) * erfi(sqrt(a) * x) / (2 * sqrt(a)))
+        below = sqrt(pi) * erf(sqrt(-a) * x) / (2 * sqrt(-a))
+        above = sqrt(pi) * erfi(sqrt(a) * x) / (2 * sqrt(a))
         if negative is True:
             return below
         if positive is True:
             return above
-        return as_expr(Piecewise((below, a < 0), (above, True)))
+        return piecewise((below, a < 0), (above, True))
     if negative is True and real_everywhere:
-        return as_expr(-(-a)**(-s) * uppergamma(s, -a * x**n) / n)
+        return -(-a)**(-s) * uppergamma(s, -a * x**n) / n
     # the confluent form, an identity of power series for every a
-    return as_expr(x**v * hyper((s,), (s + 1,), a * x**n) / v)
+    return x**v * hyper((s,), (s + 1,), a * x**n) / v
 
 
 def _monomial_exponential(term: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, Expr, Expr]]:
@@ -191,33 +322,31 @@ def _monomial_exponential(term: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, E
     coefficient: Expr = S.One
     power: Expr = S.Zero
     exponent: Optional[Expr] = None
-    for factor in Mul.make_args(term):
-        f = as_expr(factor)
+    for f in Mul.make_args(term):
         if not f.has(x):
             coefficient = coefficient * f
         elif f == x:
             power = power + 1
-        elif isinstance(f, Pow) and f.base == x and not as_expr(f.exp).has(x):
-            power = power + as_expr(f.exp)
-        elif isinstance(f, exp) and exponent is None:
-            exponent = as_expr(f.args[0])
+        elif isinstance(f, Pow) and _is_power_of(f, x):
+            power = power + f.exp
+        elif isinstance(f, Exp) and exponent is None:
+            exponent = f.exp
         else:
             return None
     if exponent is None:
         return None
     constant, rest = exponent.as_independent(x, as_Add=True)
     # b*x**2*log(a) + c*x**2*log(h), the combined exponent of a**(b*x**2)*h**(c*x**2), is one monomial
-    a, monomial = as_expr(factor_terms(rest)).as_independent(x, as_Add=False)
-    a_, monomial_ = as_expr(a), as_expr(monomial)
-    if monomial_ == x:
+    a, monomial = factor_terms(rest).as_independent(x, as_Add=False)
+    if monomial == x:
         n: Expr = S.One
-    elif isinstance(monomial_, Pow) and monomial_.base == x and not as_expr(monomial_.exp).has(x):
-        n = as_expr(monomial_.exp)                          # a number, or a symbolic exponent r
+    elif isinstance(monomial, Pow) and _is_power_of(monomial, x):
+        n = monomial.exp                                    # a number, or a symbolic exponent r
     else:
         return None
-    if a_ == 0 or n == 0:
+    if a == 0 or n == 0:
         return None
-    return (as_expr(coefficient * exp(constant)), as_expr(power + 1), a_, n)
+    return (coefficient * exp(constant), power + 1, a, n)
 
 
 def power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
@@ -226,7 +355,8 @@ def power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -
     differentiation; ``None`` when ``f`` is not of that form or the check
     fails.
 
-    >>> from sympy import symbols, exp, sqrt
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.exponential import power_exponential
     >>> x = symbols('x')
     >>> power_exponential(exp(-x**2), x)
@@ -236,26 +366,24 @@ def power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -
     >>> power_exponential(exp(2*x)/x, x)
     Ei(2*x)
     """
-    f_ = as_expr(f)
-    combined = as_expr(powsimp(expand(f_), combine='exp'))
+    f_ = to_expr(f)
+    combined = powsimp(expand(f_), combine='exp')
     total: Expr = S.Zero
     for term in Add.make_args(combined):
-        term_ = as_expr(term)
-        if not term_.has(exp):
+        if not term.has(Exp):
             # a term without an exponential: a monomial ((1 - exp(-x**2))**2/x**3 expanded)
-            coefficient, monomial = term_.as_independent(x, as_Add=False)
-            monomial_ = as_expr(monomial)
-            if monomial_ == 1:
+            coefficient, monomial = term.as_independent(x, as_Add=False)
+            if monomial == 1:
                 total = total + coefficient * x
-            elif monomial_ == x:
+            elif monomial == x:
                 total = total + coefficient * x**2 / 2
-            elif isinstance(monomial_, Pow) and monomial_.base == x and not as_expr(monomial_.exp).has(x):
-                e = as_expr(monomial_.exp)
+            elif isinstance(monomial, Pow) and _is_power_of(monomial, x):
+                e = monomial.exp
                 total = total + (coefficient * log(x) if e == -1 else coefficient * x**(e + 1) / (e + 1))
             else:
                 return None
             continue
-        found = _monomial_exponential(term_, x)
+        found = _monomial_exponential(term, x)
         if found is None:
             return None
         c, v, a, n = found
@@ -266,7 +394,7 @@ def power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -
     facts = _facts(assumptions)
     if not _checks(total, f_, x, facts):
         return None
-    return as_expr(total)
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -275,54 +403,50 @@ def power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -
 def _quadratic_term(term: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     """``Integral(c * x**m * exp(a*x**2 + b*x + d), x)`` for one term, a
     nonnegative integer ``m``, by completing the square and shifting."""
-    found = None
+    found: Optional[Expr] = None
     coefficient: Expr = S.One
     m: Expr = S.Zero
-    for factor in Mul.make_args(term):
-        g = as_expr(factor)
+    for g in Mul.make_args(term):
         if not g.has(x):
             coefficient = coefficient * g
         elif g == x:
             m = m + 1
-        elif isinstance(g, Pow) and g.base == x and isinstance(g.exp, Integer) and g.exp > 0:
-            m = m + as_expr(g.exp)
-        elif isinstance(g, exp) and found is None:
-            found = as_expr(g.args[0])
+        elif isinstance(g, Pow) and g.base == x and isinstance(g.exp, Integer) and int(g.exp) > 0:
+            m = m + g.exp
+        elif isinstance(g, Exp) and found is None:
+            found = g.exp
         else:
             return None
     if found is None or not found.is_polynomial(x):
         return None
-    try:
-        poly = Poly(found, x)
-    except PolynomialError:
+    poly = _coefficients(found, x)
+    if poly is None or _degree(poly) != 2:
         return None
-    if poly.degree() != 2:
-        return None
-    a, b, c = (as_expr(poly.coeff_monomial(x**2)), as_expr(poly.coeff_monomial(x)), as_expr(poly.coeff_monomial(1)))
+    a, b, c = poly[2], poly.get(1, S.Zero), poly.get(0, S.Zero)
     if b == 0:
         return None                                         # the first form
-    h = as_expr(b / (2 * a))
+    h = b / (2 * a)
     t = Dummy('t')
-    shifted = as_expr(expand((t - h)**m * exp(a * t**2) * exp(c - b**2 / (4 * a))))
+    shifted = expand((t - h)**m * exp(a * t**2) * exp(c - b**2 / (4 * a)))
     inner = power_exponential(shifted, t, assumptions)
     if inner is None:
         return None
-    return as_expr(coefficient * inner.subs(t, x + h))
+    return coefficient * inner.subs(t, x + h)
 
 
 def _quadratic_exponential(f: Expr, x: Symbol, assumptions: Assumptions) -> Optional[Expr]:
     """``Integral(p(x) * exp(a*x**2 + b*x + c), x)`` for a polynomial ``p``,
     term by term after expansion, checked by differentiation."""
-    combined = as_expr(powsimp(expand(f), combine='exp'))
+    combined = powsimp(expand(f), combine='exp')
     total: Expr = S.Zero
     for term in Add.make_args(combined):
-        piece = _quadratic_term(as_expr(term), x, assumptions)
+        piece = _quadratic_term(term, x, assumptions)
         if piece is None:
             return None
         total = total + piece
     if not _checks(total, f, x, _facts(assumptions)):
         return None
-    return as_expr(total)
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -332,25 +456,45 @@ def _exponential_generator(f: Expr, x: Symbol) -> Optional[Expr]:
     """``c`` such that every ``exp(k x)`` of ``f`` has ``k`` an integer multiple
     of ``c``; ``None`` without exponentials of linear arguments."""
     rates: list[Expr] = []
-    for node in f.atoms(exp):
-        argument = as_expr(node.args[0])
+    for node in f.atoms(Exp):
+        argument = _argument(node)
         if not argument.has(x):
             continue
         k, rest = argument.as_independent(x, as_Add=False)
-        if as_expr(rest) != x:
+        if rest != x:
             return None
-        rates.append(as_expr(k))
+        rates.append(k)
     if not rates:
         return None
-    ratios = [as_expr(cancel(k / rates[0])) for k in rates]
-    if not all(isinstance(r, Rational) for r in ratios):
-        return None
-    c = as_expr(rates[0] * gcd([Rational(r) for r in ratios]))
+    ratios: list[Rational] = []
+    for k in rates:
+        r = cancel(k / rates[0])
+        if not isinstance(r, Rational):
+            return None
+        ratios.append(r)
+    common: Expr = ratios[0]
+    for r in ratios[1:]:
+        common = gcd(common, r)
+    c = rates[0] * common
     # a canonical sign: the atoms come from a set, and u = exp(-x) turns
     # (exp(x) + 1)**(1/3) into (1/u + 1)**(1/3), which nothing takes
     if c.could_extract_minus_sign():
-        c = as_expr(-c)
+        c = -c
     return c
+
+
+def _ratint(f: Expr, x: Symbol) -> Optional[Expr]:
+    """The native rational integrator within the budget."""
+    from .risch.rationaltools import ratint
+    return attempt(lambda: ratint(f, x), _budget(), native=True)
+
+
+def _is_log_of_exp(e: Basic) -> bool:
+    return isinstance(e, Log) and isinstance(e.args[0], Exp)
+
+
+def _log_of_exp(e: Basic) -> Basic:
+    return _argument(e.args[0])
 
 
 def exponential_rational(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
@@ -359,7 +503,8 @@ def exponential_rational(f: ExprLike, x: Symbol, assumptions: Assumptions = None
     ``t**q = a + b*exp(c*x)``, through the rational integrator; ``None``
     otherwise.
 
-    >>> from sympy import symbols, exp, sqrt
+    >>> from sympy_extras.core import symbols, sqrt
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.exponential import exponential_rational
     >>> x = symbols('x')
     >>> exponential_rational(1/(exp(x) + 1), x)
@@ -367,69 +512,67 @@ def exponential_rational(f: ExprLike, x: Symbol, assumptions: Assumptions = None
     >>> exponential_rational(exp(x)/sqrt(exp(x) + 1), x)
     2*sqrt(exp(x) + 1)
     """
-    from .risch.rationaltools import ratint
-    f_ = as_expr(powsimp(as_expr(f), combine='exp'))
+    f0 = to_expr(f)
+    f_ = powsimp(f0, combine='exp')
     c = _exponential_generator(f_, x)
     if c is None:
         return None
     u = Dummy('u', positive=True)
-    replacement = {node: u**as_expr(cancel(as_expr(node.args[0]).as_independent(x, as_Add=False)[0] / c))
-                   for node in f_.atoms(exp) if as_expr(node.args[0]).has(x)}
-    g = as_expr(f_.xreplace(replacement))
+    replacement: dict[Basic, Basic] = {}
+    for node in f_.atoms(Exp):
+        argument = _argument(node)
+        if argument.has(x):
+            replacement[node] = u**cancel(argument.as_independent(x, as_Add=False)[0] / c)
+    g = as_expr(f_._xreplace_evaluated(replacement))
     if g.has(x):
         return None
-    integrand = as_expr(cancel(g / (c * u)))
+    integrand = cancel(g / (c * u))
     F: Optional[Expr] = None
     if integrand.is_rational_function(u):
-        F = attempt(lambda: as_expr(ratint(integrand, u)), _budget())
+        F = _ratint(integrand, u)
     else:
         F = _binomial_in(integrand, u)
     if F is None:
         return None
-    result = as_expr(F.subs(u, exp(c * x)))
+    result = F.subs(u, exp(c * x))
     # log(exp(c x)) is c x for a real x
-    result = as_expr(result.replace(lambda e: isinstance(e, log) and isinstance(e.args[0], exp),
-                                    lambda e: as_expr(e.args[0].args[0])))
-    if not _checks(result, as_expr(f), x, _facts(assumptions)):
+    result = as_expr(result.replace(_is_log_of_exp, _log_of_exp))
+    if not _checks(result, f0, x, _facts(assumptions)):
         return None
     return result
 
 
 def _binomial_in(integrand: Expr, u: Symbol) -> Optional[Expr]:
     """``Integral(R(u) * (a + b u)**(m/q), u)`` by ``t**q = a + b u``."""
-    from .risch.rationaltools import ratint
     radical: Optional[Pow] = None
     for node in integrand.atoms(Pow):
-        if isinstance(node.exp, Rational) and node.exp.q > 1 and node.has(u):
-            if radical is not None and as_expr(node.base) != as_expr(radical.base):
+        if isinstance(node, Pow) and isinstance(node.exp, Rational) and node.exp.q > 1 and node.has(u):
+            if radical is not None and node.base != radical.base:
                 return None
             radical = node
     if radical is None:
         return None
-    base = as_expr(radical.base)
-    try:
-        linear = Poly(base, u)
-    except PolynomialError:
+    base = radical.base
+    linear = _coefficients(base, u)
+    if linear is None or _degree(linear) != 1:
         return None
-    if linear.degree() != 1:
-        return None
-    b, a = as_expr(linear.coeff_monomial(u)), as_expr(linear.coeff_monomial(1))
+    b, a = linear[1], linear.get(0, S.Zero)
     exponents: dict[Pow, Rational] = {}
     for node in integrand.atoms(Pow):
-        exponent = node.exp
-        if isinstance(exponent, Rational) and node.has(u) and as_expr(node.base) == base:
-            exponents[node] = exponent
+        if isinstance(node, Pow) and isinstance(node.exp, Rational) and node.has(u) and node.base == base:
+            exponents[node] = node.exp
     q = max(exponent.q for exponent in exponents.values())
     t = Dummy('t', positive=True)
-    replacement = {node: t**(exponent.p * (q // exponent.q)) for node, exponent in exponents.items()}
-    in_t = as_expr(integrand.xreplace(replacement).subs(u, (t**q - a) / b) * q * t**(q - 1) / b)
-    in_t = as_expr(cancel(in_t))
+    replacement: dict[Basic, Basic] = {node: t**(exponent.p * (q // exponent.q))
+                                       for node, exponent in exponents.items()}
+    in_t = as_expr(integrand._xreplace_evaluated(replacement)).subs(u, (t**q - a) / b) * q * t**(q - 1) / b
+    in_t = cancel(in_t)
     if not in_t.is_rational_function(t):
         return None
-    G = attempt(lambda: as_expr(ratint(in_t, t)), _budget())
+    G = _ratint(in_t, t)
     if G is None:
         return None
-    return as_expr(G.subs(t, base**Rational(1, q)))
+    return G.subs(t, base**Rational(1, q))
 
 
 def _linear_bases(f: Expr, x: Symbol) -> list[Expr]:
@@ -437,17 +580,20 @@ def _linear_bases(f: Expr, x: Symbol) -> list[Expr]:
     exponent is free of ``x``, without repetition."""
     found: list[Expr] = []
     for node in f.atoms(Pow):
-        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if not isinstance(node, Pow):
+            continue
+        base, exponent = node.base, node.exp
         if exponent.has(x) or not base.has(x) or base == x:
             continue
-        poly = base.as_poly(x)
-        if poly is not None and poly.degree() == 1 and base not in found:
+        poly = _coefficients(base, x)
+        if poly is not None and _degree(poly) == 1 and base not in found:
             found.append(base)
     # a plain linear factor too: (x + 1)*exp(-x**3 - 3*x**2 - 3*x) is t*exp(-t**3)
-    for factor in Mul.make_args(f):
-        base = as_expr(factor)
-        if base.has(x) and base != x and base.is_polynomial(x) and Poly(base, x).degree() == 1 and base not in found:
-            found.append(base)
+    for base in Mul.make_args(f):
+        if base.has(x) and base != x and base.is_polynomial(x) and base not in found:
+            poly = _coefficients(base, x)
+            if poly is not None and _degree(poly) == 1:
+                found.append(base)
     return found
 
 
@@ -458,18 +604,19 @@ def _shifted_exponential(f: Expr, x: Symbol, assumptions: Assumptions) -> Option
     (``exp(c*x)/(a*x + b)**k`` is the exponential integral ``E_k``, DLMF
     8.19.3), and a polynomial in ``t`` times an exponential of a quadratic
     is of the second."""
+    routes: tuple[Route, ...] = (power_exponential, _quadratic_exponential)
     for base in _linear_bases(f, x):
-        poly = base.as_poly(x)
+        poly = _coefficients(base, x)
         if poly is None:
             continue
-        a, b = as_expr(poly.coeff_monomial(x)), as_expr(poly.coeff_monomial(1))
+        a, b = poly[1], poly.get(0, S.Zero)
         t = Dummy('t')
-        shifted = as_expr(f.subs(x, (t - b) / a) / a)
-        for route in (power_exponential, _quadratic_exponential):
-            found = attempt(lambda: route(shifted, t, assumptions), _budget())
+        shifted = f.subs(x, (t - b) / a) / a
+        for route in routes:
+            found = attempt(lambda: route(shifted, t, assumptions), _budget(), native=True)
             if found is None:
                 continue
-            candidate = as_expr(found.subs(t, base))
+            candidate = found.subs(t, base)
             if _checks(candidate, f, x, _facts(assumptions)):
                 return candidate
     return None
@@ -480,19 +627,21 @@ def exponential_antiderivative(f: ExprLike, x: Symbol, assumptions: Assumptions 
     documentation, in that order, each result checked by differentiation;
     ``None`` when none applies.
 
-    >>> from sympy import symbols, exp
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.exponential import exponential_antiderivative
     >>> x = symbols('x')
     >>> exponential_antiderivative(x*exp(x**2 + 2*x), x)
     exp(-1)*exp((x + 1)**2)/2 - sqrt(pi)*exp(-1)*erfi(x + 1)/2
     """
-    f_ = as_expr(f)
-    if not f_.has(exp):
+    f_ = to_expr(f)
+    if not f_.has(Exp):
         return None
-    for route in (power_exponential, _quadratic_exponential, _shifted_exponential, exponential_rational,
-                  nested_power_exponential, rational_exponential, reciprocal_square_exponential,
-                  composite_gaussian):
-        found = attempt(lambda: route(f_, x, assumptions), _budget())
+    routes: tuple[Route, ...] = (power_exponential, _quadratic_exponential, _shifted_exponential, exponential_rational,
+                                 nested_power_exponential, rational_exponential, reciprocal_square_exponential,
+                                 composite_gaussian)
+    for route in routes:
+        found = attempt(lambda: route(f_, x, assumptions), _budget(), native=True)
         if found is not None:
             return found
     return None
@@ -508,10 +657,10 @@ def _nested_power(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     degree: Expr = S.One
     depth = 0
     node = e
-    while isinstance(node, Pow) and not as_expr(node.exp).has(x):
-        degree = degree * as_expr(node.exp)
+    while isinstance(node, Pow) and not node.exp.has(x):
+        degree = degree * node.exp
         depth += 1
-        node = as_expr(node.base)
+        node = node.base
     if node != x or depth < 2:
         return None
     return e, degree
@@ -528,39 +677,39 @@ def _nested_term(term: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, Expr, Expr
     degree: Expr = S.Zero
     nested = False
     exponent: Optional[Expr] = None
-    for factor in Mul.make_args(term):
-        f = as_expr(factor)
+    for f in Mul.make_args(term):
+        inner = _nested_power(f, x)
         if not f.has(x):
             coefficient = coefficient * f
         elif f == x:
             prefactor, degree = prefactor * f, degree + 1
-        elif isinstance(f, Pow) and f.base == x and not as_expr(f.exp).has(x):
-            prefactor, degree = prefactor * f, degree + as_expr(f.exp)
-        elif isinstance(f, Pow) and _nested_power(f, x) is not None:
-            _, q = _nested_power(f, x) or (f, S.Zero)
-            prefactor, degree, nested = prefactor * f, degree + q, True
-        elif isinstance(f, exp) and exponent is None:
-            exponent = as_expr(f.args[0])
+        elif isinstance(f, Pow) and _is_power_of(f, x):
+            prefactor, degree = prefactor * f, degree + f.exp
+        elif isinstance(f, Pow) and inner is not None:
+            prefactor, degree, nested = prefactor * f, degree + inner[1], True
+        elif isinstance(f, Exp) and exponent is None:
+            exponent = f.exp
         else:
             return None
     if exponent is None:
         return None
     constant, rest = exponent.as_independent(x, as_Add=True)
-    a, monomial = as_expr(factor_terms(rest)).as_independent(x, as_Add=False)
-    monomial_ = as_expr(monomial)
-    found = _nested_power(monomial_, x)
+    a, monomial = factor_terms(rest).as_independent(x, as_Add=False)
+    found = _nested_power(monomial, x)
+    W: Expr
+    d: Expr
     if found is not None:
         W, d = found
         nested = True
-    elif monomial_ == x:
+    elif monomial == x:
         W, d = x, S.One
-    elif isinstance(monomial_, Pow) and monomial_.base == x and not as_expr(monomial_.exp).has(x):
-        W, d = monomial_, as_expr(monomial_.exp)
+    elif isinstance(monomial, Pow) and _is_power_of(monomial, x):
+        W, d = monomial, monomial.exp
     else:
         return None
-    if not nested or as_expr(a) == 0 or d == 0:
+    if not nested or a == 0 or d == 0:
         return None
-    return as_expr(coefficient * exp(constant)), prefactor, degree, as_expr(a), W, d
+    return coefficient * exp(constant), prefactor, degree, a, W, d
 
 
 def nested_power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
@@ -578,7 +727,8 @@ def nested_power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = 
     and ``V`` are ``d*W/x`` and ``q*V/x``); checked by differentiation.
     ``None`` when ``f`` is not of that form.
 
-    >>> from sympy import symbols, exp, sqrt
+    >>> from sympy_extras.core import symbols, sqrt
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.exponential import nested_power_exponential
     >>> x, a, r, p = symbols('x a r p')
     >>> nested_power_exponential(exp(a*(x**r)**p), x)
@@ -586,22 +736,22 @@ def nested_power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = 
     >>> nested_power_exponential(exp(a*sqrt(x**2)), x)
     x*exp(a*sqrt(x**2))/(a*sqrt(x**2))
     """
-    f_ = as_expr(f)
-    combined = as_expr(powsimp(expand(f_), combine='exp'))
+    f_ = to_expr(f)
+    combined = powsimp(expand(f_), combine='exp')
     total: Expr = S.Zero
     for term in Add.make_args(combined):
-        found = _nested_term(as_expr(term), x)
+        found = _nested_term(term, x)
         if found is None:
             return None
         c, V, q, a, W, d = found
         # (x*V*u**(-s))' vanishes for s = (q + 1)/d, as V' = q*V/x and u' = d*u/x
-        u = as_expr(-a * W)
-        s_ = as_expr((q + 1) / d)
+        u = -a * W
+        s_ = (q + 1) / d
         total = total + c * (-x * V * u**(-s_) * uppergamma(s_, u) / d)
     facts = _facts(assumptions)
     if not _checks(total, f_, x, facts):
         return None
-    return as_expr(total)
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -609,53 +759,51 @@ def nested_power_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = 
 
 def rational_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
     """``Integral(f, x)`` for ``R(x)*exp(c*x + d)`` with a rational ``R``
-    whose denominator has simple roots ``r_i`` (found by ``roots``, so
-    symbolic ones too): the polynomial part by the reductions of the
-    module, and each partial fraction ``A_i/(x - r_i)`` by
+    whose denominator has roots ``r_i`` found by ``roots`` (symbolic ones
+    too): the polynomial part by the reductions of the module, and each
+    partial fraction ``A_i/(x - r_i)`` by
 
         Integral(exp(c*x)/(x - r), x) = exp(c*r)*Ei(c*(x - r)),
 
-    checked by differentiation. ``None`` for another shape or a
-    repeated root.
+    the higher powers by parts, checked by differentiation. ``None`` for
+    another shape.
 
-    >>> from sympy import symbols, exp
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.exponential import rational_exponential
-    >>> x, a, b, c = symbols('x a b c')
+    >>> x, c = symbols('x c')
     >>> rational_exponential(exp(c*x)/(x**2 - 1), x)
     exp(c)*Ei(c*(x - 1))/2 - exp(-c)*Ei(c*(x + 1))/2
     """
-    f_ = as_expr(f)
-    exponentials = [as_expr(node) for node in f_.atoms(exp) if node.has(x)]
+    f_ = to_expr(f)
+    exponentials = [as_expr(node) for node in f_.atoms(Exp) if node.has(x)]
     if len(exponentials) != 1:
         return None
-    argument = as_expr(exponentials[0].args[0])
+    argument = _argument(exponentials[0])
     d, rest = argument.as_independent(x, as_Add=True)
-    c, variable = as_expr(rest).as_independent(x, as_Add=False)
-    if as_expr(variable) != x or as_expr(c).has(x):
+    c, variable = rest.as_independent(x, as_Add=False)
+    if variable != x or c.has(x):
         return None
-    R = as_expr(cancel(f_ / exponentials[0]))
-    if R.has(exp) or not R.is_rational_function(x):
+    R = cancel(f_ / exponentials[0])
+    if R.has(Exp) or not R.is_rational_function(x):
         return None
     numerator, denominator = R.as_numer_denom()
-    try:
-        Q = Poly(denominator, x)
-        P = Poly(numerator, x)
-    except PolynomialError:
+    Q = _coefficients(denominator, x)
+    P = _coefficients(numerator, x)
+    if Q is None or P is None or _degree(Q) < 1:
         return None
-    if Q.degree() < 1:
+    found = _roots(Q, x)
+    if found is None:
         return None
-    found = roots(Q)
-    if sum(found.values()) != Q.degree():
-        return None
-    quotient, remainder = P.div(Q)
+    quotient, remainder = _divmod(P, Q)
     total: Expr = S.Zero
-    if not quotient.is_zero:
-        polynomial = power_exponential(as_expr(quotient.as_expr() * exponentials[0]), x, assumptions)
+    if quotient:
+        polynomial = power_exponential(_from_coefficients(quotient, x) * exponentials[0], x, assumptions)
         if polynomial is None:
             return None
         total = total + polynomial
-    c_ = as_expr(c)
-    leading = as_expr(Q.LC())
+    leading = Q[_degree(Q)]
+    rest_ = _from_coefficients(remainder, x)
     for root, multiplicity in found.items():
         # the Laurent coefficients at the root, A_j = ((x - r)**m R)^(m - j)(r)/(m - j)!,
         # with (x - r)**m R written through the other roots (no cancellation
@@ -664,19 +812,21 @@ def rational_exponential(f: ExprLike, x: Symbol, assumptions: Assumptions = None
         for other, other_multiplicity in found.items():
             if other != root:
                 others = others * (x - other)**other_multiplicity
-        stripped = as_expr(remainder.as_expr() / others)
+        stripped = rest_ / others
         for j in range(multiplicity, 0, -1):
             order = multiplicity - j
-            coefficient = as_expr(stripped.diff(x, order).subs(x, root) / factorial(order)) if order else \
-                as_expr(stripped.subs(x, root))
-            coefficient = as_expr(cancel(coefficient))
+            derivative = stripped
+            for _ in range(order):
+                derivative = derivative.diff(x)
+            coefficient = derivative.subs(x, root) / factorial(order) if order else stripped.subs(x, root)
+            coefficient = cancel(coefficient)
             if coefficient == 0:
                 continue
-            total = total + coefficient * exp(d) * _exponential_over_power(c_, root, j, x)
+            total = total + coefficient * exp(d) * _exponential_over_power(c, root, j, x)
     facts = _facts(assumptions)
     if not _checks(total, f_, x, facts):
         return None
-    return as_expr(total)
+    return total
 
 
 def _exponential_over_power(c: Expr, r: Expr, k: int, x: Symbol) -> Expr:
@@ -684,12 +834,37 @@ def _exponential_over_power(c: Expr, r: Expr, k: int, x: Symbol) -> Expr:
     ``k = 1``, and by parts, ``-exp(c*x)/((k - 1)*(x - r)**(k - 1)) +
     c/(k - 1)*Integral(exp(c*x)/(x - r)**(k - 1))``, above."""
     if k == 1:
-        return as_expr(exp(c * r) * Ei(c * (x - r)))
-    return as_expr(-exp(c * x) / ((k - 1) * (x - r)**(k - 1)) + c / (k - 1) * _exponential_over_power(c, r, k - 1, x))
+        return exp(c * r) * Ei(c * (x - r))
+    return -exp(c * x) / ((k - 1) * (x - r)**(k - 1)) + c / (k - 1) * _exponential_over_power(c, r, k - 1, x)
 
 
 # ---------------------------------------------------------------------------
 # k g'(x) exp(a g(x)**2 + c): the error function of a composite argument
+
+def _linear_pair(equations: list[Expr], p: Symbol, q: Symbol) -> Optional[tuple[Expr, Expr]]:
+    """The unique solution ``(p, q)`` of the equations, linear in ``p`` and
+    ``q`` with coefficients of any kind; ``None`` when there is none or it
+    is not unique."""
+    rows: list[tuple[Expr, Expr, Expr]] = []
+    for e in equations:
+        e_ = expand(e)
+        a, b = e_.coeff(p), e_.coeff(q)
+        rest = cancel(e_ - a * p - b * q)
+        if a.has(p, q) or b.has(p, q) or rest.has(p, q):
+            return None
+        rows.append((a, b, rest))
+    for i, (a1, b1, c1) in enumerate(rows):
+        for a2, b2, c2 in rows[i + 1:]:
+            determinant = cancel(a1 * b2 - a2 * b1)
+            if determinant == 0:
+                continue
+            pv = cancel((b1 * c2 - b2 * c1) / determinant)
+            qv = cancel((a2 * c1 - a1 * c2) / determinant)
+            if all(cancel(a * pv + b * qv + c) == 0 for a, b, c in rows):
+                return pv, qv
+            return None
+    return None
+
 
 def composite_gaussian(f: ExprLike, x: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
     """``Integral(f, x)`` for ``f == k*g'(x)*exp(a*g(x)**2 + c)`` with ``g``
@@ -699,7 +874,8 @@ def composite_gaussian(f: ExprLike, x: Symbol, assumptions: Assumptions = None) 
     erf(sqrt(-a)*g)/(2*sqrt(-a))``, checked by differentiation. ``None``
     for another shape.
 
-    >>> from sympy import symbols, exp, log
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp, log
     >>> from sympy_extras.integrals.exponential import composite_gaussian
     >>> x = symbols('x')
     >>> composite_gaussian((1 - 1/x**2)*exp(-(x + 1/x)**2), x)
@@ -709,64 +885,60 @@ def composite_gaussian(f: ExprLike, x: Symbol, assumptions: Assumptions = None) 
     >>> composite_gaussian(exp((x + 1/x)**2)/x**2, x)
     -sqrt(pi)*erfi((x**2 + 1)/x)/4 + sqrt(pi)*exp(4)*erfi(x - 1/x)/4
     """
-    f_ = as_expr(f)
-    exponentials = [as_expr(node) for node in f_.atoms(exp) if node.has(x)]
+    f_ = to_expr(f)
+    exponentials = [as_expr(node) for node in f_.atoms(Exp) if node.has(x)]
     if len(exponentials) != 1:
         return None
     L = Dummy('L')
-    argument = as_expr(expand(as_expr(exponentials[0].args[0]).subs(log(x), L)))
-    numerator, denominator = as_expr(cancel(argument)).as_numer_denom()
-    if not as_expr(denominator).is_polynomial(x) or not as_expr(numerator).is_polynomial(x, L):
+    argument = expand(_argument(exponentials[0]).subs(log(x), L))
+    numerator, denominator = cancel(argument).as_numer_denom()
+    if not denominator.is_polynomial(x) or not numerator.is_polynomial(x, L):
         return None
     constant, dependent = argument.as_independent(x, L, as_Add=True)
-    rest = as_expr(cancel(f_ / exponentials[0]))
+    rest = cancel(f_ / exponentials[0])
     facts = _facts(assumptions)
     # the whole exponent a square first ((x + 1/x)**2 has the constant 2
     # in it), then the part depending on x
-    for c, body in ((S.Zero, argument), (as_expr(constant), as_expr(dependent))):
-        try:
-            factored = as_expr(factored_form(body))
-        except PolynomialError:
+    candidates: tuple[tuple[Expr, Expr], ...] = ((S.Zero, argument), (constant, dependent))
+    for c, body in candidates:
+        factored = attempt(lambda: factored_form(body), _budget(), native=True)
+        if factored is None:
             continue
         a, square = factored.as_independent(x, L, as_Add=False)
-        a_ = as_expr(a)
-        if a_ == 0 or a_.has(x):
+        if a == 0 or a.has(x):
             continue
         g: Expr = S.One
-        for piece in Mul.make_args(as_expr(square)):
-            piece_ = as_expr(piece)
-            if not (isinstance(piece_, Pow) and as_expr(piece_.exp).is_Integer and as_expr(piece_.exp) % 2 == 0):
+        for piece in Mul.make_args(square):
+            if not (isinstance(piece, Pow) and isinstance(piece.exp, Integer) and int(piece.exp) % 2 == 0):
                 g = S.Zero
                 break
-            g = g * as_expr(piece_.base)**(as_expr(piece_.exp) / 2)
+            g = g * piece.base**(piece.exp / 2)
         if g == 0:
             continue
-        g = as_expr(g.subs(L, log(x)))
-        k = as_expr(cancel(rest / g.diff(x)))
+        g = g.subs(L, log(x))
+        k = cancel(rest / g.diff(x))
         if not k.has(x):
-            total = as_expr(k * _gaussian_primitive(a_, g, c))
+            total = k * _gaussian_primitive(a, g, c)
             if _checks(total, f_, x, facts):
                 return total
         # g = u + v with u*v constant: h = u - v has h**2 = g**2 - 4*u*v, so
         # a rest which is p*u' + q*v' is (p + q)/2*g' + (p - q)/2*h', and
         # exp(g**2)/x**2 (FriCAS's integ 122) is a pair of error functions
-        terms = Add.make_args(as_expr(expand(g)))
+        terms = Add.make_args(expand(g))
         if len(terms) == 2:
-            u, v = as_expr(terms[0]), as_expr(terms[1])
-            product = as_expr(cancel(u * v))
+            u, v = terms[0], terms[1]
+            product = cancel(u * v)
             if not product.has(x) and u.has(x) and v.has(x):
                 p_, q_ = Dummy('p'), Dummy('q')
-                difference = as_expr(cancel(rest - p_ * u.diff(x) - q_ * v.diff(x)))
-                numerator = as_expr(difference.as_numer_denom()[0])
-                try:
-                    solution = solve(Poly(numerator, x).coeffs(), [p_, q_], dict=True)
-                except (PolynomialError, NotImplementedError, ValueError):
-                    solution = []
-                if solution and not any(as_expr(value).has(x) for value in solution[0].values()):
-                    pv, qv = as_expr(solution[0].get(p_, S.Zero)), as_expr(solution[0].get(q_, S.Zero))
-                    h = as_expr(u - v)
-                    total = as_expr((pv + qv) / 2 * _gaussian_primitive(a_, g, c)
-                                    + (pv - qv) / 2 * _gaussian_primitive(a_, h, as_expr(c + 4 * a_ * product)))
+                difference = cancel(rest - p_ * u.diff(x) - q_ * v.diff(x))
+                numerator_ = difference.as_numer_denom()[0]
+                coefficients = _coefficients(numerator_, x)
+                solution = None if coefficients is None else _linear_pair(list(coefficients.values()), p_, q_)
+                if solution is not None and not any(value.has(x) for value in solution):
+                    pv, qv = solution
+                    h = u - v
+                    total = ((pv + qv) / 2 * _gaussian_primitive(a, g, c)
+                             + (pv - qv) / 2 * _gaussian_primitive(a, h, c + 4 * a * product))
                     if _checks(total, f_, x, facts):
                         return total
     return None
@@ -776,9 +948,9 @@ def _gaussian_primitive(a: Expr, g: Expr, c: Expr) -> Expr:
     """``Integral(g'*exp(a*g**2 + c))``: the imaginary error function for
     a known positive ``a``, the error function of ``sqrt(-a)*g`` otherwise."""
     if a.is_positive:
-        return as_expr(sqrt(pi) * exp(c) * erfi(sqrt(a) * g) / (2 * sqrt(a)))
+        return sqrt(pi) * exp(c) * erfi(sqrt(a) * g) / (2 * sqrt(a))
     A = sqrt(-a)
-    return as_expr(sqrt(pi) * exp(c) * erf(A * g) / (2 * A))
+    return sqrt(pi) * exp(c) * erf(A * g) / (2 * A)
 
 
 # ---------------------------------------------------------------------------
@@ -793,28 +965,29 @@ def reciprocal_square_exponential(f: ExprLike, x: Symbol, assumptions: Assumptio
     checked by differentiation (an identity of analytic functions of the
     parameters). ``None`` for another shape.
 
-    >>> from sympy import symbols, exp
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.exponential import reciprocal_square_exponential
     >>> x = symbols('x')
     >>> reciprocal_square_exponential(exp(-x**2 - 1/x**2), x)
     sqrt(pi)*(exp(-2)*erf(x - 1/x) + exp(2)*erf(x + 1/x))/4
     """
-    f_ = as_expr(f)
+    f_ = to_expr(f)
     c, rest = f_.as_independent(x, as_Add=False)
-    rest_ = as_expr(rest)
-    if not isinstance(rest_, exp):
+    if not isinstance(rest, Exp):
         return None
-    argument = as_expr(expand(as_expr(rest_.args[0])))
+    argument = expand(rest.exp)
     gamma_, dependent = argument.as_independent(x, as_Add=True)
-    alpha = as_expr(dependent).coeff(x, 2)
-    beta = as_expr(dependent).coeff(x, -2)
-    if alpha == 0 or beta == 0 or as_expr(expand(as_expr(dependent) - alpha * x**2 - beta / x**2)) != 0 \
+    alpha = dependent.coeff(x, 2)
+    beta = dependent.coeff(x, -2)
+    if alpha == 0 or beta == 0 or expand(dependent - alpha * x**2 - beta / x**2) != 0 \
             or alpha.has(x) or beta.has(x):
         return None
     A, B = sqrt(-alpha), sqrt(-beta)
-    total = as_expr(c * exp(gamma_) * sqrt(pi) / (4 * A)
-                    * (exp(2 * A * B) * erf(A * x + B / x) + exp(-2 * A * B) * erf(A * x - B / x)))
+    total = (c * exp(gamma_) * sqrt(pi) / (4 * A)
+             * (exp(2 * A * B) * erf(A * x + B / x) + exp(-2 * A * B) * erf(A * x - B / x)))
     facts = _facts(assumptions)
     if not _checks(total, f_, x, facts):
         return None
     return total
+

@@ -33,7 +33,7 @@ from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import And, Boolean
 from sympy.sets.sets import FiniteSet
 
-from sympy_extras._typing import as_boolean, as_expr, as_symbol
+from sympy_extras._typing_sympy import as_boolean, as_expr, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol

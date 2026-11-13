@@ -31,8 +31,8 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import (Callable, Final, Iterable, Iterator, Literal, Mapping, Optional, Protocol, TYPE_CHECKING, Union,
-    overload)
+from typing import (Callable, Final, Iterable, Iterator, Literal, Mapping, Optional, Protocol, SupportsIndex,
+    TYPE_CHECKING, Union, overload)
 
 from .kind import Kind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, CompareItem, CompareKey, SortKey, class_rank
@@ -41,11 +41,10 @@ if TYPE_CHECKING:
     from .expr import Expr
     from .logic import Boolean
     from .function import FunctionClass
-    from .printing import StrPrinter
     from .symbol import Dummy, Symbol
 
 __all__ = ['Basic', 'Atom', 'preorder_traversal', 'SubsValue', 'SubsMapping', 'SubsRules',
-    'SubsArg', 'ReplacementRule', 'MatchDict', 'Query', 'Replacement']
+    'SubsArg', 'ReplacementRule', 'NodePrinter', 'MatchDict', 'Query', 'Replacement', 'register_singleton']
 
 #: a type pattern for :meth:`Basic.atoms` and :meth:`Basic.has`
 TypePattern = type['Basic']
@@ -71,6 +70,26 @@ Replacement = Union['Basic', 'FunctionClass', Callable[..., 'Basic']]
 
 _ONE_KEY = Fraction(1)
 
+#: the unique instances of the classes whose nodes are compared by
+#: identity (``cond is true``, ``e is oo``), by class
+_SINGLETONS: dict[type['Basic'], 'Basic'] = {}
+
+#: the slots which are not pickled: the hash, which depends on the hash
+#: seed of the process (``PYTHONHASHSEED``), and the lazily filled caches
+_UNPICKLED: Final[frozenset[str]] = frozenset({'_hash', '_compare_key_cache', '_sort_key_cache', '_facts_cache'})
+
+
+def register_singleton(node: 'Basic') -> None:
+    """Make ``node`` the unique instance of its class for pickling: an
+    unpickled node of that class is ``node`` itself, so that the tests of
+    identity (``cond is true``) still hold."""
+    _SINGLETONS[type(node)] = node
+
+
+def _singleton(cls: type['Basic']) -> 'Basic':
+    """The registered instance of ``cls`` (the unpickling of a singleton)."""
+    return _SINGLETONS[cls]
+
 
 class ReplacementRule(Protocol):
     """What :meth:`Basic.xreplace` accepts: a mapping or a
@@ -79,6 +98,18 @@ class ReplacementRule(Protocol):
     def __contains__(self, item: Basic) -> bool: ...
 
     def __getitem__(self, item: Basic) -> Basic: ...
+
+
+class NodePrinter(Protocol):
+    """What :meth:`Basic._sympystr` prints its arguments with (satisfied
+    by :class:`~sympy_extras.core.printing.StrPrinter`, which prints the
+    sums, products and powers itself)."""
+
+    def doprint(self, e: Basic) -> str: ...
+
+    def parenthesize(self, e: Basic, level: int, strict: bool = False) -> str: ...
+
+    def generic(self, e: Basic) -> str: ...
 
 
 #: an assumption for ``refine``: a boolean node or a Python bool (a
@@ -244,6 +275,38 @@ class Basic:
         return self._hash
 
     # ------------------------------------------------------------------
+    # pickling
+
+    def __reduce_ex__(self, protocol: SupportsIndex) -> Union[str, tuple[object, ...]]:
+        # a singleton is unpickled as the registered instance (the bug: an
+        # unpickled Piecewise had a last condition which was not ``true``
+        # itself, so that its last pair was no longer the default one)
+        if type(self) in _SINGLETONS:
+            return (_singleton, (type(self),))
+        reduced = super().__reduce_ex__(protocol)
+        # the slots without the hash and the caches: the hash is computed
+        # again in the process which unpickles the node (the bug: a node
+        # pickled under one hash seed kept its hash under another, and was
+        # not found in a dict or a set there)
+        if isinstance(reduced, tuple) and len(reduced) >= 3:
+            state = reduced[2]
+            if isinstance(state, tuple) and len(state) == 2 and isinstance(state[1], dict):
+                slots = {name: value for name, value in state[1].items() if name not in _UNPICKLED}
+                return reduced[:2] + ((state[0], slots),) + reduced[3:]
+        return reduced
+
+    def __setstate__(self, state: object) -> None:
+        if isinstance(state, tuple) and len(state) == 2:
+            for part in state:
+                if isinstance(part, dict):
+                    for name, value in part.items():
+                        object.__setattr__(self, name, value)
+        object.__setattr__(self, '_hash', self._compute_hash())
+        object.__setattr__(self, '_compare_key_cache', None)
+        object.__setattr__(self, '_sort_key_cache', None)
+        self._after_init()
+
+    # ------------------------------------------------------------------
     # printing
 
     def __str__(self) -> str:
@@ -253,7 +316,7 @@ class Basic:
     def __repr__(self) -> str:
         return str(self)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         """The printed form; subclasses with a special form override it."""
         return printer.generic(self)
 
@@ -290,6 +353,11 @@ class Basic:
     def _is_foreign_node(self) -> bool:
         """Whether the node wraps an object of a foreign system."""
         return False
+
+    def _has_foreign_class(self) -> bool:
+        """Whether the node wraps an object or applies a function of a
+        foreign system (whose facts only that system knows)."""
+        return self._is_foreign_node()
 
     def _count_ops_label(self) -> Optional[str]:
         """The label of the node in ``count_ops`` (a function name)."""
@@ -782,7 +850,11 @@ class Basic:
     # through SymPy
 
     def simplify(self) -> Basic:
-        """SymPy's ``simplify`` of the node (converted and back).
+        """SymPy's ``simplify`` of the node: natively for the relations and
+        the formulas (:func:`sympy_extras.logic.boolsimp.simplify_boolean`),
+        the other nodes rebuilt with their arguments simplified (as SymPy's
+        ``simplify`` does with them); through the foreign system only for
+        a node with wrapped foreign objects.
 
         Examples
         ========
@@ -798,12 +870,31 @@ class Basic:
         if isinstance(self, Tuple):
             # the elements simplified (the parameters of hyper and meijerg)
             return Tuple(*[a.simplify() for a in self.args])
-        # the relationals (SymPy canonicalises them) and the other nodes
-        from .bridge import bridge
-        return bridge().simplify(self)
+        from .logic import Boolean
+        if isinstance(self, Boolean) and not any(node._has_foreign_class() for node in preorder_traversal(self)):
+            # the relations and the formulas: the native port of SymPy's
+            # simplify of Booleans (Xor's is not ported)
+            from sympy_extras.logic.boolsimp import simplify_boolean
+            try:
+                return simplify_boolean(self)
+            except NotImplementedError:
+                pass
+        if any(node._has_foreign_class() for node in preorder_traversal(self)):
+            # a node with wrapped foreign objects: the foreign simplify
+            from .bridge import bridge
+            return bridge().simplify(self)
+        # PORTED FROM SYMPY: sympy/simplify/simplify.py:simplify (a node which
+        # is not an Add, Mul, Pow or exp: rebuilt with its arguments simplified)
+        args = tuple(a.simplify() for a in self.args)
+        if all(new is old for new, old in zip(args, self.args)):
+            return self
+        return self._evaluated(args)
 
-    def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Basic:
-        """SymPy's ``rewrite`` of the node, in terms of the given functions.
+    def rewrite(self, *args: Union[Basic, FunctionClass, type, str], piecewise: bool = True) -> Basic:
+        """SymPy's ``rewrite`` of the node, in terms of the last argument
+        (a class, a function object, a node or a SymPy name such as
+        ``'sqrt'``), the others the classes of the nodes to rewrite
+        (:func:`~sympy_extras.core.rewriting.rewrite`).
 
         Examples
         ========
@@ -817,14 +908,13 @@ class Basic:
         """
         if not args:
             return self
-        from .function import DefinedFunction
-        classes = [a for a in args if isinstance(a, type)]
-        target = args[-1]
-        if len(classes) == len(args) and isinstance(target, type) and issubclass(target, DefinedFunction):
-            from .rewriting import RewriteHints, rewrite
-            return rewrite(self, tuple(classes[:-1]), target, RewriteHints(piecewise))
-        from .bridge import bridge
-        return bridge().rewrite(self, args, piecewise)
+        from .rewriting import Pattern, RewriteHints, rewrite
+        patterns: list[Pattern] = []
+        for a in args[:-1]:
+            if isinstance(a, str):
+                raise TypeError('a pattern of rewrite is a class, not %r' % (a,))
+            patterns.append(type(a) if isinstance(a, Basic) else a)
+        return rewrite(self, tuple(patterns), args[-1], RewriteHints(piecewise))
 
     def refine(self, assumption: RefineArg = True) -> Basic:
         """The node simplified under the assumption (and the global ones):

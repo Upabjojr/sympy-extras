@@ -14,7 +14,7 @@ import sympy
 from sympy.polys.polyerrors import BasePolynomialError
 from sympy.polys.subresultants_qq_zz import sylvester
 
-from sympy_extras._typing import as_expr as sympy_expr
+from sympy_extras._typing_sympy import as_expr as sympy_expr
 from sympy_extras.core import Symbol
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
@@ -174,6 +174,33 @@ def test_invert_matches_sympy() -> None:
         assert ours == theirs, (f, g)
 
 
+def test_invert_of_numbers_and_several_variables_matches_sympy() -> None:
+    # computed natively (they went through SymPy's invert, invert_of_core):
+    # several generators are a ValueError (SymPy's DMP.invert), two
+    # rationals not both integers are never invertible (SymPy's QQ.gcdex)
+    from sympy_extras.polys.polyerrors import NotInvertible
+    from sympy_extras.polys.polytools import invert
+    sx, sy = sympy.symbols('x y')
+    half, third = sympy.Rational(1, 2), sympy.Rational(1, 3)
+    pairs = [(sx*sy + 1, sy**2 + 1), (sx + 1, sx**2 + sy), (sympy.sqrt(2), sympy.sqrt(3)), (half, 3), (half, third),
+             (sympy.Integer(3), sympy.Rational(7, 2)), (sympy.Rational(2, 3), 5), (0, sympy.Rational(7, 2)),
+             (sympy.Rational(5, 3), sympy.Rational(2, 3)), (6, 4), (2, -7), (0, 1), (sympy.I, 3), (2 + sympy.I, 3)]
+    for f, g in pairs:
+        try:
+            theirs = str(sympy.invert(f, g))
+        except sympy.polys.polyerrors.NotInvertible:
+            theirs = 'not invertible'
+        except ValueError as e:
+            theirs = 'ValueError %s' % e
+        try:
+            ours = str(to_sympy(invert(expr_from_sympy(sympy.sympify(f)), expr_from_sympy(sympy.sympify(g)))))
+        except NotInvertible:
+            ours = 'not invertible'
+        except ValueError as e:
+            ours = 'ValueError %s' % e
+        assert ours == theirs, (f, g)
+
+
 def test_gcd_list_and_lcm_list_match_sympy() -> None:
     import sympy
     from sympy_extras.interop import expr_from_sympy, to_sympy
@@ -223,3 +250,64 @@ def test_equality_and_hash_on_the_representation() -> None:
     assert Poly(x/2, x) == Poly.from_dict({(1,): Fraction(1, 2)}, x)
     assert Poly.from_dict({(1, 0): 3, (0, 2): -1}, x, y) == Poly(3*x - y**2, x, y)
     assert Poly.from_dict({(1, 0): 3, (0, 2): -1}, x, y).domain == 'ZZ'
+
+
+def _same_function(a: sympy.Expr, b: sympy.Expr, x: sympy.Symbol) -> bool:
+    """Whether two rational functions of ``x`` agree at a few rational
+    points (an oracle independent of the forms)."""
+    for t in (sympy.Rational(3, 7), sympy.Rational(-5, 2), sympy.Integer(11)):
+        u, v = complex(a.subs(x, t)), complex(b.subs(x, t))
+        if abs(u - v) > 1e-9*max(1, abs(u)):
+            return False
+    return True
+
+
+def test_cancel_over_cc_and_ex_is_native() -> None:
+    # cancel_of_core sent these to SymPy's cancel (domains CC and EX);
+    # the native cancellation gives SymPy's results
+    from sympy_extras.polys.polytools import cancel
+    sx, sy = sympy.symbols('x y')
+    I, zoo, oo = sympy.I, sympy.zoo, sympy.oo
+    same = [zoo*sx, zoo/sx, oo*sx/(sx**2 + sx), (zoo*sx + 1)/sx**2, (sympy.Float(1.5) + I)*sx/(sx**2 + sx),
+            (sx**2 - 1)/((1.0 + 2.0*I)*sx - (1.0 + 2.0*I)), (sx**2*I - 1.5)/((sx + I)*(sx + 0.5)),
+            ((1.0 + 0.1*I)*sx**2 - (1 + 0.1*I))/(sx**2 + 2*sx + 1), (2.5*I*sx*sy + sx)/(sx*sy)]
+    for f in same:
+        assert to_sympy(cancel(expr_from_sympy(f))) == sympy.cancel(f), f
+    # with generators over a composite domain: the same rational function
+    for f, g in [((I*sx*sy + I*sx)/(sy + 1), sx), ((sx**2 + sy**2)/(sx + I*sy), sx),
+                 ((1.5*sx*sy + sx)/(sx*sy), sx), ((sx**3 + sx)/(sx**2 + 1), sx**2)]:
+        ours = to_sympy(cancel(expr_from_sympy(f), expr_from_sympy(g)))
+        assert sympy.simplify(ours - sympy.cancel(f, g)) == 0, f
+    # (x - 1)/(x - 1) over CC cancels to a constant
+    found = sympy_expr(to_sympy(cancel(expr_from_sympy((1.0*I*sx - 1.0*I)/(sx - 1)))))
+    assert _same_function(found, 1.0*I + 0*sx, sx) and not found.has(sx)
+
+
+def test_factor_over_composite_and_inexact_domains_is_native() -> None:
+    # factor_of_core sent these to SymPy's factor
+    from sympy_extras.polys.polytools import factor
+    sx, sy = sympy.symbols('x y')
+    I, zoo = sympy.I, sympy.zoo
+    for f, gens in [(sx**2 + 2*I*sx - 1, (sx,)), (sx**2*sy + 2*I*sx*sy - sy, (sx,)), (1.5*sx**2 - 1.5, (sx,)),
+                    ((sx + I*sy)*(sx - sy), (sx,)), (zoo*sx**2 + zoo, ()), (zoo*(sx**2 - 1), ()),
+                    ((sx**2 + 2*I*sx - 1)/(sx**2 + 1), (sx,))]:
+        ours = to_sympy(factor(expr_from_sympy(f), *[expr_from_sympy(g) for g in gens]))
+        assert ours == sympy.factor(f, *gens), f
+    # over CC the polynomial stays as it is (SymPy's DomainError)
+    assert sympy.expand(to_sympy(factor(expr_from_sympy(sx**2 - 1.0*I))) - (sx**2 - 1.0*I)) == 0
+
+
+def test_invert_of_gaussian_and_float_numbers_is_native() -> None:
+    # invert_of_core sent two numbers which are not both rational to SymPy
+    from sympy_extras.polys.polyerrors import NotInvertible
+    from sympy_extras.polys.polytools import invert
+    I, F = sympy.I, sympy.Float
+    for a, b in [(I, 3), (I, 2 + I), (1 + I, 3), (3*I, 1 + 2*I), (F(1.5), 3), (F(-1.5), 3), (F(1.5, 30), 3),
+                 (3, F(2.5)), (sympy.zoo, 2)]:
+        assert to_sympy(invert(expr_from_sympy(sympy.sympify(a)), expr_from_sympy(sympy.sympify(b)))) == \
+            sympy.invert(a, b), (a, b)
+    for a, b in [(sympy.Rational(1, 2) + I, 3), (I/3, 1 + I), (2 + I, 0)]:
+        with pytest.raises(NotInvertible):
+            invert(expr_from_sympy(sympy.sympify(a)), expr_from_sympy(sympy.sympify(b)))
+    with pytest.raises(TypeError):
+        invert(expr_from_sympy(F(1.5) + I), expr_from_sympy(sympy.Integer(3)))

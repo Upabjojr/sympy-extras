@@ -1,5 +1,4 @@
-"""The SymPy face of the regular chains (:mod:`sympy_extras.polys.regularchains`),
-and the step which stays on SymPy.
+"""The SymPy face of the regular chains (:mod:`sympy_extras.polys.regularchains`).
 
 :class:`RegularChain`, :func:`triangularize` and :func:`regular_gcd`
 take and return SymPy objects, as before the native port: the equations
@@ -9,12 +8,11 @@ expressions. The work is done by the native module, the objects being
 converted by :mod:`sympy_extras.interop`; the saturated ideal is an ideal
 of :mod:`sympy_extras.polys.ideals_sympy`.
 
-What stays here, on SymPy: the exact solutions of a chain without free
-variables (:mod:`.solutions`), whose coordinates are SymPy's root objects
-``CRootOf`` (not ported), told apart by SymPy's numerical roots and
-isolating intervals. The native :meth:`RegularChain.solutions
-<sympy_extras.polys.regularchains.RegularChain.solutions>` calls
-:func:`exact_solutions_of_core` at run time.
+The exact solutions of a chain without free variables of the face
+(:mod:`.solutions`) are SymPy's root objects ``CRootOf``, told apart by
+SymPy's numerical roots and isolating intervals; the native module has
+its own (:mod:`sympy_extras.polys.regularchains.solutions`, on the native
+``CRootOf``).
 
 Examples
 ========
@@ -36,7 +34,7 @@ Examples
 """
 from __future__ import annotations
 
-from typing import Callable, Iterable, Sequence, Union
+from typing import Iterable, Union
 
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
@@ -45,9 +43,8 @@ from sympy.core.numbers import Integer
 from sympy.core.relational import Equality
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
-from sympy.polys.polytools import Poly
 
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.relational import Equality as CoreEquality
@@ -58,7 +55,7 @@ from sympy_extras.polys.regularchains import regularchain as native
 
 from .solutions import exact_solutions
 
-__all__ = ['RegularChain', 'triangularize', 'regular_gcd', 'exact_solutions', 'exact_solutions_of_core',
+__all__ = ['RegularChain', 'triangularize', 'regular_gcd', 'exact_solutions',
     'core_chain', 'sympy_chain', 'Equation']
 
 #: an equation: a polynomial expression which vanishes, or an equality
@@ -362,19 +359,3 @@ def regular_gcd(p: Equation, q: Equation, x: Symbol, chain: RegularChain) -> lis
     """
     found = native.regular_gcd(_equation(p), _equation(q), _core_symbol(x), chain.native)
     return [(_sympy_expr(g), RegularChain._new(part)) for g, part in found]
-
-
-def exact_solutions_of_core(polys: Sequence[CoreExpr], variables: Sequence[CoreSymbol], real: bool,
-                            fallback: Callable[[CoreSymbol], CoreExpr]) -> list[native.Point]:
-    """:func:`.solutions.exact_solutions` of a native chain: its polynomials
-    by increasing main variable, the main variables, the real points only
-    with ``real``, and ``fallback(v)``, the polynomial in ``v`` alone of the
-    saturated ideal."""
-    symbols = {_sympy_symbol(v): v for v in variables}
-
-    def sympy_fallback(v: Symbol) -> Poly:
-        poly: Poly = Poly(_sympy_expr(fallback(symbols[v])), v, domain='QQ')
-        return poly
-
-    found = exact_solutions([_sympy_expr(p) for p in polys], list(symbols), real, sympy_fallback)
-    return [{symbols[v]: _core_expr(value) for v, value in point.items()} for point in found]

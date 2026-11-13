@@ -1,7 +1,7 @@
 r"""Bigatti's algorithm for the numerator of the Hilbert series of a
 monomial ideal, on exponent tuples and integer coefficient lists (no
-SymPy): the computation behind :mod:`sympy_extras.polys.hilbert` (its
-SymPy interface) and the dimension and degree of
+SymPy): the computation behind :mod:`sympy_extras.polys.hilbert` (and its
+SymPy face :mod:`sympy_extras.polys.hilbert_sympy`) and the dimension and degree of
 :class:`sympy_extras.polys.ideals.Ideal`.
 
 The Hilbert series of $K[x_1, \ldots, x_n]/M$ for a monomial ideal $M$ is

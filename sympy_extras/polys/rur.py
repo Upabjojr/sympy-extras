@@ -44,9 +44,13 @@ The systems are the ideals of :mod:`sympy_extras.polys.ideals` over ``QQ``
 or lists of core expressions; the polynomials of the representation are
 :class:`~sympy_extras.polys.polyclasses.DensePoly` objects over ``QQ``.
 The exact solutions (:meth:`RationalUnivariateRepresentation.solutions`)
-are SymPy's ``CRootOf`` objects, which are not ported: they are computed
-by :func:`sympy_extras.polys.rur_sympy.solutions_of_core` at run time.
-:mod:`sympy_extras.polys.rur_sympy` is the SymPy face of this module.
+are written with the roots of the univariate polynomial in SymPy's order:
+radicals for its linear and quadratic factors and binomials, the real
+roots of the other factors as
+:class:`~sympy_extras.polys.cad.indexedroot.IndexedRoot` and the others as
+:class:`~sympy_extras.polys.complexrootof.ComplexRootOf` (SymPy's
+``CRootOf``). :mod:`sympy_extras.polys.rur_sympy` is the SymPy face of
+this module.
 
 Examples
 ========
@@ -81,12 +85,14 @@ from typing import Final, Iterator, Optional, Sequence, Union
 import mpmath
 
 from sympy_extras.core.add import add
-from sympy_extras.core.expr import Expr
+from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.core.function import expand
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import Integer
 from sympy_extras.core.power import pow as power
 from sympy_extras.core.symbol import Symbol
 
+from .complexrootof import polynomial_roots, real_roots_indexed
 from .domains.finitefield import FiniteField
 from .domains.rationalfield import QQ
 # the module, not its names: hermite imports ideals, which imports this module back
@@ -97,13 +103,43 @@ from .polyclasses import DensePoly
 # the module, not its names: it imports ideals, which imports this module
 from .regularchains import regularchain as _chains
 
-__all__ = ['rur', 'RationalUnivariateRepresentation', 'Point']
+__all__ = ['rur', 'RationalUnivariateRepresentation', 'Point', 'exact_solutions']
 
 #: a zero of the ideal: the values of the variables
 Point = dict[Symbol, Expr]
 
 _ZERO = Fraction(0)
 _ONE = Fraction(1)
+
+
+def exact_solutions(polynomial: DensePoly[Fraction], polys: Sequence[DensePoly[Fraction]],
+                    symbols: Sequence[Symbol], real: bool = False) -> list[Point]:
+    """The zeros of a representation: the roots of the univariate
+    ``polynomial`` in SymPy's order (as SymPy's ``Poly.all_roots``, with
+    ``real`` ``Poly.real_roots``: radicals for the linear and quadratic
+    factors and the binomials, the real roots of the other factors as
+    ``IndexedRoot``, the others as ``CRootOf``) substituted in the
+    coordinate polynomials ``polys`` of the ``symbols``, expanded.
+
+    Examples
+    ========
+
+    >>> from fractions import Fraction
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.polys.domains.rationalfield import QQ
+    >>> from sympy_extras.polys.polyclasses import DensePoly
+    >>> from sympy_extras.polys.rur import exact_solutions
+    >>> x, t = symbols('x t')
+    >>> f = DensePoly([Fraction(1), Fraction(0), Fraction(-1), Fraction(-1)], QQ, t)
+    >>> exact_solutions(f, [DensePoly([Fraction(1), Fraction(0), Fraction(0)], QQ, t)], [x])[:2]
+    [{x: IndexedRoot(t**3 - t - 1, t, 0)**2}, {x: CRootOf(t**3 - t - 1, 1)**2}]
+    """
+    t = polynomial.gen
+    if not isinstance(t, Symbol):
+        raise TypeError("the polynomial is not in a symbol: %s" % (t,))
+    roots = [real_roots_indexed(r) for r in polynomial_roots(polynomial.rep, t, real=real)]
+    exprs = [g.to_expr() for g in polys]
+    return [{s: expand(as_expr(e.subs(t, root))) for s, e in zip(symbols, exprs)} for root in roots]
 
 
 def _constant(c: Fraction, t: Symbol) -> DensePoly[Fraction]:
@@ -195,9 +231,9 @@ class RationalUnivariateRepresentation:
 
     def solutions(self, real: bool = False) -> list[Point]:
         """The zeros of the ideal, each as a dictionary of the variables:
-        the roots of ``polynomial`` (SymPy's ``CRootOf`` objects, or
-        radicals when SymPy finds them; through
-        :func:`sympy_extras.polys.rur_sympy.solutions_of_core`)
+        the roots of ``polynomial`` in SymPy's order (radicals for the
+        quadratic factors and binomials, ``IndexedRoot`` for the other real
+        roots, ``CRootOf`` for the others; see :func:`exact_solutions`)
         substituted in :meth:`polynomials`; with ``real=True`` the real
         zeros only.
 
@@ -214,8 +250,7 @@ class RationalUnivariateRepresentation:
         """
         if self.polynomial.degree <= 0:
             return []
-        from .rur_sympy import solutions_of_core
-        return solutions_of_core(self.polynomial, self.polynomials(), self.symbols, real)
+        return exact_solutions(self.polynomial, self.polynomials(), self.symbols, real)
 
     def numerical_solutions(self, digits: int = 15) -> list[Point]:
         """The zeros numerically: the roots of ``polynomial`` (real ones

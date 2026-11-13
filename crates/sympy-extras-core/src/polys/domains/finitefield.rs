@@ -63,6 +63,17 @@ pub fn GF(p: u64) -> PolyResult<FiniteField> {
 impl Domain for FiniteField {
     type Elem = u64;
 
+    fn to_expr(&self, a: &u64) -> crate::error::PolyResult<crate::core::Basic> {
+        Ok(crate::core::Basic::integer(Int::from(*a)))
+    }
+
+    fn from_expr(&self, e: &crate::core::Basic) -> crate::error::PolyResult<u64> {
+        if crate::core::expr::is_integer_class(e) {
+            return Ok(self.from_integer(e.as_rational().expect("an integer").numerator()));
+        }
+        Err(crate::error::PolyError::Value(format!("{} is not an integer", e)))
+    }
+
     fn name(&self) -> String {
         format!("GF({})", self.p)
     }

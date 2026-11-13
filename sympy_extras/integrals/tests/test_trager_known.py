@@ -6,13 +6,13 @@ import mpmath
 
 from sympy import symbols, sqrt, N, log, Rational, asinh
 
-from sympy_extras.integrals.trager import trager_antiderivative
+from sympy_extras.integrals.trager_sympy import trager_antiderivative
 
 x = symbols('x')
 
 
 def _check(f: object, lower: float, upper: float) -> None:
-    from sympy_extras._typing import as_expr
+    from sympy_extras._typing_sympy import as_expr
     f_ = as_expr(f)
     F = trager_antiderivative(f_, x)
     assert F is not None, f_

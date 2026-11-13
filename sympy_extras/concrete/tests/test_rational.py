@@ -5,7 +5,7 @@ import random
 import sympy
 from sympy.testing.pytest import raises
 
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.core import Basic, Eq, Expr, Integer, Mul, Symbol, add
 from sympy_extras.concrete.expr_with_limits import Sum
 from sympy_extras.concrete.rational import abramov_decomposition, rational_sum

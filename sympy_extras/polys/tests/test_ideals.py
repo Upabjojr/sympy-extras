@@ -10,7 +10,7 @@ from sympy_extras._testing import untyped
 from sympy.abc import x, y, z, w, t, d
 
 from sympy_extras.polys.ideals_sympy import Ideal, hilbert_numerator
-from sympy_extras.polys.orderings import WeightOrder, BlockOrder, elimination_order
+from sympy_extras.polys.orderings_sympy import WeightOrder, BlockOrder, elimination_order
 
 
 def _hilbert_function(I: Ideal, deg: int) -> int:

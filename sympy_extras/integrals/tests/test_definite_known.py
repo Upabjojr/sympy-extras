@@ -7,10 +7,10 @@ from __future__ import annotations
 from sympy import (symbols, exp, sin, cos, log, sqrt, besselj, besselk, oo, gamma, pi, S, Rational, atan,
                    erf, erfc, simplify, EulerGamma)
 
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.integrals import definite_integral, verify_numerically
-from sympy_extras.integrals.conditions import numerically_equal
+from sympy_extras.integrals.definite_sympy import definite_integral, verify_numerically
+from sympy_extras.integrals.conditions_sympy import numerically_equal
 
 x = symbols('x')
 a, b, mu, nu, p, q = symbols('a b mu nu p q', positive=True)

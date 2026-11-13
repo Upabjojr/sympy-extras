@@ -12,8 +12,7 @@ the same condition, and merges successive pairs with the same expression
 derivative and the conjugate apply to the expressions; the facts are
 those all the expressions agree on. :func:`piecewise_fold` brings the
 ``Piecewise`` of a sum, product or function to the top. Not ported:
-``piecewise_exclusive`` and the integration; ``piecewise_simplify``
-simplifies the conditions of several variables through SymPy; ``piecewise_fold`` keeps an ``ITE`` condition as it is where
+``piecewise_exclusive`` and the integration; ``piecewise_fold`` keeps an ``ITE`` condition as it is where
 SymPy rewrites it in conjunctive normal form.
 
 Examples
@@ -33,7 +32,7 @@ Piecewise((1, x > 1), (2, True))
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py (Piecewise, ExprCondPair,
 # _piecewise_collapse_arguments), sympy/core/relational.py (_canonical_coeff),
-# sympy/logic/boolalg.py (distribute_and_over_or) (SymPy 1.14)
+# sympy/logic/boolalg.py (distribute_and_over_or, to_nnf) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: an unevaluating class with an evaluating function, strict
@@ -46,13 +45,12 @@ from typing import Callable, Final, Optional, Union
 
 from sympy_extras.core.add import sub
 from sympy_extras.core.assumptions import facts_of
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanLike, BooleanTrue, Or, and_, or_,
                                      false, to_boolean, true)
 from sympy_extras.core.mul import div
-from sympy_extras.core.numbers import Rational, nan
-from sympy_extras.core.printing import StrPrinter
+from sympy_extras.core.numbers import Integer, Rational, nan
 from sympy_extras.core.relational import Ge, Gt, Le, Lt, Relational, _FUNCTIONS, _REVERSED
 from sympy_extras.core.sorting import ClassKey
 from sympy_extras.core.symbol import Symbol
@@ -101,7 +99,7 @@ class ExprCondPair(Basic):
             raise TypeError("ExprCondPair takes an expression and a condition")
         return ExprCondPair(expr, cond)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '(%s, %s)' % (printer.doprint(self._expr), printer.doprint(self._cond))
 
 
@@ -123,6 +121,11 @@ class Piecewise(Expr):
             raise TypeError("At least one (expr, cond) pair expected.")
         self._args: Final[tuple[ExprCondPair, ...]] = tuple(_pair(p) for p in pairs)
         Basic.__init__(self)
+
+    # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_nseries
+    def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The series of each expression, under its condition."""
+        return piecewise(*[(ec.expr._eval_nseries(x, n, logx, Integer(0)), ec.cond) for ec in self.args])
 
     # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
@@ -151,7 +154,7 @@ class Piecewise(Expr):
             pairs.append(a)
         return _evaluate_pairs(pairs)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'Piecewise(%s)' % ', '.join(printer.doprint(p) for p in self._args)
 
     def _eval_facts(self) -> dict[str, bool]:
@@ -433,9 +436,14 @@ def piecewise_fold(expr: Expr, evaluate: Optional[bool] = True) -> Expr:
                 args.extend(group)
         else:
             args = [a for a in expr.args if isinstance(a, Expr)]
-        folded = [piecewise_fold(a) for a in args]
-        options: list[list[tuple[Expr, Boolean]]] = [
-            [(pair.expr, pair.cond) for pair in f.args] if isinstance(f, Piecewise) else [(f, true)] for f in folded]
+        # the arguments which are not expressions (the limits of a Sum) are
+        # kept as they are: dropped, the node could not be rebuilt
+        parts: list[Basic] = list(args) if len(args) == len(expr.args) or isinstance(expr, (Add, Mul)) \
+            else list(expr.args)
+        options: list[list[tuple[Basic, Boolean]]] = []
+        for part in parts:
+            f = piecewise_fold(part) if isinstance(part, Expr) else part
+            options.append([(pair.expr, pair.cond) for pair in f.args] if isinstance(f, Piecewise) else [(f, true)])
         for combination in product(*options):
             expressions = tuple(e for e, _ in combination)
             conditions: list[Boolean] = [c for _, c in combination]
@@ -474,22 +482,57 @@ def _lts_gts(r: Relational) -> tuple[Expr, Expr]:
     return r.rhs, r.lhs
 
 
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:to_nnf (simplify=False; And, Or, Not, Xor, Implies,
+# Equivalent, ITE)
 def _to_nnf(b: Boolean) -> Boolean:
-    """The negations pushed to the relations (SymPy's
-    ``eliminate_implications`` on the connectives of a condition)."""
-    from sympy_extras.core.logic import Not, not_
+    """The negations pushed to the relations and ``Xor``, ``Implies``,
+    ``Equivalent`` and ``ITE`` written with ``And`` and ``Or`` (SymPy's
+    ``eliminate_implications``, ``to_nnf(simplify=False)``)."""
+    from itertools import combinations
+    from sympy_extras.core.logic import ITE, Equivalent, Implies, Not, Xor, not_
+    from sympy_extras.logic.boolalg import is_literal
+
+    def xor_clauses(args: tuple[Boolean, ...], first: int) -> list[Boolean]:
+        # the clauses with an even (first = 0) or odd (first = 1) number of
+        # negated arguments
+        clauses: list[Boolean] = []
+        for i in range(first, len(args) + 1, 2):
+            for negated in combinations(args, i):
+                clauses.append(or_(*[not_(s) if s in negated else s for s in args]))
+        return clauses
+
     if isinstance(b, Not):
-        inner = b.args[0]
-        assert isinstance(inner, Boolean)
+        if is_literal(b):
+            return b
+        inner = b.arg
         if isinstance(inner, And):
             return or_(*[_to_nnf(not_(to_boolean(a))) for a in inner.args])
         if isinstance(inner, Or):
             return and_(*[_to_nnf(not_(to_boolean(a))) for a in inner.args])
+        if isinstance(inner, Implies):
+            return and_(_to_nnf(inner.args[0]), _to_nnf(not_(inner.args[1])))
+        if isinstance(inner, Equivalent):
+            return and_(_to_nnf(or_(*inner.args)), _to_nnf(or_(*[not_(a) for a in inner.args])))
+        if isinstance(inner, Xor):
+            return and_(*[_to_nnf(c) for c in xor_clauses(inner.args, 1)])
+        if isinstance(inner, ITE):
+            c, t, e = inner.args
+            return and_(_to_nnf(or_(c, not_(e))), _to_nnf(or_(not_(c), not_(t))))
         return b
     if isinstance(b, And):
         return and_(*[_to_nnf(to_boolean(a)) for a in b.args])
     if isinstance(b, Or):
         return or_(*[_to_nnf(to_boolean(a)) for a in b.args])
+    if isinstance(b, Xor):
+        return and_(*[_to_nnf(c) for c in xor_clauses(b.args, 0)])
+    if isinstance(b, Implies):
+        return or_(_to_nnf(not_(b.args[0])), _to_nnf(b.args[1]))
+    if isinstance(b, Equivalent):
+        args = b.args
+        return and_(*[_to_nnf(or_(not_(p), q)) for p, q in zip(args, args[1:] + args[:1])])
+    if isinstance(b, ITE):
+        c, t, e = b.args
+        return and_(_to_nnf(or_(not_(c), t)), _to_nnf(or_(c, e)))
     return b
 
 
@@ -665,15 +708,12 @@ def piecewise_intervals(pw: Piecewise, sym: Symbol,
 
 
 def _simplify_condition(c: Boolean) -> Boolean:
-    """SymPy's ``simplify`` of a condition (through SymPy: the
-    simplification of the relations and the logic is not ported); ``True``
-    and ``False`` are left as they are, as SymPy does, without it."""
-    if isinstance(c, (BooleanTrue, BooleanFalse)):
-        return c
-    import sympy
-    from sympy_extras.interop import from_sympy, to_sympy
-    r = from_sympy(sympy.simplify(to_sympy(c)))
-    return r if isinstance(r, Boolean) else c
+    """SymPy's ``simplify`` of a condition, natively
+    (:func:`~sympy_extras.logic.boolsimp.simplify_boolean` on SymPy's
+    univariate intervals, ``sympy_intervals``; an ``Xor`` by its algebraic
+    normal form, :mod:`sympy_extras.logic.anf`)."""
+    from sympy_extras.logic.boolsimp import simplify_boolean
+    return simplify_boolean(c, sympy_intervals=True)
 
 
 # PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:piecewise_simplify_arguments

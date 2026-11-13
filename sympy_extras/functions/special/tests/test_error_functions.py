@@ -6,7 +6,7 @@ from typing import Callable
 
 import sympy
 
-from sympy_extras._typing import as_expr as sympy_expr
+from sympy_extras._typing_sympy import as_expr as sympy_expr
 from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
@@ -71,3 +71,16 @@ def test_derivatives_and_numbers() -> None:
                 theirs = complex(sympy.N(g(sympy_value(value)), 20))
             assert abs(ours - theirs) < 1e-14, (f, value)
     assert str(erf(Float('0.5'))) == str(sympy.erf(sympy.Float('0.5'))) and erfc(pi).is_real is True
+
+
+def test_ei_of_a_polar_negative_argument_is_above_the_cut() -> None:
+    # Ei(x*exp_polar(I*pi)) evaluated as Ei(-x), without the I*pi of the
+    # branch above the cut (SymPy's Ei._eval_evalf adds it): the Meijer
+    # G-function antiderivative of expint(1, x) failed its check
+    from sympy_extras._numeric import reliable_value
+    from sympy_extras.functions import Ei, exp_polar
+    value = reliable_value(Ei(Rational(7, 10) * exp_polar(I * pi)), 15)
+    expected = sympy.Ei(sympy.Rational(7, 10) * sympy.exp_polar(sympy.I * sympy.pi)).evalf(20)
+    assert value is not None and abs(complex(value) - complex(expected)) < 1e-12
+    value = reliable_value(Ei(-Rational(7, 10)), 15)
+    assert value is not None and abs(complex(value) - complex(sympy.Ei(-sympy.Rational(7, 10)).evalf(20))) < 1e-12

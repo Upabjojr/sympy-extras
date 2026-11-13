@@ -3,7 +3,7 @@
 Modules: `sympy_extras.assumptions.resolve`, `sympy_extras.assumptions.solve` (SymPy face `solve_sympy`),
 `sympy_extras.polys.virtual_substitution` (SymPy face `virtual_substitution_sympy`), `sympy_extras.polys.comprehensive` (SymPy face `comprehensive_sympy`),
 `sympy_extras.polys.roots`, `sympy_extras.solvers.integers`,
-`sympy_extras.solvers.transcendental`.
+`sympy_extras.solvers.transcendental` (SymPy face `transcendental_sympy`).
 
 Mathematica's notes on its internal implementation list the algorithms
 behind `Solve`, `Reduce` and `Resolve` (and, further down, `DSolve`,
@@ -67,7 +67,7 @@ simplified."
 | Algorithm (Mathematica) | SymPy | sympy-extras |
 | --- | --- | --- |
 | Indefinite integrals: Risch, heuristics, tables | `integrate` (Risch for exp-log, `heurisch`, `manualintegrate`, tables of Meijer G-functions) | — |
-| Definite integrals with singularities: Marichev–Adamchik Mellin transform methods, Meijer G-functions converted by Slater's theorem | `meijerint_definite` (a table of G-function representations, conditions often unresolved, no splitting at singularities) | `integrals.mellin`, `integrals.slater`, `integrals.marichev`: Mellin transforms as gamma quotients with their strips (the convergence conditions), Parseval's formula, Slater's theorem with the assumptions deciding `\|z\| < 1`; `integrals.definite`: splitting at kinks and singularities, range mappings, changes of variable, the numerically checked fallback to `integrate` |
+| Definite integrals with singularities: Marichev–Adamchik Mellin transform methods, Meijer G-functions converted by Slater's theorem | `meijerint_definite` (a table of G-function representations, conditions often unresolved, no splitting at singularities) | `integrals.mellin`, `integrals.slater`, `integrals.marichev`: Mellin transforms as gamma quotients with their strips (the convergence conditions), Parseval's formula, Slater's theorem with the assumptions deciding `\|z\| < 1`; `integrals.definite`: splitting at kinks and singularities, range mappings, changes of variable, the numerically checked last method, the native port of `meijerint` (`integrals.meijerint`) and an antiderivative at the endpoints |
 | Contour integration: residues | `integrate` (rational functions over the real line) | `integrals.residues`: rational functions times powers, exponentials and trigonometric functions over `(0, oo)` and the real line, rational functions of `sin` and `cos` over a period |
 | Integrals over regions (`Integrate[f, {x, y} ∈ region]`, `Boole`): cylindrical algebraic decomposition | — | `integrals.regions`: `IntegralByRanges`, the region decomposed into stacks of intervals by the CAD, parameters as a case distinction |
 
@@ -205,11 +205,12 @@ tiled over the region asked for: explicitly when the region meets a few
 periods, and as a condition on `Mod(x, T)` when it meets infinitely many.
 
 ```python
->>> from sympy import Rational, Union, Interval, acos
+>>> from sympy import Rational, Union, Interval, expand_trig
 >>> solve(sin(x) > 0, x, (x > 0) & (x < 10))
 Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))
->>> solve(cos(x) < Rational(1, 3), x, (x > 0) & (x < 2))
-Interval.open(acos(1/3), 2)
+>>> below = solve(cos(x) < Rational(1, 3), x, (x > 0) & (x < 2))
+>>> below, expand_trig(cos(below.start))
+(Interval.open(2*atan(sqrt(2)/2), 2), 1/3)
 >>> solve(sin(x) > 0, x, domain=S.Reals)
 ConditionSet(x, Contains(Mod(x, 2*pi), Interval.open(0, pi)), Reals)
 
@@ -265,7 +266,7 @@ parameters like `limit`.
 ```python
 >>> from sympy import factorial, log
 >>> from sympy.abc import n, p
->>> from sympy_extras.concrete.convergence import sum_convergence, product_convergence
+>>> from sympy_extras.concrete.convergence_sympy import sum_convergence, product_convergence
 >>> from sympy_extras.concrete.dirichlet import dirichlet_series
 >>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> sum_convergence(x**n/n, n)
@@ -301,13 +302,14 @@ Piecewise((oo, a > 1), (1, Eq(a, 1)), (0, a < 1))
 - `sympy_extras/solvers/tests/test_integers.py` checks Cooper's algorithm
   against brute force on boxes of integers, and the Hilbert bases against
   enumeration.
-- `sympy_extras/solvers/tests/test_transcendental.py` checks the solutions
-  by membership tests and substitution.
+- `sympy_extras/solvers/tests/test_transcendental.py` (on the face) and
+  `test_transcendental_native.py` (on the core) check the solutions by
+  membership tests and substitution.
 
 ## Thue equations
 
 ```python
->>> from sympy_extras.solvers.thue_equation import thue
+>>> from sympy_extras.solvers.thue_equation_sympy import thue
 >>> thue(x**3 - 2*y**3, 1, x, y)
 [(-1, -1), (1, 0)]
 >>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)

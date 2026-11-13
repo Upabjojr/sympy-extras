@@ -6,8 +6,8 @@ from sympy import symbols, exp, cos, sin, tan, pi, S, I, besseli, besselj, Ratio
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.periodic import to_laurent, laurent_coefficient, mean_value_integral
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
+from sympy_extras.integrals.periodic_sympy import to_laurent, laurent_coefficient, mean_value_integral
 
 x, z = symbols('x z')
 a = symbols('a', positive=True)

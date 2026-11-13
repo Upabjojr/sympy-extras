@@ -11,9 +11,8 @@ The module works on the expressions of the typed core
 (:mod:`sympy_extras.core`, the functions of :mod:`sympy_extras.functions`)
 with the polynomials of :mod:`sympy_extras.polys`, and imports no SymPy:
 :mod:`sympy_extras.simplify.structure_sympy` is its face on SymPy
-objects. Two steps of the numerical side go through SymPy at run time
-(the face holds them, the functions ending in ``_of_core``): the sample
-points of the region of the assumptions
+objects. The numerical side is native too: the sample points of the
+region of the assumptions
 (:func:`sympy_extras.integrals.conditions.sample_values`) and the reliable
 numerical values with which ``is_zero`` shows a difference not to vanish
 (:func:`sympy_extras._numeric.reliable_value`).
@@ -1432,8 +1431,8 @@ class ElementaryTower:
         principal = self._number_logarithm(m)
         values: Optional[dict[Symbol, Expr]] = {}
         if symbols:
-            from .structure_sympy import sample_values_of_core
-            values = sample_values_of_core(symbols, self.assumptions, random.Random(str(self.to_expr(v))))
+            from sympy_extras.integrals.conditions import sample_values
+            values = sample_values(symbols, self.assumptions or None, random.Random(str(self.to_expr(v))))
         if values is None:
             return None
         point: dict[Basic, Basic] = {s: value for s, value in values.items()}
@@ -1946,7 +1945,8 @@ def _witness(e: Expr, assumptions: Assumptions) -> bool:
     """Whether ``e`` is clearly not zero at a sample point of the region."""
     if not settings.numerical_checks:
         return False
-    from .structure_sympy import reliable_value_of_core, sample_values_of_core
+    from sympy_extras._numeric import reliable_complex
+    from sympy_extras.integrals.conditions import sample_values
     facts = _facts_of(assumptions)
     symbols = sorted(e.free_symbols, key=lambda s: s.name)
     # a symbol with no flag which the assumptions do not mention is a
@@ -1959,7 +1959,7 @@ def _witness(e: Expr, assumptions: Assumptions) -> bool:
     constrained = [s for s in symbols if s not in unconstrained]
     rng = random.Random(str(e))
     for attempt_number in range(6):
-        values: Optional[dict[Symbol, Expr]] = sample_values_of_core(constrained, facts, rng) if constrained else {}
+        values: Optional[dict[Symbol, Expr]] = sample_values(constrained, facts or None, rng) if constrained else {}
         if values is None:
             return False
         for s in unconstrained:
@@ -1985,7 +1985,7 @@ def _witness(e: Expr, assumptions: Assumptions) -> bool:
         # 1.87*I and is_zero answered False (found by evaluating the
         # verdicts with Mathematica)
         point = values
-        number = attempt(lambda: reliable_value_of_core(e, 40, point), settings.timeout, native=True)
+        number = attempt(lambda: reliable_complex(e, 40, point), settings.timeout, native=True)
         if number is None:
             continue
         if abs(number) > 1e-25:

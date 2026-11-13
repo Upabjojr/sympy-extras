@@ -54,11 +54,10 @@ from typing import Final, Optional, Union
 
 import mpmath
 
-from sympy_extras.core.basic import Basic, ReplacementRule
+from sympy_extras.core.basic import Basic, NodePrinter, ReplacementRule
 from sympy_extras.core.evalf import numeric_value
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.numbers import Integer, Rational, number_from_fraction
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.polys.numberfields.qqbar import Algebraic
 from sympy_extras.polys.polyerrors import BasePolynomialError
@@ -229,9 +228,11 @@ class IndexedRoot(Expr):
         plain = Symbol(node.variable.name)
         return Poly(node.expr.xreplace({node.variable: plain}), plain), node.index
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         shown = Symbol(self._variable.name)
-        return "IndexedRoot(%s, %s, %s)" % (printer.doprint(self._polynomial.xreplace({self._variable: shown})),
+        # evaluated: the terms in the printing order of the plain symbol
+        # (x**3 - 2*x**2 + x - 1 was printed -1 + x**3 - 2*x**2 + x)
+        return "IndexedRoot(%s, %s, %s)" % (printer.doprint(self._polynomial._xreplace_evaluated({self._variable: shown})),
                                             printer.doprint(shown), self._index)
 
 

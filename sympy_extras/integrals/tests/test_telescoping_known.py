@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from sympy import symbols, exp, cos, sqrt, pi, oo, simplify
 
-from sympy_extras._typing import ExprLike, as_expr
-from sympy_extras.integrals.definite import verify_numerically
-from sympy_extras.integrals.telescoping import holonomic_integral, almkvist_zeilberger
+from sympy_extras._typing_sympy import ExprLike, as_expr
+from sympy_extras.integrals.definite_sympy import verify_numerically
+from sympy_extras.integrals.telescoping_sympy import holonomic_integral, almkvist_zeilberger
 
 x = symbols('x')
 t = symbols('t', positive=True)

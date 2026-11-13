@@ -412,11 +412,17 @@ outermost first.
 
 ### Principal subresultant coefficients (`sympy_extras.polys.subresultants`)
 
-- `dup_psc(f, g, K)`, `dmp_psc(f, g, u, K)`: the principal subresultant
-  coefficients of two polynomials in SymPy's dense representation.
-- `psc(f, g)`: the same for elements of a SymPy `PolyRing`. The native
-  projection takes them from the typed subresultant sequence
-  (`sympy_extras.polys.euclidtools.dup_inner_subresultants`).
+- `dup_psc(f, g, K)`: the principal subresultant coefficients of two
+  dense polynomials over a typed domain (several variables: over a
+  `PolynomialRing` or `SparsePolynomialRing` of the other variables), and
+  `psc(f, g)` for elements of a typed `PolyRing` with respect to the first
+  generator (native, from the typed subresultant sequence
+  `sympy_extras.polys.euclidtools.dup_inner_subresultants`, which the
+  native projection uses too).
+- `sympy_extras.polys.subresultants_sympy`, the SymPy face:
+  `dup_psc(f, g, K)`, `dmp_psc(f, g, u, K)` on SymPy's dense
+  representation (SymPy's subresultant PRS) and `psc(f, g)` for elements
+  of a SymPy `PolyRing` (the native `psc` over `ZZ`, `QQ` and `GF(p)`).
 
 ## References
 

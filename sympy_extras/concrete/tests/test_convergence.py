@@ -4,7 +4,7 @@ from sympy import (true, false, factorial, binomial, log, sqrt, sin, cos, exp, A
     pi, Rational)
 from sympy.abc import n, x, p
 
-from sympy_extras.concrete.convergence import sum_convergence, product_convergence, is_convergent
+from sympy_extras.concrete.convergence_sympy import sum_convergence, product_convergence, is_convergent
 
 
 def test_sum_convergence_numbers() -> None:

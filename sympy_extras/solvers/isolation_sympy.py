@@ -1,6 +1,5 @@
 """The SymPy face of the isolation of real roots of transcendental
-functions (:mod:`sympy_extras.solvers.isolation`), and the steps which
-stay on SymPy.
+functions (:mod:`sympy_extras.solvers.isolation`).
 
 :func:`isolate_real_roots`, :func:`real_roots_of`, :func:`point_between`
 and :func:`compare_points` take and return SymPy objects, converted by
@@ -9,13 +8,6 @@ and :func:`compare_points` take and return SymPy objects, converted by
 native root object (``interop`` converts one into the other): its
 bisections, refinements and numerical values are those of the native
 object.
-
-Two steps of the native module stay written on SymPy and are called from
-it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): the real roots of a polynomial with
-rational coefficients which are not all in radicals (SymPy's
-``real_roots``, with its ``CRootOf``), and whether a function which is
-not rational is continuous on an interval (SymPy's ``continuous_domain``).
 
 Examples
 ========
@@ -31,29 +23,24 @@ from __future__ import annotations
 from fractions import Fraction
 from typing import Optional, Union
 
-from sympy.calculus.util import continuous_domain
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
 from sympy.core.numbers import Float, Rational
 from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
-from sympy.polys.polytools import Poly
 from sympy.printing.printer import Printer
-from sympy.sets.sets import Complement, EmptySet, FiniteSet, Intersection, Interval, Set
+from sympy.sets.sets import FiniteSet, Interval, Set
 
-from sympy_extras._timeout import attempt
-from sympy_extras._typing import Sign, as_expr, as_set
-from sympy_extras.assumptions.intervals_sympy import core_expr, core_set, core_symbol, sympy_expr, sympy_set
+from sympy_extras._typing_sympy import Sign, as_expr
+from sympy_extras.assumptions.intervals_sympy import core_expr, core_set, core_symbol, sympy_expr
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import to_sympy
-from sympy_extras.sets.sets import Set as CoreSet
-from sympy_extras.settings import settings
 
 from . import isolation as native
 
 __all__ = ['TranscendentalRoot', 'isolate_real_roots', 'real_roots_of', 'point_between', 'compare_points',
-    'real_roots_of_core', 'continuous_on_of_core', 'sympy_root', 'native_root']
+    'sympy_root', 'native_root']
 
 #: an exact real number, or an isolated root
 Point = Expr
@@ -64,34 +51,6 @@ def _sympy_symbol(s: CoreSymbol) -> Symbol:
     if not isinstance(converted, Symbol):
         raise TypeError("%s is not a symbol" % (s,))
     return converted
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native module which stay on SymPy
-
-def real_roots_of_core(f: CoreExpr, x: CoreSymbol) -> list[CoreExpr]:
-    """The real roots of a polynomial with rational coefficients, with
-    their multiplicities, in increasing order (SymPy's ``Poly.real_roots``:
-    radicals for the linear, quadratic and binomial factors, ``CRootOf``
-    otherwise)."""
-    return [core_expr(as_expr(r)) for r in Poly(sympy_expr(f), _sympy_symbol(x)).real_roots()]
-
-
-def continuous_on_of_core(f: CoreExpr, x: CoreSymbol, piece: CoreSet) -> bool:
-    """Whether the piece lies in SymPy's ``continuous_domain`` of ``f``
-    over the reals (a complement of isolated singularities is checked by
-    intersecting them with the piece, since ``is_subset`` cannot decide
-    it); ``False`` when the domain is not found in time."""
-    sympy_f, sympy_x, sympy_piece = sympy_expr(f), _sympy_symbol(x), sympy_set(piece)
-    continuity = attempt(lambda: as_set(continuous_domain(sympy_f, sympy_x, S.Reals)), settings.timeout)
-    if continuity is None:
-        return False
-    if sympy_piece.is_subset(continuity) is True:
-        return True
-    if isinstance(continuity, Complement) and continuity.args[0] == S.Reals:
-        singular = attempt(lambda: as_set(Intersection(as_set(continuity.args[1]), sympy_piece)), settings.timeout)
-        return isinstance(singular, EmptySet)
-    return False
 
 
 # ---------------------------------------------------------------------------

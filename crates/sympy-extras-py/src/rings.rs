@@ -13,7 +13,9 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyModule, PyTuple};
 
 use sympy_extras_core::numbers::Int;
-use sympy_extras_core::polys::domains::{FiniteField, GaussianRationalField, IntegerRing, RationalField};
+use sympy_extras_core::polys::domains::{
+    AlgebraicField, FiniteField, GaussianRationalField, IntegerRing, RationalField,
+};
 use sympy_extras_core::polys::heuristicgcd as hg;
 use sympy_extras_core::polys::rings::{self, Monomial, MonomialOrder, PolyElement, PolyRing, Terms};
 
@@ -100,6 +102,7 @@ pub enum RingKind {
     QQ(Arc<PolyRing<RationalField>>),
     GF(Arc<PolyRing<FiniteField>>),
     GaussianQQ(Arc<PolyRing<GaussianRationalField>>),
+    Algebraic(Arc<PolyRing<AlgebraicField>>),
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +111,7 @@ pub enum ElemKind {
     QQ(PolyElement<RationalField>),
     GF(PolyElement<FiniteField>),
     GaussianQQ(PolyElement<GaussianRationalField>),
+    Algebraic(PolyElement<AlgebraicField>),
 }
 
 /// Runs `$body` with `$f` the element of its domain; the result keeps the
@@ -119,6 +123,7 @@ macro_rules! map_elem {
             ElemKind::QQ($f) => ElemKind::QQ($body),
             ElemKind::GF($f) => ElemKind::GF($body),
             ElemKind::GaussianQQ($f) => ElemKind::GaussianQQ($body),
+            ElemKind::Algebraic($f) => ElemKind::Algebraic($body),
         }
     };
 }
@@ -131,6 +136,7 @@ macro_rules! with_elem {
             ElemKind::QQ($f) => $body,
             ElemKind::GF($f) => $body,
             ElemKind::GaussianQQ($f) => $body,
+            ElemKind::Algebraic($f) => $body,
         }
     };
 }
@@ -144,6 +150,7 @@ macro_rules! binary_elem {
             (ElemKind::QQ($f), ElemKind::QQ($g)) => Ok(ElemKind::QQ($body)),
             (ElemKind::GF($f), ElemKind::GF($g)) => Ok(ElemKind::GF($body)),
             (ElemKind::GaussianQQ($f), ElemKind::GaussianQQ($g)) => Ok(ElemKind::GaussianQQ($body)),
+            (ElemKind::Algebraic($f), ElemKind::Algebraic($g)) => Ok(ElemKind::Algebraic($body)),
             _ => Err(PyTypeError::new_err("polynomials of different rings")),
         }
     };
@@ -156,6 +163,7 @@ macro_rules! with_ring {
             RingKind::QQ($ring) => $body,
             RingKind::GF($ring) => $body,
             RingKind::GaussianQQ($ring) => $body,
+            RingKind::Algebraic($ring) => $body,
         }
     };
 }
@@ -200,12 +208,18 @@ fn terms_to_py<'py, K: Bridge>(py: Python<'py>, f: &PolyElement<K>) -> PyResult<
     Ok(dict)
 }
 
+/// The ring of an element.
+pub fn ring_of_kind(e: &ElemKind) -> RingKind {
+    ring_of(e)
+}
+
 fn ring_of(e: &ElemKind) -> RingKind {
     match e {
         ElemKind::ZZ(f) => RingKind::ZZ(Arc::clone(&f.ring)),
         ElemKind::QQ(f) => RingKind::QQ(Arc::clone(&f.ring)),
         ElemKind::GF(f) => RingKind::GF(Arc::clone(&f.ring)),
         ElemKind::GaussianQQ(f) => RingKind::GaussianQQ(Arc::clone(&f.ring)),
+        ElemKind::Algebraic(f) => RingKind::Algebraic(Arc::clone(&f.ring)),
     }
 }
 
@@ -217,16 +231,25 @@ pub fn domain_name(r: &RingKind) -> String {
         RingKind::QQ(ring) => ring.domain.name(),
         RingKind::GF(ring) => ring.domain.name(),
         RingKind::GaussianQQ(ring) => ring.domain.name(),
+        RingKind::Algebraic(ring) => ring.domain.name(),
     }
 }
 
-fn domain_of(r: &RingKind) -> PyDomain {
-    match r {
-        RingKind::ZZ(_) => PyDomain::base(DomainKind::ZZ),
-        RingKind::QQ(_) => PyDomain::base(DomainKind::QQ),
-        RingKind::GF(ring) => PyDomain::base(DomainKind::GF(ring.domain.p())),
-        RingKind::GaussianQQ(_) => PyDomain::base(DomainKind::GaussianQQ),
-    }
+/// The domain object of a ring: a `Domain`, or an `AlgebraicField`.
+fn domain_of(py: Python<'_>, r: &RingKind) -> PyResult<PyObject> {
+    let kind: DomainKind = match r {
+        RingKind::ZZ(_) => DomainKind::ZZ,
+        RingKind::QQ(_) => DomainKind::QQ,
+        RingKind::GF(ring) => DomainKind::GF(ring.domain.p()),
+        RingKind::GaussianQQ(_) => DomainKind::GaussianQQ,
+        RingKind::Algebraic(ring) => {
+            let field = crate::algebraic::PyAlgebraicField {
+                inner: ring.domain.clone(),
+            };
+            return Ok(Py::new(py, field)?.into_any());
+        }
+    };
+    Ok(Py::new(py, PyDomain::base(kind))?.into_any())
 }
 
 fn elements(ob: &Bound<'_, PyAny>) -> PyResult<Vec<ElemKind>> {
@@ -263,11 +286,16 @@ fn elem_list<'py>(py: Python<'py>, items: Vec<ElemKind>) -> PyResult<Bound<'py, 
 impl PyPolyRing {
     #[new]
     #[pyo3(signature = (domain, symbols, order = None))]
-    fn new(domain: &PyDomain, symbols: Vec<String>, order: Option<&Bound<'_, PyAny>>) -> PyResult<PyPolyRing> {
+    fn new(domain: &Bound<'_, PyAny>, symbols: Vec<String>, order: Option<&Bound<'_, PyAny>>) -> PyResult<PyPolyRing> {
         let order: MonomialOrder = match order {
             Some(o) => order_from(o)?,
             None => MonomialOrder::Lex,
         };
+        if let Ok(field) = domain.downcast::<crate::algebraic::PyAlgebraicField>() {
+            let inner = RingKind::Algebraic(PolyRing::new(field.get().inner.clone(), symbols, order).map_err(err)?);
+            return Ok(PyPolyRing { inner });
+        }
+        let domain: PyRef<'_, PyDomain> = domain.extract::<PyRef<'_, PyDomain>>()?;
         let inner: RingKind = match domain.kind {
             DomainKind::ZZ => RingKind::ZZ(PolyRing::new(IntegerRing, symbols, order).map_err(err)?),
             DomainKind::QQ => RingKind::QQ(PolyRing::new(RationalField, symbols, order).map_err(err)?),
@@ -277,14 +305,18 @@ impl PyPolyRing {
             DomainKind::GaussianQQ => {
                 RingKind::GaussianQQ(PolyRing::new(GaussianRationalField, symbols, order).map_err(err)?)
             }
-            _ => return Err(PyTypeError::new_err("the domain must be ZZ, QQ, GF(p) or QQ_I")),
+            _ => {
+                return Err(PyTypeError::new_err(
+                    "the domain must be ZZ, QQ, GF(p), QQ_I or an algebraic field",
+                ))
+            }
         };
         Ok(PyPolyRing { inner })
     }
 
     #[getter]
-    fn domain(&self) -> PyDomain {
-        domain_of(&self.inner)
+    fn domain(&self, py: Python<'_>) -> PyResult<PyObject> {
+        domain_of(py, &self.inner)
     }
 
     #[getter]
@@ -318,6 +350,7 @@ impl PyPolyRing {
                 (RingKind::QQ(a), RingKind::QQ(b)) => a == b,
                 (RingKind::GF(a), RingKind::GF(b)) => a == b,
                 (RingKind::GaussianQQ(a), RingKind::GaussianQQ(b)) => a == b,
+                (RingKind::Algebraic(a), RingKind::Algebraic(b)) => a == b,
                 _ => false,
             },
             Err(_) => false,
@@ -331,6 +364,7 @@ impl PyPolyRing {
             RingKind::QQ(r) => ElemKind::QQ(r.zero()),
             RingKind::GF(r) => ElemKind::GF(r.zero()),
             RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.zero()),
+            RingKind::Algebraic(r) => ElemKind::Algebraic(r.zero()),
         })
     }
 
@@ -341,6 +375,7 @@ impl PyPolyRing {
             RingKind::QQ(r) => ElemKind::QQ(r.one()),
             RingKind::GF(r) => ElemKind::GF(r.one()),
             RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.one()),
+            RingKind::Algebraic(r) => ElemKind::Algebraic(r.one()),
         })
     }
 
@@ -351,6 +386,7 @@ impl PyPolyRing {
             RingKind::QQ(r) => r.gens().into_iter().map(ElemKind::QQ).collect(),
             RingKind::GF(r) => r.gens().into_iter().map(ElemKind::GF).collect(),
             RingKind::GaussianQQ(r) => r.gens().into_iter().map(ElemKind::GaussianQQ).collect(),
+            RingKind::Algebraic(r) => r.gens().into_iter().map(ElemKind::Algebraic).collect(),
         };
         elem_list(py, items)
     }
@@ -361,6 +397,7 @@ impl PyPolyRing {
             RingKind::QQ(r) => ElemKind::QQ(r.term(monomial, r.domain.extract(coefficient)?)),
             RingKind::GF(r) => ElemKind::GF(r.term(monomial, r.domain.extract(coefficient)?)),
             RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.term(monomial, r.domain.extract(coefficient)?)),
+            RingKind::Algebraic(r) => ElemKind::Algebraic(r.term(monomial, r.domain.extract(coefficient)?)),
         }))
     }
 
@@ -375,6 +412,7 @@ impl PyPolyRing {
             RingKind::QQ(r) => ElemKind::QQ(r.from_int(n)),
             RingKind::GF(r) => ElemKind::GF(r.from_int(n)),
             RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.from_int(n)),
+            RingKind::Algebraic(r) => ElemKind::Algebraic(r.from_int(n)),
         })
     }
 
@@ -384,6 +422,7 @@ impl PyPolyRing {
             RingKind::QQ(r) => ElemKind::QQ(r.from_dict(terms_from_py(&r.domain, terms)?)),
             RingKind::GF(r) => ElemKind::GF(r.from_dict(terms_from_py(&r.domain, terms)?)),
             RingKind::GaussianQQ(r) => ElemKind::GaussianQQ(r.from_dict(terms_from_py(&r.domain, terms)?)),
+            RingKind::Algebraic(r) => ElemKind::Algebraic(r.from_dict(terms_from_py(&r.domain, terms)?)),
         }))
     }
 
@@ -395,6 +434,7 @@ impl PyPolyRing {
                 RingKind::QQ(r) => RingKind::QQ(r.with_order(order)),
                 RingKind::GF(r) => RingKind::GF(r.with_order(order)),
                 RingKind::GaussianQQ(r) => RingKind::GaussianQQ(r.with_order(order)),
+                RingKind::Algebraic(r) => RingKind::Algebraic(r.with_order(order)),
             },
         })
     }
@@ -431,6 +471,7 @@ impl PyPolyElement {
                 (ElemKind::QQ(a), ElemKind::QQ(b)) => a == b,
                 (ElemKind::GF(a), ElemKind::GF(b)) => a == b,
                 (ElemKind::GaussianQQ(a), ElemKind::GaussianQQ(b)) => a == b,
+                (ElemKind::Algebraic(a), ElemKind::Algebraic(b)) => a == b,
                 _ => false,
             },
             Err(_) => false,
@@ -598,6 +639,16 @@ impl PyPolyElement {
                     ],
                 )
             }
+            ElemKind::Algebraic(f) => {
+                let (c, p) = f.primitive();
+                tuple(
+                    py,
+                    vec![
+                        f.ring.domain.to_py(py, &c)?,
+                        Bound::new(py, elem(ElemKind::Algebraic(p)))?.into_any(),
+                    ],
+                )
+            }
         }
     }
 
@@ -622,6 +673,10 @@ impl PyPolyElement {
                     q.into_iter().map(ElemKind::GaussianQQ).collect(),
                     ElemKind::GaussianQQ(r),
                 )
+            }
+            ElemKind::Algebraic(f) => {
+                let (q, r) = f.div(&same_kind!(&divisors, Algebraic)).map_err(err)?;
+                (q.into_iter().map(ElemKind::Algebraic).collect(), ElemKind::Algebraic(r))
             }
         };
         tuple(
@@ -715,6 +770,41 @@ fn monomial_gcd<'py>(py: Python<'py>, a: Monomial, b: Monomial) -> PyResult<Boun
     monomial_to_py(py, &rings::monomial_gcd(&a, &b))
 }
 
+/// `rings.as_order(order)`: the order of a name, or the order itself.
+#[pyfunction]
+fn as_order(order: &Bound<'_, PyAny>) -> PyResult<PyOrder> {
+    Ok(PyOrder {
+        order: order_from(order)?,
+    })
+}
+
+/// `rings.WeightOrder(weights, tail=lex)`.
+#[pyfunction(name = "WeightOrder")]
+#[pyo3(signature = (weights, tail = None))]
+fn weight_order(weights: &Bound<'_, PyAny>, tail: Option<&Bound<'_, PyAny>>) -> PyResult<PyOrder> {
+    PyOrder::weight(weights, tail)
+}
+
+/// `rings.BlockOrder(blocks)`: pairs `(order, size)`.
+#[pyfunction(name = "BlockOrder")]
+fn block_order(blocks: &Bound<'_, PyAny>) -> PyResult<PyOrder> {
+    PyOrder::block(blocks)
+}
+
+/// `rings.elimination_order(neliminate, nvars, order=grevlex)`.
+#[pyfunction]
+#[pyo3(signature = (neliminate, nvars, order = None))]
+fn elimination_order(neliminate: i64, nvars: usize, order: Option<&Bound<'_, PyAny>>) -> PyResult<PyOrder> {
+    let order: MonomialOrder = match order {
+        Some(o) => order_from(o)?,
+        None => MonomialOrder::Grevlex,
+    };
+    let neliminate: usize = if neliminate < 0 { 0 } else { neliminate as usize };
+    Ok(PyOrder {
+        order: MonomialOrder::elimination(neliminate, nvars, order),
+    })
+}
+
 pub fn register_rings(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOrder>()?;
     m.add_class::<PyPolyRing>()?;
@@ -737,6 +827,10 @@ pub fn register_rings(m: &Bound<'_, PyModule>) -> PyResult<()> {
             order: MonomialOrder::Grevlex,
         },
     )?;
+    m.add_function(wrap_pyfunction!(as_order, m)?)?;
+    m.add_function(wrap_pyfunction!(weight_order, m)?)?;
+    m.add_function(wrap_pyfunction!(block_order, m)?)?;
+    m.add_function(wrap_pyfunction!(elimination_order, m)?)?;
     m.add_function(wrap_pyfunction!(monomial_mul, m)?)?;
     m.add_function(wrap_pyfunction!(monomial_div, m)?)?;
     m.add_function(wrap_pyfunction!(monomial_divides, m)?)?;

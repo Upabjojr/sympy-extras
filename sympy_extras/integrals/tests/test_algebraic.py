@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from sympy import symbols, sqrt, cbrt, S, oo, pi, Rational, simplify, log, asinh, exp
 
-from sympy_extras._typing import ExprLike, as_expr
-from sympy_extras.integrals.algebraic import (algebraic_integral, euler_substitutions, moebius_root,
+from sympy_extras._typing_sympy import ExprLike, as_expr
+from sympy_extras.integrals.algebraic_sympy import (algebraic_integral, euler_substitutions, moebius_root,
                                               binomial_differential, rationalised_integral, binomial_exponents,
                                               chebyshev_elementary, binomial_hypergeometric_antiderivative)
-from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.definite import verify_numerically
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
+from sympy_extras.integrals.definite_sympy import verify_numerically
 
 x = symbols('x')
 a = symbols('a', positive=True)
@@ -103,7 +103,7 @@ def _real_antiderivative_at(F: ExprLike, f: ExprLike, point: ExprLike) -> bool:
     """Whether ``F' - f`` vanishes at ``point`` to 30 digits and ``F`` is
     real there."""
     from sympy import im
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     F_, f_ = as_expr(F), as_expr(f)
     difference = reliable_value(as_expr(F_.diff(x) - f_), 30, {x: as_expr(point)})
     value = reliable_value(F_, 30, {x: as_expr(point)})
@@ -148,7 +148,7 @@ def test_hypergeometric_antiderivatives_of_binomials() -> None:
     assert F is not None
     for point in [Rational(1, 2), Rational(99, 100), Rational(101, 100), 3]:
         assert _real_antiderivative_at(F, f, point), point
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     below = reliable_value(F, 30, {x: 1 - Rational(1, 10**6)})
     above = reliable_value(F, 30, {x: 1 + Rational(1, 10**6)})
     assert below is not None and above is not None and abs(above - below) < 1e-6
@@ -160,7 +160,7 @@ def test_hypergeometric_antiderivatives_of_binomials() -> None:
 def test_hypergeometric_antiderivatives_with_parameters() -> None:
     from itertools import product
     from sympy import I, Piecewise, cbrt, hyper, im
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     # binomials with parameters in their coefficients came back as None
     # (and their integrals unevaluated): the real cases depend on the sign
     # of z = -b*x**n/a, now conditions on it, checked here for every sign

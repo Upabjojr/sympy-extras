@@ -5,8 +5,8 @@ from sympy import symbols, exp, cos, sin, sqrt, pi, oo, Eq, Function, S, Rationa
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.telescoping import (DifferentialTelescoper, almkvist_zeilberger, holonomic_ode,
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
+from sympy_extras.integrals.telescoping_sympy import (DifferentialTelescoper, almkvist_zeilberger, holonomic_ode,
                                                 holonomic_integral, is_hyperexponential, logarithmic_derivative)
 
 x = symbols('x')

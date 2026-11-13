@@ -3,10 +3,10 @@ from __future__ import annotations
 from sympy import QQ, Expr, Function, Matrix, Poly, Rational, cancel, exp, simplify, sqrt, together
 from sympy.abc import x
 
-from sympy_extras._typing import as_expr
-from sympy_extras.solvers.irregular import (Place, conjugate_sum, finite_exponential_parts, irregular_places,
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.solvers.irregular_sympy import (Place, conjugate_sum, finite_exponential_parts, irregular_places,
                                             local_exponential_parts)
-from sympy_extras.solvers.linear_ode import LinearOperator, hyperexponential_search, hyperexponential_solutions
+from sympy_extras.solvers.linear_ode_sympy import LinearOperator, hyperexponential_search, hyperexponential_solutions
 
 y = Function('y')(x)
 

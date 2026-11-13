@@ -5,8 +5,8 @@ from sympy import symbols, exp, sqrt, oo, log, cos, sin, pi, I, S, Order, Ration
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.integrals.asymptotic import (asymptotic_integral, watson_lemma, laplace_method,
-                                               stationary_phase, exponential_part, oscillatory_part)
+from sympy_extras.integrals.asymptotic_sympy import (asymptotic_integral, watson_lemma, laplace_method,
+                                                      stationary_phase, exponential_part, oscillatory_part)
 
 x = symbols('x')
 t = symbols('t', positive=True)
@@ -99,7 +99,7 @@ def test_several_maxima() -> None:
 
 
 def test_steepest_descent() -> None:
-    from sympy_extras.integrals.asymptotic import steepest_descent
+    from sympy_extras.integrals.asymptotic_sympy import steepest_descent
     # the Gaussian with a linear complex term: exact by completing the square
     value = steepest_descent(S.One, -x**2 + I*x, x, t)
     assert value is not None and value.removeO() == sqrt(pi/t)*exp(-t/4)
@@ -121,7 +121,7 @@ def test_steepest_descent() -> None:
 
 def test_uniform_expansions() -> None:
     from sympy import airyai, airyaiprime, erfc
-    from sympy_extras.integrals.asymptotic import uniform_expansion
+    from sympy_extras.integrals.asymptotic_sympy import uniform_expansion
     a = symbols('a', positive=True)
     # the Airy integral is exact: 2 pi t**(-1/3) Ai(-a t**(2/3))
     value = uniform_expansion(S.One, x**3/3 - a*x, x, -oo, oo, t)

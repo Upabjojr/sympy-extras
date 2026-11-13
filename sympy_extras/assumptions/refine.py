@@ -23,12 +23,12 @@ The assumptions are statements as described in
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.refine_sympy` is its face on SymPy
-objects. Three steps are not ported and go through SymPy at run time (the
-face holds them, the functions ending in ``_of_core``): SymPy's
-``simplify`` of a Boolean formula (``simplify_logic`` and the rules of the
-relations), the factorisation of a polynomial whose coefficients are not
-rational (over SymPy's ``EX``), and the proofs of the structure theorem
-(:mod:`sympy_extras.simplify.structure`).
+objects. The simplification of a relation is a port of SymPy's
+(:func:`simplify_relational`), and that of a compound Boolean formula
+which is not polynomial in real variables too
+(:mod:`sympy_extras.logic.boolsimp`: ``simplify_univariate``,
+``simplify_logic`` and the patterns of the relations of ``And`` and
+``Or``).
 """
 from __future__ import annotations
 
@@ -319,11 +319,9 @@ class _Refiner:
             c, factors = factor_list(f, *gens)
             return c, [(g, int(m)) for g, m in factors]
         except (BasePolynomialError, ValueError):
+            # coefficients the native factorisation does not take with
+            # generators (sqrt(2), pi, floats: CoercionFailed)
             return None
-        except NotImplementedError:
-            # coefficients which are not rational: SymPy factors over EX
-            from .refine_sympy import factor_list_of_core
-            return factor_list_of_core(f, gens)
 
     def _better(self, new: Expr, old: Expr) -> Expr:
         return new if _size(new) <= _size(old) else old
@@ -669,12 +667,153 @@ def refine(expr: Union[Basic, bool], assumptions: Assumptions = None, domain: Op
     return refiner.refine_expr(expr)
 
 
+class _NonlinearError(ValueError):
+    """A term which is not linear in the symbols (SymPy's ``NonlinearError``)."""
+
+
+# PORTED FROM SYMPY: sympy/polys/matrices/linsolve.py:_lin_eq2dict
+def _lin_eq2dict(a: Expr, symset: set[Symbol]) -> tuple[Expr, dict[Symbol, Expr]]:
+    """The constant term and the coefficients of the symbols of a linear
+    expression, without expanding it; ``_NonlinearError`` otherwise."""
+    from sympy_extras.core.add import Add, add
+    if isinstance(a, Symbol) and a in symset:
+        return Integer(0), {a: Integer(1)}
+    if isinstance(a, Add):
+        terms_list: dict[Symbol, list[Expr]] = {}
+        coeff_list: list[Expr] = []
+        for ai in a.args:
+            ci, ti = _lin_eq2dict(as_expr(ai), symset)
+            coeff_list.append(ci)
+            for mij, cij in ti.items():
+                terms_list.setdefault(mij, []).append(cij)
+        return add(*coeff_list), {sym: add(*coeffs) for sym, coeffs in terms_list.items()}
+    if isinstance(a, Mul):
+        terms: Optional[dict[Symbol, Expr]] = None
+        terms_coeff: Expr = Integer(1)
+        factors: list[Expr] = []
+        for ai in a.args:
+            ci, ti = _lin_eq2dict(as_expr(ai), symset)
+            if not ti:
+                factors.append(ci)
+            elif terms is None:
+                terms, terms_coeff = ti, ci
+            else:
+                raise _NonlinearError('symbol-dependent cross-terms encountered')
+        coeff = mul(*factors)
+        if terms is None:
+            return coeff, {}
+        return mul(coeff, terms_coeff), {sym: mul(coeff, c) for sym, c in terms.items()}
+    if not (a.free_symbols & symset):
+        return a, {}
+    raise _NonlinearError('nonlinear in given generators')
+
+
+def _linear_coeffs(e: Expr, syms: list[Symbol]) -> list[Expr]:
+    """SymPy's ``linear_coeffs``: the coefficients of the symbols, then the
+    constant term."""
+    c, d = _lin_eq2dict(e, set(syms))
+    return [d.get(s, Integer(0)) for s in syms] + [c]
+
+
+def _measure(b: Boolean) -> int:
+    value = count_ops(b)
+    return value.p if isinstance(value, Integer) else 0
+
+
+# PORTED FROM SYMPY: sympy/core/relational.py:Relational._eval_simplify
+def simplify_relational(r0: Relational, ratio: float, rational: Optional[bool], inverse: bool,
+                        doit: bool) -> Boolean:
+    """SymPy's ``simplify`` of a relation: both sides simplified, decided
+    when the difference is a comparable number, put in canonical form,
+    solved for its symbol when it has one and is linear in it (the
+    coefficients made coprime when it is a polynomial), the coefficients of
+    a linear relation in several symbols made coprime; the result kept
+    when it is shorter than ``ratio`` times the relation (by
+    ``count_ops``). The difference is decided exactly by the evaluating
+    relation, where SymPy compares its value to two digits."""
+    from sympy_extras._numeric import reliable_value
+    from sympy_extras.core.add import add
+    from sympy_extras.core.power import pow
+    from sympy_extras.core.sorting import ordered
+    from sympy_extras.polys.polytools import Poly, gcd_list
+    from sympy_extras.simplify.simplify import simplify
+    zero = Integer(0)
+
+    def built(rel: Relational, lhs: Expr, rhs: Expr) -> Boolean:
+        return to_boolean(rel._evaluated((lhs, rhs)))
+    lhs = simplify(r0.lhs, ratio=ratio, rational=rational, inverse=inverse, doit=doit)
+    rhs = simplify(r0.rhs, ratio=ratio, rational=rational, inverse=inverse, doit=doit)
+    r = built(r0, lhs, rhs)
+    if isinstance(r, Relational):
+        dif = add(r.lhs, mul(Integer(-1), r.rhs))
+        if dif.is_comparable:
+            # SymPy compares dif.n(2) with 0: a reliable value instead
+            value = reliable_value(dif, 15)
+            if value is not None and not value.is_zero:
+                r = built(r, value, zero)
+        elif dif.equals(zero) is True:
+            r = built(r, zero, zero)
+    if isinstance(r, Relational):
+        rel = r.canonical
+        r = rel
+        free = [s for s in rel.free_symbols if s.is_real is not False]
+        dif = add(rel.lhs, mul(Integer(-1), rel.rhs))
+        if len(free) == 1:
+            x = free[0]
+            try:
+                m, b = _linear_coeffs(dif, [x])
+                if m.is_zero is False:
+                    solved = mul(Integer(-1), b, pow(m, Integer(-1)))
+                    r = built(rel, solved, x) if m.is_negative else built(rel, x, solved)
+                else:
+                    r = built(rel, b, zero)
+            except _NonlinearError:
+                try:
+                    p = Poly(dif, x)
+                    c = p.all_coeffs()
+                    constant = c[-1]
+                    c[-1] = zero
+                    scale = gcd_list(c)
+                    scaled = [mul(ci, pow(scale, Integer(-1))) for ci in c]
+                    n = len(scaled) - 1
+                    polynomial = add(*[mul(ci, pow(x, Integer(n - i))) for i, ci in enumerate(scaled)])
+                    r = built(rel, polynomial, mul(Integer(-1), constant, pow(scale, Integer(-1))))
+                except BasePolynomialError:
+                    pass
+        elif len(free) >= 2:
+            try:
+                symbols_ = [s for s in ordered(free) if isinstance(s, Symbol)]
+                coefficients = _linear_coeffs(dif, symbols_)
+                constant = coefficients[-1]
+                coefficients = coefficients[:-1]
+                scale = gcd_list(coefficients)
+                if scale.is_zero is False:
+                    scaled = [mul(mi, pow(scale, Integer(-1))) for mi in coefficients]
+                    nzm = [(mi, s) for mi, s in zip(scaled, symbols_) if mi != zero]
+                    if constant != zero:
+                        r = built(rel, add(*[mul(i, j) for i, j in nzm]),
+                                  mul(Integer(-1), constant, pow(scale, Integer(-1))))
+                    else:
+                        first = mul(nzm[0][0], nzm[0][1])
+                        r = built(rel, first, mul(Integer(-1), add(*[mul(i, j) for i, j in nzm[1:]])))
+                else:
+                    r = built(rel, constant, zero)
+            except _NonlinearError:
+                pass
+    if isinstance(r, Relational):
+        r = r.canonical
+    if _measure(r) < ratio*_measure(r0):
+        return r
+    return r0
+
+
 def _simplify_boolean(formula: Boolean, refiner: _Refiner, assumptions: Assumptions, domain: Optional[Set],
                       ratio: float, rational: Optional[bool], inverse: bool, doit: bool) -> Boolean:
     """A Boolean formula is minimised by quantifier elimination when it is
-    polynomial in real variables, else simplified by SymPy's ``simplify``
-    (at run time, :func:`~sympy_extras.assumptions.refine_sympy.simplify_boolean_of_core`)."""
-    from .refine_sympy import simplify_boolean_of_core
+    polynomial in real variables, else a relation is simplified by
+    :func:`simplify_relational` and a compound formula by the port of
+    SymPy's ``simplify`` of Booleans,
+    :func:`~sympy_extras.logic.boolsimp.simplify_boolean`."""
     if formula.has(Quantifier):
         formula = _resolve_quantified(formula, assumptions, domain)
     formula = refiner.refine_boolean(formula)
@@ -687,8 +826,20 @@ def _simplify_boolean(formula: Boolean, refiner: _Refiner, assumptions: Assumpti
         except (NotImplementedError, ValueError):
             pass
 
+    def relation(r: Relational) -> Boolean:
+        return simplify_relational(r, ratio, rational, inverse, doit)
+
     def operation(e: Basic) -> Basic:
-        return simplify_boolean_of_core(to_boolean(e), ratio, rational, inverse, doit)
+        b = to_boolean(e)
+        if isinstance(b, Relational):
+            return relation(b)
+        if not b.args:
+            return b
+        # a compound formula: the port of SymPy's simplify of Booleans
+        # (simplify_univariate, simplify_logic, the patterns of the
+        # relations of And and Or)
+        from sympy_extras.logic.boolsimp import simplify_boolean
+        return simplify_boolean(b, relation, _measure, ratio)
     simplified = refiner.through(formula, operation)
     return refiner.refine_boolean(to_boolean(simplified))
 

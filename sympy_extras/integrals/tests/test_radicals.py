@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from sympy import symbols, sqrt, Rational, asin, asinh, log, simplify, diff, S, N, Integral
 
-from sympy_extras._typing import as_expr
-from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.integrals.radicals_sympy import quadratic_radical_antiderivative
 
 x = symbols('x')
 
@@ -39,8 +39,8 @@ def test_products_of_radicals_of_linear_factors() -> None:
     # radicand of degree two where both factors are real (the bug: the
     # split form fell through to SymPy's complex Piecewise, and the three
     # intersecting cylinders stayed unevaluated on it)
-    from sympy_extras.integrals.conditions import numerically_equal
-    from sympy_extras._typing import as_boolean
+    from sympy_extras.integrals.conditions_sympy import numerically_equal
+    from sympy_extras._typing_sympy import as_boolean
     y = symbols('y')
     F = quadratic_radical_antiderivative(2 * sqrt(1 - y) * sqrt(y + 1), y)
     assert F == y * sqrt(1 - y**2) + asin(y)
@@ -73,7 +73,7 @@ def test_symbolic_algebraic_bounds() -> None:
     # of one_sided_limit, which rejected the symbol of the bound; and the
     # sampler of the numerical check, which had no point for an
     # assumption with the irrational bound -sqrt(2)/2
-    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.definite_sympy import definite_integral
     y = symbols('y')
     found = definite_integral(2 * sqrt(1 - y**2), (y, -sqrt(1 - x**2), x), [x > -sqrt(2) / 2, x < 0])
     assert not found.has(Integral)
@@ -88,7 +88,7 @@ def test_negative_powers_of_x() -> None:
     # the lowest power, from 1/(x*sqrt(Q)) (GR 2.266: a logarithm for a
     # positive constant term, an arcsine for a negative one, checked in
     # Mathematica on both sides of zero) and from Q taken out of the radical
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     assert quadratic_radical_antiderivative(1 / (x * sqrt(x**2 + 1)), x) == -log((2 * sqrt(x**2 + 1) + 2) / x)
     assert quadratic_radical_antiderivative(1 / (x * sqrt(x**2 - 1)), x) == -asin(1 / sqrt(x**2))
     for f in [1 / (x * sqrt(1 - x**2)), 1 / (x**2 * sqrt(1 - x**2)), (1 - x**2)**Rational(3, 2) / x,
@@ -113,7 +113,7 @@ def test_euler_substitutions_for_rational_functions_of_a_radical() -> None:
     # not of the form x**n*Q**(m/2): the Euler substitutions make the
     # integrand a rational function (Maxima's rtest_integrate 854, FriCAS's
     # in1186a and in143a, a linear radical)
-    from sympy_extras.integrals.radicals import euler_substitution_antiderivative
+    from sympy_extras.integrals.radicals_sympy import euler_substitution_antiderivative
     for f in (1 / ((x + 3) * sqrt(x**2 - 1)), sqrt(x**2 + x) / (x**2 + 1)**2, sqrt(x + 1) / (x**2 + 1),
               1 / ((x + 2) * sqrt(1 - x**2)), sqrt(x**2 + 1) / (x - 1)):
         F = euler_substitution_antiderivative(as_expr(f), x)
@@ -132,8 +132,8 @@ def test_odd_powers_of_a_quadratic_under_the_root() -> None:
     # sqrt(Q**3) is Q*sqrt(Q) where Q > 0: the radical table's entries
     # for the odd powers of sqrt(Q) (Maxima's rtestint with symbolic
     # coefficients)
-    from sympy_extras.integrals import is_antiderivative, verified_antiderivative
-    from sympy_extras.integrals.radicals import _odd_power
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative, verified_antiderivative
+    from sympy_extras.integrals.radicals_sympy import _odd_power
     a, b, c = symbols('a b c')
     Q = as_expr(a + b * x + c * x**2)
     assert _odd_power(as_expr(Q**3), x) == (Q, 3)

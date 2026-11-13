@@ -84,3 +84,52 @@ def test_roots_of_sympy_have_values_in_sums() -> None:
     assert isinstance((root + 2).evalf(30), Float)
     assert certified_sign(root + 2) == 1 and certified_sign(root + 1) == -1   # r = -1.1673...
     assert sign_on(x**5 - x + 1, x, Reals) == frozenset([-1, 0, 1])
+
+
+def test_zeros_of_a_variable_with_assumptions() -> None:
+    # the zeros are those of a real variable on the domain given: with a
+    # positive symbol, the native transcendental solver dropped the zero
+    # a = 0 of cosh(2*a) - 1 and sign_on on the reals gave {0} (the sign at
+    # the one sample point), not {0, 1}
+    from sympy_extras.functions import cosh
+    from sympy_extras.assumptions.analysis import _finite_zeros
+    a = Symbol('a', positive=True)
+    assert sign_on(cosh(2*a) - 1, a, Reals) == frozenset([0, 1])
+    assert _finite_zeros(cosh(2*a) - 1, a, Reals) == [Integer(0)]
+
+
+def test_continuity_and_zeros_of_elementary_functions() -> None:
+    # the continuity and the zeros of the functions which are not rational
+    # (SymPy's continuous_domain and solveset before), each against a hand
+    # computation
+    from sympy_extras.functions import Abs, acos, asin, atan, tan
+    from sympy_extras.assumptions.analysis import _continuous_on, _finite_zeros, _has_discrete_zeros
+    x = Symbol('x')
+    assert _continuous_on(log(x) + sqrt(x - 1), x, Interval(1, 2))
+    assert not _continuous_on(log(x), x, Interval(0, 1))
+    assert not _continuous_on(sqrt(x - 1), x, Interval(0, 2))
+    assert _continuous_on(tan(x), x, Interval(-1, 1)) and not _continuous_on(tan(x), x, Interval(1, 2))
+    assert _continuous_on(asin(x/2) + acos(x/3), x, Interval(-2, 2))
+    assert not _continuous_on(asin(x), x, Interval(0, 2))
+    assert _continuous_on(Abs(x) + atan(x) + 2**x, x, Reals)
+    # 1 + sin(x)/x is positive for x >= 1: log of it is continuous there
+    assert _continuous_on(log(1 + sin(x)/x), x, Interval(1, oo))
+    assert _finite_zeros(exp(x)*sin(x) + exp(x)*cos(x), x, Interval(0, 5, True, True)) == [3*pi/4]
+    zeros = _finite_zeros(sin(x), x, Interval(0, 2*pi))
+    assert zeros is not None and sorted(zeros, key=float) == [0, pi, 2*pi]
+    assert _finite_zeros(sin(x), x, Reals) is None
+    assert _has_discrete_zeros(sin(x) - Rational(1, 2), x, Reals)
+
+
+def test_zero_of_a_harmonic_combination_at_an_end() -> None:
+    # sin(x) - tan(1)*cos(x) vanishes at 1: the half-angle substitution
+    # wrote the zero as 2*atan((sqrt(1 + tan(1)**2) - 1)/tan(1)), which no
+    # comparison told apart from 1, so the zeros on (0, 1) were None (and
+    # antiderivative_integral(sin(x)**2*cot(x - 1), x, 0, 1) gave None)
+    from sympy_extras.functions import tan
+    from sympy_extras.assumptions.analysis import _finite_zeros
+    x = Symbol('x')
+    f = sin(x) - tan(Integer(1))*cos(x)
+    assert _finite_zeros(f, x, Interval(0, 1, True, True)) == []
+    assert _finite_zeros(f, x, Interval(0, 1)) == [Integer(1)]
+    assert sign_on(f, x, Interval(0, 1, True, True)) == frozenset([-1])

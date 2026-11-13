@@ -8,15 +8,9 @@ take and return SymPy objects, converted by :mod:`sympy_extras.interop`
 around the native functions; the facts are those of
 :mod:`sympy_extras.assumptions.facts_sympy`.
 
-Three steps of the native analysis stay written on SymPy and are called
-from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): SymPy's ``continuous_domain`` and
-``solveset`` for the expressions which are not rational in the variable
-(the finite sets of zeros, and whether the zeros are isolated points: a
-union of ``ImageSet`` over the integers), and the intersection of
-intervals whose ends the core does not compare (the solutions of a
-polynomial assumption which is not a bound, by the native CAD, against
-other intervals).
+No step of the native analysis is written on SymPy: the continuity, the
+zeros of the expressions which are not rational and the intersections of
+intervals with roots of polynomials as ends are native.
 
 Examples
 ========
@@ -36,42 +30,23 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sympy.calculus.util import continuous_domain
 from sympy.core.expr import Expr
 from sympy.core.relational import Relational
-from sympy.core.singleton import S
 from sympy.core.symbol import Symbol
-from sympy.sets.fancysets import ImageSet, Integers, Naturals, Naturals0
-from sympy.sets.sets import EmptySet, FiniteSet, Intersection, Interval, Set, Union as SetUnion
-from sympy.solvers.solveset import solveset
+from sympy.sets.sets import Interval, Set
 
-from sympy_extras._timeout import attempt
-from sympy_extras._typing import Sign, Truth, as_set
-from sympy_extras.core.expr import Expr as CoreExpr
+from sympy_extras._typing_sympy import Sign, Truth
 from sympy_extras.core.relational import Relational as CoreRelational
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 from sympy_extras.sets.sets import Interval as CoreInterval
-from sympy_extras.sets.sets import Set as CoreSet
-from sympy_extras.settings import settings
 
 from . import analysis as native
 from .facts_sympy import Facts
 from .intervals_sympy import Box, Signs, core_expr, core_set, core_symbol, sympy_expr, sympy_set
 
 __all__ = ['certified_sign', 'certified_compare', 'domain_of', 'sign_on', 'signs_multivariate', 'box_of',
-    'decide_relational', 'continuous_on_of_core', 'finite_zeros_of_core', 'has_discrete_zeros_of_core',
-    'intersection_of_core']
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native analysis which stay on SymPy
-
-def continuous_on_of_core(f: CoreExpr, x: CoreSymbol, domain: CoreSet) -> bool:
-    """Whether SymPy's ``continuous_domain`` of ``f`` contains ``domain``."""
-    sympy_f, sympy_x, sympy_domain = sympy_expr(f), as_symbol_of(x), sympy_set(domain)
-    continuity = attempt(lambda: as_set(continuous_domain(sympy_f, sympy_x, S.Reals)), settings.timeout)
-    return continuity is not None and sympy_domain.is_subset(continuity) is True
+    'decide_relational']
 
 
 def as_symbol_of(x: CoreSymbol) -> Symbol:
@@ -80,50 +55,6 @@ def as_symbol_of(x: CoreSymbol) -> Symbol:
     if not isinstance(s, Symbol):
         raise TypeError("%s is not a symbol" % (x,))
     return s
-
-
-def _solveset(f: CoreExpr, x: CoreSymbol, domain: CoreSet) -> Optional[Set]:
-    sympy_f, sympy_x, sympy_domain = sympy_expr(f), as_symbol_of(x), sympy_set(domain)
-    return attempt(lambda: as_set(solveset(sympy_f, sympy_x, sympy_domain)), settings.timeout)
-
-
-def finite_zeros_of_core(f: CoreExpr, x: CoreSymbol, domain: CoreSet) -> Optional[list[CoreExpr]]:
-    """The zeros of ``f`` in ``domain`` when SymPy's ``solveset`` gives a
-    finite set, ``None`` otherwise."""
-    zeros = _solveset(f, x, domain)
-    if isinstance(zeros, EmptySet):
-        return []
-    if isinstance(zeros, FiniteSet):
-        return [core_expr(z) for z in zeros.args]
-    return None
-
-
-def _is_discrete(zeros: Set) -> bool:
-    if isinstance(zeros, (FiniteSet, EmptySet)):
-        return True
-    if isinstance(zeros, ImageSet):
-        return isinstance(zeros.base_set, (Integers, Naturals, Naturals0))
-    if isinstance(zeros, SetUnion):
-        return all(_is_discrete(as_set(a)) for a in zeros.args)
-    if isinstance(zeros, Intersection):
-        return any(_is_discrete(as_set(a)) for a in zeros.args)
-    return False
-
-
-def has_discrete_zeros_of_core(f: CoreExpr, x: CoreSymbol, piece: CoreSet) -> bool:
-    """Whether SymPy's ``solveset`` describes the zeros of ``f`` on the
-    piece as isolated points (finite sets, or images of the integers)."""
-    zeros = _solveset(f, x, piece)
-    return zeros is not None and _is_discrete(zeros)
-
-
-def intersection_of_core(a: CoreSet, b: CoreSet) -> CoreSet:
-    """The intersection of two sets evaluated by SymPy (whose ends may be
-    roots of polynomials, ``CRootOf``, which are not ported)."""
-    found = core_set(as_set(Intersection(sympy_set(a), sympy_set(b))))
-    if found is None:
-        raise TypeError("the intersection of %s and %s is not a set of the core" % (a, b))
-    return found
 
 
 # ---------------------------------------------------------------------------

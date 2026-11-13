@@ -17,7 +17,7 @@ from sympy.polys.polyerrors import PolynomialError
 from sympy.polys.polytools import Poly
 from sympy.polys.rootoftools import CRootOf
 from sympy.sets.sets import Interval, FiniteSet, Union
-from sympy_extras._typing import QuantifierSpec, as_boolean
+from sympy_extras._typing_sympy import QuantifierSpec, as_boolean
 from sympy_extras.polys.cad.qe_sympy import quantifier_elimination, decide, sample_points, solution_set, truth_tables
 from sympy_extras.polys.cad import qe as native_qe
 from sympy_extras.polys.cad.lifting import CAD as NativeCAD

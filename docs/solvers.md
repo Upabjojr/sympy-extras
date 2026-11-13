@@ -41,8 +41,8 @@ solvers always return.
 
 ```python
 >>> from sympy import Function, symbols
->>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
->>> from sympy_extras.solvers.ode import dsolve_lie
+>>> from sympy_extras.solvers.pde_sympy import pde_symmetries, pdsolve_lie
+>>> from sympy_extras.solvers.ode_sympy import dsolve_lie
 >>> x, t = symbols('x t')
 >>> u = Function('u')(x, t)
 >>> heat = u.diff(t) - u.diff(x, 2)
@@ -199,7 +199,15 @@ SymPy lacks:
   cases (rational, quadratic and finite-group `omega = z'/z`), with the
   second solution by reduction of order. SymPy's rational Riccati solver
   covers only the first case (and misses equations without finite
-  poles).
+  poles). `sympy_extras.solvers.kovacic` is native (core expressions,
+  the native polynomials, roots, series and linear systems); its SymPy
+  face is `sympy_extras.solvers.kovacic_sympy`; the antiderivatives
+  come from the native verified indefinite integration
+  (`sympy_extras.integrals.indefinite.closed_antiderivative`, SymPy's
+  routes its last methods), and the rational solutions of the Riccati
+  equation, the fallback of the first case, are the native
+  `kovacic.rational_riccati` (the hyperexponential solutions of
+  `z'' = r z`).
 - **Polynomial, rational and hyperexponential solutions** of equations
   of any order with polynomial coefficients (`polynomial_solutions`,
   `rational_solutions`, `hyperexponential_solutions`): degree bounds
@@ -250,11 +258,25 @@ SymPy lacks:
   same machinery, rational solutions by Barkatou's method, variation of
   constants; see [Linear systems](#linear-systems-with-rational-coefficients).
 
+`linear_ode`, `factorization`, `irregular` and `special` are native
+(core expressions, the native polynomials, roots, number fields, linear
+algebra and simplification); their SymPy faces are `linear_ode_sympy`,
+`factorization_sympy`, `irregular_sympy` and `special_sympy`, which the
+examples below use. The quadratures come from the native verified
+indefinite integration (`sympy_extras.integrals.indefinite.closed_antiderivative`,
+an integral it cannot do left as the unevaluated
+`sympy_extras.integrals.integral.Integral`); the last resort on the
+reduced equations is the native classical hints of
+`sympy_extras.solvers.dsolve` (constant coefficients, Euler's equations,
+the reduction to the lowest derivative), and the Grassmann–Plücker
+relations of Beke's method are solved by the native port of SymPy's
+`solve` (`sympy_extras.solvers.solvers.solve_system`).
+
 ```python
 >>> from sympy import Matrix, Function
 >>> from sympy.abc import n
->>> from sympy_extras.solvers.special import special_solutions
->>> from sympy_extras.solvers.linear_systems import dsolve_linear_system
+>>> from sympy_extras.solvers.special_sympy import special_solutions
+>>> from sympy_extras.solvers.linear_systems_sympy import dsolve_linear_system
 >>> y = Function('y')(x)
 >>> special_solutions(y.diff(x, 2) + x*y, y)
 [sqrt(x)*besselj(1/3, 2*x**(3/2)/3), sqrt(x)*besselj(-1/3, 2*x**(3/2)/3)]
@@ -301,8 +323,8 @@ with the integrals left unevaluated when SymPy cannot evaluate them.
 
 ```python
 >>> from sympy import Function
->>> from sympy_extras.solvers.linear_ode import LinearOperator, gcrd, lclm, dsolve_linear
->>> from sympy_extras.solvers.factorization import factor_operator, right_factor, left_factor
+>>> from sympy_extras.solvers.linear_ode_sympy import LinearOperator, gcrd, lclm, dsolve_linear
+>>> from sympy_extras.solvers.factorization_sympy import factor_operator, right_factor, left_factor
 >>> D = LinearOperator([0, 1], x)
 >>> A = LinearOperator([-x, 0, 1], x)          # Airy: y'' - x y
 >>> B = LinearOperator([1, 1/x, 1], x)         # Bessel of order 0
@@ -344,6 +366,18 @@ an `n x n` matrix of rational functions. SymPy's `dsolve` solves systems
 with constant coefficients, systems whose matrix commutes with its
 antiderivative, and a few special types of two and three equations.
 
+The module is native: it takes and returns the `ExprMatrix` of core
+expressions, with the native scalar solvers, polynomials, linear algebra
+(over the field of rational functions) and simplification; its SymPy face
+`linear_systems_sympy`, which the examples below use, keeps the API on
+SymPy matrices. The antiderivatives of rational functions are native
+(`rational_integral`: `ratint_ratpart` and `ratint_logpart` of
+`integrals.risch.rationaltools`, with the native `RootSum` of
+`polys.rootoftools`). SymPy's `integrate` (Liouville's formula, variation
+of constants) is native too, and so is the last resort for a
+fundamental matrix, SymPy's `linodesolve` of a matrix `A = g'(x) M` with
+`M` constant: `exp(M g(x))` by the native matrix exponential.
+
 - **Cyclic vectors** (`cyclic_reduction`, `cyclic_vector`,
   `system_to_scalar`): for a row vector `c`, `u = c Y` has the derivatives
   `u^(k) = c_k Y`, `c_{k+1} = c_k A + c_k'`; when `c_0, ..., c_{n-1}` are
@@ -358,7 +392,8 @@ antiderivative, and a few special types of two and three equations.
   `fundamental * C + particular` and `None` when the solvers found fewer
   than `n` columns. The scalar equation goes through `dsolve_linear`'s
   solvers, so equations of order three and more are factored (Beke), and
-  SymPy's `linodesolve` is tried when they fall short.
+  the matrix exponential of a constant system (Putzer) and SymPy's
+  `linodesolve` are tried when they fall short.
 - **Rational solutions** (`rational_system_solutions`, Barkatou 1999): the
   pole order of a rational solution at a simple pole of `A` is bounded by
   the negative integer eigenvalues of the residue (found over Q through a
@@ -377,7 +412,7 @@ antiderivative, and a few special types of two and three equations.
 
 ```python
 >>> from sympy import Matrix, symbols, simplify, exp
->>> from sympy_extras.solvers.linear_systems import dsolve_system, rational_system_solutions
+>>> from sympy_extras.solvers.linear_systems_sympy import dsolve_system, rational_system_solutions
 >>> A = Matrix([[0, 1], [2/x**2, 0]])
 >>> S = dsolve_system(A, x)
 >>> S.fundamental
@@ -418,7 +453,7 @@ parametrically. SymPy has hints for Bernoulli, Riccati (rational
 particular solutions) and Clairaut equations only.
 
 ```python
->>> from sympy_extras.solvers.first_order import lagrange_ode, abel_ode, riccati_ode
+>>> from sympy_extras.solvers.first_order_sympy import lagrange_ode, abel_ode, riccati_ode
 >>> riccati_ode(y.diff(x) + y**2 - 2/x**2, y)
 Eq(y(x), (2*C1*x**3 - 1)/(C1*x**4 + x))
 >>> lagrange_ode(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)
@@ -431,8 +466,8 @@ Eq(..., C1 + x)
 ```python
 >>> from sympy import Function, Rational
 >>> from sympy.abc import n
->>> from sympy_extras.solvers.linear_ode import dsolve_linear
->>> from sympy_extras.solvers.kovacic import dsolve_kovacic, liouvillian_solution
+>>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
+>>> from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic, liouvillian_solution
 >>> y = Function('y')(x)
 >>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
 [x**2 + 2*x + 2, exp(x)]
@@ -781,10 +816,13 @@ found from their highest degree part (a product of factors of `x P_d -
 y Q_d`, or any form when that vanishes), the rest by linear propagation
 and a parametric elimination in the few cofactor coefficients left.
 SymPy's `dsolve` has nothing of the kind; `dsolve_first_order` tries it
-after the Riccati, Abel and Chini classes.
+after the Riccati, Abel and Chini classes. The module works on the core
+(the polynomials over `QQ`, number fields and fields of parameters are the
+typed ones, only the quadratures go through SymPy's `integrate`);
+`sympy_extras.solvers.darboux_sympy` is its face on SymPy objects, used here.
 
 ```python
->>> from sympy_extras.solvers.darboux import (darboux_polynomials, darboux_integrating_factor,
+>>> from sympy_extras.solvers.darboux_sympy import (darboux_polynomials, darboux_integrating_factor,
 ...     darboux_first_integral, prelle_singer)
 >>> from sympy.abc import x
 >>> from sympy import Symbol
@@ -833,7 +871,7 @@ handles first order linear equations only.
 
 ```python
 >>> from sympy import Eq, Function, symbols
->>> from sympy_extras.solvers.charpit import complete_integral
+>>> from sympy_extras.solvers.charpit_sympy import complete_integral
 >>> x, y = symbols('x y')
 >>> u = Function('u')(x, y)
 >>> complete_integral(u.diff(x)*u.diff(y) - 1, u)
@@ -880,14 +918,14 @@ the cases off.
 
 ```python
 >>> from sympy import Function, symbols, exp, sin
->>> from sympy_extras.solvers.ode import solve_ode
->>> from sympy_extras.solvers.linear_ode import dsolve_linear
+>>> from sympy_extras.solvers.ode_sympy import solve_ode
+>>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
 >>> x, k, a = symbols('x k a')
 >>> y = Function('y')(x)
 >>> solve_ode(y.diff(x) - k*y - exp(x), y)
 [Eq(y(x), Piecewise(((C1 + x)*exp(x), Eq(k, 1)), (C1*exp(k*x) - exp(x)/(k - 1), True)))]
 >>> solve_ode(y.diff(x, 2) + k**2*y - sin(x), y)
-[Eq(y(x), Piecewise((C2*sin(x) + (C1 - x/2)*cos(x), Eq(k, -1) | Eq(k, 1)), (C1 + C2*x - sin(x), Eq(k, 0)), (C1*exp(-I*k*x) + C2*exp(I*k*x) + sin(x)/(k**2 - 1), True)))]
+[Eq(y(x), Piecewise((C1*sin(x) + C2*cos(x) - x*cos(x)/2, Eq(k, -1) | Eq(k, 1)), (C1 + C2*x - sin(x), Eq(k, 0)), (C1*exp(-I*k*x) + C2*exp(I*k*x) + sin(x)/(k**2 - 1), True)))]
 >>> dsolve_linear(x**2*y.diff(x, 2) + a*x*y.diff(x) + 4*y, y)[1]
 Piecewise((x**2*log(x), Eq(a, -3)), (log(x)/x**2, Eq(a, 5)), (exp(-(a + sqrt(a**2 - 2*a - 15) - 1)*log(x)/2), True))
 
@@ -935,7 +973,7 @@ to the index of the equation.
 
 ```python
 >>> from sympy import Function, Matrix, Eq, sin, symbols
->>> from sympy_extras.solvers.dae import dae_matrices, dsolve_dae, dae_index
+>>> from sympy_extras.solvers.dae_sympy import dae_matrices, dsolve_dae, dae_index
 >>> x = symbols('x')
 >>> y1, y2 = Function('y1')(x), Function('y2')(x)
 >>> A, B, f, _ = dae_matrices([Eq(y1.diff(x), y2), Eq(y1, sin(x))], [y1, y2])
@@ -957,7 +995,7 @@ commuting point symmetries into translations, after which the equation
 is `u'' = F(u')`, solvable by quadratures.
 
 ```python
->>> from sympy_extras.solvers.second_order import dsolve_second_order
+>>> from sympy_extras.solvers.second_order_sympy import dsolve_second_order
 >>> f = Function('y')(x)
 >>> dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f)
 [Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]
@@ -976,7 +1014,7 @@ equivalence with the representatives of the database. `abel_ode` uses
 it when the invariant is not constant.
 
 ```python
->>> from sympy_extras.solvers.abel import abel_invariants, abel_equivalence
+>>> from sympy_extras.solvers.abel_sympy import abel_invariants, abel_equivalence
 >>> abel_invariants((-1, -2*x, 0, 0), x).I1
 11664*x**6*(8*x**3 - 15)**3/(8*x**3 - 9)**5
 >>> from sympy import Symbol

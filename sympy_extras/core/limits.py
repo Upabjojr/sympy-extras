@@ -21,18 +21,15 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Final, Optional, TYPE_CHECKING
+from typing import Final, Optional
 
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .coreerrors import PoleError
 from .expr import Expr, ExprLike, as_expr, to_expr
 from .kind import Kind, NumberKind
 from .numbers import ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, nan, oo, zoo
 from .sorting import ClassKey
 from .symbol import Dummy, Symbol
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['Limit', 'limit', 'heuristics']
 
@@ -221,7 +218,7 @@ class Limit(Expr):
     def _eval_facts(self) -> dict[str, bool]:
         return {}
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return "Limit(%s, %s, %s, dir='%s')" % (printer.doprint(self._expr), printer.doprint(self._z),
                                                 printer.doprint(self._z0), self._dir)
 
@@ -399,6 +396,7 @@ def _set_signs(expr: Expr, z: Symbol, z0: Expr, dir: str) -> Expr:
     """``Abs``, ``sign`` and ``arg`` of arguments of known sign at the
     point replaced (``Abs(x)`` is ``x`` as ``x`` goes to ``0+``)."""
     from sympy_extras.functions.elementary.complexes import Abs, Arg, Sign
+    from sympy_extras.functions.special.delta_functions import Heaviside
     from .numbers import pi
     if not expr.args:
         return expr
@@ -408,7 +406,12 @@ def _set_signs(expr: Expr, z: Symbol, z0: Expr, dir: str) -> Expr:
     abs_flag = isinstance(expr, Abs)
     arg_flag = isinstance(expr, Arg)
     sign_flag = isinstance(expr, Sign)
-    if abs_flag or sign_flag or arg_flag:
+    # a step function too, 0 or 1 by the sign of its argument (not in
+    # SymPy: the bug, SymPy's too, was that limit(Heaviside(x - 1), x, 0,
+    # '+') did not finish, the Taylor terms of the step at -1 being zero
+    # however far gruntz expanded it)
+    step_flag = isinstance(expr, Heaviside)
+    if abs_flag or sign_flag or arg_flag or step_flag:
         inner = expr.args[0]
         if not isinstance(inner, Expr):
             return expr
@@ -420,7 +423,7 @@ def _set_signs(expr: Expr, z: Symbol, z0: Expr, dir: str) -> Expr:
             return expr
         if sig.is_extended_real is True:
             if sig.is_extended_negative is True:
-                return -inner if abs_flag else Integer(-1) if sign_flag else pi
+                return -inner if abs_flag else Integer(-1) if sign_flag else Integer(0) if step_flag else pi
             if sig.is_extended_positive is True:
-                return inner if abs_flag else Integer(1) if sign_flag else Integer(0)
+                return inner if abs_flag else Integer(1) if sign_flag or step_flag else Integer(0)
     return expr

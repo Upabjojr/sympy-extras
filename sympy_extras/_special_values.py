@@ -87,10 +87,26 @@ points not reached in time, and those whose problem is not solved in
 time, are not listed. A candidate which is a parameter itself (``1/k``)
 or linear in one is read off without factorisation.
 
+The module works on the objects of the core and imports no SymPy:
+:mod:`sympy_extras._special_values_sympy` is its face on SymPy objects
+(the integrators and the sums written on SymPy use it). The candidates
+are found by the native factorisation, roots and transcendental solver
+(:func:`~sympy_extras.polys.polytools.factor`,
+:func:`~sympy_extras.polys.polyroots.roots`,
+:func:`~sympy_extras.solvers.transcendental.solve_transcendental`) and
+the assumptions at a point decided by the native
+:func:`~sympy_extras.assumptions.sat.satisfiable`; the real roots of a
+polynomial whose coefficients are not rational (``a**2 - pi``) by the
+formulas over ``EX`` of :func:`~sympy_extras.polys.polyroots.ex_roots`.
+The solutions of a transcendental factor which the native solver does not
+reduce are those of the native port of SymPy's ``solveset``
+(:func:`~sympy_extras.solvers.solveset.solveset`).
+
 Examples
 ========
 
->>> from sympy import symbols, log, Integer
+>>> from sympy_extras.core import symbols, Integer
+>>> from sympy_extras.functions import log
 >>> from sympy_extras._special_values import special_points, with_special_values
 >>> y, k, x = symbols('y k x')
 >>> special_points((y**2 - 1)/log(y), [y])
@@ -103,36 +119,32 @@ from __future__ import annotations
 import time
 from typing import Callable, Optional, Sequence
 
-from sympy.core.basic import Basic
-from sympy.core.traversal import preorder_traversal
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.numbers import nan, oo, zoo
-from sympy.core.power import Pow
-from sympy.core.relational import Eq, Ne
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.concrete.products import Product
-from sympy.concrete.summations import Sum
-from sympy.functions.elementary.exponential import log
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.special.delta_functions import DiracDelta
-from sympy.functions.special.zeta_functions import zeta
-from sympy.integrals.integrals import Integral
-from sympy.logic.boolalg import And, Boolean, Or, false, true
-from sympy.polys.polytools import Poly, factor
-from sympy.polys.polyroots import roots
-from sympy.sets.sets import FiniteSet
-from sympy.solvers.solveset import solveset
-
 from sympy_extras._timeout import attempt, remaining_time
-from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.assumptions.sat_sympy import satisfiable
+from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.concrete.expr_with_limits import Product, Sum
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.function import expand
+from sympy_extras.core.logic import And, Boolean, BooleanFalse, BooleanTrue, Or, and_, or_, to_boolean, true
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer, NegativeInfinity, nan, oo, zoo
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Eq, eq, ne
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import Log
+from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
+from sympy_extras.functions.special.delta_functions import DiracDelta
+from sympy_extras.functions.special.zeta_functions import Zeta
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.polyroots import roots
+from sympy_extras.polys.polytools import factor
+from sympy_extras.sets.sets import FiniteSet, Reals, Set
 from sympy_extras.settings import settings
 
-__all__ = ['Point', 'special_points', 'with_special_values', 'point_condition', 'condition_point', 'point_assumptions',
-           'undefined_at', 'equality_points', 'defined_problem']
+__all__ = ['Point', 'Compute', 'special_points', 'with_special_values', 'point_condition', 'condition_point',
+           'point_assumptions', 'undefined_at', 'equality_points', 'defined_problem']
 
 #: the values of some parameters, ``{a: b, b: 0}``
 Point = dict[Symbol, Expr]
@@ -153,6 +165,9 @@ _REMAINING_SHARE = 0.5
 #: the largest degree of a polynomial in one parameter whose irrational
 #: real roots are listed (explicit square roots)
 _MAX_RADICAL_DEGREE = 2
+#: the names of the unevaluated integrals, sums and products of SymPy
+#: (wrapped in nodes of the core), which are not looked into
+_UNEVALUATED_FOREIGN = ('Integral', 'Sum', 'Product')
 
 
 class _Deadline:
@@ -178,6 +193,102 @@ class _Deadline:
         return left is not None and left <= 0
 
 
+# ---------------------------------------------------------------------------
+# helpers on the objects of the core
+
+def _expr(b: Basic) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError("an expression is expected, got %s" % (b,))
+    return b
+
+
+def _boolean(b: Basic) -> Boolean:
+    if not isinstance(b, Boolean):
+        raise TypeError("a Boolean is expected, got %s" % (b,))
+    return b
+
+
+def _replaced(e: Expr, point: Point) -> Expr:
+    """``e`` with the point substituted, evaluated (SymPy's ``xreplace``)."""
+    rule: dict[Basic, Basic] = {p: v for p, v in point.items()}
+    return _expr(e._xreplace_evaluated(rule))
+
+
+def _replaced_boolean(b: Boolean, point: Point) -> Boolean:
+    rule: dict[Basic, Basic] = {p: v for p, v in point.items()}
+    return _boolean(b._xreplace_evaluated(rule))
+
+
+def _symbols(e: Basic) -> set[Symbol]:
+    """The free symbols of ``e`` which are plain symbols."""
+    return {s for s in e.free_symbols if isinstance(s, Symbol)}
+
+
+def _sorted(symbols: set[Symbol]) -> list[Symbol]:
+    return sorted(symbols, key=lambda s: s.name)
+
+
+def _infinite(e: Expr) -> bool:
+    return e.has(oo, NegativeInfinity())
+
+
+def _coefficients(e: Expr, p: Symbol) -> Optional[dict[int, Expr]]:
+    """The nonzero coefficients of ``e`` as a polynomial in ``p``, by
+    degree (SymPy's ``Poly(e, p)``, whose coefficients may be any
+    expression free of ``p``), ``None`` when it is not one."""
+    gathered: dict[int, list[Expr]] = {}
+    for t in Add.make_args(expand(e)):
+        c, k = t.as_coeff_exponent(p)
+        if c.has(p) or not isinstance(k, Integer) or k.p < 0:
+            return None
+        gathered.setdefault(int(k.p), []).append(c)
+    result: dict[int, Expr] = {}
+    for degree, cs in gathered.items():
+        coefficient = add(*cs)
+        if coefficient != 0:
+            result[degree] = coefficient
+    return result
+
+
+def _total_degree(e: Expr, symbols: Sequence[Symbol]) -> Optional[int]:
+    """The total degree of ``e`` in the ``symbols`` (SymPy's
+    ``Poly(e, *symbols).total_degree()``), ``None`` when it is not a
+    polynomial in them."""
+    degree = 0
+    for t in Add.make_args(expand(e)):
+        rest = t
+        d = 0
+        for s in symbols:
+            c, k = rest.as_coeff_exponent(s)
+            if c.has(s) or not isinstance(k, Integer) or k.p < 0:
+                return None
+            d += int(k.p)
+            rest = c
+        if rest != 0:
+            degree = max(degree, d)
+    return degree
+
+
+def _unevaluated(e: Expr) -> bool:
+    """Whether ``e`` has an unevaluated sum or product, or an unevaluated
+    integral (of SymPy, wrapped in a node of the core)."""
+    for node in preorder_traversal(e):
+        if isinstance(node, (Sum, Product, Integral)):
+            return True
+        if node._is_foreign_node() and node._compare_name() in _UNEVALUATED_FOREIGN:
+            return True
+    return False
+
+
+def _not_looked_into(node: Basic) -> bool:
+    if isinstance(node, (Sum, Product, Integral)):
+        return True
+    return node._is_foreign_node() and node._compare_name() in _UNEVALUATED_FOREIGN
+
+
+# ---------------------------------------------------------------------------
+# the candidates
+
 def special_points(value: Expr, parameters: Sequence[Symbol], assumptions: Assumptions = None,
                    seconds: Optional[float] = None) -> list[Point]:
     """The candidate special values of the ``parameters`` for ``value``:
@@ -188,7 +299,8 @@ def special_points(value: Expr, parameters: Sequence[Symbol], assumptions: Assum
     symbols refute left out. With ``seconds``, the candidates found
     within that many seconds (those not reached are left out).
 
-    >>> from sympy import symbols, exp, sin
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp, sin
     >>> from sympy_extras._special_values import special_points
     >>> a, b, k = symbols('a b k')
     >>> special_points((exp(k) - 1)/k, [k])
@@ -229,20 +341,20 @@ def _undefined_parts(e: Expr, parameters: set[Symbol]) -> list[Expr]:
     parts: list[Expr] = []
 
     def add(u: Expr) -> None:
-        if free_symbols(u) & parameters and u not in parts:
+        if _symbols(u) & parameters and u not in parts:
             parts.append(u)
 
     def walk(node: Basic) -> None:
-        if isinstance(node, (Integral, Sum, Product)):
+        if _not_looked_into(node):
             return
         if isinstance(node, Pow):
-            exponent = as_expr(node.exp)
-            if exponent.is_negative or (free_symbols(exponent) & parameters and exponent.is_nonnegative is not True):
-                add(as_expr(node.base))
-        elif isinstance(node, log):
-            add(as_expr(node.args[0]))
-        elif isinstance(node, zeta) and len(node.args) == 1:
-            add(as_expr(node.args[0]) - 1)
+            exponent = node.exp
+            if exponent.is_negative or (_symbols(exponent) & parameters and exponent.is_nonnegative is not True):
+                add(node.base)
+        elif isinstance(node, Log):
+            add(_expr(node.args[0]))
+        elif isinstance(node, Zeta) and len(node.args) == 1:
+            add(_expr(node.args[0]) - 1)
         for argument in node.args:
             walk(argument)
 
@@ -257,27 +369,27 @@ def _zeros(part: Expr, parameters: set[Symbol], deadline: _Deadline) -> list[Poi
     which is a parameter, or is linear in the parameters, is not
     factored (the factorisation of every candidate made the cases cost
     more than the integrals of the census)."""
-    symbols = free_symbols(part)
+    symbols = _symbols(part)
     if not symbols & parameters:
         return []
     if isinstance(part, Symbol):
-        return [{part: S.Zero}]
-    factors: list[Basic] = []
-    if symbols <= parameters and part.is_polynomial(*sorted_symbols(symbols)) \
-            and Poly(part, *sorted_symbols(symbols)).total_degree() == 1:
+        return [{part: Integer(0)}]
+    factors: list[Expr] = []
+    if symbols <= parameters and part.is_polynomial(*_sorted(symbols)) is True \
+            and _total_degree(part, _sorted(symbols)) == 1:
         factors = [part]
     else:
         seconds = deadline.left(_CANDIDATE_SECONDS)
         if seconds is not None and seconds <= 0:
             return []
-        factored = attempt(lambda: as_expr(factor(part)), seconds)
+        factored = attempt(lambda: factor(part), seconds, native=True)
         factors = list(Mul.make_args(part if factored is None else factored))
     points: list[Point] = []
     for factor_ in factors:
-        g = as_expr(factor_)
-        while isinstance(g, Pow) and as_expr(g.exp).is_positive:
-            g = as_expr(g.base)
-        g_symbols = sorted_symbols(free_symbols(g))
+        g = factor_
+        while isinstance(g, Pow) and g.exp.is_positive:
+            g = g.base
+        g_symbols = _sorted(_symbols(g))
         if not g_symbols or set(g_symbols) - parameters:
             continue
         for point in _factor_zeros(g, g_symbols, deadline):
@@ -292,50 +404,96 @@ def _factor_zeros(g: Expr, symbols: list[Symbol], deadline: _Deadline) -> list[P
     first, then with any), the real roots of a polynomial in one
     parameter, or the finite real solution set in the first parameter
     which has one."""
-    if g.is_polynomial(*symbols):
-        polynomials = [(p, Poly(g, p)) for p in symbols]
+    if g.is_polynomial(*symbols) is True:
+        polynomials: list[tuple[Symbol, dict[int, Expr]]] = []
+        for p in symbols:
+            coefficients = _coefficients(g, p)
+            if coefficients is None:
+                return []
+            polynomials.append((p, coefficients))
         for constant in (True, False):
-            for p, polynomial in polynomials:
-                if polynomial.degree() == 1 and (not constant or not free_symbols(as_expr(polynomial.LC()))):
-                    return [{p: as_expr(-polynomial.nth(0) / polynomial.LC())}]
+            for p, coefficients in polynomials:
+                if max(coefficients, default=0) == 1 and (not constant or not _symbols(coefficients[1])):
+                    return [{p: _expr(-coefficients.get(0, Integer(0)) / coefficients[1])}]
         if len(symbols) != 1:
             return []
-        p, polynomial = polynomials[0]
+        p, coefficients = polynomials[0]
         seconds = deadline.left(_CANDIDATE_SECONDS)
         if seconds is not None and seconds <= 0:
             return []
-        found = attempt(lambda: roots(polynomial, filter='R'), seconds)
+        found = attempt(lambda: _real_roots(g, p), seconds, native=True)
         if not found:
             return []
-        return [{p: as_expr(r)} for r in found
-                if polynomial.degree() <= _MAX_RADICAL_DEGREE or as_expr(r).is_rational]
+        degree = max(coefficients, default=0)
+        return [{p: r} for r in found if degree <= _MAX_RADICAL_DEGREE or r.is_rational]
     for p in symbols:
         seconds = deadline.left(_CANDIDATE_SECONDS)
         if seconds is not None and seconds <= 0:
             return []
-        solutions = attempt(lambda: solveset(g, p, S.Reals), seconds)
+        variable = p
+        solutions = attempt(lambda: _real_solutions(g, variable), seconds, native=True)
         if isinstance(solutions, FiniteSet) and 0 < len(solutions) <= _MAX_POINTS:
-            return [{p: as_expr(v)} for v in solutions]
+            return [{p: v} for v in solutions]
     return []
+
+
+def _real_roots(g: Expr, p: Symbol) -> list[Expr]:
+    """The real roots of a polynomial in ``p`` with constant coefficients
+    (SymPy's ``roots(g, filter='R')``): by the native roots, for
+    coefficients the native domains do not take (``pi``) by the formulas
+    over ``EX`` (none when they are not ported: a cubic or a quartic)."""
+    try:
+        found = roots(g, p, filter='R')
+    except BasePolynomialError:
+        from sympy_extras.polys.polyroots import ex_roots
+        try:
+            listed = ex_roots(g, p)
+        except NotImplementedError:
+            return []
+        return [r for r in listed if all(a.is_real for a in r.as_numer_denom())]
+    return [r for r in found if isinstance(r, Expr)]
+
+
+def _real_solutions(g: Expr, p: Symbol) -> Optional[Set]:
+    """The real solutions of ``g = 0`` in ``p`` (SymPy's ``solveset(g, p,
+    S.Reals)``): by the native transcendental solver, by the native port
+    of SymPy's solveset when it does not reduce the equation."""
+    from sympy_extras.solvers.transcendental import solve_transcendental
+    found = solve_transcendental(Eq(g, Integer(0)), p)
+    if found is not None:
+        return found
+    from sympy_extras.solvers.solveset import solveset
+    return solveset(Eq(g, Integer(0)), p, Reals)
 
 
 def _real_for_real_parameters(v: Expr) -> bool:
     """Whether ``v`` is real for real nonzero values of its symbols (``1/b``
     is, ``sqrt(b)`` is not known to be)."""
-    replacement = {s: Dummy(s.name, real=True, nonzero=True) for s in sorted_symbols(free_symbols(v))}
-    return as_expr(v.xreplace(replacement)).is_extended_real is True
+    replacement: Point = {s: Dummy(s.name, real=True, nonzero=True) for s in _sorted(_symbols(v))}
+    return _replaced(v, replacement).is_extended_real is True
 
+
+# ---------------------------------------------------------------------------
+# points and conditions
 
 def point_condition(point: Point) -> Boolean:
     """``Eq(p, v)`` for every parameter of the point.
 
-    >>> from sympy import symbols
+    >>> from sympy_extras.core import symbols, Integer
     >>> from sympy_extras._special_values import point_condition
     >>> a, b = symbols('a b')
-    >>> point_condition({a: 0, b: 0})
+    >>> point_condition({a: Integer(0), b: Integer(0)})
     Eq(a, 0) & Eq(b, 0)
     """
-    return as_boolean(And(*[Eq(p, v) for p, v in sorted(point.items(), key=lambda item: item[0].name)]))
+    return and_(*[eq(p, v) for p, v in sorted(point.items(), key=lambda item: item[0].name)])
+
+
+def _assumption_items(assumptions: Assumptions) -> list[Boolean]:
+    if assumptions is None:
+        return []
+    if isinstance(assumptions, (Boolean, bool)):
+        return [to_boolean(assumptions)]
+    return [to_boolean(a) for a in assumptions]
 
 
 def point_assumptions(point: Point, assumptions: Assumptions) -> Optional[list[Boolean]]:
@@ -343,43 +501,39 @@ def point_assumptions(point: Point, assumptions: Assumptions) -> Optional[list[B
     dropped; ``None`` when one becomes false, or when the flags of a
     symbol refute the point (``Eq(y, 0)`` for a positive ``y``).
 
-    >>> from sympy import symbols
+    >>> from sympy_extras.core import symbols, Integer
     >>> from sympy_extras._special_values import point_assumptions
     >>> a, b = symbols('a b')
     >>> point_assumptions({a: b}, [a > 0, b < 2])
     [b > 0, b < 2]
-    >>> point_assumptions({a: 0}, a > 0) is None
+    >>> point_assumptions({a: Integer(0)}, a > 0) is None
     True
     """
     return _point_assumptions(point, assumptions, _Deadline(None))
 
 
 def _point_assumptions(point: Point, assumptions: Assumptions, deadline: _Deadline) -> Optional[list[Boolean]]:
-    if any(as_boolean(Eq(p, v)) is false for p, v in point.items()):
+    if any(isinstance(eq(p, v), BooleanFalse) for p, v in point.items()):
         return None
-    items: list[Boolean] = []
-    if isinstance(assumptions, (Basic, bool)):
-        items.append(as_boolean(assumptions))
-    elif assumptions is not None:
-        items.extend(as_boolean(a) for a in assumptions)
     substituted: list[Boolean] = []
-    for item in items:
+    for item in _assumption_items(assumptions):
         try:
-            at = as_boolean(item.xreplace(point))
+            at = _replaced_boolean(item, point)
         except TypeError:
-            # a comparison SymPy cannot make at the point: kept unsubstituted
+            # a comparison which cannot be made at the point: kept unsubstituted
             substituted.append(item)
             continue
-        if at is false:
+        if isinstance(at, BooleanFalse):
             return None
-        if at is not true:
+        if not isinstance(at, BooleanTrue):
             substituted.append(at)
     seconds = deadline.left(_CANDIDATE_SECONDS)
-    if substituted and (seconds is None or seconds > 0) \
-            and attempt(lambda: satisfiable(as_boolean(And(*substituted))), seconds) is False:
-        # (s > s under k = s, for s > k: the relations of plain symbols do
-        # not evaluate)
-        return None
+    if substituted and (seconds is None or seconds > 0):
+        from sympy_extras.assumptions.sat import satisfiable
+        if attempt(lambda: satisfiable(and_(*substituted)), seconds, native=True) is False:
+            # (s > s under k = s, for s > k: the relations of plain symbols do
+            # not evaluate)
+            return None
     return substituted
 
 
@@ -387,29 +541,26 @@ def undefined_at(e: Expr, point: Point) -> bool:
     """Whether ``e`` is undefined at the point: ``nan``, ``zoo`` or an
     infinity it did not have appears when the point is substituted.
 
-    >>> from sympy import symbols, sin
+    >>> from sympy_extras.core import symbols, Integer
+    >>> from sympy_extras.functions import sin
     >>> from sympy_extras._special_values import undefined_at
     >>> a = symbols('a')
-    >>> undefined_at(sin(a)/a, {a: 0}), undefined_at(sin(a)/a, {a: 1})
+    >>> undefined_at(sin(a)/a, {a: Integer(0)}), undefined_at(sin(a)/a, {a: Integer(1)})
     (True, False)
     """
     try:
-        at = as_expr(e.xreplace(point))
+        at = _replaced(e, point)
     except (TypeError, ValueError, ZeroDivisionError, RecursionError):
         return True
     if at.has(nan, zoo):
         return True
-    return at.has(oo, -oo) and not e.has(oo, -oo)
+    return _infinite(at) and not _infinite(e)
 
 
 def _branches(value: Expr) -> list[tuple[Expr, Boolean]]:
     if isinstance(value, Piecewise):
-        return [(as_expr(pair.args[0]), as_boolean(pair.args[1])) for pair in value.args]
+        return [(pair.expr, pair.cond) for pair in value.args]
     return [(value, true)]
-
-
-def _unevaluated(e: Expr) -> bool:
-    return e.has(Integral, Sum, Product)
 
 
 def _taken_undefined(branches: Sequence[tuple[Expr, Boolean]], point: Point) -> Optional[str]:
@@ -424,17 +575,17 @@ def _taken_undefined(branches: Sequence[tuple[Expr, Boolean]], point: Point) -> 
     defined leaves the decision to the next)."""
     for e, condition in branches:
         try:
-            at = as_boolean(condition.xreplace(point))
+            at = _replaced_boolean(condition, point)
         except TypeError:
             at = condition
-        if at is false:
+        if isinstance(at, BooleanFalse):
             continue
         failing = 'fallback' if _unevaluated(e) else 'undefined' if undefined_at(e, point) else None
-        if failing == 'undefined' and at is not true:
+        if failing == 'undefined' and not isinstance(at, BooleanTrue):
             # a branch which may not be taken there: the point may lie on
             # the boundary of its region (1/(x**2 - 1) over (p, q) at p = 1)
             failing = 'fallback'
-        if failing is not None or at is true:
+        if failing is not None or isinstance(at, BooleanTrue):
             return failing
     return None
 
@@ -445,13 +596,19 @@ def _taken_branch(branches: Sequence[tuple[Expr, Boolean]], point: Point) -> Opt
     the point leaves it undecided."""
     for index, (_, condition) in enumerate(branches):
         try:
-            at = as_boolean(condition.xreplace(point))
+            at = _replaced_boolean(condition, point)
         except TypeError:
             return None
-        if at is false:
+        if isinstance(at, BooleanFalse):
             continue
-        return index if at is true else None
+        return index if isinstance(at, BooleanTrue) else None
     return None
+
+
+def _disjuncts(condition: Boolean) -> list[Boolean]:
+    if isinstance(condition, Or):
+        return [_boolean(c) for c in condition.args]
+    return [condition]
 
 
 def _flattened(special: Expr, point: Point) -> list[tuple[Expr, Boolean, int]]:
@@ -461,15 +618,15 @@ def _flattened(special: Expr, point: Point) -> list[tuple[Expr, Boolean, int]]:
     ``Eq(a, b)`` into ``Eq(a, 0) & Eq(b, 0)``."""
     cases: list[tuple[Expr, Boolean, int]] = []
     for e, condition in _branches(special):
-        inners = [condition_point(as_boolean(c)) for c in (condition.args if isinstance(condition, Or) else [condition])]
-        if all(inner is not None for inner in inners):
-            for inner in inners:
-                assert inner is not None
-                composed: Point = {p: as_expr(v.xreplace(inner)) for p, v in point.items()}
+        inners = [condition_point(c) for c in _disjuncts(condition)]
+        found = [inner for inner in inners if inner is not None]
+        if len(found) == len(inners):
+            for inner in found:
+                composed: Point = {p: _replaced(v, inner) for p, v in point.items()}
                 composed.update(inner)
                 cases.append((e, point_condition(composed), len(composed)))
         else:
-            cases.append((e, as_boolean(And(point_condition(point), condition)), len(point)))
+            cases.append((e, and_(point_condition(point), condition), len(point)))
     return cases
 
 
@@ -479,19 +636,21 @@ def equality_points(value: Expr, parameters: Sequence[Symbol]) -> list[Point]:
     equations) in the ``parameters``: the isolated values, which the
     numerical checks sampling the regions of the branches never reach.
 
-    >>> from sympy import symbols, Piecewise, Eq, log
+    >>> from sympy_extras.core import symbols, Eq, Integer
+    >>> from sympy_extras.functions import log
+    >>> from sympy_extras.functions.elementary.piecewise import piecewise
     >>> from sympy_extras._special_values import equality_points
     >>> y, c = symbols('y c')
-    >>> equality_points(Piecewise((2, Eq(y, 1)), ((y**2 - 1)/log(y), True)), [y])
+    >>> equality_points(piecewise((Integer(2), Eq(y, 1)), ((y**2 - 1)/log(y), True)), [y])
     [{y: 1}]
-    >>> equality_points(Piecewise((-1, Eq(c, 0) | Eq(c, 1)), (c, c > 1)), [c])
+    >>> equality_points(piecewise((Integer(-1), Eq(c, 0) | Eq(c, 1)), (c, c > 1)), [c])
     [{c: 0}, {c: 1}]
     """
     points: list[Point] = []
     wanted = set(parameters)
     for _, condition in _branches(value):
-        for disjunct in (condition.args if isinstance(condition, Or) else [condition]):
-            point = condition_point(as_boolean(disjunct))
+        for disjunct in _disjuncts(condition):
+            point = condition_point(disjunct)
             if point and set(point) <= wanted and point not in points:
                 points.append(point)
     return points
@@ -502,20 +661,20 @@ def condition_point(condition: Boolean) -> Optional[Point]:
     equations ``Eq(p, v)`` with a symbol ``p`` not in ``v``, the
     equations solved; ``None`` for another condition.
 
-    >>> from sympy import symbols, Eq
+    >>> from sympy_extras.core import symbols, Eq
     >>> from sympy_extras._special_values import condition_point
     >>> a, b = symbols('a b')
     >>> condition_point(Eq(a, b) & Eq(b, 0)), condition_point(a > 0)
     ({a: 0, b: 0}, None)
     """
-    if condition is true:
+    if isinstance(condition, BooleanTrue):
         return {}
     parts = condition.args if isinstance(condition, And) else (condition,)
     point: Point = {}
     for part in parts:
         if not isinstance(part, Eq):
             return None
-        lhs, rhs = as_expr(part.lhs), as_expr(part.rhs)
+        lhs, rhs = part.lhs, part.rhs
         if isinstance(lhs, Symbol) and not rhs.has(lhs):
             point[lhs] = rhs
         elif isinstance(rhs, Symbol) and not lhs.has(rhs):
@@ -524,8 +683,9 @@ def condition_point(condition: Boolean) -> Optional[Point]:
             return None
     # the equations solved: Eq(a, b) & Eq(b, 0) is a = 0, b = 0
     for _ in range(len(point)):
-        point = {p: as_expr(v.xreplace(point)) for p, v in point.items()}
-    if any(free_symbols(v) & set(point) for v in point.values()):
+        solved = point
+        point = {p: _replaced(v, solved) for p, v in solved.items()}
+    if any(_symbols(v) & set(point) for v in point.values()):
         return None
     return point
 
@@ -536,14 +696,15 @@ def defined_problem(integrand: Expr, variables: Sequence[Symbol]) -> bool:
     variables of integration) on a set of positive measure (the rule of
     the module documentation): not when ``nan`` or ``zoo`` appears
     (``log(0)``, a division by zero), when a power ``0**e`` stays
-    unevaluated (SymPy evaluates it for an exponent of known sign, so
-    that its value, ``0``, ``1`` or ``zoo``, depends on the sign of an
-    ``e`` which is not known: ``a**(b*z)`` at ``a = 0``), or when a
+    unevaluated (a power of zero is evaluated for an exponent of known
+    sign, so that its value, ``0``, ``1`` or ``zoo``, depends on the sign
+    of an ``e`` which is not known: ``a**(b*z)`` at ``a = 0``), or when a
     ``DiracDelta`` of an expression free of the variables remains (the
     delta of a constant, ``DiracDelta(a*u)`` at ``a = 0``, is no
     function).
 
-    >>> from sympy import symbols, DiracDelta, Integer
+    >>> from sympy_extras.core import symbols, Integer
+    >>> from sympy_extras.functions import DiracDelta
     >>> from sympy_extras._special_values import defined_problem
     >>> a, b, z = symbols('a b z')
     >>> defined_problem((a**(b*z)/z).subs(a, 0), [z]), defined_problem((a**(b*z)/z).subs(a, 1), [z])
@@ -555,12 +716,15 @@ def defined_problem(integrand: Expr, variables: Sequence[Symbol]) -> bool:
         return False
     wanted = set(variables)
     for node in preorder_traversal(integrand):
-        if isinstance(node, Pow) and as_expr(node.base).is_zero:
+        if isinstance(node, Pow) and node.base.is_zero:
             return False
-        if isinstance(node, DiracDelta) and not free_symbols(as_expr(node.args[0])) & wanted:
+        if isinstance(node, DiracDelta) and not _symbols(node.args[0]) & wanted:
             return False
     return True
 
+
+# ---------------------------------------------------------------------------
+# the cases
 
 def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: Assumptions,
                         compute: Compute, defined: Optional[Callable[[Point], bool]] = None,
@@ -594,7 +758,8 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
     characteristic roots coincide): those points are candidates too, and
     are kept when the branch taken there is ``e``.
 
-    >>> from sympy import symbols, exp, Integer
+    >>> from sympy_extras.core import symbols, Integer
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras._special_values import with_special_values
     >>> k = symbols('k')
     >>> with_special_values((exp(k) - 1)/k, [k], None, lambda point, assumptions: Integer(1))
@@ -626,7 +791,7 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
             continue
         branch = e
         callback = degenerate
-        parts = attempt(lambda: callback(branch), seconds)
+        parts = attempt(lambda: callback(branch), seconds, native=True)
         for point in _points_of(parts or [], parameters, assumptions, deadline):
             degenerate_at.append((point, index))
             if point not in points:
@@ -647,12 +812,13 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
         remaining = deadline.left()
         if remaining is not None and remaining <= 0:
             break
-        special = attempt(lambda: compute(point, at), remaining)
+        at_point = point
+        special = attempt(lambda: compute(at_point, at), remaining, native=True)
         if special is None or special.has(nan, zoo):
             # (the problem at the point has no value either: the sum of
             # 1/((k + a)*(k + a + 1)) from k = 0 has the term 1/0 at a = 0)
             continue
-        if failing == 'fallback' and (_unevaluated(special) or special.has(oo, -oo)):
+        if failing == 'fallback' and (_unevaluated(special) or _infinite(special)):
             # a point where the value was left to the fallback, and which
             # the problem at the point does not settle either, or where it
             # diverges: on the boundary of a region of divergence (1/x over
@@ -669,6 +835,6 @@ def with_special_values(value: Expr, parameters: Sequence[Symbol], assumptions: 
     cases.sort(key=lambda case: -case[2])
     single = condition_point(cases[0][1]) if sympy_style and len(cases) == 1 and not isinstance(value, Piecewise) else None
     if single:
-        generic = as_boolean(Or(*[Ne(p, v) for p, v in sorted(single.items(), key=lambda item: item[0].name)]))
-        return as_expr(Piecewise((value, generic), (cases[0][0], True)))
-    return as_expr(Piecewise(*[(e, condition) for e, condition, _ in cases], *branches))
+        generic = or_(*[ne(p, v) for p, v in sorted(single.items(), key=lambda item: item[0].name)])
+        return piecewise((value, generic), (cases[0][0], true))
+    return piecewise(*[(e, condition) for e, condition, _ in cases], *branches)

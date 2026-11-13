@@ -7,10 +7,10 @@ from sympy.testing.pytest import raises
 
 from sympy import S
 from sympy_extras._testing import untyped
-from sympy_extras._typing import as_expr
-from sympy_extras.integrals.dfinite import (Annihilator, annihilators, normal_form, closure, chyzak, dfinite_ode,
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.integrals.dfinite_sympy import (Annihilator, annihilators, normal_form, closure, chyzak, dfinite_ode,
                                             Factor)
-from sympy_extras.integrals.telescoping import almkvist_zeilberger
+from sympy_extras.integrals.telescoping_sympy import almkvist_zeilberger
 
 x = symbols('x')
 t = symbols('t', positive=True)

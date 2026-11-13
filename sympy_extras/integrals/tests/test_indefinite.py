@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from sympy import symbols, sqrt, exp, sin, cos, log, tan, atan, asin, Integral, I, S, diff, simplify, erf
 
-from sympy_extras._typing import as_expr
-from sympy_extras.integrals import indefinite_integral, verified_antiderivative, is_antiderivative
-from sympy_extras.integrals import indefinite as module
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.integrals.indefinite_sympy import indefinite_integral, verified_antiderivative, is_antiderivative
+from sympy_extras.integrals import indefinite_sympy as module
 
 x = symbols('x')
 
@@ -25,9 +25,9 @@ def test_classic_integrands_by_the_typed_methods() -> None:
     # the error function from the exponential table
     found = verified_antiderivative(exp(-x**2), x)
     assert found is not None and found[1] == 'exponential' and found[0].has(erf)
-    # SymPy's methods stay the last resort, still checked
-    found = verified_antiderivative(sin(x), x, methods=['sympy'])
-    assert found == (-cos(x), 'sympy')
+    # the Meijer G-function route is the last resort, still checked
+    found = verified_antiderivative(sin(x), x, methods=['meijer'])
+    assert found == (-cos(x), 'meijer')
 
 
 def test_is_antiderivative() -> None:
@@ -43,8 +43,10 @@ def test_wrong_candidates_are_refused(monkeypatch: object) -> None:
     # driver moves on, and returns the Integral when nothing checks
     import pytest
     assert isinstance(monkeypatch, pytest.MonkeyPatch)
-    wrong = [('wrong', lambda f, v, assumptions: as_expr(cos(v)))]
-    monkeypatch.setattr(module, 'METHODS', wrong)
+    from sympy_extras.functions import cos as core_cos
+    from sympy_extras.integrals import indefinite as native
+    wrong = [('wrong', lambda f, v, assumptions: core_cos(v))]
+    monkeypatch.setattr(native, 'METHODS', wrong)
     assert indefinite_integral(sin(x), x) == Integral(sin(x), x)
     assert verified_antiderivative(sin(x), x) is None
 
@@ -128,7 +130,7 @@ def test_the_numerical_check_survives_huge_values() -> None:
     # complex overflowed in numerically_equal, and a right antiderivative
     # of the incomplete gamma family was refused
     from sympy import Float
-    from sympy_extras.integrals.conditions import numerically_equal
+    from sympy_extras.integrals.conditions_sympy import numerically_equal
     huge = Float(3e307) * (1 + I)
     assert numerically_equal(huge, huge) is True
     assert numerically_equal(huge, Float(2e307) * (1 + I)) is False
@@ -153,7 +155,7 @@ def test_the_assumptions_reach_the_typed_methods() -> None:
 
 def test_nonelementary_binomial_differentials() -> None:
     from sympy import Rational, cbrt, hyper, im
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     # sqrt(t**7/(1 - 5*t**2)) came back unevaluated: its integral is not
     # elementary (Chebyshev), and the hypergeometric form was not tried
     f = sqrt(x**7 / (1 - 5 * x**2))
@@ -175,7 +177,7 @@ def test_nonelementary_binomial_differentials() -> None:
 
 def test_binomial_differentials_with_parameters_and_their_special_values() -> None:
     from sympy import Eq, Piecewise, Rational, cbrt, hyper
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     a, b = symbols('a b')
     # sqrt(t**7/(a - b*t**2)) and x**(1/3)*sqrt(a + x**2) came back
     # unevaluated (the binomial coefficients had to be numbers); at a = 0,

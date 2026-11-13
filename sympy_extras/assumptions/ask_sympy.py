@@ -1,17 +1,11 @@
 """The SymPy face of the truth values of statements under assumptions
-(:mod:`sympy_extras.assumptions.ask`), and the steps of ``ask`` which are
-not ported.
+(:mod:`sympy_extras.assumptions.ask`).
 
 :func:`ask` takes SymPy objects (relations, memberships in SymPy's sets,
 predicates of SymPy's ``Q``, the quantifiers of
 :mod:`sympy_extras.assumptions.quantifiers_sympy`), converted by
 :mod:`sympy_extras.interop` around the native function; the facts are
 those of :mod:`sympy_extras.assumptions.facts_sympy`.
-
-The steps of the native ``ask`` which stay written on SymPy are called
-from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): the sample points of :func:`sympy_extras.integrals.conditions.sample_values`
-and :func:`sympy_extras._numeric.reliable_value`.
 
 Examples
 ========
@@ -26,7 +20,6 @@ True
 """
 from __future__ import annotations
 
-import random
 from typing import Iterable, Optional, Union
 
 from sympy.core.basic import Basic
@@ -36,7 +29,7 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import QuantifierPrefix, Truth, as_boolean, as_symbol
+from sympy_extras._typing_sympy import QuantifierPrefix, Truth, as_boolean, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
@@ -50,8 +43,7 @@ from .context_sympy import global_assumptions
 from .facts_sympy import Facts
 from .quantifiers import Prefix
 
-__all__ = ['ask', 'Assumptions', 'sample_values_of_core',
-    'reliable_complex_of_core', 'core_boolean', 'core_assumptions', 'core_domain', 'sympy_boolean']
+__all__ = ['ask', 'Assumptions', 'core_boolean', 'core_assumptions', 'core_domain', 'sympy_boolean']
 
 
 Assumptions = Union[None, Boolean, bool, Iterable[Union[Boolean, bool]]]
@@ -128,37 +120,6 @@ def core_prefix(prefix: QuantifierPrefix) -> Prefix:
 
 def sympy_prefix(prefix: Prefix) -> QuantifierPrefix:
     return [(kind, _sympy_symbol(v)) for kind, v in prefix]
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native ask which stay on SymPy
-
-
-
-def sample_values_of_core(symbols: list[CoreSymbol], conjuncts: list[CoreBoolean],
-                          difference: CoreExpr) -> Optional[dict[CoreSymbol, CoreExpr]]:
-    """A point of the region of the conjuncts
-    (:func:`sympy_extras.integrals.conditions.sample_values`, seeded by
-    the printed form of ``difference``), ``None`` when none is found."""
-    from sympy_extras.integrals.conditions import sample_values
-    found = sample_values([_sympy_symbol(s) for s in symbols], [sympy_boolean(c) for c in conjuncts],
-                          random.Random(str(_sympy_expr(difference))))
-    if found is None:
-        return None
-    return {_core_symbol(s): _core_expr(v) for s, v in found.items()}
-
-
-def reliable_complex_of_core(e: CoreExpr, digits: int, values: dict[CoreSymbol, CoreExpr]) -> Optional[complex]:
-    """:func:`sympy_extras._numeric.reliable_value` of ``e`` at the values
-    of its symbols as a complex number, ``None`` when it is not reliable."""
-    from sympy_extras._numeric import reliable_value
-    value = reliable_value(_sympy_expr(e), digits, {_sympy_symbol(s): _sympy_expr(v) for s, v in values.items()})
-    if value is None:
-        return None
-    try:
-        return complex(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
 
 
 # ---------------------------------------------------------------------------

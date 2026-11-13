@@ -4,20 +4,18 @@ from __future__ import annotations
 import pytest
 from sympy import (symbols, exp, sin, cos, log, sqrt, besselj, oo, gamma, pi, S, Rational,
                    EulerGamma, simplify, zeta, Integer, I, erf, Eq, re, exp_polar)
-from sympy.core.expr import Expr
-from sympy.logic.boolalg import Boolean, true, false
+from sympy.logic.boolalg import false
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.ask_sympy import Assumptions
 from sympy_extras.integrals import marichev
-from sympy_extras.integrals.conditions import ConditionalValue, numerical_verdict, numerically_equal
-from sympy_extras.integrals.marichev import (mellin_integrate, evaluate_quotient, reduce_positive_powers,
+from sympy_extras.integrals.conditions_sympy import ConditionalValue, numerical_verdict, numerically_equal
+from sympy_extras.integrals.marichev_sympy import (mellin_integrate, evaluate_quotient, reduce_positive_powers,
                                              integrate_product, checked_tidy)
 from sympy_extras.settings import configure
-from sympy_extras.integrals.mellin import GammaQuotient, decompose_integrand
+from sympy_extras.integrals.mellin_sympy import GammaQuotient, decompose_integrand
 
 x, k, s = symbols('x k s')
 a, b, nu = symbols('a b nu', positive=True)
@@ -159,7 +157,7 @@ def test_three_kernels_through_the_exponential_form() -> None:
     # exponentials with complex scales, two kernels per term; the
     # exponentials linear in x are combined, exp(-x**2) is kept apart
     from sympy import I, N, Integral
-    from sympy_extras.integrals.marichev import exponential_form, right_half_plane_powers
+    from sympy_extras.integrals.marichev_sympy import exponential_form, right_half_plane_powers
     form = exponential_form(exp(-a * x) * sin(b * x) / (1 + x**2), x)
     assert form.count(exp) == 2 and form.count(x**2 + 1) == 2
     assert form.expand() == (exp(-a * x) * (exp(I * b * x) - exp(-I * b * x)) / (2 * I * (x**2 + 1))).expand()
@@ -179,7 +177,7 @@ def test_airy_products_and_polar_incomplete_gammas() -> None:
     # Slater series at |z| = 1 summed by Gauss's formula term by term
     # although the terms diverge there; now refused
     from sympy import airyai, hyper, lowergamma, exp_polar, I, N, Integral
-    from sympy_extras.integrals.marichev import polar_lowergamma
+    from sympy_extras.integrals.marichev_sympy import polar_lowergamma
     assert mellin_integrate(airyai(x)**2, x) is None
     assert mellin_integrate(airyai(x), x) is not None
     # the Laplace transform of Ai: hyperexpand's lowergamma of a polar
@@ -194,8 +192,8 @@ def test_airy_products_and_polar_incomplete_gammas() -> None:
 
 def test_bessel_products_through_the_driver() -> None:
     from sympy import besselk, elliptic_k, exp_polar, N, Integral
-    from sympy_extras.integrals import definite_integral
-    from sympy_extras.integrals.marichev import polar_elliptic
+    from sympy_extras.integrals.definite_sympy import definite_integral
+    from sympy_extras.integrals.marichev_sympy import polar_elliptic
     assert definite_integral(besselj(1, x)**2 / x, (x, 0, oo)) == S.Half
     assert definite_integral(x * besselk(0, x)**2, (x, 0, oo)) == S.Half
     # the Laplace transform of J_0**2 is an elliptic integral of a negative
@@ -210,7 +208,7 @@ def test_real_logarithms_skip_complex_arguments() -> None:
     # the crash: the relation argument < 0 cannot be formed for a complex
     # argument (Wester's x*exp(-p*x**2 + 2*x*(atan(43*sqrt(771)/2313)/3 + pi/6)))
     from sympy import I, log, sqrt, pi, symbols
-    from sympy_extras.integrals.marichev import real_logarithms
+    from sympy_extras.integrals.marichev_sympy import real_logarithms
     c = symbols('c')
     value = log(1 + 43 * sqrt(771) * I / 2313) + log(-c**2)
     assert real_logarithms(value, [c > 0]) == log(1 + 43 * sqrt(771) * I / 2313) + log(c**2) + I * pi
@@ -224,7 +222,7 @@ def test_the_logarithmic_case_of_slater_on_one_side() -> None:
     # transform of erf(sqrt(t)) is 1/(s*sqrt(s + 1)) (Mathematica:
     # Sqrt[a/s]/(s - a) for exp(a*t)*erf(sqrt(a*t)) under s > a > 0)
     from sympy import erf, sqrt, simplify
-    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.definite_sympy import definite_integral
     s, a, t = symbols('s a t', positive=True)
     assert simplify(definite_integral(exp(-s * t) * erf(sqrt(t)), (t, 0, oo)) - 1 / (s * sqrt(s + 1))) == 0
     value = definite_integral(exp(a * t) * exp(-s * t) * erf(sqrt(a * t)), (t, 0, oo), s > a)
@@ -237,8 +235,8 @@ def test_bessel_k_forms_cancel_the_sine_of_the_order() -> None:
     # pi*(besseli(-n, z) - besseli(n, z))/sin(pi*n), 0/0 at integer orders
     # (Maxima's specint 174 records 2*a**(n/2)*besselk(n, 2*sqrt(a*s))/s**(n/2))
     from sympy import besselk, besseli, sin
-    from sympy_extras.integrals import definite_integral
-    from sympy_extras.integrals.marichev import bessel_k_forms
+    from sympy_extras.integrals.definite_sympy import definite_integral
+    from sympy_extras.integrals.marichev_sympy import bessel_k_forms
     n, z, a, s, t = symbols('n z a s t', positive=True)
     assert bessel_k_forms(pi * (besseli(-n, z) - besseli(n, z)) / sin(pi * n)) == 2 * besselk(n, z)
     value = definite_integral(t**(n - 1) * exp(-a / t) * exp(-s * t), (t, 0, oo))
@@ -252,7 +250,7 @@ def test_the_logarithmic_case_takes_the_expansion_before_the_limit() -> None:
     # logarithmic case; the perturbation and the limit took a minute
     import time
     from sympy import expint, log
-    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.definite_sympy import definite_integral
     s, a, t = symbols('s a t', positive=True)
     started = time.monotonic()
     value = mellin_integrate(expint(1, a * t) * exp(-(s - a) * t), t, [s > a])
@@ -268,8 +266,8 @@ def test_the_order_derivative_of_a_bessel_function_at_zero_is_the_k_function() -
     # which is -K_0(z): exp(-k**2/(4*t))*exp(-s*t)/(2*t) over (0, oo) is
     # besselk(0, k*sqrt(s)) (Maxima's specint 138)
     from sympy import Subs, Derivative, besseli, besselk, Dummy
-    from sympy_extras.integrals import definite_integral
-    from sympy_extras.integrals.marichev import bessel_k_forms
+    from sympy_extras.integrals.definite_sympy import definite_integral
+    from sympy_extras.integrals.marichev_sympy import bessel_k_forms
     nu, z = Dummy('nu'), symbols('z', positive=True)
     assert bessel_k_forms(-2 * Subs(Derivative(besseli(nu, z), nu), nu, 0)) == 2 * besselk(0, z)
     k, s, t = symbols('k s t', positive=True)
@@ -303,8 +301,13 @@ def test_a_tidied_value_which_differs_is_refused(monkeypatch: object) -> None:
     assert isinstance(monkeypatch, pytest.MonkeyPatch)
     assert checked_tidy(sqrt(a**2) + log(a * exp_polar(0))) == a + log(a)
 
-    def wrong(value: Expr, assumptions: Assumptions = None, condition: Boolean = true) -> Expr:
-        return as_expr(value + 1)
+    # the face runs the native checked_tidy, which calls the native tidy
+    from sympy_extras.assumptions.ask import Assumptions as CoreAssumptions
+    from sympy_extras.core.expr import Expr as CoreExpr
+    from sympy_extras.core.logic import Boolean as CoreBoolean, true as core_true
+
+    def wrong(value: CoreExpr, assumptions: CoreAssumptions = None, condition: CoreBoolean = core_true) -> CoreExpr:
+        return value + 1
 
     monkeypatch.setattr(marichev, 'tidy', wrong)
     assert checked_tidy(1 / a) == 1 / a

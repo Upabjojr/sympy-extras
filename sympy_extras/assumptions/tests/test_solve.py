@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sympy import (S, Eq, sqrt, exp, log, sin, cos, acos, pi, Interval, Union, FiniteSet, Range,
+from sympy import (S, Eq, expand_trig, sqrt, exp, log, sin, cos, pi, Interval, Union, FiniteSet, Range,
     Rational, ConditionSet, ImageSet, Q, CRootOf, Expr, And, Or, ProductSet, symbols, Ne)
 from sympy.abc import x, y, a, n
 from sympy.testing.pytest import raises
@@ -8,7 +8,7 @@ from sympy.testing.pytest import raises
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras._testing import untyped
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 
 
 def test_solve_univariate_polynomial() -> None:
@@ -126,8 +126,10 @@ def test_solve_periodic_inequality() -> None:
         Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))
     # a region of less than one period which is not the one solveset uses
     assert solve(sin(x) > 0, x, (x > 5) & (x < 7)) == Interval.open(2*pi, 7)
-    assert solve(cos(x) < Rational(1, 3), x, (x > 0) & (x < 2)) == \
-        Interval.open(acos(Rational(1, 3)), 2)
+    # the end is acos(1/3), written 2*atan(sqrt(2)/2) by the native zeros
+    below = solve(cos(x) < Rational(1, 3), x, (x > 0) & (x < 2))
+    assert isinstance(below, Interval) and below.left_open and below.right_open and below.end == 2
+    assert expand_trig(cos(below.start)) == Rational(1, 3) and 0 < below.start < pi
     # the same truncation over the integers gave Range(1, 4, 1)
     integers = solve(sin(x) > 0, x, element(x, S.Integers))
     assert [k for k in range(-8, 16) if integers.contains(k) is S.true] == \

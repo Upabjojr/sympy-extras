@@ -20,14 +20,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from fractions import Fraction
-from typing import Callable, Final, Iterable, Iterator, Optional, TYPE_CHECKING, Union
+from typing import Callable, Final, Iterable, Iterator, Optional, Union
 
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .logic import Boolean, BooleanLike, to_boolean
 from .sorting import ClassKey, SortKey
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['Predicate', 'AppliedPredicate', 'Handler', 'AssumptionsContext', 'global_assumptions', 'assuming']
 
@@ -148,7 +145,7 @@ class Predicate(Boolean):
     def __str__(self) -> str:
         return 'Q.' + self.name
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return str(self)
 
 
@@ -217,7 +214,7 @@ class AppliedPredicate(Boolean):
             raise TypeError("a predicate is expected, got %s" % (predicate,))
         return AppliedPredicate(predicate, *args[1:])
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '%s(%s)' % (self._function, ', '.join(printer.doprint(a) for a in self._arguments))
 
 

@@ -32,8 +32,9 @@ Examples
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: unevaluating classes with evaluating functions, strict typing;
-# the general expand_func, lowergamma, uppergamma,
-# multigamma and the series not ported.
+# the general expand_func of lowergamma, uppergamma and multigamma not
+# ported; the asymptotic series of loggamma, polygamma, digamma, trigamma
+# and lowergamma ported.
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
@@ -253,6 +254,44 @@ class PolyGamma(DefinedFunction):
     nargs = frozenset({2})
     call_nargs = frozenset({2})
 
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:polygamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series at an argument going to ``oo`` of a
+        nonnegative integer order (Abramowitz & Stegun 6.3.18, 6.4.10)."""
+        from sympy_extras.core.numbers import oo
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.numbers import bernoulli
+        order_, z = self.args
+        assert isinstance(order_, Expr) and isinstance(z, Expr)
+        if args0[1] != oo or not (isinstance(order_, Integer) and order_.p >= 0):
+            return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+        N = order_
+        if N.p == 0:
+            # the digamma function
+            r = log(z) - 1/(2*z)
+            if n < 2:
+                o = order(1/z, x)
+            else:
+                m = (n + 1)//2
+                r = r - add(*[bernoulli(Integer(2*k)) / (2*k*z**(2*k)) for k in range(1, m)])
+                o = order(1/z**n, x)
+            return r._eval_nseries(x, n, logx, Integer(0)) + o
+        # the proper polygamma functions; terms beyond O(x**n) on purpose
+        fac = gamma(N)
+        e0 = fac + N*fac/(2*z)
+        m = (n + 1)//2
+        for k in range(1, m):
+            fac = fac*(2*k + N - 1)*(2*k + N - 2) / ((2*k)*(2*k - 1))
+            e0 = e0 + bernoulli(Integer(2*k))*fac/z**(2*k)
+        o = order(1/z**(2*m), x)
+        if n == 0:
+            o = order(1/z, x)
+        elif n == 1:
+            o = order(1/z**2, x)
+        # SymPy expands e0 in z first: a finite sum in 1/z already
+        r = e0 + o
+        return (-1 * (-1/z)**N * r)._eval_nseries(x, n, logx, Integer(0))
+
     @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         n, z = args
@@ -330,6 +369,11 @@ class DiGamma(DefinedFunction):
     def fdiff(self, argindex: int) -> Expr:
         return polygamma(ONE, self.args[0])
 
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:digamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series of ``polygamma(0, z)``."""
+        return PolyGamma(ZERO, self.args[0])._eval_aseries(n, [ZERO, *args0], x, logx)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return None if _poles(values[0]) else mpmath.mpc(mpmath.digamma(values[0]))
 
@@ -351,6 +395,11 @@ class TriGamma(DefinedFunction):
 
     def fdiff(self, argindex: int) -> Expr:
         return polygamma(Integer(2), self.args[0])
+
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:trigamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series of ``polygamma(1, z)``."""
+        return PolyGamma(ONE, self.args[0])._eval_aseries(n, [ONE, *args0], x, logx)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return None if _poles(values[0]) else mpmath.mpc(mpmath.polygamma(1, values[0]))
@@ -461,6 +510,21 @@ class LowerGamma(DefinedFunction):
         if x.is_zero or isinstance(x, NegativeInfinity):
             return None
         return lowergamma(conjugate(a), conjugate(x))
+
+    # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:lowergamma._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series as the order ``s`` goes to ``oo`` with the
+        argument ``z`` fixed: ``z**s*exp(-z)`` times the sum of
+        ``z**k/rf(s, k + 1)`` (Abramowitz & Stegun 6.5.29)."""
+        from sympy_extras.core.order import order
+        from sympy_extras.functions.combinatorial.factorials import rf
+        s, z = self.args
+        if isinstance(args0[0], Infinity) and not z.has(x):
+            coeff = z**s * exp(-z)
+            sum_expr = add(*[z**k / rf(s, Integer(k + 1)) for k in range(n - 1)])
+            # SymPy's O with the free symbols of the expression
+            return coeff * sum_expr + order(z**s * s**(-n))
+        return DefinedFunction._eval_aseries(self, n, args0, x, logx)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         try:

@@ -42,7 +42,7 @@ from sympy.sets.contains import Contains
 from sympy.sets.fancysets import Naturals, Naturals0, Integers, Rationals, Reals
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import as_boolean, as_symbol
+from sympy_extras._typing_sympy import as_boolean, as_symbol
 from sympy_extras.core.basic import Basic as CoreBasic
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean

@@ -5,7 +5,7 @@ from sympy.core.expr import Expr
 from sympy.abc import x, y
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.thue_equation import (thue, units_of_order, elements_of_norm, lll,
+from sympy_extras.solvers.thue_equation_sympy import (thue, units_of_order, elements_of_norm, lll,
     short_vectors, ThueEquation)
 
 
@@ -25,7 +25,7 @@ def test_precision_is_restored() -> None:
     the results of the other modules must not depend on whether a Thue
     equation was solved before."""
     import mpmath
-    from sympy_extras.solvers.thue_equation import at_precision
+    from sympy_extras.solvers.thue_equation_sympy import at_precision
     before = mpmath.mp.dps
     with at_precision(before + 20):
         assert mpmath.mp.dps == before + 20
@@ -102,3 +102,12 @@ def test_thue_errors() -> None:
     assert thue(x**3 - 2*y**3, 0, x, y) == [(0, 0)]
     equation = ThueEquation([1, 0, 0, -2], 1)
     assert equation.evaluate(1, 0) == 1 and equation.small_solutions(2) == [(-1, -1), (1, 0)]
+
+
+def test_generators_which_are_not_symbols() -> None:
+    from sympy import Function, exp
+    from sympy.abc import u
+    f = Function('f')(x)
+    # the first face converted the generators as symbols: TypeError('f(x) is not a symbol')
+    assert thue(x**3 - 2*f**3, 1, x, f) == [(-1, -1), (1, 0)]
+    assert thue(exp(x)**3 - 2*u**3, -1, exp(x), u) == [(-1, 0), (1, 1)]

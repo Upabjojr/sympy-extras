@@ -15,7 +15,7 @@ of Mathematica's ``SumConvergence``:
 2. **d'Alembert's ratio test** with `r = \\lim |a_{n+1}/a_n|`: absolute
    convergence for `r < 1`, divergence for `r > 1`; when `r` depends on
    the parameters the boundary `r = 1` is examined at each of its points
-   (found by :func:`~sympy_extras.assumptions.solve_sympy.solve`) when there is a
+   (found by :func:`~sympy_extras.assumptions.solve.solve`) when there is a
    single parameter;
 3. **Raabe's test** on the boundary, `\\rho = \\lim n (|a_n/a_{n+1}| - 1)`
    (`\\rho > 1` convergence, `\\rho < 1` divergence of `\\sum |a_n|`), and
@@ -39,6 +39,17 @@ when `\\sum |b_n|` converges, and diverges when `b_n` has eventually a
 constant sign and `\\sum b_n` diverges, or when `1 + b_n \\not\\to 1`;
 otherwise the convergence of `\\sum \\log(1 + b_n)` decides.
 
+The module works on the objects of the core and imports no SymPy: the
+limits, the decisions under assumptions, the boundary points, the signs
+and the simplifications are the native ones of
+:mod:`sympy_extras.assumptions` and :mod:`sympy_extras.simplify`.
+:mod:`sympy_extras.concrete.convergence_sympy` is its face on SymPy
+objects. The last resort for terms without parameters is native too:
+the integral of the integral test from a native antiderivative (the
+transcendental Risch algorithm, then the heuristic one, checked by
+differentiation) and a port of SymPy's ``Sum.is_convergent`` (from
+``sympy/concrete/summations.py``); nothing goes through SymPy at run time.
+
 References
 ==========
 
@@ -47,54 +58,59 @@ References
 .. [Bromwich] T. J. Bromwich, An Introduction to the Theory of Infinite
    Series, Macmillan (1908), chapter III.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/concrete/summations.py (Sum.is_convergent), sympy/calculus/singularities.py
+# (is_decreasing) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: strict typing; the native limits of sequences, orders, signs and integrals; None where SymPy
+# raises. The rest of the module is original.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
-from sympy.concrete.summations import Sum
-from sympy.core.expr import Expr
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly
-from sympy.polys.polytools import cancel
-from sympy.core.add import Add
-from sympy.core.mul import Mul
-from sympy.core.numbers import pi
-from sympy.core.power import Pow
-from sympy.core.relational import Eq, Ne, Lt, Le, Gt, Ge
-from sympy.core.singleton import S
-from sympy.calculus.accumulationbounds import AccumBounds
-from sympy.functions.combinatorial.factorials import factorial
-from sympy.core.basic import Basic
-from sympy.core.symbol import Dummy, Symbol
-from sympy.core.sympify import sympify
-from sympy.functions.elementary.complexes import Abs
-from sympy.functions.elementary.exponential import log
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.elementary.trigonometric import cos, sin
-from sympy.integrals.integrals import Integral, integrate
-from sympy.logic.boolalg import Boolean, BooleanTrue, BooleanFalse, And, Or, true, false
-from sympy.series.limits import Limit
-from sympy.sets.sets import Interval, FiniteSet
-from sympy.simplify.combsimp import combsimp
-from sympy.simplify.powsimp import powsimp
-from sympy.simplify.simplify import simplify as _sympy_simplify
-
+from sympy_extras.core.accumbounds import AccumBounds
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.coreerrors import PoleError
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import expand
+from sympy_extras.core.limits import Limit
+from sympy_extras.core.logic import Boolean, BooleanFalse, BooleanTrue, and_, false, or_, to_boolean, true
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Infinity, Integer, NaN, NegativeInfinity, oo, pi
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ge, gt, le, lt, ne
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.combinatorial.factorials import Factorial
+from sympy_extras.functions.elementary.complexes import Abs, abs_
+from sympy_extras.functions.elementary.exponential import log
+from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin, cos, sin
+from sympy_extras.polys.polytools import cancel
+from sympy_extras.sets.sets import FiniteSet, Reals, interval
+from sympy_extras.simplify.gammasimp import combsimp
+from sympy_extras.simplify.powsimp import powsimp
+from sympy_extras.simplify.simplify import simplify as _simplify
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import Truth, as_boolean, as_expr, free_symbols
 from sympy_extras.settings import settings
-from sympy_extras.assumptions.ask_sympy import ask, Assumptions, _facts
-from sympy_extras.assumptions.analysis_sympy import sign_on, certified_sign
-from sympy_extras.assumptions.limits_sympy import limit as _limit_with_assumptions
-from sympy_extras.assumptions.refine_sympy import simplify as _simplify_with_assumptions, _Refiner
-from sympy_extras.assumptions.solve_sympy import solve
-from sympy_extras.assumptions.resolve_sympy import resolve
+from sympy_extras.assumptions.analysis import certified_sign, sign_on
+from sympy_extras.assumptions.ask import Assumptions, Truth, _facts, ask
+from sympy_extras.assumptions.limits import limit as _limit_with_assumptions
+from sympy_extras.assumptions.refine import _Refiner, simplify as _simplify_with_assumptions
+from sympy_extras.assumptions.resolve import resolve
+from sympy_extras.assumptions.solve import solve
 
-__all__ = ['sum_convergence', 'product_convergence', 'is_convergent']
+__all__ = ['sum_convergence', 'product_convergence', 'is_convergent', 'Condition']
 
 #: a condition on the parameters (``None`` when undecided)
 Condition = Optional[Boolean]
 #: what a test concludes from the value of a limit
 Verdict = Callable[[Expr, '_Context'], Condition]
+
+ONE = Integer(1)
+ZERO = Integer(0)
 
 
 class _Context:
@@ -112,10 +128,10 @@ class _Context:
 
     @property
     def premise(self) -> Boolean:
-        return And(*self.assumptions) if self.assumptions else true
+        return and_(*self.assumptions) if self.assumptions else true
 
-    def ask(self, statement: Union[Boolean, bool]) -> Truth:
-        return ask(as_boolean(statement), self.premise)
+    def ask(self, statement: Boolean) -> Truth:
+        return ask(statement, self.premise)
 
     def decide(self, condition: Boolean) -> Boolean:
         """The condition as ``true``, ``false``, or itself refined."""
@@ -124,17 +140,18 @@ class _Context:
             return true
         if value is False:
             return false
-        refined = attempt(lambda: _simplify_with_assumptions(condition, self.premise), settings.timeout)
-        return as_boolean(refined) if refined is not None else condition
+        refined = attempt(lambda: _simplify_with_assumptions(condition, self.premise), settings.timeout,
+                          native=True)
+        return to_boolean(refined) if refined is not None else condition
 
     def eventually(self, statement: Boolean) -> Truth:
         """Whether a statement in ``n`` holds for all large ``n``."""
         for start in (self.lower, self.lower + 4, self.lower + 16, self.lower + 64):
-            premise = And(self.premise, self.n >= start)
-            # SymPy's own evaluation of the relation with the symbols
+            premise = and_(self.premise, ge(self.n, start))
+            # the core's own evaluation of the relation with the symbols
             # replaced by dummies carrying their assumptions
             try:
-                facts = _facts(premise, None, free_symbols(statement))
+                facts = _facts(premise, None, statement.free_symbols)
             except ValueError:
                 return None
             abstracted, _, _ = _Refiner(facts).abstract(statement)
@@ -146,29 +163,47 @@ class _Context:
         return None
 
 
-def _clean(e: Expr, n: Symbol) -> Expr:
-    """A ratio or a power of terms simplified before its limit is taken
-    (SymPy's ``limit`` chokes on ``x**(n + 1)/x**n``): while simplifying,
-    ``n`` is a positive integer and the parameters are real, so that the
-    absolute values of positive quantities disappear."""
+def _replaced(e: Expr, rule: dict[Basic, Basic]) -> Expr:
+    """``e`` with the keys of ``rule`` replaced, evaluated (SymPy's
+    ``xreplace``)."""
+    return as_expr(e._xreplace_evaluated(rule))
+
+
+def _parameters(e: Basic, n: Symbol) -> set[Symbol]:
+    """The free symbols of ``e`` other than ``n``."""
+    return {s for s in e.free_symbols if isinstance(s, Symbol) and s != n}
+
+
+def _real_dummies(e: Expr, n: Symbol) -> dict[Basic, Basic]:
+    """``n`` replaced by a positive integer dummy and the parameters without
+    a sign by real dummies (the convention of the conditions returned)."""
     forward: dict[Basic, Basic] = {n: Dummy('n', integer=True, positive=True)}
-    for parameter in free_symbols(e) - {n}:
+    for parameter in _parameters(e, n):
         if parameter.assumptions0.get('real') is None:
             forward[parameter] = Dummy(parameter.name, real=True)
-    back = {d: s for s, d in forward.items()}
-    replaced = as_expr(e.xreplace(forward))
-    cleaned = attempt(lambda: as_expr(_sympy_simplify(combsimp(powsimp(replaced, force=True)))), settings.timeout)
+    return forward
+
+
+def _clean(e: Expr, n: Symbol) -> Expr:
+    """A ratio or a power of terms simplified before its limit is taken
+    (``limit`` chokes on ``x**(n + 1)/x**n``): while simplifying, ``n`` is
+    a positive integer and the parameters are real, so that the absolute
+    values of positive quantities disappear."""
+    forward = _real_dummies(e, n)
+    back: dict[Basic, Basic] = {d: s for s, d in forward.items()}
+    replaced = _replaced(e, forward)
+    cleaned = attempt(lambda: _simplify(combsimp(powsimp(replaced, force=True))), settings.timeout, native=True)
     if cleaned is None:
         return e
-    return as_expr(cleaned.xreplace(back))
+    return _replaced(cleaned, back)
 
 
 def _limit(e: Expr, ctx: _Context, clean: bool = True) -> Optional[Expr]:
-    """The limit at infinity under the assumptions, ``None`` when SymPy
-    cannot find it."""
+    """The limit at infinity under the assumptions, ``None`` when it
+    cannot be found."""
     cleaned = _clean(e, ctx.n) if clean else e
-    value = attempt(lambda: _limit_with_assumptions(cleaned, ctx.n, S.Infinity, assumptions=ctx.premise),
-                    settings.timeout)
+    value = attempt(lambda: _limit_with_assumptions(cleaned, ctx.n, oo, assumptions=ctx.premise),
+                    settings.timeout, native=True)
     if value is None or value.has(Limit) or value.has(ctx.n):
         return None
     return value
@@ -183,13 +218,16 @@ def _by_cases(value: Expr, ctx: _Context, verdict: Verdict) -> Condition:
         return None
     parts: list[Boolean] = []
     for pair in value.args:
-        expr, cond_ = as_expr(pair.args[0]), as_boolean(pair.args[1])
-        part = verdict(expr, ctx.assume(cond_))
+        part = verdict(pair.expr, ctx.assume(pair.cond))
         if part is None:
             return None
         if part is not false:
-            parts.append(And(cond_, part))
-    return Or(*parts) if parts else false
+            parts.append(and_(pair.cond, part))
+    return or_(*parts) if parts else false
+
+
+def _is_infinite(value: Expr) -> bool:
+    return isinstance(value, (Infinity, NegativeInfinity))
 
 
 def _compare_with_one(value: Expr, ctx: _Context, above: Condition, below: Condition,
@@ -199,10 +237,10 @@ def _compare_with_one(value: Expr, ctx: _Context, above: Condition, below: Condi
     for a limit depending on the parameters the three cases are combined,
     the boundary being examined at each point of ``value = 1`` when there
     is a single parameter."""
-    if value in (S.Infinity, S.NegativeInfinity):
-        return above if value is S.Infinity else below
-    if not free_symbols(value):
-        s = certified_sign(as_expr(value - 1))
+    if _is_infinite(value):
+        return above if isinstance(value, Infinity) else below
+    if not value.free_symbols:
+        s = certified_sign(value - 1)
         if s is None:
             return None
         if s < 0:
@@ -210,20 +248,20 @@ def _compare_with_one(value: Expr, ctx: _Context, above: Condition, below: Condi
         if s > 0:
             return above
         return boundary(ctx)
-    less = ctx.decide(as_boolean(value < 1))
+    less = ctx.decide(lt(value, 1))
     if less is true:
         return below
-    greater = ctx.decide(as_boolean(value > 1))
+    greater = ctx.decide(gt(value, 1))
     if greater is true:
         return above
-    equal = ctx.decide(as_boolean(Eq(value, 1)))
+    equal = ctx.decide(eq(value, 1))
     if equal is true:
         return boundary(ctx)
     parts: list[Boolean] = []
     if less is not false and below is not None and below is not false:
-        parts.append(And(less, below))
+        parts.append(and_(less, below))
     if greater is not false and above is not None and above is not false:
-        parts.append(And(greater, above))
+        parts.append(and_(greater, above))
     if equal is not false:
         on_boundary = _boundary_points(value, ctx, term)
         if on_boundary is None:
@@ -232,55 +270,61 @@ def _compare_with_one(value: Expr, ctx: _Context, above: Condition, below: Condi
             parts.append(on_boundary)
     if (below is None and less is not false) or (above is None and greater is not false):
         return None
-    return Or(*parts) if parts else false
+    return or_(*parts) if parts else false
 
 
 def _boundary_points(value: Expr, ctx: _Context, term: Expr) -> Condition:
     """The condition for convergence on ``value = 1``: with one
     parameter, the points of the boundary are listed and the series is
     tested at each of them."""
-    parameters = sorted(free_symbols(value), key=lambda s: s.name)
-    if len(parameters) != 1 or ctx.depth > 4:
+    parameters = sorted(_parameters(value, ctx.n), key=lambda s: s.name)
+    if len(parameters) != 1 or len(value.free_symbols) != 1 or ctx.depth > 4:
         return None
     [p] = parameters
-    points = attempt(lambda: solve(Eq(value, 1), p, ctx.premise, domain=S.Reals), settings.timeout)
+    points = attempt(lambda: solve(eq(value, 1), p, ctx.premise, domain=Reals), settings.timeout, native=True)
     if not isinstance(points, FiniteSet):
         return None
     parts: list[Boolean] = []
     for point in points.args:
-        if not isinstance(point, Expr) or free_symbols(point):
+        if not isinstance(point, Expr) or point.free_symbols:
             return None
-        at_point = _convergence(as_expr(term.xreplace({p: point})),
+        at_point = _convergence(_replaced(term, {p: point}),
                                 _Context(ctx.n, ctx.lower, [a for a in ctx.assumptions if p not in a.free_symbols],
                                          ctx.depth + 1))
         if at_point is None:
             return None
         if at_point is true:
-            parts.append(as_boolean(Eq(p, point)))
+            parts.append(eq(p, point))
         elif at_point is not false:
-            parts.append(And(Eq(p, point), at_point))
-    return Or(*parts) if parts else false
+            parts.append(and_(eq(p, point), at_point))
+    return or_(*parts) if parts else false
+
+
+def _factors(term: Expr) -> list[Expr]:
+    """The factors of a product, the term itself otherwise."""
+    if isinstance(term, Mul):
+        return [as_expr(f) for f in term.args]
+    return [term]
 
 
 def _alternating(term: Expr, n: Symbol) -> Optional[Expr]:
     """``b_n`` when ``term`` is ``(-1)**(n + c) * b_n`` or
     ``cos(pi*n) * b_n``."""
-    factors = term.args if isinstance(term, Mul) else (term,)
     rest: list[Expr] = []
     found = False
-    for f in factors:
-        f_ = as_expr(f)
-        if isinstance(f_, Pow) and f_.base == S.NegativeOne and as_expr(f_.exp).is_polynomial(n) \
-                and as_expr(f_.exp).diff(n).is_Integer and abs(int(as_expr(f_.exp).diff(n))) == 1 and not found:
+    for f in _factors(term):
+        if isinstance(f, Pow) and f.base == -1 and f.exp.is_polynomial(n) and not found:
+            slope = f.exp.diff(n)
+            if isinstance(slope, Integer) and abs(int(slope)) == 1:
+                found = True
+                continue
+        if isinstance(f, Cos) and isinstance(as_expr(f.args[0]) - pi*n, Integer) and not found:
             found = True
             continue
-        if isinstance(f_, cos) and as_expr(f_.args[0] - pi*n).is_Integer and not found:
-            found = True
-            continue
-        rest.append(f_)
+        rest.append(f)
     if not found:
         return None
-    return as_expr(Mul(*rest))
+    return mul(*rest)
 
 
 def _oscillating(term: Expr, n: Symbol) -> Optional[Expr]:
@@ -290,22 +334,20 @@ def _oscillating(term: Expr, n: Symbol) -> Optional[Expr]:
     geometric series of ``exp(I*c*n)``, as soon as ``c`` is not a multiple
     of ``2*pi`` (which would make the factor constant).
     """
-    factors = term.args if isinstance(term, Mul) else (term,)
     rest: list[Expr] = []
     found = False
-    for factor in factors:
-        f = as_expr(factor)
-        if not found and isinstance(f, (sin, cos)):
+    for f in _factors(term):
+        if not found and isinstance(f, (Sin, Cos)):
             argument = as_expr(f.args[0])
-            c = as_expr(argument.diff(n))
-            if n not in free_symbols(c) and as_expr(argument - c*n).diff(n) == 0 \
-                    and c.is_real and as_expr(c/(2*pi)).is_integer is False:
+            c = argument.diff(n)
+            if n not in c.free_symbols and (argument - c*n).diff(n) == 0 \
+                    and c.is_real and (c/(2*pi)).is_integer is False:
                 found = True
                 continue
         rest.append(f)
     if not found:
         return None
-    return as_expr(Mul(*rest))
+    return mul(*rest)
 
 
 def _dirichlet_test(term: Expr, ctx: _Context) -> Condition:
@@ -321,14 +363,32 @@ def _dirichlet_test(term: Expr, ctx: _Context) -> Condition:
     return true if _decreasing_to_zero(b, ctx) is true else None
 
 
+def _coefficients(e: Expr, n: Symbol) -> Optional[dict[int, Expr]]:
+    """The nonzero coefficients of ``e`` as a polynomial in ``n`` (any
+    constant coefficients: ``pi``, ``sqrt(2)``, parameters), by degree;
+    ``None`` when ``e`` is not a polynomial in ``n``."""
+    coefficients: dict[int, Expr] = {}
+    expanded = expand(e)
+    for summand in (expanded.args if isinstance(expanded, Add) else (expanded,)):
+        c, rest = as_expr(summand).as_independent(n, as_Add=False)
+        if rest == 1:
+            k = 0
+        elif rest == n:
+            k = 1
+        elif isinstance(rest, Pow) and rest.base == n and isinstance(rest.exp, Integer) and int(rest.exp) > 0:
+            k = int(rest.exp)
+        else:
+            return None
+        coefficients[k] = add(coefficients.get(k, ZERO), c)
+    return {k: c for k, c in coefficients.items() if c != 0}
+
+
 def _real_polynomial(e: Expr, n: Symbol) -> bool:
     """Whether ``e`` is a polynomial in ``n`` with real number coefficients."""
-    if not free_symbols(e) <= {n}:
+    if not e.free_symbols <= {n}:
         return False
-    try:
-        return all(as_expr(c).is_real is True for c in Poly(e, n).coeffs())
-    except PolynomialError:
-        return False
+    coefficients = _coefficients(e, n)
+    return coefficients is not None and all(c.is_real is True for c in coefficients.values())
 
 
 def _majorant(term: Expr, n: Symbol) -> Optional[Expr]:
@@ -336,35 +396,44 @@ def _majorant(term: Expr, n: Symbol) -> Optional[Expr]:
     factors ``(-1)**e``, ``cos(e)`` and ``sin(e)`` (``e`` a real polynomial
     in ``n``) replaced by ``1`` and the factors free of ``n`` dropped;
     ``None`` when the structure gives no bound."""
-    if n not in free_symbols(term):
-        return as_expr(Abs(term)) if term.is_number else None
-    if not term.has(sin, cos) and not any(isinstance(p, Pow) and p.base == S.NegativeOne
-                                          for p in term.atoms(Pow)):
-        return as_expr(Abs(term))
+    if n not in term.free_symbols:
+        return abs_(term) if term.is_number else None
+    if not term.has(Sin, Cos) and not any(isinstance(p, Pow) and p.base == -1 for p in term.atoms(Pow)):
+        return abs_(term)
     if isinstance(term, Abs):
         return _majorant(as_expr(term.args[0]), n)
-    if isinstance(term, (sin, cos)):
-        return S.One if _real_polynomial(as_expr(term.args[0]), n) else None
+    if isinstance(term, (Sin, Cos)):
+        return ONE if _real_polynomial(as_expr(term.args[0]), n) else None
     if isinstance(term, Pow):
-        base, exponent = as_expr(term.base), as_expr(term.exp)
-        if base == S.NegativeOne:
-            return S.One if _real_polynomial(exponent, n) else None
-        if exponent.is_Integer and int(exponent) > 0:
+        base, exponent = term.base, term.exp
+        if base == -1:
+            return ONE if _real_polynomial(exponent, n) else None
+        if isinstance(exponent, Integer) and int(exponent) > 0:
             bound = _majorant(base, n)
-            return None if bound is None else as_expr(bound**exponent)
+            return None if bound is None else bound**exponent
         return None
     if isinstance(term, (Mul, Add)):
         bounds: list[Expr] = []
         for arg in term.args:
             a = as_expr(arg)
-            if isinstance(term, Mul) and n not in free_symbols(a):
+            if isinstance(term, Mul) and n not in a.free_symbols:
                 continue
             bound = _majorant(a, n)
             if bound is None:
                 return None
             bounds.append(bound)
-        return as_expr(Mul(*bounds)) if isinstance(term, Mul) else as_expr(Add(*bounds))
+        return mul(*bounds) if isinstance(term, Mul) else add(*bounds)
     return None
+
+
+def _without_abs_values(e: Expr) -> Expr:
+    """``e`` with every ``Abs(u)`` replaced by ``u``."""
+    def is_abs(b: Basic) -> bool:
+        return isinstance(b, Abs)
+
+    def argument(b: Basic) -> Basic:
+        return b.args[0]
+    return as_expr(e.replace(is_abs, argument))
 
 
 def _rational_comparison(term: Expr, ctx: _Context) -> Condition:
@@ -377,36 +446,49 @@ def _rational_comparison(term: Expr, ctx: _Context) -> Condition:
     root tests find no limit.
     """
     bound = _majorant(term, ctx.n)
-    if bound is None or not free_symbols(bound) <= {ctx.n}:
+    if bound is None or not bound.free_symbols <= {ctx.n}:
         return None
-    rational = as_expr(bound.replace(lambda e: isinstance(e, Abs), lambda e: e.args[0]))
-    numerator, denominator = (as_expr(p) for p in cancel(rational).as_numer_denom())
-    try:
-        excess = Poly(denominator, ctx.n).degree() - Poly(numerator, ctx.n).degree()
-    except PolynomialError:
+    rational = _without_abs_values(bound)
+    cancelled = attempt(lambda: cancel(rational), settings.timeout, native=True)
+    if cancelled is None:
         return None
+    numerator, denominator = cancelled.as_numer_denom()
+    top, bottom = _coefficients(numerator, ctx.n), _coefficients(denominator, ctx.n)
+    if top is None or bottom is None or not bottom:
+        return None
+    if not top:
+        return true
+    excess = max(bottom) - max(top)
     return true if excess >= 2 else None
+
+
+def _factorial_form(term: Expr) -> Expr:
+    """The term with the gamma functions, binomials and Pochhammer symbols
+    rewritten as factorials (``rewrite(factorial)``)."""
+    return as_expr(term.rewrite(Factorial))
 
 
 def _constant_sign(term: Expr, ctx: _Context) -> Truth:
     """Whether the terms have eventually a constant sign."""
-    # SymPy's own knowledge, with n a positive integer and the
+    # the core's own knowledge, with n a positive integer and the
     # parameters real numbers (the convention of the conditions returned)
-    replacements: dict[Basic, Basic] = {ctx.n: Dummy('n', integer=True, positive=True)}
-    for parameter in free_symbols(term) - {ctx.n}:
-        if parameter.assumptions0.get('real') is None:
-            replacements[parameter] = Dummy(parameter.name, real=True)
-    for form in (term, as_expr(term.rewrite(factorial)), as_expr(combsimp(term))):
-        at_positive = as_expr(form.xreplace(replacements))
+    replacements = _real_dummies(term, ctx.n)
+    forms: list[Callable[[], Expr]] = [lambda: term, lambda: _factorial_form(term), lambda: combsimp(term)]
+    for form in forms:
+        found = attempt(form, settings.timeout, native=True)
+        if found is None:
+            continue
+        at_positive = _replaced(found, replacements)
         if at_positive.is_nonnegative or at_positive.is_nonpositive:
             return True
-    if not free_symbols(term) - {ctx.n}:
+    if not _parameters(term, ctx.n):
         for start in (ctx.lower, ctx.lower + 8, ctx.lower + 64):
-            signs = attempt(lambda: sign_on(term, ctx.n, Interval(start, S.Infinity)), settings.timeout)
+            domain = interval(start, oo)
+            signs = attempt(lambda: sign_on(term, ctx.n, domain), settings.timeout, native=True)
             if signs is not None and not (1 in signs and -1 in signs):
                 return True
         return None
-    if ctx.eventually(as_boolean(term >= 0)) or ctx.eventually(as_boolean(term <= 0)):
+    if ctx.eventually(ge(term, 0)) or ctx.eventually(le(term, 0)):
         return True
     return None
 
@@ -423,11 +505,11 @@ def _decreasing_to_zero(b: Expr, ctx: _Context) -> Condition:
             return false
         if not v.is_zero:
             return None
-        difference = as_expr(b.xreplace({ctx_.n: ctx_.n + 1}) - b)
-        if ctx_.eventually(as_boolean(difference <= 0)):
+        difference = _replaced(b, {ctx_.n: ctx_.n + 1}) - b
+        if ctx_.eventually(le(difference, 0)):
             return true
-        derivative = as_expr(b.diff(ctx_.n))
-        if ctx_.eventually(as_boolean(derivative <= 0)):
+        derivative = b.diff(ctx_.n)
+        if ctx_.eventually(le(derivative, 0)):
             return true
         return None
     return _by_cases(value, ctx, verdict)
@@ -435,17 +517,17 @@ def _decreasing_to_zero(b: Expr, ctx: _Context) -> Condition:
 
 def _integral_test(term: Expr, ctx: _Context) -> Condition:
     """For eventually positive decreasing terms, the convergence of the
-    integral."""
-    if free_symbols(term) - {ctx.n}:
+    integral (:func:`_improper_integral_native`)."""
+    if _parameters(term, ctx.n):
         return None
-    if ctx.eventually(as_boolean(term > 0)) is not True:
+    if ctx.eventually(gt(term, 0)) is not True:
         return None
     if _decreasing_to_zero(term, ctx) is not true:
         return None
-    value = attempt(lambda: as_expr(integrate(term, (ctx.n, ctx.lower, S.Infinity))), settings.timeout)
-    if value is None or value.has(Integral) or value.has(ctx.n):
+    value = _improper_integral_native(term, ctx.n, ctx.lower)
+    if value is None or value.has(ctx.n):
         return None
-    if value is S.Infinity:
+    if isinstance(value, Infinity):
         return false
     if value.is_finite:
         return true
@@ -466,8 +548,8 @@ def _divergence_of_absolute(term: Expr, ctx: _Context) -> Condition:
 
 def _ratio(term: Expr, ctx: _Context, inverse: bool = False) -> Expr:
     """``|a_{n+1}/a_n|`` (or its inverse), simplified."""
-    shifted = term.xreplace({ctx.n: ctx.n + 1})
-    ratio = as_expr(Abs(term/shifted)) if inverse else as_expr(Abs(shifted/term))
+    shifted = _replaced(term, {ctx.n: ctx.n + 1})
+    ratio = abs_(term/shifted) if inverse else abs_(shifted/term)
     return _clean(ratio, ctx.n)
 
 
@@ -483,7 +565,7 @@ def _ratio_test(term: Expr, ctx: _Context) -> Condition:
 
 
 def _root_test(term: Expr, ctx: _Context) -> Condition:
-    root = as_expr(Abs(term)**(1/ctx.n))
+    root = abs_(term)**(1/ctx.n)
     c = _limit(root, ctx)
     if c is None:
         return _power_comparison(term, ctx)
@@ -495,9 +577,9 @@ def _root_test(term: Expr, ctx: _Context) -> Condition:
 
 
 def _raabe_test(term: Expr, ctx: _Context) -> Condition:
-    # SymPy's limit is unreliable on the expanded form of the expression:
-    # the ratio is simplified alone and the structure n*(ratio - 1) kept
-    expression = as_expr(ctx.n*(_ratio(term, ctx, inverse=True) - 1))
+    # limits are unreliable on the expanded form of the expression: the
+    # ratio is simplified alone and the structure n*(ratio - 1) kept
+    expression = ctx.n*(_ratio(term, ctx, inverse=True) - 1)
     rho = _limit(expression, ctx, clean=False)
     if rho is None:
         return _power_comparison(term, ctx)
@@ -509,7 +591,7 @@ def _raabe_test(term: Expr, ctx: _Context) -> Condition:
 
 
 def _bertrand_test(term: Expr, ctx: _Context) -> Condition:
-    expression = as_expr((ctx.n*(_ratio(term, ctx, inverse=True) - 1) - 1)*log(ctx.n))
+    expression = (ctx.n*(_ratio(term, ctx, inverse=True) - 1) - 1)*log(ctx.n)
     value = _limit(expression, ctx, clean=False)
     if value is None:
         return _power_comparison(term, ctx)
@@ -523,20 +605,212 @@ def _bertrand_test(term: Expr, ctx: _Context) -> Condition:
 def _power_comparison(term: Expr, ctx: _Context) -> Condition:
     """Comparison with the p-series through the growth exponent
     ``q = lim log|a_n| / log n``: convergence for ``q < -1``."""
-    exponent = as_expr(log(Abs(term))/log(ctx.n))
+    exponent = log(abs_(term))/log(ctx.n)
     q = _limit(exponent, ctx)
     if q is None:
         return _last_resort(term, ctx)
 
     def verdict(value: Expr, ctx_: _Context) -> Condition:
-        return _compare_with_one(as_expr(-value), ctx_, above=true, below=_divergence_of_absolute(term, ctx_),
+        return _compare_with_one(-value, ctx_, above=true, below=_divergence_of_absolute(term, ctx_),
                                  boundary=lambda c: _last_resort(term, c), term=term)
     return _by_cases(q, ctx, verdict)
 
 
+def _improper_integral_native(term: Expr, n: Symbol, lower: Expr) -> Optional[Expr]:
+    """The integral of ``term`` over ``(lower, oo)`` from a native
+    antiderivative checked by differentiation (the transcendental Risch
+    algorithm, then the heuristic one) and the native limits at the ends;
+    ``None`` when no antiderivative is found or a limit is not."""
+    from sympy_extras.core.limits import limit
+    from sympy_extras.integrals.heurisch import heurisch_antiderivative
+    from sympy_extras.integrals.risch.risch import risch_integrate_separate
+    x = Dummy('x', positive=True)
+    f = _replaced(term, {n: x})
+    antiderivative: Optional[Expr] = None
+    try:
+        found = attempt(lambda: risch_integrate_separate(f, x), settings.timeout, native=True)
+    except (NotImplementedError, ValueError, TypeError):
+        found = None
+    if found is not None and found[1] == 0:
+        antiderivative = found[0]
+    if antiderivative is None:
+        try:
+            antiderivative = attempt(lambda: heurisch_antiderivative(f, x), settings.timeout, native=True)
+        except (NotImplementedError, ValueError, TypeError):
+            antiderivative = None
+    if antiderivative is None:
+        return None
+    F = antiderivative
+    check = attempt(lambda: cancel(F.diff(x) - f), settings.timeout, native=True)
+    if check is None or (check != 0 and _simplify(check) != 0):
+        return None
+    try:
+        at_infinity = attempt(lambda: limit(F, x, oo), settings.timeout, native=True)
+        at_lower = attempt(lambda: limit(F, x, lower, '+'), settings.timeout, native=True)
+    except (NotImplementedError, ValueError, PoleError):
+        return None
+    if at_infinity is None or at_lower is None or at_infinity.has(Limit) or at_lower.has(Limit):
+        return None
+    if isinstance(at_infinity, Infinity) and at_lower.is_finite is True:
+        return oo
+    if at_infinity.is_finite is True and at_lower.is_finite is True:
+        return at_infinity - at_lower
+    return None
+
+
+# PORTED FROM SYMPY: sympy/calculus/singularities.py:is_decreasing
+def _is_decreasing_on(f: Expr, n: Symbol, lower: Expr) -> bool:
+    """SymPy's ``is_decreasing(f, Interval(lower, oo))``: the derivative in
+    a real variable is nowhere positive on the interval (natively by its
+    signs)."""
+    x = Dummy('x', real=True)
+    derivative = _replaced(f, {n: x}).diff(x)
+    signs = attempt(lambda: sign_on(derivative, x, interval(lower, oo)), settings.timeout, native=True)
+    return signs is not None and 1 not in signs
+
+
+def _limit_seq_of(e: Expr, n: Symbol) -> Optional[Expr]:
+    """The native ``limit_seq`` (``None`` when it fails or raises)."""
+    from sympy_extras.series.limitseq import limit_seq
+    try:
+        return attempt(lambda: limit_seq(e, n), settings.timeout, native=True)
+    except (NotImplementedError, ValueError, PoleError):
+        return None
+
+
+def _is_number_below(value: Optional[Expr], bound: int) -> Optional[bool]:
+    """Whether a numerical limit is below (``True``) or above (``False``)
+    the bound, ``None`` when it is not a number or equals it."""
+    if value is None or value.is_number is not True or isinstance(value, NaN) or value.has(AccumBounds):
+        return None
+    sign = certified_sign(value - bound)
+    if sign is None or sign == 0:
+        return None
+    return sign < 0
+
+
+# PORTED FROM SYMPY: sympy/concrete/summations.py:Sum.is_convergent
+def _is_convergent_native(term: Expr, n: Symbol, lower: Expr) -> Optional[bool]:
+    """SymPy's ``Sum(term, (n, lower, oo)).is_convergent()`` for a term
+    without parameters, on the core: the divergence, p-series,
+    logarithmic comparison, limit comparison, ratio, Raabe, root,
+    alternating and integral tests and the Dirichlet and bounded times
+    convergent tests, with the native limits of sequences, orders, signs
+    and integrals; ``None`` where SymPy raises (no test applies). Its
+    ``False`` means "not shown" for some terms (sympy-extras#41)."""
+    from itertools import combinations
+    from sympy_extras.core.order import Order, order
+    from sympy_extras.core.symbol import Wild
+    from sympy_extras.concrete.summations import summation
+    sequence_term = _simplify(term)
+    if len(sequence_term.free_symbols - {n}) > 0:
+        return None
+    sym = Dummy(n.name, integer=True, positive=True)
+    sequence_term = _replaced(sequence_term, {n: sym})
+    if isinstance(sequence_term, Piecewise):
+        for pair in sequence_term.args:
+            if pair.cond == true:
+                return _is_convergent_native(pair.expr, sym, lower)
+        return None
+
+    # the divergence test
+    lim_val = _limit_seq_of(sequence_term, sym)
+    if lim_val is not None and lim_val.is_zero is False:
+        return False
+    lim_val_abs = _limit_seq_of(abs_(sequence_term), sym)
+    if lim_val_abs is not None and lim_val_abs.is_zero is False:
+        return False
+
+    try:
+        big_o = attempt(lambda: order(sequence_term, (sym, oo)), settings.timeout, native=True)
+    except (NotImplementedError, ValueError, PoleError):
+        big_o = None
+    o_expr: Optional[Expr] = big_o.expr if isinstance(big_o, Order) else None
+
+    p, q, r = Wild('p'), Wild('q'), Wild('r')
+    if o_expr is not None:
+        # the p-series test
+        p_series = o_expr.match(sym**p)
+        if p_series is not None and isinstance(p_series.get(p), Expr):
+            exponent = as_expr(p_series[p])
+            below = _is_number_below(exponent, -1)
+            if below is not None:
+                return below
+            if exponent == -1:
+                return False
+        # the comparison with 1/(n**p*log(n)**q*log(log(n))**r)
+        n_log = o_expr.match(1/(sym**p*log(1/sym)**q*log(-log(1/sym))**r)) or \
+            o_expr.match(1/(sym**p*(-log(1/sym))**q*log(-log(1/sym))**r))
+        if n_log is not None and all(isinstance(n_log.get(w), Expr) for w in (p, q, r)):
+            ep, eq_, er = as_expr(n_log[p]), as_expr(n_log[q]), as_expr(n_log[r])
+            if ep.is_number and eq_.is_number and er.is_number:
+                if (ep > 1) == true or ((ep == 1) and (eq_ > 1) == true) or \
+                        (ep == 1 and eq_ == 1 and (er > 1) == true):
+                    return True
+                return False
+
+    # the limit comparison with 1/n
+    lim_comp = _limit_seq_of(sym*sequence_term, sym)
+    if lim_comp is not None and lim_comp.is_number and certified_sign(lim_comp) == 1:
+        return False
+
+    # the ratio test
+    next_term = _replaced(sequence_term, {sym: sym + 1})
+    ratio = combsimp(powsimp(next_term/sequence_term))
+    lim_ratio = _limit_seq_of(ratio, sym)
+    below_one = _is_number_below(abs_(lim_ratio) if lim_ratio is not None else None, 1)
+    if below_one is not None:
+        return below_one
+
+    # Raabe's test
+    if lim_ratio is not None and lim_ratio == 1:
+        test_val = (sym*(sequence_term/_replaced(sequence_term, {sym: sym + 1}) - 1)).gammasimp()
+        raabe = _is_number_below(_limit_seq_of(test_val, sym), 1)
+        if raabe is not None:
+            return not raabe
+
+    # the root test
+    root = _is_number_below(_limit_seq_of(abs_(sequence_term)**(1/sym), sym), 1)
+    if root is not None:
+        return root
+
+    # the alternating series test
+    alternating = sequence_term.match((-1)**(sym + p)*q)
+    if alternating is not None and isinstance(alternating.get(p), Expr) and isinstance(alternating.get(q), Expr):
+        if not as_expr(alternating[p]).has(sym) and _is_decreasing_on(as_expr(alternating[q]), sym, lower):
+            return True
+
+    # the integral test, for a monotone term
+    if _is_decreasing_on(sequence_term, sym, lower) or _is_decreasing_on(-sequence_term, sym, lower):
+        integral = _improper_integral_native(sequence_term, sym, lower)
+        if integral is not None and integral.is_number:
+            return integral.is_finite is True
+
+    # the Dirichlet and the bounded times convergent tests
+    if o_expr is not None and isinstance(o_expr, Mul):
+        args = [a for a in o_expr.args if isinstance(a, Expr)]
+        m = Dummy('m', integer=True)
+        for size in range(1, len(args)):
+            for chosen in combinations(range(len(args)), size):
+                a_n = mul(*[args[i] for i in chosen])
+                b_n = mul(*[args[i] for i in range(len(args)) if i not in chosen])
+                if _is_decreasing_on(a_n, sym, lower):
+                    partial = attempt(lambda: summation(b_n, (sym, lower, m)), settings.timeout, native=True)
+                    if partial is not None:
+                        bounded = _limit_seq_of(partial, m)
+                        if bounded is not None and bounded.is_finite is True:
+                            return True
+                lim_a = _limit_seq_of(a_n, sym)
+                if lim_a is not None and (lim_a.is_finite is True or (
+                        isinstance(lim_a, AccumBounds) and (lim_a.max - lim_a.min).is_finite is True)):
+                    if _is_convergent_native(abs_(b_n), sym, lower) is True:
+                        return True
+    return None
+
+
 def _last_resort(term: Expr, ctx: _Context) -> Condition:
     """The term, alternating and integral tests, and SymPy's own decision
-    for terms without parameters."""
+    for terms without parameters (its port, :func:`_is_convergent_native`)."""
     divergent = _term_test(term, ctx)
     if divergent is not None:
         return divergent
@@ -551,12 +825,11 @@ def _last_resort(term: Expr, ctx: _Context) -> Condition:
     integral = _integral_test(term, ctx)
     if integral is not None:
         return integral
-    if not free_symbols(term) - {ctx.n}:
-        value = attempt(lambda: Sum(term, (ctx.n, ctx.lower, S.Infinity)).is_convergent(), settings.timeout)
+    if not _parameters(term, ctx.n):
         # SymPy's is_convergent() answering False means "not shown", not
         # divergence: it says False for sum sin(n)/n (sympy-extras#41).
         # Only True is a proof.
-        if value is not None and bool(value):
+        if attempt(lambda: _is_convergent_native(term, ctx.n, ctx.lower), settings.timeout, native=True) is True:
             return true
     return None
 
@@ -569,31 +842,26 @@ def _oscillates_unboundedly(term: Expr, ctx: _Context) -> bool:
     when ``a`` is an integer multiple of pi and ``sin(b)`` vanishes).
     ``Sum.is_convergent()`` used to be the source of this verdict, and its
     ``False`` is not a proof (sympy-extras#41)."""
-    from sympy.functions.elementary.trigonometric import sin, cos
-    from sympy.core.numbers import pi
     if not isinstance(term, Mul):
         return False
-    waves = [f for f in term.args if isinstance(f, (sin, cos)) and f.args[0].has(ctx.n)]
+    waves: list[Expr] = [f for f in _factors(term) if isinstance(f, (Sin, Cos)) and f.args[0].has(ctx.n)]
     if len(waves) != 1:
         return False
-    argument = as_expr(waves[0].args[0])
-    try:
-        linear = Poly(argument, ctx.n)
-    except PolynomialError:
+    [wave] = waves
+    linear = _coefficients(as_expr(wave.args[0]), ctx.n)
+    if linear is None or max(linear, default=0) != 1:
         return False
-    if linear.degree() != 1:
+    a, b = linear.get(1, ZERO), linear.get(0, ZERO)
+    if a.free_symbols or b.free_symbols or a == 0:
         return False
-    a, b = (as_expr(c) for c in linear.all_coeffs())
-    if free_symbols(a) or free_symbols(b) or a == 0:
-        return False
-    turns = as_expr(a/pi)
+    turns = a/pi
     if turns.is_integer:
-        phase = sin(b) if isinstance(waves[0], sin) else cos(b)
+        phase = sin(b) if isinstance(wave, Sin) else cos(b)
         if phase.is_zero is not False:
             return False
-    rest = as_expr(term/waves[0])
-    magnitude = _limit(as_expr(Abs(rest)), ctx)
-    return magnitude is not None and magnitude == S.Infinity
+    rest = term/wave
+    magnitude = _limit(abs_(rest), ctx)
+    return magnitude is not None and isinstance(magnitude, Infinity)
 
 
 def _term_test(term: Expr, ctx: _Context) -> Condition:
@@ -606,32 +874,31 @@ def _term_test(term: Expr, ctx: _Context) -> Condition:
         return None
 
     def verdict(v: Expr, ctx_: _Context) -> Condition:
-        if isinstance(v, AccumBounds) or v in (S.Infinity, S.NegativeInfinity):
+        if isinstance(v, AccumBounds) or _is_infinite(v):
             return false
-        if v is S.NaN:
+        if isinstance(v, NaN):
             return None
-        if not free_symbols(v):
+        if not v.free_symbols:
             return false if v.is_zero is False else None
-        return false if ctx_.decide(as_boolean(Eq(v, 0))) is false else None
+        return false if ctx_.decide(eq(v, 0)) is false else None
     return _by_cases(value, ctx, verdict)
 
 
 def _convergence(term: Expr, ctx: _Context) -> Condition:
     if not term.has(ctx.n):
-        return ctx.decide(as_boolean(Eq(term, 0)))
+        return ctx.decide(eq(term, 0))
     # a constant factor which may vanish makes the series trivially
     # convergent (and cancels from the ratios, so it is separated first)
-    constant, rest = term.as_independent(ctx.n, as_Add=False)
-    c = as_expr(constant)
-    if free_symbols(c):
-        zero = ctx.decide(as_boolean(Eq(c, 0)))
+    c, rest = term.as_independent(ctx.n, as_Add=False)
+    if c.free_symbols:
+        zero = ctx.decide(eq(c, 0))
         if zero is true:
             return true
         if zero is not false:
-            nonzero = _ratio_test(as_expr(rest), ctx.assume(as_boolean(Ne(c, 0))))
+            nonzero = _ratio_test(rest, ctx.assume(ne(c, 0)))
             if nonzero is None:
                 return None
-            return Or(zero, nonzero)
+            return or_(zero, nonzero)
     if _rational_comparison(term, ctx) is true:
         return true
     return _ratio_test(term, ctx)
@@ -646,49 +913,55 @@ def _finish(condition: Condition, ctx: _Context) -> Condition:
         return condition
     polynomial = _without_abs(condition)
     resolved = attempt(lambda: resolve(polynomial, assumptions=ctx.premise if ctx.assumptions else None),
-                       settings.timeout)
-    if resolved is not None and not isinstance(resolved, Boolean):
-        resolved = None
+                       settings.timeout, native=True)
     if resolved is not None:
         return resolved
-    simplified = attempt(lambda: _simplify_with_assumptions(condition, ctx.premise), settings.timeout)
-    return as_boolean(simplified) if simplified is not None else condition
+    simplified = attempt(lambda: _simplify_with_assumptions(condition, ctx.premise), settings.timeout, native=True)
+    return to_boolean(simplified) if simplified is not None else condition
+
+
+#: the evaluating constructors of the inequalities, by class
+_INEQUALITIES: dict[type, Callable[[ExprLike, ExprLike], Boolean]] = {Lt: lt, Le: le, Gt: gt, Ge: ge}
 
 
 def _without_abs(condition: Boolean) -> Boolean:
     """``Abs(u) < c`` written as ``(u < c) & (u > -c)`` and the like."""
     result = condition
     for atom in condition.atoms(Lt, Le, Gt, Ge, Eq, Ne):
-        lhs, rhs = as_expr(atom.lhs), as_expr(atom.rhs)
+        if not isinstance(atom, Relational):
+            continue
+        lhs, rhs = atom.lhs, atom.rhs
         if isinstance(lhs, Abs) and not rhs.has(Abs):
             u = as_expr(lhs.args[0])
             replacement: Boolean
             if isinstance(atom, (Lt, Le)):
-                replacement = And(type(atom)(u, rhs), type(atom)(-u, rhs))
+                relation = _INEQUALITIES[type(atom)]
+                replacement = and_(relation(u, rhs), relation(-u, rhs))
             elif isinstance(atom, (Gt, Ge)):
-                replacement = Or(type(atom)(u, rhs), type(atom)(-u, rhs))
+                relation = _INEQUALITIES[type(atom)]
+                replacement = or_(relation(u, rhs), relation(-u, rhs))
             elif isinstance(atom, Eq):
-                replacement = Or(Eq(u, rhs), Eq(u, -rhs))
+                replacement = or_(eq(u, rhs), eq(u, -rhs))
             else:
-                replacement = And(Ne(u, rhs), Ne(u, -rhs))
-            result = as_boolean(result.xreplace({atom: replacement}))
+                replacement = and_(ne(u, rhs), ne(u, -rhs))
+            result = to_boolean(result._xreplace_evaluated({atom: replacement}))
     return result
 
 
-def _context(n: Symbol, lower: Union[Expr, int], assumptions: Assumptions) -> _Context:
+def _context(n: Symbol, lower: ExprLike, assumptions: Assumptions) -> _Context:
     items: list[Boolean] = []
     if isinstance(assumptions, (Boolean, bool)):
-        items.append(as_boolean(assumptions))
+        items.append(to_boolean(assumptions))
     elif assumptions is not None:
-        items.extend(as_boolean(a) for a in assumptions)
-    return _Context(n, as_expr(sympify(lower)), items, 0)
+        items.extend(to_boolean(a) for a in assumptions)
+    return _Context(n, to_expr(lower), items, 0)
 
 
-def sum_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumptions = None,
-                    lower: Union[Expr, int] = 1) -> Condition:
+def sum_convergence(term: ExprLike, n: Symbol, assumptions: Assumptions = None,
+                    lower: ExprLike = 1) -> Condition:
     """The condition on the parameters under which ``Sum(term, (n, lower,
-    oo))`` converges: ``S.true``, ``S.false``, a Boolean in the
-    parameters, or ``None`` when the tests do not decide.
+    oo))`` converges: ``true``, ``false``, a Boolean in the parameters, or
+    ``None`` when the tests do not decide.
 
     Parameters
     ==========
@@ -706,9 +979,10 @@ def sum_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumptions 
     Examples
     ========
 
-    >>> from sympy import factorial, binomial, log
-    >>> from sympy.abc import n, x, p
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import factorial, binomial, log
     >>> from sympy_extras.concrete.convergence import sum_convergence
+    >>> n, x, p = symbols('n x p')
     >>> sum_convergence(x**n, n)
     (x > -1) & (x < 1)
     >>> sum_convergence(x**n/n, n)
@@ -723,24 +997,22 @@ def sum_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumptions 
     False
     >>> sum_convergence((-1)**n/log(n), n, lower=2)
     True
-    >>> sum_convergence(1/(n*log(n)), n, lower=2)
-    False
     """
-    term_ = as_expr(sympify(term))
+    term_ = to_expr(term)
     ctx = _context(n, lower, assumptions)
     return _finish(_convergence(term_, ctx), ctx)
 
 
-def is_convergent(term: Union[Expr, int], n: Symbol, assumptions: Assumptions = None,
-                  lower: Union[Expr, int] = 1) -> Truth:
+def is_convergent(term: ExprLike, n: Symbol, assumptions: Assumptions = None, lower: ExprLike = 1) -> Truth:
     """Whether ``Sum(term, (n, lower, oo))`` converges under the
     assumptions: ``True``, ``False`` or ``None``.
 
     Examples
     ========
 
-    >>> from sympy.abc import n, x
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.concrete.convergence import is_convergent
+    >>> n, x = symbols('n x')
     >>> is_convergent(x**n, n, (x > 0) & (x < 1))
     True
     >>> is_convergent(x**n, n, x > 1)
@@ -758,8 +1030,8 @@ def is_convergent(term: Union[Expr, int], n: Symbol, assumptions: Assumptions = 
     return None
 
 
-def product_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumptions = None,
-                        lower: Union[Expr, int] = 1) -> Condition:
+def product_convergence(term: ExprLike, n: Symbol, assumptions: Assumptions = None,
+                        lower: ExprLike = 1) -> Condition:
     """The condition under which the infinite product ``Product(term,
     (n, lower, oo))`` converges to a nonzero limit (see the module
     documentation).
@@ -767,8 +1039,9 @@ def product_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumpti
     Examples
     ========
 
-    >>> from sympy.abc import n, x
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.concrete.convergence import product_convergence
+    >>> n, x = symbols('n x')
     >>> product_convergence(1 + 1/n**2, n)
     True
     >>> product_convergence(1 + x/n**2, n)
@@ -778,16 +1051,16 @@ def product_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumpti
     >>> product_convergence(1 + x**n, n)
     (x > -1) & (x < 1)
     """
-    term_ = as_expr(sympify(term))
+    term_ = to_expr(term)
     ctx = _context(n, lower, assumptions)
-    b = as_expr(term_ - 1)
+    b = term_ - 1
     if not b.has(n):
-        return _finish(ctx.decide(as_boolean(Eq(b, 0))), ctx)
+        return _finish(ctx.decide(eq(b, 0)), ctx)
     value = _limit(b, ctx)
-    if value is not None and not isinstance(value, Piecewise) and not free_symbols(value) and value.is_zero is False:
+    if value is not None and not isinstance(value, Piecewise) and not value.free_symbols and value.is_zero is False:
         return false
     positive = Dummy('n', integer=True, positive=True)
-    magnitude = as_expr(as_expr(Abs(b.xreplace({n: positive}))).xreplace({positive: n}))
+    magnitude = _replaced(abs_(_replaced(b, {n: positive})), {positive: n})
     absolute = _convergence(magnitude, ctx)
     if absolute is true:
         return true
@@ -801,7 +1074,7 @@ def product_convergence(term: Union[Expr, int], n: Symbol, assumptions: Assumpti
         return _finish(absolute, ctx)
     if absolute is false and _constant_sign(b, ctx) is True:
         return false
-    logarithmic = _convergence(as_expr(log(term_)), ctx)
+    logarithmic = _convergence(log(term_), ctx)
     return _finish(logarithmic, ctx)
 
 
@@ -809,15 +1082,14 @@ def _alternating_product(b: Expr, ctx: _Context) -> Condition:
     """``prod (1 + (-1)**n c(n))`` with ``c > 0`` decreasing to zero: the
     alternating sum converges by Leibniz, so the product converges exactly
     when ``sum c**2`` does (``log(1 + b) = b - b**2/2 + O(b**3)``)."""
-    from sympy.core.numbers import NegativeOne
-    c = as_expr(cancel(b/(-1)**ctx.n))
-    if c.has(NegativeOne) and any(isinstance(p, Pow) and p.base == -1 for p in c.atoms(Pow)):
+    c = attempt(lambda: cancel(b/(-1)**ctx.n), settings.timeout, native=True)
+    if c is None or any(isinstance(p, Pow) and p.base == -1 for p in c.atoms(Pow)):
         return None
     # positivity of c for n >= 1 is a question about n only: a free
-    # parameter in the exponent stops ctx.decide, but not SymPy's
+    # parameter in the exponent stops ctx.decide, but not the core's
     # assumptions on a positive n
     grows = Dummy('n', integer=True, positive=True)
-    reals = {s: Dummy(s.name, real=True) for s in free_symbols(c) - {ctx.n}}
-    if as_expr(c.xreplace({ctx.n: grows}).xreplace(reals)).is_positive is not True:
+    reals: dict[Basic, Basic] = {s: Dummy(s.name, real=True) for s in _parameters(c, ctx.n)}
+    if _replaced(_replaced(c, {ctx.n: grows}), reals).is_positive is not True:
         return None
-    return _convergence(as_expr(c**2), ctx)
+    return _convergence(c**2, ctx)

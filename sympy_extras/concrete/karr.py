@@ -49,13 +49,13 @@ from __future__ import annotations
 from typing import Callable, Optional, Sequence, Union
 
 from sympy_extras._timeout import attempt
-from sympy_extras.core.add import Add
-from sympy_extras.core.basic import Basic
-from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
 from sympy_extras.core.exprtools import factor_terms
 from sympy_extras.core.logic import Boolean, true
 from sympy_extras.core.mul import Mul
-from sympy_extras.core.numbers import ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity
+from sympy_extras.core.numbers import ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Rational, nan, zoo
 from sympy_extras.core.power import Pow
 from sympy_extras.core.relational import Eq
 from sympy_extras.core.symbol import Symbol
@@ -536,22 +536,226 @@ def karr_sum(f: ExprLike, k: SumSpec, extensions: Sequence[Expr] = (), auto: boo
     return _with_special_values(repaired, f_, [index], [a, b], at_point)
 
 
+#: the seconds given to the search for the poles of a summand at a point
+_POLE_SECONDS = 2.0
+#: the seconds given to the evaluation of a case at one sample point
+_CHECK_SECONDS = 2.0
+#: the sample values of the parameters left free by a point, in the checks
+_SAMPLES = (Rational(17, 7), Rational(23, 9), Rational(31, 11), Rational(41, 13))
+#: the number of values of the upper limit (or of the index) checked
+_CHECKS = 3
+#: the relative difference beyond which a case disagrees with the direct sum
+_TOLERANCE = 1e-9
+
+
+def _rule(point: SumPoint) -> dict[Basic, Basic]:
+    """A point as a replacement rule."""
+    return {s: v for s, v in point.items()}
+
+
+def _by_name(symbols: set[Symbol]) -> list[Symbol]:
+    return sorted(symbols, key=lambda s: s.name)
+
+
+def _symbols_of(e: Basic) -> set[Symbol]:
+    return {s for s in e.free_symbols if isinstance(s, Symbol)}
+
+
+def _zero_powers(term: Expr, k: Symbol) -> list[Pow]:
+    """The powers of ``0`` with an exponent in ``k`` in ``term``."""
+    return [node for node in preorder_traversal(term)
+            if isinstance(node, Pow) and node.base.is_zero is True and node.exp.has(k)]
+
+
+def _sum_of_zero_powers(term: Expr, k: Symbol, lower: Expr, upper: Expr) -> Optional[Expr]:
+    """The sum of ``term`` from ``lower`` to ``upper`` when its powers
+    ``0**(c*k + d)`` (``c`` a positive integer, ``d`` a rational number)
+    are ``0`` over the range except at the lower limit, where the exponent
+    may vanish: the sum of ``term`` with them written ``0``, and the term
+    at the lower limit, where they are ``1``, for its own; ``None`` when a
+    power is not of this form or is infinite somewhere in the range."""
+    from sympy_extras.concrete.summations import summation
+    from sympy_extras.polys.polytools import Poly
+    if not isinstance(lower, Integer):
+        return None
+    zeroed: dict[Basic, Basic] = {}
+    at_lower = False
+    for power in _zero_powers(term, k):
+        exponent = power.exp
+        if exponent.is_polynomial(k) is not True:
+            return None
+        polynomial = Poly(exponent, k)
+        if polynomial.degree() != 1:
+            return None
+        c, d = polynomial.nth(1), polynomial.nth(0)
+        if not isinstance(c, Integer) or c.p <= 0 or not isinstance(d, Rational):
+            return None
+        vanishing = -d/c
+        if (vanishing > lower) == true:
+            # 0 to a negative power inside the range
+            return None
+        at_lower = at_lower or vanishing == lower
+        zeroed[power] = Integer(0)
+    rest = as_expr(term._xreplace_evaluated(zeroed))
+    value = summation(rest, (k, lower, upper)) if rest.has(k) else rest*(upper - lower + 1)
+    if at_lower:
+        value = value + as_expr(term.subs(k, lower)) - as_expr(rest.subs(k, lower))
+    return value
+
+
+def _pole_in_range(term: Expr, k: Symbol, lower: Expr, upper: Expr) -> bool:
+    """Whether ``term`` has a pole at an integer ``k`` of the range from
+    ``lower`` (an integer) to ``upper`` (an integer, else unbounded): a
+    factor ``c*k + d`` of its denominator with an integer root there. For
+    another lower limit, or a denominator which is no polynomial in ``k``,
+    ``False``: nothing is known."""
+    from sympy_extras.polys.polytools import Poly, factor_list
+    from sympy_extras.polys.rationaltools import together
+    if not isinstance(lower, Integer):
+        return False
+    denominator = together(term).as_numer_denom()[1]
+    if not denominator.has(k) or denominator.is_polynomial(k) is not True:
+        return False
+    factored = attempt(lambda: factor_list(denominator, k), _POLE_SECONDS, native=True)
+    if factored is None:
+        return False
+    for factor_, _ in factored[1]:
+        polynomial = Poly(factor_, k)
+        if polynomial.degree() != 1:
+            continue
+        root = cancel(-polynomial.nth(0)/polynomial.LC())
+        if isinstance(root, Integer) and root.p >= lower.p and (not isinstance(upper, Integer) or root.p <= upper.p):
+            return True
+    return False
+
+
+def _upper_values(lower: Integer, upper: Expr) -> Optional[list[tuple[SumPoint, int]]]:
+    """The values of the symbol of ``upper`` (of the form ``c*m + d``,
+    ``c`` a positive and ``d`` any integer, or an integer) at which a sum
+    from ``lower`` is checked, with the upper limit there; ``None`` for
+    another upper limit."""
+    from sympy_extras.polys.polytools import Poly
+    if isinstance(upper, Integer):
+        return [({}, upper.p)]
+    symbols = _by_name(_symbols_of(upper))
+    if len(symbols) != 1 or upper.is_polynomial(symbols[0]) is not True:
+        return None
+    m = symbols[0]
+    polynomial = Poly(upper, m)
+    c, d = polynomial.nth(1), polynomial.nth(0)
+    if polynomial.degree() != 1 or not isinstance(c, Integer) or not isinstance(d, Integer) or c.p <= 0:
+        return None
+    # the first value of m with an upper limit of at least lower - 1 (the
+    # empty sum) and nonnegative (the limits of definite_sum are for m >= 0)
+    first = max(0, -((d.p - lower.p + 1)//c.p))
+    return [({m: Integer(v)}, c.p*v + d.p) for v in range(first, first + _CHECKS)]
+
+
+def _disagrees(value: Expr, term: Expr, k: Symbol, bounds: Optional[tuple[Expr, Expr]], indefinite: bool) -> bool:
+    """Whether ``value``, the sum of ``term`` from ``bounds[0]`` to
+    ``bounds[1]`` (or its antidifference in ``k``, when ``indefinite``),
+    is refuted by the sum computed term by term at a few values of the
+    upper limit (by the difference of the antidifference at a few values
+    of ``k``), the other symbols at sample values. A value which cannot
+    be evaluated reliably there (:func:`~sympy_extras._numeric.reliable_value`
+    gives ``None``) is not refuted."""
+    from sympy_extras._numeric import reliable_value
+    checks: list[tuple[Expr, Expr]] = []
+    if bounds is not None:
+        lower, upper = bounds
+        if not isinstance(lower, Integer):
+            return False
+        uppers = _upper_values(lower, upper)
+        if uppers is None:
+            return False
+        for at, top in uppers:
+            shifted = as_expr(term._xreplace_evaluated(_rule(at)))
+            direct = add(*[as_expr(shifted.subs(k, Integer(i))) for i in range(lower.p, top + 1)])
+            checks.append((as_expr(value._xreplace_evaluated(_rule(at))), direct))
+    elif indefinite:
+        for i in range(2, 2 + _CHECKS):
+            checks.append((as_expr(value.subs(k, Integer(i + 1))) - as_expr(value.subs(k, Integer(i))),
+                           as_expr(term.subs(k, Integer(i)))))
+    else:
+        return False
+    for case, direct in checks:
+        others = _by_name((_symbols_of(case) | _symbols_of(direct)) - {k})
+        samples: dict[Basic, Basic] = {s: _SAMPLES[i % len(_SAMPLES)] + i//len(_SAMPLES)
+                                       for i, s in enumerate(others)}
+        evaluated = attempt(lambda: as_expr(case._xreplace_evaluated(samples)).doit(), _CHECK_SECONDS, native=True)
+        if evaluated is None:
+            continue
+        difference = reliable_value(evaluated - as_expr(direct._xreplace_evaluated(samples)), 15)
+        size = reliable_value(as_expr(direct._xreplace_evaluated(samples)), 15)
+        if difference is None or size is None:
+            continue
+        if abs(complex(difference)) > _TOLERANCE*(1 + abs(complex(size))):
+            return True
+    return False
+
+
+def _sum_special_values_native(value: Expr, f: Expr, indices: Sequence[Symbol], limits: Sequence[Expr],
+                               compute: SumCompute, keep_unevaluated: bool = True,
+                               defined: Optional[Callable[[SumPoint], bool]] = None) -> Expr:
+    """The value of a sum of ``f`` with a case for each isolated value of
+    the parameters of the summand at which it is undefined, the sum
+    computed again there by ``compute``
+    (:func:`~sympy_extras.concrete.karr_sympy.with_sum_special_values` on
+    the core, with the native :func:`sympy_extras._special_values.with_special_values`):
+    no case where the summand is ``nan`` or ``zoo``, has a pole at an
+    integer of the range, or ``defined`` refutes the point; the powers of
+    ``0`` summed by their values; with the numerical checks each case is
+    compared with the sum term by term."""
+    from sympy_extras._special_values import with_special_values
+    from sympy_extras.assumptions.ask import Assumptions
+    excluded: set[Symbol] = set(indices)
+    for limit in limits:
+        excluded |= _symbols_of(limit)
+    parameters = _by_name(_symbols_of(f) - excluded)
+    if not parameters:
+        return value
+    index = indices[0]
+    bounds = (limits[0], limits[1]) if len(limits) == 2 else None
+    indefinite = not limits and len(indices) == 1
+
+    def defined_at(point: SumPoint) -> bool:
+        term = as_expr(f._xreplace_evaluated(_rule(point)))
+        if term.has(nan, zoo):
+            return False
+        if bounds is not None and _pole_in_range(term, index, bounds[0], bounds[1]):
+            return False
+        return defined is None or defined(point)
+
+    def checked(point: SumPoint, at: Assumptions) -> Optional[Expr]:
+        term = as_expr(f._xreplace_evaluated(_rule(point)))
+        if bounds is not None and _zero_powers(term, index):
+            special = _sum_of_zero_powers(term, index, bounds[0], bounds[1])
+        else:
+            special = compute(point)
+        if special is None or not settings.numerical_checks:
+            return special
+        if _disagrees(special, term, index, bounds, indefinite):
+            return None
+        return special
+
+    return with_special_values(value, parameters, None, checked, defined_at, keep_unevaluated=keep_unevaluated)
+
+
 def _with_special_values(value: Expr, f: Expr, indices: Sequence[Symbol], limits: Sequence[Expr],
                          compute: SumCompute, keep_unevaluated: bool = True,
                          defined: Optional[Callable[[SumPoint], bool]] = None) -> Expr:
     """:func:`~sympy_extras.concrete.karr_sympy.with_sum_special_values`
     for core expressions. A summand without parameters (symbols other
     than the ``indices`` and those of the ``limits``) has no such values;
-    the others go through SymPy (:mod:`sympy_extras._special_values` is
-    not ported). ``defined`` refutes the points where the sum is not
-    defined (outside the region of convergence of a series)."""
+    the others get their cases natively (:func:`_sum_special_values_native`).
+    ``defined`` refutes the points where the sum is not defined (outside
+    the region of convergence of a series)."""
     excluded: set[Symbol] = set(indices)
     for limit in limits:
         excluded |= limit.free_symbols
     if not f.free_symbols - excluded:
         return value
-    from .karr_sympy import sum_special_values_of_core
-    return sum_special_values_of_core(value, f, indices, limits, compute, keep_unevaluated, defined)
+    return _sum_special_values_native(value, f, indices, limits, compute, keep_unevaluated, defined)
 
 
 def _repaired_at_poles(closed: Expr, antidifference: Expr, f: Expr, index: Symbol,

@@ -27,12 +27,18 @@
 // domain, results are tuples of polynomials)
 #![allow(clippy::wrong_self_convention, clippy::type_complexity)]
 
+pub mod concrete;
 pub mod core;
 pub mod error;
+pub mod functions;
 pub mod ntheory;
 pub mod numbers;
+pub mod orderedmap;
 pub mod polys;
 pub mod random;
+pub mod sets;
+pub mod simplify;
+pub mod solvers;
 
 /// Version of the crate, kept equal to `sympy_extras.__version__`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

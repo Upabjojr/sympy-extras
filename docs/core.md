@@ -54,7 +54,7 @@ Everything a user of SymPy's core relies on keeps its name and its meaning:
 | `EulerGamma`, `Catalan`, `GoldenRatio`, `TribonacciConstant`, `AlgebraicNumber`, `UnevaluatedExpr`, `Dict`, `RealNumber` | the same | `AlgebraicNumber` keeps the coefficients as given (SymPy reduces them modulo the minimal polynomial) |
 | `sympify`, `SympifyError`, `Tuple`, `evalf`, `N`, `comp`, `seterr`, `default_sort_key`, `ordered` | the same | strings are parsed by SymPy's parser |
 | the `is_*` assumptions | all of SymPy's predicates: the ones above and `extended_positive`, ..., `extended_nonzero`, `hermitian`, `antihermitian`, `algebraic`, `transcendental`, `composite`, `noninteger`, `polar` | a table of implications and structural rules on sums, products and powers; the facts of a node are cached on the node; `assumptions`, `check_assumptions`, `failing_assumptions`, `common_assumptions` |
-| the methods of `Expr` | the same: `as_coeff_Mul`, `as_base_exp`, `as_independent`, `as_coeff_exponent`, `as_coefficient`, `as_content_primitive`, `extract_additively`, `extract_multiplicatively`, `equals`, `as_real_imag`, `conjugate`, `adjoint`, `transpose`, `as_terms`, `round`, `is_polynomial`, `is_rational_function`, `is_algebraic_expr`, `is_constant`, `is_comparable`, `as_dummy`, `dummy_eq`, `has_free`, `rcall`, `as_leading_term`, `leadterm`, `removeO`, `getO`, `getn`, ... | the structural ones are written here (the leading term of a polynomial, rational or algebraic expression too); `series`, `nseries`, `lseries`, `aseries`, `limit`, `simplify`, `factor`, `cancel`, `apart`, `collect`, `together`, `powsimp`, `radsimp`, `ratsimp`, `trigsimp`, `nsimplify`, `integrate`, `as_poly`, `invert`, `rewrite`, `fps`, `fourier_series` and the leading term of a function convert to SymPy, call it and convert back |
+| the methods of `Expr` | the same: `as_coeff_Mul`, `as_base_exp`, `as_independent`, `as_coeff_exponent`, `as_coefficient`, `as_content_primitive`, `extract_additively`, `extract_multiplicatively`, `equals`, `as_real_imag`, `conjugate`, `adjoint`, `transpose`, `as_terms`, `round`, `is_polynomial`, `is_rational_function`, `is_algebraic_expr`, `is_constant`, `is_comparable`, `as_dummy`, `dummy_eq`, `has_free`, `rcall`, `as_leading_term`, `leadterm`, `removeO`, `getO`, `getn`, ... | the structural ones are written here (the leading term of a polynomial, rational or algebraic expression too); `series`, `nseries`, `lseries`, `aseries`, `limit`, `simplify`, `factor`, `cancel`, `apart`, `collect`, `together`, `powsimp`, `radsimp`, `ratsimp`, `trigsimp`, `nsimplify`, `integrate`, `as_poly`, `invert`, `rewrite` and the leading term of a function convert to SymPy, call it and convert back; `fps` and `fourier_series` are native (`sympy_extras.series.formal`, `fourier`), SymPy's only for wrapped foreign nodes |
 | `evaluate`, `distribute`, `global_parameters`, `cacheit`, `clear_cache`, `Transform`, the kinds, `preorder_traversal`, `postorder_traversal`, `bottom_up`, `use`, `iterargs`, `iterfreeargs`, `igcd`, `ilcm`, `igcdex`, `mod_inverse`, `integer_nthroot`, `integer_log`, `num_digits`, `trailing`, `factor_terms`, `gcd_terms`, `factor_nc`, `vectorize`, `var`, `greeks`, `call_highest_priority`, `_op_priority`, the exceptions | the same | `with evaluate(False): x + x` gives `Add(x, x)`; `cacheit` keeps the signature of the function; `factor_terms` and `gcd_terms` are ported from SymPy's `exprtools` (`Factors`, `Term`, the radicals of `as_content_primitive`); `factor_nc` goes through SymPy |
 | `Basic.compare`, the order of `args` | the same | sums and products store their arguments in the order of SymPy's `compare` (the numbers, then by class, then by content: `(x + y + n).args` is `(x, y, n)` for an integer `n`), `sort_key` is the order of `default_sort_key` |
 | `str`, `srepr` | the same notation | `x**2 + 2*x + 1`, `-x*y/(2*z)`, `sqrt(x)`, `1/x`, `Eq(x, y)`, `x < 1`, `O(x**2)`, `Subs(f(x), x, 2)`, `2*(Mod(x, 3))`, `a_` |
@@ -256,6 +256,28 @@ Add(Pow(Symbol('p', positive=True), Integer(2)), sin(Symbol('x')))
 
 ```
 
+### The bridge serves foreign objects only
+
+`sympy_extras.core.bridge` is the interface through which the core asks a
+foreign system (SymPy, registered by `import sympy_extras.interop`). Every
+operation of the core is native; the bridge is asked only about the
+**wrapped foreign objects** (SymPy objects wrapped in nodes, applied SymPy
+functions), whose rules only SymPy knows:
+
+| bridge method | asked by | for |
+|---|---|---|
+| `is_foreign`, `from_foreign`, `parse` | `sympify`, `refine` | a SymPy object, a string outside the native grammar |
+| `numeric` | `numeric_value` | a foreign number node |
+| `ask`, `equals_zero`, `is_constant`, `minimal_polynomial`, `meromorphic` | `ask`, `Expr.equals`, `Expr.is_constant`, the reliable values, `is_meromorphic` | expressions with foreign nodes |
+| `nseries`, `rewrite_node`, `rewrite_named_node`, `expand_func_node` | the series, `rewrite`, the tractable rewrites, `expand_func` | a foreign node's rule |
+| `solve_first`, `simplify`, `factor_foreign_integrals`, `integrate`, `invert`, `fps`, `fourier_series` | `Order`, `simplify`, `Expr.integrate`, `Expr.invert`, `Expr.fps`, `Expr.fourier_series` | expressions with foreign nodes |
+
+A native node without a native rule is decided natively as SymPy decides a
+node without a rule (unchanged, `None`, `NotImplementedError`).
+`core/tests/test_independence.py` runs each feature with no bridge
+registered, and `core/tests/test_bridge_foreign_only.py` checks that the
+native nodes never reach it.
+
 ## Functions of the core
 
 The functions of SymPy were wrapped (`SymPyFunction(sympy.sin)`), their
@@ -455,7 +477,15 @@ the base `exp_polar(1)` as SymPy's `as_base_exp` makes them), and in
 `unbranched` flag, now on `DefinedFunction` and set on the 35 functions
 SymPy marks). One API difference: `polarify` always returns the pair
 (expression, substitution map), the map empty without `subs`, where
-SymPy returns the expression alone. `adjoint` and `transpose` (`Adjoint`, `Transpose`, in
+SymPy returns the expression alone. The polar numbers are decided
+natively: `equals` of a difference with polar parts takes SymPy's steps
+(`exp_polar(0) - 1` is not taken for zero, as in SymPy), `exp_polar(z)`
+of a number with `-pi < im(z) <= pi` has the sign and the value of
+`exp(z)`, and `periodic_argument` and `principal_branch` have numerical
+values. The helpers of the Gruntz algorithm, SymPy's `_erfs`, `_eis`,
+`_besseli` and `_besselk`, are the nodes `Erfs`, `Eis`, `BesselIs` and
+`BesselKs`, with their asymptotic series, so that the tractable rewrites
+of the error, exponential and Bessel functions are native. `adjoint` and `transpose` (`Adjoint`, `Transpose`, in
 `complexes.py`) follow SymPy's rules, the products of noncommutative
 factors reversed; the conjugate of a noncommutative argument is now
 noncommutative too (it claimed commutativity). `piecewise_fold` brings

@@ -8,17 +8,17 @@ combinations and the quantified formulas of
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.ask_sympy` is its face on SymPy objects.
-The steps which are not ported go through SymPy at run time (the face
-holds them, the functions ending in ``_of_core``): the sample points and the
-reliable numerical values with which a difference is shown not to be
-identically zero (:mod:`sympy_extras.integrals.conditions`,
-:mod:`sympy_extras._numeric`). The questions about predicates go to the
+The sample points and the reliable numerical values with which a
+difference is shown not to be identically zero are native too
+(:mod:`sympy_extras.integrals.conditions`, :mod:`sympy_extras._numeric`).
+The questions about predicates go to the
 core's :func:`~sympy_extras.core.ask.ask` (which asks SymPy's ``ask``,
 through the bridge, what it cannot answer). The cylindrical algebraic
 decomposition is native (:func:`sympy_extras.polys.cad.qe.truth_tables`).
 """
 from __future__ import annotations
 
+import random
 from fractions import Fraction
 from typing import Iterable, Optional, Union
 
@@ -274,18 +274,19 @@ def _clearly_not_zero(difference: Expr, facts: Facts) -> bool:
     """Whether ``difference`` has a value away from zero at one point of
     the region of the facts: then it is not identically zero there, and
     the tower has nothing to prove."""
-    from .ask_sympy import reliable_complex_of_core, sample_values_of_core
+    from sympy_extras._numeric import reliable_complex
+    from sympy_extras.integrals.conditions import sample_values
     symbols = _sorted_symbols(_symbols(difference))
     values: Optional[dict[Symbol, Expr]] = {
         s: number_from_fraction(Fraction(3 + 2 * i, 7 + i)) for i, s in enumerate(symbols)}
     if facts.conjuncts:
-        values = sample_values_of_core(symbols, list(facts.conjuncts), difference)
+        values = sample_values(symbols, list(facts.conjuncts), random.Random(str(difference)))
     if values is None:
         return False
     # a value whose branch a rounding error chooses shows nothing (the
     # bug: log(-2*sqrt(2) - 2*sqrt(z)) - log(2*sqrt(2)) - I*pi with z a sum
     # which is exactly zero came out as -2*I*pi, "clearly not zero")
-    value = reliable_complex_of_core(difference, 20, values)
+    value = reliable_complex(difference, 20, values)
     return value is not None and abs(value) > 1e-12
 
 
@@ -397,7 +398,7 @@ def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:
     from sympy_extras.settings import settings
     limit = None if settings.timeout is None else min(settings.timeout, 5.0)
     bounded = normalize(abstraction.formula)
-    return attempt(lambda: _cad_ask(bounded, extended), limit)
+    return attempt(lambda: _cad_ask(bounded, extended), limit, native=True)
 
 
 def _evaluate(formula: Boolean, facts: Facts) -> Truth:

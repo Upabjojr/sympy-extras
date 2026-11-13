@@ -23,6 +23,18 @@ fn out_rationals<'py>(py: Python<'py>, f: &[Rat]) -> PyResult<Bound<'py, PyAny>>
     out_poly(&RationalField, py, f)
 }
 
+/// The elements of a number field as lists of fractions (highest degree
+/// first), reduced on the way in.
+impl Bridge for AlgebraicField {
+    fn extract(&self, ob: &Bound<'_, PyAny>) -> PyResult<AlgebraicElement> {
+        Ok(self.reduce(rationals(ob)?))
+    }
+
+    fn to_py<'py>(&self, py: Python<'py>, e: &AlgebraicElement) -> PyResult<Bound<'py, PyAny>> {
+        out_rationals(py, e)
+    }
+}
+
 /// `AlgebraicField(minpoly, alpha_expr)`.
 #[pyclass(
     name = "AlgebraicField",
@@ -99,6 +111,10 @@ impl PyAlgebraicField {
     #[getter]
     fn alpha<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         out_rationals(py, &self.inner.alpha())
+    }
+
+    fn from_int<'py>(&self, py: Python<'py>, n: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
+        out_rationals(py, &self.inner.from_integer(&crate::convert::extract_int(n)?))
     }
 
     fn add<'py>(&self, py: Python<'py>, a: &Bound<'py, PyAny>, b: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
@@ -185,5 +201,94 @@ pub fn register_ext_factortools(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dup_ext_norm, m)?)?;
     m.add_function(wrap_pyfunction!(dup_ext_sqf_norm, m)?)?;
     m.add_function(wrap_pyfunction!(dup_ext_factor, m)?)?;
+    Ok(())
+}
+
+// -- algebraicfactor
+
+fn ext_elem(f: &crate::rings::PyPolyElement) -> PyResult<sympy_extras_core::polys::algebraicfactor::ExtPoly> {
+    match &f.inner {
+        crate::rings::ElemKind::Algebraic(p) => Ok(p.clone()),
+        other => {
+            let ring = crate::rings::domain_name(&crate::rings::ring_of_kind(other));
+            Err(pyo3::exceptions::PyTypeError::new_err(format!(
+                "a polynomial over an algebraic field is expected, got one over {}",
+                ring
+            )))
+        }
+    }
+}
+
+fn ext_out(f: sympy_extras_core::polys::algebraicfactor::ExtPoly) -> crate::rings::PyPolyElement {
+    crate::rings::PyPolyElement {
+        inner: crate::rings::ElemKind::Algebraic(f),
+    }
+}
+
+/// The ring `K[x_1, ..., x_n]` over a number field, as a domain.
+#[pyclass(
+    name = "AlgebraicPolynomialRing",
+    module = "sympy_extras_rs.polys.algebraicfactor",
+    frozen
+)]
+pub struct PyAlgebraicPolynomialRing {
+    inner: sympy_extras_core::polys::algebraicfactor::AlgebraicPolynomialRing,
+}
+
+#[pymethods]
+impl PyAlgebraicPolynomialRing {
+    #[new]
+    fn new(ground: &PyAlgebraicField, names: Vec<String>) -> PyResult<PyAlgebraicPolynomialRing> {
+        Ok(PyAlgebraicPolynomialRing {
+            inner: sympy_extras_core::polys::algebraicfactor::AlgebraicPolynomialRing::new(ground.inner.clone(), names)
+                .map_err(err)?,
+        })
+    }
+
+    #[getter]
+    fn ring(&self) -> crate::rings::PyPolyRing {
+        crate::rings::PyPolyRing {
+            inner: crate::rings::RingKind::Algebraic(std::sync::Arc::clone(&self.inner.ring)),
+        }
+    }
+
+    fn gcd(
+        &self,
+        a: &crate::rings::PyPolyElement,
+        b: &crate::rings::PyPolyElement,
+    ) -> PyResult<crate::rings::PyPolyElement> {
+        Ok(ext_out(self.inner.gcd(&ext_elem(a)?, &ext_elem(b)?)))
+    }
+}
+
+#[pyfunction]
+fn ext_gcd(f: &crate::rings::PyPolyElement, g: &crate::rings::PyPolyElement) -> PyResult<crate::rings::PyPolyElement> {
+    Ok(ext_out(
+        sympy_extras_core::polys::algebraicfactor::ext_gcd(&ext_elem(f)?, &ext_elem(g)?).map_err(err)?,
+    ))
+}
+
+#[pyfunction]
+fn ext_factor_list<'py>(py: Python<'py>, f: &crate::rings::PyPolyElement) -> PyResult<Bound<'py, PyAny>> {
+    let (lc, factors) = sympy_extras_core::polys::algebraicfactor::ext_factor_list(&ext_elem(f)?).map_err(err)?;
+    let items: Vec<Bound<'py, PyAny>> = factors
+        .into_iter()
+        .map(|(g, k)| {
+            tuple(
+                py,
+                vec![
+                    Bound::new(py, ext_out(g))?.into_any(),
+                    crate::convert::out_usize(py, k)?,
+                ],
+            )
+        })
+        .collect::<PyResult<_>>()?;
+    tuple(py, vec![out_rationals(py, &lc)?, PyList::new(py, items)?.into_any()])
+}
+
+pub fn register_algebraicfactor(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PyAlgebraicPolynomialRing>()?;
+    m.add_function(wrap_pyfunction!(ext_gcd, m)?)?;
+    m.add_function(wrap_pyfunction!(ext_factor_list, m)?)?;
     Ok(())
 }

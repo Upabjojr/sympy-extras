@@ -3,7 +3,7 @@ from __future__ import annotations
 from sympy import And, Eq, Equivalent, FiniteSet, Integer, Ne, Or, Rational, S, sqrt
 from sympy.abc import a, b, c, x, y
 
-from sympy_extras._typing import as_expr, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import as_expr, free_symbols, sorted_symbols
 from sympy_extras.assumptions.quantifiers_sympy import ForAll
 from sympy_extras.assumptions.resolve_sympy import resolve
 from sympy_extras.polys.regularchains_sympy import triangularize

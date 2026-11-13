@@ -23,15 +23,12 @@ References
 """
 from __future__ import annotations
 
-from typing import Final, Iterable, TYPE_CHECKING, Union
+from typing import Final, Iterable, Union
 
-from .basic import Atom, Basic
+from .basic import Atom, Basic, NodePrinter, register_singleton
 from .kind import BooleanKind, Kind
 from .operations import LatticeOp
 from .sorting import ClassKey
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['Boolean', 'BooleanAtom', 'BooleanTrue', 'BooleanFalse', 'true', 'false', 'BooleanLike',
     'to_boolean', 'BooleanFunction', 'And', 'Or', 'Not', 'Xor', 'Implies', 'Equivalent', 'ITE',
@@ -165,7 +162,7 @@ class BooleanAtom(Boolean, Atom):
     def __str__(self) -> str:
         return 'True' if self._value else 'False'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return str(self)
 
     @classmethod
@@ -193,6 +190,8 @@ class BooleanFalse(BooleanAtom):
 
 true = BooleanTrue()
 false = BooleanFalse()
+register_singleton(true)
+register_singleton(false)
 
 
 class BooleanFunction(Boolean):
@@ -209,7 +208,7 @@ class BooleanFunction(Boolean):
     def class_key(cls) -> ClassKey:
         return (5, 0, cls.__name__)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '%s(%s)' % (type(self).__name__, ', '.join(printer.doprint(a) for a in self.args))
 
 
@@ -254,7 +253,7 @@ class And(LatticeOp, BooleanFunction):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return and_(*[to_boolean(a) for a in args])
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         from .printing import PREC_AND_ARGS
         return ' & '.join(printer.parenthesize(a, PREC_AND_ARGS) for a in self.args)
 
@@ -286,7 +285,7 @@ class Or(LatticeOp, BooleanFunction):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return or_(*[to_boolean(a) for a in args])
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         from .printing import PREC_OR_ARGS
         return ' | '.join(printer.parenthesize(a, PREC_OR_ARGS) for a in self.args)
 
@@ -317,7 +316,7 @@ class Not(_Connective):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return not_(to_boolean(args[0]))
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         from .printing import PREC_FUNC
         return '~%s' % printer.parenthesize(self._args[0], PREC_FUNC)
 
@@ -343,7 +342,7 @@ class Xor(_Connective):
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         return xor(*[to_boolean(a) for a in args])
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         from .printing import PREC_XOR_ARGS
         return ' ^ '.join(printer.parenthesize(a, PREC_XOR_ARGS) for a in self._args)
 

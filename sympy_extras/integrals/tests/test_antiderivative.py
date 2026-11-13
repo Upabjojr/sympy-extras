@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from sympy import symbols, cos, pi, oo, sqrt, exp, log, atan, tan, S, integrate, floor, Rational
 
-from sympy_extras.integrals.antiderivative import (antiderivative, discontinuities, one_sided_limit,
-                                                   antiderivative_integral)
-from sympy_extras.integrals.conditions import ConditionalValue
+from sympy_extras.integrals.antiderivative_sympy import (antiderivative, discontinuities, one_sided_limit,
+                                                         antiderivative_integral)
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
 
 x = symbols('x')
 a = symbols('a', positive=True)
@@ -75,7 +75,7 @@ def test_piecewise_antiderivatives_take_the_branch_of_the_range() -> None:
     # disc x**2 + y**2 < c**2 for c < 0); the branch is now selected first
     # and the infinite limit of the right one refuses the antiderivative
     t, c = symbols('t c')
-    from sympy_extras.integrals.antiderivative import select_branch
+    from sympy_extras.integrals.antiderivative_sympy import select_branch
     from sympy import Piecewise
     F = Piecewise((t**2, t > 1), (t**3, True))
     assert select_branch(F, t, S(2), S(3)) == t**2
@@ -88,7 +88,7 @@ def test_piecewise_antiderivatives_take_the_branch_of_the_range() -> None:
 def test_hadamard_finite_parts() -> None:
     # Estrada-Kanwal ch. 2: the finite part drops the divergent terms of
     # the symmetric excision; a simple pole gives the principal value
-    from sympy_extras.integrals.antiderivative import finite_part_integral
+    from sympy_extras.integrals.antiderivative_sympy import finite_part_integral
     assert finite_part_integral(1 / x**2, x, S.NegativeOne, S.One) == ConditionalValue(-2)
     assert finite_part_integral(1 / x, x, S.NegativeOne, S(2)) == ConditionalValue(log(2))
     # [-1/(2 (x - 1)**2)] between 0 and 3: -1/8 + 1/2
@@ -114,13 +114,13 @@ def test_polynomials_in_elementary_functions_go_to_integrate_first() -> None:
     # sin(pi*t/4 + pi/4)**3, on every quarter period of a trigonometric
     # integral; integrate does these at once
     from sympy import sin, cos, sinh, diff, simplify
-    from sympy_extras.integrals.antiderivative import _elementary_polynomial
+    from sympy_extras.integrals.antiderivative_sympy import elementary_polynomial
     t = symbols('t')
-    assert _elementary_polynomial(sin(pi * t / 4 + pi / 4)**3, t)
-    assert _elementary_polynomial(t**2 * exp(2 * t) * cos(t) + sinh(3 * t - 1), t)
-    assert not _elementary_polynomial(sin(t**2), t)
-    assert not _elementary_polynomial(sin(t) / t, t)
-    assert not _elementary_polynomial(log(t) * cos(t), t)
+    assert elementary_polynomial(sin(pi * t / 4 + pi / 4)**3, t)
+    assert elementary_polynomial(t**2 * exp(2 * t) * cos(t) + sinh(3 * t - 1), t)
+    assert not elementary_polynomial(sin(t**2), t)
+    assert not elementary_polynomial(sin(t) / t, t)
+    assert not elementary_polynomial(log(t) * cos(t), t)
     F = antiderivative(sin(pi * t / 4 + pi / 4)**3, t)
     assert F is not None and simplify(diff(F, t) - sin(pi * t / 4 + pi / 4)**3) == 0
 
@@ -156,12 +156,12 @@ def test_the_error_function_times_a_polynomial_exponential_by_parts() -> None:
     # sinh(u - w)*erf(w) over (0, u) (Maxima's laplace 57): G*erf(w) minus
     # the Gaussian remainder, term by term with the exponentials combined
     from sympy import sinh, erf, Rational, Integral
-    from sympy_extras.integrals import verify_numerically
+    from sympy_extras.integrals.definite_sympy import verify_numerically
     u, w = symbols('u w', positive=True)
     F = antiderivative(sinh(u - w) * erf(w), w)
     assert F is not None
     assert abs((F.diff(w) - sinh(u - w) * erf(w)).subs({u: Rational(13, 10), w: Rational(3, 7)}).evalf(20)) < 1e-15
-    from sympy_extras.integrals import definite_integral
+    from sympy_extras.integrals.definite_sympy import definite_integral
     value = definite_integral(sinh(u - w) * erf(w), (w, 0, u))
     assert not value.has(Integral) and verify_numerically(value, sinh(u - w) * erf(w), w, S.Zero, u) is True
 
@@ -174,7 +174,7 @@ def test_the_late_heuristic_is_tried_on_the_integrand_before_its_rewritten_forms
     # budget, and FriCAS's mapleok in2485a, log(1 - sqrt(z)) - acoth(sqrt(z))
     # over (0, 1), was left unevaluated
     from sympy import acoth, acosh
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     from sympy_extras.settings import configure
     for f in (log(1 - sqrt(x)) - acoth(sqrt(x)), acosh(x)):
         with configure(timeout=12):

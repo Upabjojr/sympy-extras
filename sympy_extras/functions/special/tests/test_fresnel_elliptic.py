@@ -6,7 +6,7 @@ import itertools
 
 import sympy
 
-from sympy_extras._typing import as_expr as sympy_expr
+from sympy_extras._typing_sympy import as_expr as sympy_expr
 from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi, zoo
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
@@ -81,3 +81,24 @@ def test_derivatives_and_numbers() -> None:
                  (elliptic_pi(Rational(1, 5), Integer(1), Rational(1, 3)),
                   sympy.elliptic_pi(sympy.Rational(1, 5), 1, sympy.Rational(1, 3)))]:
         assert abs(complex(sympy_value(e.evalf(20))) - complex(sympy.N(s, 20))) < 1e-13, e
+
+
+def test_fresnel_asymptotic_series_are_native() -> None:
+    # the series at oo and -oo went to SymPy through the bridge (the
+    # classes had no _eval_aseries of their own); ported, checked against
+    # SymPy's with no bridge registered
+    from sympy_extras.core.bridge import Bridge, bridge, register_bridge
+    X = sympy.Symbol('x')
+    previous = bridge()
+    register_bridge(Bridge())
+    try:
+        for f, F in ((fresnels, sympy.fresnels), (fresnelc, sympy.fresnelc)):
+            for arg, theirs_arg, point, order in ((x, X, oo, 8), (2 * x, 2 * X, oo, 6), (x, X, -oo, 6),
+                                                  (x**2, X**2, oo, 9)):
+                ours = f(arg).series(x, point, order).removeO()
+                register_bridge(previous)
+                theirs = F(theirs_arg).series(X, sympy.oo if point == oo else -sympy.oo, order).removeO()
+                assert sympy.expand(sympy_value(ours) - theirs) == 0, (f, arg, point)
+                register_bridge(Bridge())
+    finally:
+        register_bridge(previous)

@@ -46,6 +46,20 @@ construction is tried there.
 SymPy's ``dsolve`` has no integrating factor method for second order
 equations and no linearisation test.
 
+The module works on the objects of the core and imports no SymPy: the
+coefficients, the factorisations, the cancellations, the
+simplifications, the linear systems of the structure constants and the
+symmetries (:mod:`sympy_extras.solvers.ode`) are the native ones, and
+:mod:`sympy_extras.solvers.second_order_sympy` is its face on SymPy
+objects. The quadratures come from the native indefinite integration
+(:func:`~sympy_extras.integrals.indefinite.closed_antiderivative`), the linear
+equations, the first integrals and the equations ``u'' = F(u')`` are
+solved by the native classical hints of
+:func:`~sympy_extras.solvers.dsolve.dsolve`, and the transformed
+derivative, the pulled back solutions and a linear system of structure
+constants which is not uniquely solvable over the rational functions by
+the native ports of SymPy's ``solve`` (:mod:`sympy_extras.solvers.solvers`).
+
 References
 ==========
 
@@ -61,39 +75,85 @@ References
 .. [Bocharov] A. V. Bocharov, V. V. Sokolov, S. I. Svinolupov, On some
    equivalence problems for differential equations, preprint ESI 54
    (1993).
+
+Examples
+========
+
+>>> import sympy_extras.interop  # SymPy's integrate, dsolve and solve (the *_of_core functions)
+>>> from sympy_extras.core import Function, Symbol
+>>> from sympy_extras.solvers.second_order import dsolve_second_order
+>>> x = Symbol('x')
+>>> y = Function('y')(x)
+>>> dsolve_second_order(y.diff(x, 2) + 3*y*y.diff(x) + y**3, y)
+[Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
-
-from sympy.core.basic import Basic
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import Function, AppliedUndef, Derivative, expand
-from sympy.core.exprtools import factor_terms
-from sympy.core.mul import Mul
-from sympy.core.relational import Eq
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import exp
-from sympy.matrices.dense import Matrix
-from sympy.integrals.integrals import Integral, integrate
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, cancel, factor_list
-from sympy.polys.rationaltools import together
-from sympy.simplify.simplify import simplify
-from sympy.solvers.ode import dsolve
-from sympy.solvers.solvers import solve as _solve
+from typing import Final, Optional, Sequence
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import as_expr, free_symbols
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.containers import Tuple
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.exprtools import factor_terms
+from sympy_extras.core.function import AppliedUndef, Derivative, Function, diff, expand
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer
+from sympy_extras.core.power import pow
+from sympy_extras.core.relational import Eq
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import exp
+from sympy_extras.polys.polyerrors import BasePolynomialError
+from sympy_extras.polys.polytools import cancel, factor_list
+from sympy_extras.polys.rationaltools import together
 from sympy_extras.settings import settings
-from .lie import Symmetry
-from ._special_values import solution_cases
+from sympy_extras.simplify.simplify import simplify
+
+from ._special_values import as_zero, solution_cases
+from .kovacic import _coefficients
+from .lie import Symmetry, _polynomial_terms, _replaced
+from .linear_ode import _nullspace
+from .linsolve import solve_linear_unique
 
 __all__ = ['second_order_rhs', 'integrating_factor_xy', 'integrating_factor_p', 'is_linearizable',
            'linearize', 'rectify_symmetries', 'commuting_pair', 'transformed_rhs', 'dsolve_second_order',
            'FirstIntegral', 'Linearization']
+
+_ZERO: Final[Expr] = Integer(0)
+_ONE: Final[Expr] = Integer(1)
+
+#: what the polynomial routines raise on coefficients they cannot take
+_FAILURES = (BasePolynomialError, NotImplementedError, ValueError, TypeError, ZeroDivisionError)
+
+
+def _expr(e: Basic) -> Expr:
+    if not isinstance(e, Expr):
+        raise TypeError("expected an expression, got %s" % (e,))
+    return e
+
+
+def _normal(e: Expr) -> Expr:
+    """``e`` in lowest terms (``e`` itself when the native ``cancel``
+    cannot take its coefficients)."""
+    try:
+        return cancel(e)
+    except _FAILURES:
+        return e
+
+
+def _all_coeffs(e: Expr, v: Symbol) -> Optional[list[Expr]]:
+    """The coefficients of ``e`` as a polynomial in ``v`` from the leading
+    one down (SymPy's ``Poly(e, v).all_coeffs()``, any coefficients free of
+    ``v``; ``[0]`` for zero), ``None`` when ``e`` is no polynomial in
+    ``v``."""
+    try:
+        terms = _coefficients(e, v)
+    except ValueError:
+        return None
+    if not terms:
+        return [_ZERO]
+    return [terms.get(k, _ZERO) for k in range(max(terms), -1, -1)]
 
 
 class FirstIntegral:
@@ -111,11 +171,11 @@ class FirstIntegral:
     """
 
     def __init__(self, factor: Expr, integral: Expr, x: Symbol, y: Symbol, p: Symbol) -> None:
-        self.factor = factor
-        self.integral = integral
-        self.x = x
-        self.y = y
-        self.p = p
+        self.factor: Final[Expr] = factor
+        self.integral: Final[Expr] = integral
+        self.x: Final[Symbol] = x
+        self.y: Final[Symbol] = y
+        self.p: Final[Symbol] = p
 
     def __repr__(self) -> str:
         return "FirstIntegral(%s, %s)" % (self.factor, self.integral)
@@ -123,7 +183,10 @@ class FirstIntegral:
     def equation(self, f: AppliedUndef) -> Eq:
         """``R(x, f, f') = C1`` as an equation in the function ``f``."""
         x_ = f.args[0]
-        return Eq(self.integral.xreplace({self.p: Derivative(f, x_)}).xreplace({self.y: f, self.x: x_}), Symbol('C1'))
+        if not isinstance(x_, Symbol):
+            raise ValueError("the function must depend on a symbol")
+        R = _replaced(_replaced(self.integral, {self.p: Derivative(f, x_)}), {self.y: f, self.x: x_})
+        return Eq(R, Symbol('C1'))
 
 
 class Linearization:
@@ -144,12 +207,12 @@ class Linearization:
     """
 
     def __init__(self, t: Expr, u: Expr, x: Symbol, y: Symbol, v: Symbol, rhs: Expr) -> None:
-        self.t = t
-        self.u = u
-        self.x = x
-        self.y = y
-        self.v = v
-        self.rhs = rhs
+        self.t: Final[Expr] = t
+        self.u: Final[Expr] = u
+        self.x: Final[Symbol] = x
+        self.y: Final[Symbol] = y
+        self.v: Final[Symbol] = v
+        self.rhs: Final[Expr] = rhs
 
     def __repr__(self) -> str:
         if self.rhs == 0:
@@ -160,30 +223,57 @@ class Linearization:
 def second_order_rhs(equation: Basic, f: AppliedUndef) -> tuple[Expr, Symbol, Symbol, Symbol]:
     """``(Phi, x, y, p)`` with the equation written as ``y'' = Phi(x, y, p)``
     (``p`` stands for ``y'``); ``ValueError`` when the equation is not
-    linear in ``y''``."""
+    linear in ``y''``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Function, Symbol
+    >>> from sympy_extras.solvers.second_order import second_order_rhs
+    >>> x = Symbol('x')
+    >>> y = Function('y')(x)
+    >>> Phi, x_, y_, p_ = second_order_rhs(x*y.diff(x, 2) + y.diff(x) - y**2, y)
+    >>> Phi
+    (-_p + _y**2)/x
+    """
     x_ = f.args[0]
     if not isinstance(x_, Symbol):
         raise ValueError("the function must depend on a symbol")
-    lhs = equation.lhs - equation.rhs if isinstance(equation, Eq) else as_expr(equation)
+    lhs = as_zero(equation)
     y, p, q = Dummy('y'), Dummy('p'), Dummy('q')
-    replaced = as_expr(lhs).xreplace({Derivative(f, (x_, 2)): q}).xreplace({Derivative(f, x_): p}).xreplace({f: y})
+    replaced = _replaced(_replaced(_replaced(lhs, {Derivative(f, (x_, 2)): q}), {Derivative(f, x_): p}), {f: y})
     if replaced.atoms(Derivative) or replaced.has(f):
         raise ValueError("%s is not a second order equation in %s" % (equation, f))
-    try:
-        poly = Poly(replaced, q)
-    except PolynomialError:
+    coefficients = _all_coeffs(replaced, q)
+    if coefficients is None or len(coefficients) != 2:
         raise ValueError("%s is not linear in the second derivative" % (equation,))
-    if poly.degree() != 1:
-        raise ValueError("%s is not linear in the second derivative" % (equation,))
-    a1, a0 = [as_expr(c) for c in poly.all_coeffs()]
-    return as_expr(cancel(-a0/a1)), x_, y, p
+    a1, a0 = coefficients
+    return _normal(-a0/a1), x_, y, p
 
 
 def _integrate(e: Expr, v: Symbol) -> Optional[Expr]:
-    value = attempt(lambda: as_expr(integrate(e, v)), settings.timeout)
-    if value is None or value.has(Integral):
+    """An antiderivative by SymPy's ``integrate`` under the time limit of
+    the settings, ``None`` when it gives up or leaves an ``Integral``."""
+    from sympy_extras.integrals.indefinite import closed_antiderivative
+    return closed_antiderivative(e, v, cases=True)
+
+
+def _dsolve(equation: Basic, f: AppliedUndef) -> Optional[list[Basic]]:
+    """The solutions of the native classical methods
+    (:func:`~sympy_extras.solvers.dsolve.dsolve`) under the time limit of
+    the settings, ``None`` when they find none."""
+    from .dsolve import dsolve
+    found = attempt(lambda: dsolve(equation, f), settings.timeout, native=True)
+    if not found:
         return None
-    return value
+    return list(found)
+
+
+def _solve(e: Expr, v: Symbol) -> list[Expr]:
+    """The solutions of ``e = 0`` for ``v`` by the native port of SymPy's
+    ``solve`` under the time limit of the settings (none when it gives up)."""
+    from .solvers import solve_equation
+    return attempt(lambda: solve_equation(e, v), settings.timeout, native=True) or []
 
 
 def _particular(solution: Basic) -> Optional[Expr]:
@@ -191,13 +281,13 @@ def _particular(solution: Basic) -> Optional[Expr]:
     the first constant set to 1 and the others to 0."""
     if not isinstance(solution, Eq):
         return None
-    rhs = as_expr(solution.rhs)
-    constants = sorted((s for s in free_symbols(rhs) if s.name.startswith('C')), key=lambda s: s.name)
+    rhs = _expr(solution.rhs)
+    constants = sorted((s for s in rhs.free_symbols if s.name.startswith('C')), key=lambda s: s.name)
     if not constants:
         return rhs
     for chosen in constants:
-        values = {c: (S.One if c == chosen else S.Zero) for c in constants}
-        candidate = as_expr(simplify(rhs.xreplace(values)))
+        values: dict[Basic, Basic] = {c: (_ONE if c == chosen else _ZERO) for c in constants}
+        candidate = simplify(_replaced(rhs, values))
         if candidate != 0:
             return candidate
     return None
@@ -206,11 +296,12 @@ def _particular(solution: Basic) -> Optional[Expr]:
 def _solve_linear(coefficient1: Expr, coefficient0: Expr, x: Symbol) -> Optional[Expr]:
     """A nonzero solution of ``w'' + coefficient1 w' + coefficient0 w = 0``."""
     W = Function('W')(x)
-    equation = W.diff(x, 2) + coefficient1*W.diff(x) + coefficient0*W
-    solution = attempt(lambda: dsolve(equation, W), settings.timeout)
-    if solution is None:
+    equation = diff(W, x, 2) + coefficient1*diff(W, x) + coefficient0*W
+    solution = _dsolve(equation, W)
+    if solution is None or len(solution) != 1:
+        # SymPy's dsolve gave up, or gave several solutions
         return None
-    return _particular(solution)
+    return _particular(solution[0])
 
 
 def integrating_factor_xy(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional[FirstIntegral]:
@@ -220,7 +311,8 @@ def integrating_factor_xy(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optiona
     Examples
     ========
 
-    >>> from sympy import symbols
+    >>> import sympy_extras.interop  # SymPy's integrate and dsolve (the *_of_core functions)
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.solvers.second_order import integrating_factor_xy
     >>> x, y, p = symbols('x y p')
     >>> integrating_factor_xy(-p**2/y, x, y, p)          # y y'' + y'^2 = 0
@@ -228,42 +320,38 @@ def integrating_factor_xy(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optiona
     >>> integrating_factor_xy(-p/x, x, y, p)             # x y'' + y' = 0
     FirstIntegral(x, p*x)
     """
-    try:
-        poly = Poly(expand(Phi), p)
-    except PolynomialError:
+    coefficients = _all_coeffs(expand(Phi), p)
+    if coefficients is None or len(coefficients) > 3:
         return None
-    if poly.degree() > 2:
-        return None
-    coefficients = [as_expr(c) for c in poly.all_coeffs()]
     while len(coefficients) < 3:
-        coefficients.insert(0, S.Zero)
+        coefficients.insert(0, _ZERO)
     a, b, c = coefficients
     # mu = m(x) E(x, y) with E_y = -a E
     A = _integrate(a, y)
     if A is None:
         return None
-    E = as_expr(exp(-A))
-    Ex = as_expr(E.diff(x)/E)
-    Exx = as_expr(E.diff(x, 2)/E)
-    coefficient1 = as_expr(cancel(b + 2*Ex))
-    coefficient0 = as_expr(cancel(b.diff(x) + b*Ex + Exx - c.diff(y) + a*c))
+    E = exp(-A)
+    Ex = diff(E, x)/E
+    Exx = diff(E, x, 2)/E
+    coefficient1 = _normal(b + 2*Ex)
+    coefficient0 = _normal(diff(b, x) + b*Ex + Exx - diff(c, y) + a*c)
     if coefficient1.has(y) or coefficient0.has(y):
         return None
     m = _solve_linear(coefficient1, coefficient0, x)
     if m is None:
         return None
-    mu = as_expr(simplify(m*E))
+    mu = simplify(m*E)
     # S_x = -c mu, S_y = -b mu - mu_x
-    S1 = _integrate(as_expr(-c*mu), x)
+    S1 = _integrate(-c*mu, x)
     if S1 is None:
         return None
-    remainder = as_expr(simplify(-b*mu - mu.diff(x) - S1.diff(y)))
+    remainder = simplify(-b*mu - diff(mu, x) - diff(S1, y))
     if remainder.has(x):
         return None
     S2 = _integrate(remainder, y)
     if S2 is None:
         return None
-    integral = as_expr(simplify(mu*p + S1 + S2))
+    integral = simplify(mu*p + S1 + S2)
     return FirstIntegral(mu, integral, x, y, p)
 
 
@@ -273,28 +361,26 @@ def _factor_in_p(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional[tuple[E
     exponentials) are separated first, the polynomial content afterwards."""
     g_parts: list[Expr] = []
     rest_parts: list[Expr] = []
-    for factor in Mul.make_args(factor_terms(Phi)):
-        f_ = as_expr(factor)
+    for f_ in Mul.make_args(factor_terms(Phi)):
         if f_.has(p) and not (f_.has(x) or f_.has(y)):
             g_parts.append(f_)
         else:
             rest_parts.append(f_)
-    rest = as_expr(Mul(*rest_parts))
+    rest = mul(*rest_parts)
     numerator, denominator = together(rest).as_numer_denom()
     polynomial_parts: list[Expr] = []
     for part, sign in ((numerator, 1), (denominator, -1)):
         try:
             constant, factors = factor_list(part, x, y, p)
-        except PolynomialError:
+        except _FAILURES:
             return None
-        polynomial_parts.append(as_expr(constant)**sign)
+        polynomial_parts.append(pow(constant, Integer(sign)))
         for base, exponent in factors:
-            base_ = as_expr(base)
-            if base_.has(p) and not (base_.has(x) or base_.has(y)):
-                g_parts.append(base_**(sign*exponent))
+            if base.has(p) and not (base.has(x) or base.has(y)):
+                g_parts.append(pow(base, sign*exponent))
             else:
-                polynomial_parts.append(base_**(sign*exponent))
-    return as_expr(Mul(*g_parts)), as_expr(Mul(*polynomial_parts))
+                polynomial_parts.append(pow(base, sign*exponent))
+    return mul(*g_parts), mul(*polynomial_parts)
 
 
 def integrating_factor_p(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional[FirstIntegral]:
@@ -304,7 +390,8 @@ def integrating_factor_p(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional
     Examples
     ========
 
-    >>> from sympy import symbols
+    >>> import sympy_extras.interop  # SymPy's routes of indefinite, if reached
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.solvers.second_order import integrating_factor_p
     >>> x, y, p = symbols('x y p')
     >>> integrating_factor_p(p**3*(x + y*p), x, y, p)     # y'' = y'^3 (x + y y')
@@ -314,51 +401,43 @@ def integrating_factor_p(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional
     if factored is None:
         return None
     g, L = factored
-    try:
-        linear = Poly(expand(L), p)
-    except PolynomialError:
+    coefficients = _all_coeffs(expand(L), p)
+    if coefficients is None or len(coefficients) > 2:
         return None
-    if linear.degree() > 1:
+    B, A = (coefficients if len(coefficients) == 2 else [_ZERO, coefficients[0]])
+    if simplify(diff(A, y) - diff(B, x)) != 0:
         return None
-    coefficients = [as_expr(c) for c in linear.all_coeffs()]
-    B, A = (coefficients if len(coefficients) == 2 else [S.Zero, coefficients[0]])
-    if simplify(A.diff(y) - B.diff(x)) != 0:
-        return None
-    mu = as_expr(1/g)
+    mu = 1/g
     M = _integrate(mu, p)
     S1 = _integrate(-A, x)
     if M is None or S1 is None:
         return None
-    remainder = as_expr(simplify(-B - S1.diff(y)))
+    remainder = simplify(-B - diff(S1, y))
     if remainder.has(x):
         return None
     S2 = _integrate(remainder, y)
     if S2 is None:
         return None
-    return FirstIntegral(mu, as_expr(M + S1 + S2), x, y, p)
+    return FirstIntegral(mu, M + S1 + S2, x, y, p)
 
 
 def _cubic_coefficients(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional[tuple[Expr, Expr, Expr, Expr]]:
     """``(a, b, c, d)`` with ``y'' + a y'^3 + b y'^2 + c y' + d = 0``."""
-    try:
-        poly = Poly(expand(-Phi), p)
-    except PolynomialError:
+    coefficients = _all_coeffs(expand(-Phi), p)
+    if coefficients is None or len(coefficients) > 4:
         return None
-    if poly.degree() > 3:
-        return None
-    coefficients = [as_expr(c) for c in poly.all_coeffs()]
     while len(coefficients) < 4:
-        coefficients.insert(0, S.Zero)
+        coefficients.insert(0, _ZERO)
     a, b, c, d = coefficients
     return a, b, c, d
 
 
 def _lie_conditions(a: Expr, b: Expr, c: Expr, d: Expr, x: Symbol, y: Symbol) -> tuple[Expr, Expr]:
-    first = (3*a.diff(x, 2) - 2*b.diff(x, y) + c.diff(y, 2) - 3*a.diff(x)*c + 3*a.diff(y)*d
-             + 2*b.diff(x)*b - 3*c.diff(x)*a - c.diff(y)*b + 6*d.diff(y)*a)
-    second = (b.diff(x, 2) - 2*c.diff(x, y) + 3*d.diff(y, 2) - 6*a.diff(x)*d + b.diff(x)*c
-              + 3*b.diff(y)*d - 2*c.diff(y)*c - 3*d.diff(x)*a + 3*d.diff(y)*b)
-    return as_expr(simplify(first)), as_expr(simplify(second))
+    first = (3*diff(a, x, 2) - 2*diff(b, x, y) + diff(c, y, 2) - 3*diff(a, x)*c + 3*diff(a, y)*d
+             + 2*diff(b, x)*b - 3*diff(c, x)*a - diff(c, y)*b + 6*diff(d, y)*a)
+    second = (diff(b, x, 2) - 2*diff(c, x, y) + 3*diff(d, y, 2) - 6*diff(a, x)*d + diff(b, x)*c
+              + 3*diff(b, y)*d - 2*diff(c, y)*c - 3*diff(d, x)*a + 3*diff(d, y)*b)
+    return simplify(first), simplify(second)
 
 
 def is_linearizable(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> bool:
@@ -368,7 +447,7 @@ def is_linearizable(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> bool:
     Examples
     ========
 
-    >>> from sympy import symbols
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.solvers.second_order import is_linearizable
     >>> x, y, p = symbols('x y p')
     >>> is_linearizable(-3*y*p - y**3, x, y, p)
@@ -386,66 +465,74 @@ def is_linearizable(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> bool:
 def _fibre_preserving(a: Expr, b: Expr, c: Expr, d: Expr, x: Symbol, y: Symbol) -> Optional[tuple[Expr, Expr]]:
     """``(phi(x), psi(x, y))`` taking ``y'' + b y'^2 + c y' + d = 0`` to
     ``u'' = 0`` when ``a = 0`` and ``c_y = 2 b_x``."""
-    if a != 0 or simplify(c.diff(y) - 2*b.diff(x)) != 0:
+    if a != 0 or simplify(diff(c, y) - 2*diff(b, x)) != 0:
         return None
     B = _integrate(b, y)
     if B is None:
         return None
-    Bx = as_expr(B.diff(x))
-    Q = as_expr(simplify(B.diff(x, 2) - Bx**2 + c*Bx - d.diff(y) - b*d))
-    coefficient1 = as_expr(simplify(c - 2*Bx))
+    Bx = diff(B, x)
+    Q = simplify(diff(B, x, 2) - Bx**2 + c*Bx - diff(d, y) - b*d)
+    coefficient1 = simplify(c - 2*Bx)
     if Q.has(y) or coefficient1.has(y):
         return None
     w = _solve_linear(coefficient1, -Q, x)
     if w is None:
         return None
-    k = as_expr(1/w)
-    r = as_expr(simplify(2*Bx - c - 2*w.diff(x)/w))
+    k = 1/w
+    r = simplify(2*Bx - c - 2*diff(w, x)/w)
     if r.has(y):
         return None
-    Psi = _integrate(as_expr(exp(B)), y)
+    Psi = _integrate(exp(B), y)
     if Psi is None:
         return None
     # the y-free remainder gives l(x): l'' - r l' = remainder
-    remainder = as_expr(simplify(d*k*exp(B) - (k.diff(x, 2)*Psi + 2*k.diff(x)*Psi.diff(x) + k*Psi.diff(x, 2)
-                                               - r*(k.diff(x)*Psi + k*Psi.diff(x)))))
+    remainder = simplify(d*k*exp(B) - (diff(k, x, 2)*Psi + 2*diff(k, x)*diff(Psi, x) + k*diff(Psi, x, 2)
+                                       - r*(diff(k, x)*Psi + k*diff(Psi, x))))
     if remainder.has(y):
         return None
     R = _integrate(r, x)
     if R is None:
         return None
-    phi_prime = as_expr(exp(R))
+    phi_prime = exp(R)
     phi = _integrate(phi_prime, x)
     if phi is None:
         return None
-    l_prime: Expr = S.Zero
+    l_prime: Expr = _ZERO
     if remainder != 0:
-        inner = _integrate(as_expr(remainder/phi_prime), x)
+        inner = _integrate(remainder/phi_prime, x)
         if inner is None:
             return None
-        l_prime = as_expr(phi_prime*inner)
-    l = _integrate(l_prime, x) if l_prime != 0 else S.Zero
+        l_prime = phi_prime*inner
+    l = _integrate(l_prime, x) if l_prime != 0 else _ZERO
     if l is None:
         return None
-    psi = as_expr(simplify(k*Psi + l))
+    psi = simplify(k*Psi + l)
     return phi, psi
 
 
 def transformed_rhs(Phi: Expr, t: Expr, u: Expr, x: Symbol, y: Symbol, p: Symbol, v: Symbol) -> Optional[Expr]:
     """``y'' = Phi`` written in the variables ``t(x, y)``, ``u(x, y)`` as
-    ``u'' = rhs``, when ``rhs`` is a function of ``v = u'`` alone."""
-    Dt = as_expr(t.diff(x) + t.diff(y)*p)
-    Du = as_expr(u.diff(x) + u.diff(y)*p)
-    V = as_expr(cancel(Du/Dt))
-    DV = as_expr(V.diff(x) + V.diff(y)*p + V.diff(p)*Phi)
-    second = as_expr(cancel(DV/Dt))
-    solutions = attempt(lambda: _solve(Eq(V, v), p), settings.timeout)
+    ``u'' = rhs``, when ``rhs`` is a function of ``v = u'`` alone.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.solvers.second_order import transformed_rhs
+    >>> x, y, p, v = symbols('x y p v')
+    >>> transformed_rhs(-3*y*p - y**3, x - 1/y, 1/(2*y**2), x, y, p, v)
+    1
+    """
+    Dt = diff(t, x) + diff(t, y)*p
+    Du = diff(u, x) + diff(u, y)*p
+    V = _normal(Du/Dt)
+    DV = diff(V, x) + diff(V, y)*p + diff(V, p)*Phi
+    second = _normal(DV/Dt)
+    solutions = attempt(lambda: _solve(V - v, p), settings.timeout, native=True)
     if not solutions:
         return None
     for value in solutions:
-        if not isinstance(value, Expr):
-            continue
-        candidate = attempt(lambda: as_expr(simplify(second.xreplace({p: value}))), settings.timeout)
+        candidate = attempt(lambda: simplify(_replaced(second, {p: value})), settings.timeout, native=True)
         if candidate is not None and not candidate.has(x) and not candidate.has(y):
             return candidate
     return None
@@ -461,7 +548,8 @@ def linearize(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional[Linearizat
     Examples
     ========
 
-    >>> from sympy import symbols
+    >>> import sympy_extras.interop  # SymPy's integrate and dsolve (the *_of_core functions)
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.solvers.second_order import linearize
     >>> x, y, p = symbols('x y p')
     >>> linearize(p**2, x, y, p)             # y'' = y'^2, u = exp(-y)
@@ -476,17 +564,39 @@ def linearize(Phi: Expr, x: Symbol, y: Symbol, p: Symbol) -> Optional[Linearizat
     v = Dummy('v')
     found = _fibre_preserving(*coefficients, x, y)
     if found is not None:
-        return Linearization(found[0], found[1], x, y, v, S.Zero)
+        return Linearization(found[0], found[1], x, y, v, _ZERO)
     # x as a function of y: y' = 1/x', y'' = -x''/x'^3
     q = Dummy('q')
-    swapped = as_expr(cancel(-Phi.xreplace({p: 1/q})*q**3))
+    swapped = _normal(-_replaced(Phi, {p: 1/q})*q**3)
     swapped_coefficients = _cubic_coefficients(swapped, y, x, q)
     if swapped_coefficients is None:
         return None
     found = _fibre_preserving(*swapped_coefficients, y, x)
     if found is None:
         return None
-    return Linearization(found[0], found[1], x, y, v, S.Zero)
+    return Linearization(found[0], found[1], x, y, v, _ZERO)
+
+
+def _combination(symmetries: Sequence[Symmetry], coefficients: Sequence[Symbol]) -> Symmetry:
+    combination = symmetries[0]*coefficients[0]
+    for k in range(1, len(symmetries)):
+        combination = combination + symmetries[k]*coefficients[k]
+    return combination
+
+
+def _linear_solution(equations: list[Expr], unknowns: list[Symbol]) -> Optional[list[Expr]]:
+    """The values of the unknowns of a linear system: natively when they
+    are unique over the rational functions, else the first solution of
+    the native port of SymPy's ``solve`` (the unknowns it leaves free set
+    to zero)."""
+    unique = solve_linear_unique(equations, unknowns)
+    if unique is not None:
+        return unique
+    from .solvers import solve_system
+    solution = attempt(lambda: solve_system(equations, unknowns), settings.timeout, native=True)
+    if not solution:
+        return None
+    return [solution[0].get(c, _ZERO) for c in unknowns]
 
 
 def _structure(symmetries: Sequence[Symmetry], x: Symbol, y: Symbol) -> Optional[list[list[list[Expr]]]]:
@@ -494,23 +604,19 @@ def _structure(symmetries: Sequence[Symmetry], x: Symbol, y: Symbol) -> Optional
     C[i][j][k] X_k`` (``None`` when a bracket is not in the span)."""
     m = len(symmetries)
     coefficients = [Symbol('c%d' % k) for k in range(m)]
+    combination = _combination(symmetries, coefficients)
     result: list[list[list[Expr]]] = []
     for i in range(m):
         row: list[list[Expr]] = []
         for j in range(m):
             bracket = symmetries[i].commutator(symmetries[j])
-            combination = symmetries[0]*coefficients[0]
-            for k in range(1, m):
-                combination = combination + symmetries[k]*coefficients[k]
             equations: list[Expr] = []
             for lhs, rhs in ((combination.xi[0], bracket.xi[0]), (combination.eta[0], bracket.eta[0])):
-                difference = as_expr(expand(lhs - rhs))
-                equations.extend(_coefficients_in(difference, x, y))
-            solution = attempt(lambda: _solve(equations, coefficients, dict=True), settings.timeout)
-            if not solution:
+                equations.extend(_coefficients_in(expand(lhs - rhs), x, y))
+            values = _linear_solution(equations, coefficients)
+            if values is None:
                 return None
-            values = solution[0]
-            row.append([as_expr(values.get(c, S.Zero)) for c in coefficients])
+            row.append(values)
         result.append(row)
     return result
 
@@ -518,15 +624,13 @@ def _structure(symmetries: Sequence[Symmetry], x: Symbol, y: Symbol) -> Optional
 def _coefficients_in(e: Expr, x: Symbol, y: Symbol) -> list[Expr]:
     """The coefficients of an expression linear in the unknowns with
     respect to the functions of ``x`` and ``y`` it contains."""
-    try:
-        poly = Poly(e, x, y)
-        return [as_expr(c) for c in poly.coeffs()]
-    except PolynomialError:
-        pass
+    terms = _polynomial_terms(e, [x, y])
+    if terms is not None:
+        return list(terms.values()) or [_ZERO]
     collected: dict[Expr, Expr] = {}
-    for term in (e.args if isinstance(e, Add) else [e]):
-        constant, function = as_expr(term).as_independent(x, y)
-        collected[function] = collected.get(function, S.Zero) + constant
+    for term in Add.make_args(e):
+        constant, function = term.as_independent(x, y)
+        collected[function] = collected.get(function, _ZERO) + constant
     return list(collected.values())
 
 
@@ -534,7 +638,20 @@ def commuting_pair(symmetries: Sequence[Symmetry], x: Symbol, y: Symbol) -> Opti
     """Two commuting symmetries which are pointwise independent as vector
     fields (``xi_1 eta_2 - xi_2 eta_1 != 0``): among the basis elements
     and their sums first, then in the centralizers of a few elements when
-    the brackets close in the span of the basis; ``None`` otherwise."""
+    the brackets close in the span of the basis; ``None`` otherwise.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Function, symbols
+    >>> from sympy_extras.solvers.lie import JetSpace, Symmetry
+    >>> from sympy_extras.solvers.second_order import commuting_pair
+    >>> x = symbols('x')
+    >>> jets = JetSpace([Function('y')(x)])
+    >>> u = jets.u[0]
+    >>> commuting_pair([Symmetry(jets, [1], [0]), Symmetry(jets, [x], [u]), Symmetry(jets, [0], [1])], x, u)
+    (Symmetry(xi=(1,), eta=(0,)), Symmetry(xi=(0,), eta=(1,)))
+    """
     m = len(symmetries)
     if m < 2:
         return None
@@ -567,10 +684,9 @@ def commuting_pair(symmetries: Sequence[Symmetry], x: Symbol, y: Symbol) -> Opti
             continue
         rows: list[list[Expr]] = []
         for k in range(m):
-            rows.append([as_expr(Add(*[a[i]*C[i][j][k] for i in range(m)])) for j in range(m)])
-        null = Matrix(rows).nullspace()
-        for vector in null:
-            Y = sum((symmetries[j]*as_expr(vector[j]) for j in range(1, m)), symmetries[0]*as_expr(vector[0]))
+            rows.append([add(*[a[i]*C[i][j][k] for i in range(m)]) for j in range(m)])
+        for vector in _nullspace(rows, m):
+            Y = sum((symmetries[j]*vector[j] for j in range(1, m)), symmetries[0]*vector[0])
             if not Y.is_zero() and independent(X, Y):
                 return X, Y
     return None
@@ -579,32 +695,27 @@ def commuting_pair(symmetries: Sequence[Symmetry], x: Symbol, y: Symbol) -> Opti
 def _coordinates(X: Symmetry, symmetries: Sequence[Symmetry], x: Symbol, y: Symbol) -> Optional[list[Expr]]:
     m = len(symmetries)
     coefficients = [Symbol('c%d' % k) for k in range(m)]
-    combination = symmetries[0]*coefficients[0]
-    for k in range(1, m):
-        combination = combination + symmetries[k]*coefficients[k]
+    combination = _combination(symmetries, coefficients)
     equations: list[Expr] = []
     for lhs, rhs in ((combination.xi[0], X.xi[0]), (combination.eta[0], X.eta[0])):
-        equations.extend(_coefficients_in(as_expr(expand(lhs - rhs)), x, y))
-    solution = attempt(lambda: _solve(equations, coefficients, dict=True), settings.timeout)
-    if not solution:
-        return None
-    return [as_expr(solution[0].get(c, S.Zero)) for c in coefficients]
+        equations.extend(_coefficients_in(expand(lhs - rhs), x, y))
+    return _linear_solution(equations, coefficients)
 
 
 def _potential(fx: Expr, fy: Expr, x: Symbol, y: Symbol) -> Optional[Expr]:
     """``F`` with ``F_x = fx`` and ``F_y = fy``."""
-    if simplify(fx.diff(y) - fy.diff(x)) != 0:
+    if simplify(diff(fx, y) - diff(fy, x)) != 0:
         return None
     F1 = _integrate(fx, x)
     if F1 is None:
         return None
-    remainder = as_expr(simplify(fy - F1.diff(y)))
+    remainder = simplify(fy - diff(F1, y))
     if remainder.has(x):
         return None
     F2 = _integrate(remainder, y)
     if F2 is None:
         return None
-    return as_expr(simplify(F1 + F2))
+    return simplify(F1 + F2)
 
 
 def rectify_symmetries(Phi: Expr, x: Symbol, y: Symbol, p: Symbol, f: AppliedUndef,
@@ -618,7 +729,8 @@ def rectify_symmetries(Phi: Expr, x: Symbol, y: Symbol, p: Symbol, f: AppliedUnd
     Examples
     ========
 
-    >>> from sympy import Function, symbols
+    >>> import sympy_extras.interop  # SymPy's integrate (the *_of_core functions)
+    >>> from sympy_extras.core import Function, symbols
     >>> from sympy_extras.solvers.second_order import rectify_symmetries
     >>> x, y, p = symbols('x y p')
     >>> f = Function('y')(x)
@@ -626,8 +738,8 @@ def rectify_symmetries(Phi: Expr, x: Symbol, y: Symbol, p: Symbol, f: AppliedUnd
     Linearization(t=x - 1/y, u=1/(2*y**2), rhs=1)
     """
     from .ode import ode_symmetries
-    equation = Derivative(f, (x, 2)) - Phi.xreplace({p: Derivative(f, x)}).xreplace({y: f})
-    found = attempt(lambda: ode_symmetries(equation, f, degree=degree), settings.timeout)
+    equation = Derivative(f, (x, 2)) - _replaced(_replaced(Phi, {p: Derivative(f, x)}), {y: f})
+    found = attempt(lambda: ode_symmetries(equation, f, degree=degree), settings.timeout, native=True)
     if not found:
         return None
     jets = found[0].jets
@@ -637,12 +749,12 @@ def rectify_symmetries(Phi: Expr, x: Symbol, y: Symbol, p: Symbol, f: AppliedUnd
         return None
     X1, X2 = pair
     xi1, eta1, xi2, eta2 = X1.xi[0], X1.eta[0], X2.xi[0], X2.eta[0]
-    Delta = as_expr(simplify(xi1*eta2 - xi2*eta1))
-    t = _potential(as_expr(cancel(eta2/Delta)), as_expr(cancel(-xi2/Delta)), x, ysym)
-    u = _potential(as_expr(cancel(-eta1/Delta)), as_expr(cancel(xi1/Delta)), x, ysym)
+    Delta = simplify(xi1*eta2 - xi2*eta1)
+    t = _potential(_normal(eta2/Delta), _normal(-xi2/Delta), x, ysym)
+    u = _potential(_normal(-eta1/Delta), _normal(xi1/Delta), x, ysym)
     if t is None or u is None:
         return None
-    t, u = as_expr(t.xreplace({ysym: y})), as_expr(u.xreplace({ysym: y}))
+    t, u = _replaced(t, {ysym: y}), _replaced(u, {ysym: y})
     v = Dummy('v')
     rhs = transformed_rhs(Phi, t, u, x, y, p, v)
     if rhs is None:
@@ -655,40 +767,48 @@ def _solutions_of_linearization(L: Linearization, f: AppliedUndef, x: Symbol) ->
     solved for ``y`` when possible."""
     t = Dummy('t')
     U = Function('U')(t)
+    general: list[Expr]
     if L.rhs == 0:
         C1, C2 = Symbol('C1'), Symbol('C2')
-        general: list[Expr] = [as_expr(C1*t + C2)]
+        general = [C1*t + C2]
     else:
-        solved = attempt(lambda: dsolve(Eq(U.diff(t, 2), L.rhs.xreplace({L.v: U.diff(t)})), U), settings.timeout)
+        solved = _dsolve(Eq(diff(U, t, 2), _replaced(L.rhs, {L.v: diff(U, t)})), U)
         if solved is None:
             return None
-        general = [as_expr(s.rhs) for s in (solved if isinstance(solved, list) else [solved])
-                   if isinstance(s, Eq) and s.lhs == U]
+        general = [_expr(s.rhs) for s in solved if isinstance(s, Eq) and s.lhs == U]
         if not general:
             return None
     results: list[Basic] = []
     for expression in general:
-        relation = as_expr(L.u - expression.xreplace({t: L.t}))
-        explicit = attempt(lambda: _solve(relation, L.y), settings.timeout)
+        relation = L.u - _replaced(expression, {t: L.t})
+        explicit = attempt(lambda: _solve(relation, L.y), settings.timeout, native=True)
         if explicit:
             for value in explicit:
-                if isinstance(value, Expr):
-                    results.append(Eq(f, value.xreplace({L.x: x})))
+                results.append(Eq(f, _replaced(value, {L.x: x})))
         else:
-            results.append(Eq(relation.xreplace({L.x: x, L.y: f}), 0))
+            results.append(Eq(_replaced(relation, {L.x: x, L.y: f}), _ZERO))
     return results or None
 
 
 def _unknown_under_integral(candidate: Basic, f: AppliedUndef) -> bool:
-    """Whether ``f`` occurs in the integrand of an ``Integral`` over its own
-    argument -- ``Integral(y(x)*..., x)`` -- which is no solution. An
-    integral over a dummy with ``f`` as a limit, ``Integral(exp(t**2/2),
-    (t, y(x)))``, is an ordinary implicit solution and is kept."""
+    """Whether ``f`` occurs in the integrand of an ``Integral`` (SymPy's,
+    wrapped) over its own argument -- ``Integral(y(x)*..., x)`` -- which is
+    no solution. An integral over a dummy with ``f`` as a limit,
+    ``Integral(exp(t**2/2), (t, y(x)))``, is an ordinary implicit solution
+    and is kept."""
+    from sympy_extras.integrals.integral import Integral
     x = f.args[0]
-    for integral in candidate.atoms(Integral):
-        if not integral.function.has(f):
+    for node in preorder_traversal(candidate):
+        if isinstance(node, Integral):
+            # a native integral is over its own variable
+            if node.function.has(f) and node.variable == x:
+                return True
             continue
-        if any(limit[0] == x for limit in integral.limits):
+        if not (node._is_foreign_node() and node._compare_name() == 'Integral') or not node.args:
+            continue
+        if not node.args[0].has(f):
+            continue
+        if any(isinstance(limit, Tuple) and limit.args and limit.args[0] == x for limit in node.args[1:]):
             return True
     return False
 
@@ -707,14 +827,13 @@ def dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int = 3,
     Examples
     ========
 
-    >>> from sympy import Function
-    >>> from sympy.abc import x
+    >>> import sympy_extras.interop  # SymPy's integrate, dsolve and solve (the *_of_core functions)
+    >>> from sympy_extras.core import Function, Symbol
     >>> from sympy_extras.solvers.second_order import dsolve_second_order
+    >>> x = Symbol('x')
     >>> y = Function('y')(x)
     >>> dsolve_second_order(y.diff(x, 2) - y.diff(x)**2, y)
     [Eq(y(x), log(-1/(C1*x + C2)))]
-    >>> dsolve_second_order(y.diff(x, 2) + 3*y*y.diff(x) + y**3, y)
-    [Eq(y(x), 2*(C2 + x)/(2*C1 + 2*C2*x + x**2))]
     """
     found = _dsolve_second_order(equation, f, degree)
     if special_values and found:
@@ -727,23 +846,22 @@ def dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int = 3,
 def _dsolve_second_order(equation: Basic, f: AppliedUndef, degree: int) -> Optional[list[Basic]]:
     Phi, x, y, p = second_order_rhs(equation, f)
     for method in (integrating_factor_xy, integrating_factor_p):
-        first_integral = attempt(lambda: method(Phi, x, y, p), settings.timeout)
+        first_integral = attempt(lambda: method(Phi, x, y, p), settings.timeout, native=True)
         if first_integral is None:
             continue
         reduced = first_integral.equation(f)
-        solved = attempt(lambda: dsolve(reduced, f), settings.timeout)
-        if solved is None:
+        found = _dsolve(reduced, f)
+        if found is None:
             return [reduced]
-        found = [solved] if isinstance(solved, Basic) else list(solved)
         # an answer with the unknown still under an integral is not a
         # solution; the first integral itself is the honest reduction
         # (sympy-extras#29)
         if any(_unknown_under_integral(s, f) for s in found):
             return [reduced]
         return found
-    L = attempt(lambda: linearize(Phi, x, y, p), settings.timeout)
+    L = attempt(lambda: linearize(Phi, x, y, p), settings.timeout, native=True)
     if L is None:
-        L = attempt(lambda: rectify_symmetries(Phi, x, y, p, f, degree), settings.timeout)
+        L = attempt(lambda: rectify_symmetries(Phi, x, y, p, f, degree), settings.timeout, native=True)
     if L is None:
         return None
     return _solutions_of_linearization(L, f, x)

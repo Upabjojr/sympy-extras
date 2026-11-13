@@ -8,9 +8,9 @@ import random
 
 from sympy import symbols, sqrt, cbrt, log, Rational, N, Poly, cancel, S, exp
 
-from sympy_extras._typing import as_expr
-from sympy_extras.integrals.curves import (AlgebraicIntegrand, curve_antiderivative, curve_reduce,
-                                           is_nonelementary_on_curve, integrate_on_curve)
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.integrals.curves_sympy import (AlgebraicIntegrand, curve_antiderivative, curve_reduce,
+                                                 is_nonelementary_on_curve, integrate_on_curve)
 
 x, a = symbols('x a')
 
@@ -96,7 +96,7 @@ def test_the_remainder_of_the_reduction() -> None:
 
 
 def test_fallback_from_the_quadratic_module() -> None:
-    from sympy_extras.integrals.trager import trager_antiderivative, is_nonelementary_algebraic
+    from sympy_extras.integrals.trager_sympy import trager_antiderivative, is_nonelementary_algebraic
     f = 1 / (sqrt(x + 1) + sqrt(x - 1))
     F = trager_antiderivative(f, x)
     assert F is not None

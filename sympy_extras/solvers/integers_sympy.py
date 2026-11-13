@@ -1,6 +1,5 @@
 """The SymPy face of the linear problems over the integers
-(:mod:`sympy_extras.solvers.integers`), and the step which stays on
-SymPy.
+(:mod:`sympy_extras.solvers.integers`).
 
 :func:`linear_diophantine_system`, :func:`cooper`,
 :func:`presburger_quantifier_elimination` and :func:`is_presburger` take
@@ -8,12 +7,6 @@ and return SymPy objects, converted by :mod:`sympy_extras.interop`
 around the native functions; :func:`hermite_normal_form_with_transform`,
 :func:`hilbert_basis` and :func:`minimal_nonnegative_solutions` work on
 integer matrices and are the native functions themselves.
-
-The step of the native module which stays written on SymPy is called
-from it at run time (:func:`simplify_logic_of_core`, which takes and
-returns a formula of the core, the function of
-:mod:`sympy_extras.polys.virtual_substitution_sympy`): SymPy's
-``simplify_logic`` of the formulas returned by Cooper's algorithm.
 
 Examples
 ========
@@ -35,10 +28,9 @@ from sympy.core.relational import Eq
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import Boolean
 
-from sympy_extras._typing import QuantifierPrefix, as_expr
+from sympy_extras._typing_sympy import QuantifierPrefix, as_expr
 from sympy_extras.assumptions.ask_sympy import _sympy_symbol, core_boolean, core_prefix, sympy_boolean
 from sympy_extras.assumptions.intervals_sympy import core_expr, core_symbol, sympy_expr
-from sympy_extras.polys.virtual_substitution_sympy import simplify_logic_of_core
 
 from . import integers as native
 from .integers import (IntMatrix, IntVector, hermite_normal_form_with_transform, hilbert_basis,
@@ -46,7 +38,7 @@ from .integers import (IntMatrix, IntVector, hermite_normal_form_with_transform,
 
 __all__ = ['hermite_normal_form_with_transform', 'linear_diophantine_system',
     'hilbert_basis', 'minimal_nonnegative_solutions', 'cooper',
-    'presburger_quantifier_elimination', 'is_presburger', 'simplify_logic_of_core', 'IntMatrix', 'IntVector']
+    'presburger_quantifier_elimination', 'is_presburger', 'IntMatrix', 'IntVector']
 
 
 # ---------------------------------------------------------------------------

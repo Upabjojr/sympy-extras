@@ -4,7 +4,7 @@ SymPy rings (:class:`~sympy_extras.polys.ideals.Ideal`, the modular
 Gröbner bases) while the algorithms run on the typed layer.
 
 The coefficient domains ``QQ``, ``ZZ`` and ``GF(p)`` are converted; a
-monomial order of SymPy (or of :mod:`sympy_extras.polys.orderings`)
+monomial order of SymPy (or of :mod:`sympy_extras.polys.orderings_sympy`)
 becomes a typed order whose key is the flattened tuple of the SymPy key,
 which compares the same way since the components have a fixed length in
 a given ring.
@@ -34,7 +34,7 @@ from sympy.polys.rings import PolyElement as SymPyPolyElement, PolyRing as SymPy
 
 from typing import TypeVar
 
-from sympy_extras._typing import DomainElement, Monomial, as_expr as sympy_as_expr
+from sympy_extras._typing_sympy import DomainElement, Monomial, as_expr as sympy_as_expr
 from sympy_extras.core.expr import as_expr as core_as_expr
 from sympy_extras.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
 from sympy_extras.core.symbol import Symbol

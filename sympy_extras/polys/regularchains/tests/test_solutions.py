@@ -5,7 +5,7 @@ from sympy import CRootOf, Rational, sqrt, symbols
 from sympy.polys.rootoftools import ComplexRootOf
 from sympy.testing.pytest import raises
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.polys.regularchains_sympy import RegularChain, triangularize
 from sympy_extras.polys.regularchains_sympy.solutions import exact_solutions
 
@@ -99,3 +99,11 @@ def test_refined_isolating_intervals_still_match() -> None:
         x**10 - 2 * x**6 - 2 * x**5 + x**2 + 2 * x - 1, 4)]
     as_expr(first[x]).evalf(50)
     assert len(chain.solutions()) == 10 and len(chain.solutions(real=True)) == 4
+
+
+def test_roots_with_an_integer_basis_are_not_taken_for_real() -> None:
+    # the bug: the roots of y**3 + 64 are 4 times those of y**3 + 1, and
+    # 4*CRootOf(x**2 - x + 1, 0), not a CRootOf itself, was taken for a real
+    # root: real=True returned the two complex points too
+    assert exact_solutions([y**3 + 64, x - y], [y, x], real=True) == [{y: -4, x: -4}]
+    assert len(exact_solutions([y**3 + 64, x - y], [y, x])) == 3

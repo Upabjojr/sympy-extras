@@ -8,8 +8,9 @@ from sympy import (Abs, DiracDelta, Eq, Integral, Piecewise, Rational, S, cos, d
                    simplify, symbols)
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import as_expr
-from sympy_extras.integrals import definite_integral, indefinite_integral, verify_numerically
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.integrals.definite_sympy import definite_integral, verify_numerically
+from sympy_extras.integrals.indefinite_sympy import indefinite_integral
 
 x, y, k, a, b, c, n = symbols('x y k a b c n')
 

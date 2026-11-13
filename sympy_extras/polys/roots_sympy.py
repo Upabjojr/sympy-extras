@@ -1,14 +1,8 @@
-"""The SymPy face of the roots in radicals (:mod:`sympy_extras.polys.roots`),
-and the step which stays on SymPy.
+"""The SymPy face of the roots in radicals (:mod:`sympy_extras.polys.roots`).
 
 :func:`radical_form` and :func:`in_radicals` take and return SymPy
 objects (``CRootOf`` and sets of SymPy), converted by
 :mod:`sympy_extras.interop` around the native functions.
-
-The step of the native module which stays written on SymPy is called from
-it at run time (:func:`roots_of_core`, which takes and returns objects of
-the core): SymPy's ``roots`` of a polynomial whose functional components
-need its algebraic domain ``EX``.
 
 Examples
 ========
@@ -26,31 +20,16 @@ from __future__ import annotations
 from typing import Optional
 
 from sympy.core.expr import Expr
-from sympy.polys.polyroots import roots
 from sympy.polys.rootoftools import ComplexRootOf
 from sympy.sets.sets import Set
 
-from sympy_extras._typing import as_expr
-from sympy_extras.assumptions.ask_sympy import _sympy_symbol
 from sympy_extras.assumptions.intervals_sympy import core_expr, sympy_expr, sympy_set
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy
 from sympy_extras.sets.sets import Set as CoreSet
 
 from . import roots as native
 
-__all__ = ['radical_form', 'in_radicals', 'roots_of_core']
-
-
-def roots_of_core(p: CoreExpr, x: CoreExpr) -> dict[CoreExpr, int]:
-    """SymPy's ``roots`` of a univariate polynomial with rational
-    coefficients: the roots in radicals it finds, with their
-    multiplicities."""
-    if not isinstance(x, CoreSymbol):
-        raise TypeError("a symbol is expected, got %s" % (x,))
-    found = roots(sympy_expr(p), _sympy_symbol(x))
-    return {core_expr(as_expr(r)): int(m) for r, m in found.items()}
+__all__ = ['radical_form', 'in_radicals']
 
 
 def radical_form(root: ComplexRootOf) -> Optional[Expr]:

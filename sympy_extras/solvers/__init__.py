@@ -13,7 +13,7 @@ solutions, variation of constants); Darboux polynomials and the
 Prelle–Singer procedure for first order equations ``y' = P/Q``.
 
 The package exports nothing: the modules are imported by their paths
-(``from sympy_extras.solvers.ode import dsolve_lie``), so that importing
+(``from sympy_extras.solvers.ode_sympy import dsolve_lie``), so that importing
 the native ones (:mod:`~sympy_extras.solvers.recurr`,
 :mod:`~sympy_extras.solvers.linsolve`) does not load the modules still
 written on SymPy."""

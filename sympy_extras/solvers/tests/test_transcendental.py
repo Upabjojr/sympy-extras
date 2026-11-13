@@ -5,7 +5,7 @@ from sympy import (S, Eq, exp, log, sin, cos, tan, sinh, cosh, tanh, sqrt, cbrt,
 from sympy.abc import x, a
 
 from sympy_extras.assumptions.solve_sympy import solve
-from sympy_extras.solvers.transcendental import solve_transcendental, polynomialize
+from sympy_extras.solvers.transcendental_sympy import solve_transcendental, polynomialize
 from sympy_extras.polys.roots_sympy import radical_form, in_radicals
 from sympy import CRootOf
 
@@ -145,7 +145,7 @@ def test_a_multiple_angle_is_solved() -> None:
     # the solutions are x = pi/12 + k pi and 5 pi/12 + k pi.
     from sympy import sin, cos, Eq, Rational, pi
     from sympy.abc import x
-    from sympy_extras.solvers.transcendental import solve_transcendental
+    from sympy_extras.solvers.transcendental_sympy import solve_transcendental
     for equation, root in ((Eq(sin(2*x), Rational(1, 2)), pi/12),
                            (Eq(cos(2*x), Rational(1, 2)), pi/6)):
         found = solve_transcendental(equation, x)

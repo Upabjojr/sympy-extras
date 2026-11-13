@@ -17,22 +17,34 @@ on `F` [Doetsch]_, [AS]_ (table 29.2):
   `\\mathcal{L}[f](s) = \\int_0^T f e^{-st} dt / (1 - e^{-sT})`.
 
 Each rule reduces the transform of the given integrand to transforms of
-simpler ones, which :func:`~sympy_extras.integrals.definite_integral`
+simpler ones, which :func:`~sympy_extras.integrals.definite.definite_integral`
 computes (the Mellin table, the antiderivative for the outer integral of
 the division rule, whose lower endpoint is the symbol `s`). The pairs of
 [AS]_ table 29.3 and of [Erdelyi]_ are the test material; Maxima's
 ``specint`` tests in the benchmarks come from the same tables.
 
+The module works on the objects of :mod:`sympy_extras.core` and imports
+no SymPy: the native ask, conditions, ``simplify`` and ``tidy``. The
+transforms of the pieces are computed by the native
+:func:`~sympy_extras.integrals.definite.definite_integral` and
+:func:`~sympy_extras.integrals.definite.conditional_integral`.
+The periods of the periodic rule are native
+(:func:`sympy_extras.calculus.util.periodicity`). The
+``Integral`` of the convolution rule is SymPy's, wrapped in a node of the
+core (the core has no class of its own). The functions on SymPy objects
+are in :mod:`.laplace_sympy`.
+
 Examples
 ========
 
->>> from sympy import symbols, cos, sin, Abs, oo, exp
+>>> from sympy_extras.core import Symbol, oo
+>>> from sympy_extras.functions import cos, sin, abs_, exp
 >>> from sympy_extras.integrals.laplace import laplace_rules, laplace_integral
->>> t = symbols('t')
->>> s, a, b = symbols('s a b', positive=True)
+>>> t = Symbol('t')
+>>> s, a, b = [Symbol(n, positive=True) for n in 'sab']
 >>> laplace_rules((cos(a*t) - cos(b*t))/t, t, s)
 ConditionalValue((-log(a**2 + s**2) + log(b**2 + s**2))/2)
->>> laplace_rules(Abs(sin(a*t)), t, s)
+>>> laplace_rules(abs_(sin(a*t)), t, s)
 ConditionalValue(a/((a**2 + s**2)*tanh(pi*s/(2*a))))
 >>> laplace_integral(t**2*exp(a*t)*exp(-s*t), t, 0, oo, s > a)
 ConditionalValue(2/(-a + s)**3, -a + s > 0)
@@ -50,69 +62,124 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from sympy.calculus.util import periodicity
-from sympy.core.add import Add
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, oo
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import exp
-from sympy.functions.elementary.complexes import Abs, arg, re, im
-from sympy.functions.elementary.trigonometric import atan
-from sympy.core.numbers import pi
-from sympy.simplify.simplify import simplify
-from sympy.functions.special.delta_functions import Heaviside
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.integrals.integrals import Integral
-from sympy.logic.boolalg import And, Boolean, true
+import itertools
+from typing import Callable, Final, Optional
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.containers import Tuple
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.logic import Boolean, and_, to_boolean, true
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer, oo, pi
+from sympy_extras.core.power import Pow
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.core.traversal import preorder_traversal
+from sympy_extras.functions.elementary.complexes import Abs, Arg, Im, Re, im, re
+from sympy_extras.functions.elementary.exponential import Exp, exp
+from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.functions.elementary.trigonometric import atan
+from sympy_extras.functions.special.delta_functions import Heaviside
 from sympy_extras.settings import settings
-from .conditions import ConditionalValue
-from .mellin import monomial
-from .marichev import tidy
+from sympy_extras.simplify.simplify import simplify
 
-__all__ = ['laplace_rules', 'laplace_integral', 'laplace_of_convolution', 'transform', 'real_arguments']
+from .conditions import ConditionalValue
+from .marichev import tidy
+from .mellin import monomial
+
+__all__ = ['laplace_rules', 'laplace_integral', 'laplace_of_convolution', 'transform', 'real_arguments',
+           'has_integral']
 
 #: the powers of ``t`` in the division and multiplication rules are
 #: bounded, so that the rules terminate
-_MAX_POWER = 3
+_MAX_POWER: Final = 3
+
+_COUNTER: Final = itertools.count()
+
+
+def _fresh(name: str, **assumptions: bool) -> Dummy:
+    """A dummy with a name of its own: the typed polynomials map their
+    symbols by name, so the variable ``u`` of a rule and the ``u`` of a
+    rule applied inside it (or a parameter ``u``) would be taken for one
+    symbol."""
+    return Dummy('%s%d' % (name, next(_COUNTER)), **assumptions)
+
+
+def _is_integral(e: Basic) -> bool:
+    """Whether ``e`` is an unevaluated ``Integral``: the node of
+    :mod:`.integral` (the value of :mod:`.definite` when no method
+    applies), or SymPy's wrapped in a node of the core."""
+    from .integral import Integral
+    return isinstance(e, Integral) or (e._is_foreign_node() and e._compare_name() == 'Integral')
+
+
+def has_integral(e: Basic) -> bool:
+    """Whether ``e`` has an unevaluated ``Integral`` (the node of
+    :mod:`.integral`, or SymPy's wrapped in a node of the core).
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.integrals.laplace import has_integral
+    >>> has_integral(Symbol('t')**2)
+    False
+    """
+    return any(_is_integral(node) for node in preorder_traversal(e))
+
+
+def _expr(e: Basic) -> Expr:
+    if not isinstance(e, Expr):
+        raise TypeError("expected an expression, got %s" % (e,))
+    return e
+
+
+def _boolean(b: Basic) -> Boolean:
+    if not isinstance(b, Boolean):
+        raise TypeError("expected a Boolean, got %s" % (b,))
+    return b
 
 
 def _statements(assumptions: Assumptions) -> list[Boolean]:
-    if isinstance(assumptions, (Basic, bool)):
-        return [as_boolean(assumptions)]
     if assumptions is None:
         return []
-    return [as_boolean(a) for a in assumptions]
+    if isinstance(assumptions, (Basic, bool)):
+        return [to_boolean(assumptions)]
+    return [to_boolean(a) for a in assumptions]
 
 
 def _renamed(assumptions: Assumptions, s: Expr, u: Symbol) -> list[Boolean]:
     """The assumptions with the transform variable ``s`` renamed ``u``."""
-    return [as_boolean(item.xreplace({s: u})) for item in _statements(assumptions)] + [as_boolean(u > 0)]
+    rule: dict[Basic, Basic] = {s: u}
+    return [_boolean(item._xreplace_evaluated(rule)) for item in _statements(assumptions)] + [u > 0]
 
 
 def transform(f: Expr, t: Symbol, u: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
-    """``Integral(f*exp(-u*t), (t, 0, oo))`` by :func:`~sympy_extras.integrals.definite_integral`
-    (which does not use the rules of this module again), ``None`` when
-    it is not found or comes with an undecided condition."""
+    """``Integral(f*exp(-u*t), (t, 0, oo))`` by
+    :func:`~sympy_extras.integrals.definite.definite_integral` (which does
+    not use the rules of this module again), ``None`` when it is not found
+    or comes with an undecided condition."""
     from .definite import definite_integral
     value = attempt(lambda: definite_integral(f * exp(-u * t), (t, S.Zero, oo), assumptions, special_values=False),
-                    settings.timeout)
-    if value is None or value.has(Integral, Piecewise):
+                    settings.timeout, native=True)
+    if value is None or value.has(Piecewise) or has_integral(value):
         return None
     return value
 
 
-def _factors(f: Expr) -> list[Expr]:
-    return [as_expr(g) for g in (f.args if isinstance(f, Mul) else (f,))]
+def _conditional_integral(f: Expr, x: Symbol, a: Expr, b: Expr,
+                          assumptions: Assumptions) -> Optional[ConditionalValue]:
+    """:func:`~sympy_extras.integrals.definite.conditional_integral`;
+    ``None`` for a value with an unevaluated ``Integral``."""
+    from .definite import conditional_integral
+    found = conditional_integral(f, x, a, b, assumptions)
+    if found is None or has_integral(found.value):
+        return None
+    return found
+
+
+def _factors(f: Expr) -> tuple[Expr, ...]:
+    return Mul.make_args(f)
 
 
 def _power_of(f: Expr, t: Symbol) -> tuple[int, Expr]:
@@ -127,29 +194,28 @@ def _power_of(f: Expr, t: Symbol) -> tuple[int, Expr]:
             n += int(g.exp)
         else:
             rest.append(g)
-    return n, as_expr(Mul(*rest))
+    return n, mul(*rest)
 
 
 def _division_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:
     """``L[h/t**n](s) = Integral(...Integral(H(u), (u, s, oo))...)``, ``n``
     times."""
-    from .definite import conditional_integral
     n, h = _power_of(f, t)
     if n >= 0 or -n > _MAX_POWER:
         return None
-    u = Dummy('u', positive=True)
+    u = _fresh('u', positive=True)
     value = transform(h, t, u, _renamed(assumptions, s, u))
     if value is None:
         return None
     condition: Boolean = true
     for _ in range(-n):
-        w = Dummy('w', positive=True)
-        outer = conditional_integral(value, u, w, oo, _renamed(assumptions, s, w))
-        if outer is None or outer.value.has(Integral):
+        w = _fresh('w', positive=True)
+        outer = _conditional_integral(value, u, w, oo, _renamed(assumptions, s, w))
+        if outer is None:
             return None
-        value = real_arguments(as_expr(outer.value.subs(w, u)), _renamed(assumptions, s, u))
-        condition = as_boolean(And(condition, as_boolean(outer.condition.subs(w, s))))
-    return ConditionalValue(as_expr(value.subs(u, s)), condition)
+        value = real_arguments(outer.value.subs(w, u), _renamed(assumptions, s, u))
+        condition = and_(condition, _boolean(outer.condition.subs(w, s)))
+    return ConditionalValue(value.subs(u, s), condition)
 
 
 def _multiplication_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:
@@ -157,121 +223,121 @@ def _multiplication_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) 
     n, h = _power_of(f, t)
     if n <= 0 or n > _MAX_POWER:
         return None
-    u = Dummy('u', positive=True)
+    u = _fresh('u', positive=True)
     value = transform(h, t, u, _renamed(assumptions, s, u))
     if value is None:
         return None
-    derivative = as_expr(value.diff(u, n) * S.NegativeOne**n)
-    return ConditionalValue(as_expr(derivative.subs(u, s)))
+    derivative = value.diff((u, n)) * S.NegativeOne**n
+    return ConditionalValue(derivative.subs(u, s))
 
 
 def _heaviside_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:
     """``L[h(t) theta(t - a)](s) = exp(-a s) L[h(t + a)](s)`` for ``a > 0``."""
     for g in _factors(f):
         if isinstance(g, Heaviside) and g.has(t):
-            argument = as_expr(g.args[0])
-            found = monomial(argument, t)
-            if found is None:
-                shift, rest = argument.as_independent(t, as_Add=True)
-                shift_, rest_ = as_expr(shift), as_expr(rest)
-                if rest_ != t:
-                    return None
-                a = -shift_
-            else:
+            argument = _expr(g.args[0])
+            if monomial(argument, t) is not None:
                 return None
-            if ask(as_boolean(a > 0), assumptions) is not True:
+            shift, rest = argument.as_independent(t, as_Add=True)
+            if rest != t:
                 return None
-            h = as_expr((f / g).subs(t, t + a))
-            u = Dummy('u', positive=True)
+            a = -shift
+            if ask(a > 0, assumptions) is not True:
+                return None
+            h = (f / g).subs(t, t + a)
+            u = _fresh('u', positive=True)
             value = transform(h, t, u, _renamed(assumptions, s, u))
             if value is None:
                 return None
-            return ConditionalValue(as_expr(exp(-a * s) * value.subs(u, s)))
+            return ConditionalValue(exp(-a * s) * value.subs(u, s))
     return None
 
 
 def _exponential_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:
     """``L[exp(c t) h](s) = H(s - c)`` for ``Re s > c``."""
     for g in _factors(f):
-        if isinstance(g, exp) and g.has(t):
-            found = monomial(as_expr(g.args[0]), t)
+        if isinstance(g, Exp) and g.has(t):
+            found = monomial(_expr(g.args[0]), t)
             if found is None or found[1] != 1:
                 return None
             c = found[0]
-            h = as_expr(f / g)
-            u = Dummy('u', positive=True)
-            value = transform(h, t, u, _renamed(assumptions, s, u))
+            u = _fresh('u', positive=True)
+            value = transform(f / g, t, u, _renamed(assumptions, s, u))
             if value is None:
                 return None
-            condition = as_boolean(s - c > 0)
-            return ConditionalValue(as_expr(value.subs(u, s - c)), condition)
+            return ConditionalValue(value.subs(u, s - c), s - c > 0)
     return None
 
 
 def _periodic_rule(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:
     """``L[f](s) = Integral(f exp(-s t), (t, 0, T)) / (1 - exp(-s T))`` for
-    a period ``T``."""
-    from .definite import conditional_integral
-    if f.has(exp, Heaviside, Integral):
+    a period ``T`` (:func:`sympy_extras.calculus.util.periodicity`)."""
+    if f.has(Exp, Heaviside) or has_integral(f):
         return None
-    period = attempt(lambda: periodicity(f, t), settings.timeout)
-    if period is None or not isinstance(period, Expr) or period == 0 or period.has(t):
+    from sympy_extras.calculus.util import periodicity
+    found = attempt(lambda: periodicity(f, t), settings.timeout, native=True)
+    if found is None or found == 0 or found.has(t):
         return None
+    period: Expr = found
     # 2*pi/Abs(k) for sin(k*t): the sign of k is in the assumptions
     for node in period.atoms(Abs):
-        argument = as_expr(node.args[0])
-        if ask(as_boolean(argument > 0), assumptions) is True:
-            period = as_expr(period.xreplace({node: argument}))
-        elif ask(as_boolean(argument < 0), assumptions) is True:
-            period = as_expr(period.xreplace({node: -argument}))
+        argument = _expr(node.args[0])
+        if ask(argument > 0, assumptions) is True:
+            period = _expr(period._xreplace_evaluated({node: argument}))
+        elif ask(argument < 0, assumptions) is True:
+            period = _expr(period._xreplace_evaluated({node: -argument}))
     if period.has(Abs):
         return None
-    u = Dummy('u', positive=True)
-    piece = conditional_integral(f * exp(-u * t), t, S.Zero, as_expr(period), _renamed(assumptions, s, u))
-    if piece is None or piece.value.has(Integral):
+    u = _fresh('u', positive=True)
+    piece = _conditional_integral(f * exp(-u * t), t, S.Zero, period, _renamed(assumptions, s, u))
+    if piece is None:
         return None
-    value = as_expr(piece.value / (1 - exp(-u * period)))
-    return ConditionalValue(as_expr(value.subs(u, s)), as_boolean(piece.condition.subs(u, s)))
+    value = piece.value / (1 - exp(-u * period))
+    return ConditionalValue(value.subs(u, s), _boolean(piece.condition.subs(u, s)))
 
 
 def laplace_of_convolution(f: Expr, t: Symbol, s: Expr, assumptions: Assumptions = None) -> Optional[ConditionalValue]:
     """``L[Integral(p(u) q(t - u), (u, 0, t))](s) = P(s) Q(s)``, with the
     integral rule ``L[Integral(p, (u, 0, t))] = P(s)/s`` as the case
-    ``q = 1``; ``None`` when ``f`` is not such an integral.
+    ``q = 1``; ``None`` when ``f`` is not such an integral (an
+    ``Integral`` of SymPy, wrapped in a node of the core: the core has no
+    class of its own).
 
     Examples
     ========
 
-    >>> from sympy import symbols, Integral, sin
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import sin
     >>> from sympy_extras.integrals.laplace import laplace_of_convolution
-    >>> t, u = symbols('t u')
-    >>> s = symbols('s', positive=True)
-    >>> laplace_of_convolution(Integral(sin(t - u)*u, (u, 0, t)), t, s)
-    ConditionalValue(1/(s**2*(s**2 + 1)))
+    >>> t, s = Symbol('t'), Symbol('s', positive=True)
+    >>> laplace_of_convolution(sin(t), t, s) is None
+    True
     """
-    if not isinstance(f, Integral) or len(f.limits) != 1:
+    if not _is_integral(f) or len(f.args) != 2:
         return None
-    variable, lower, upper = f.limits[0]
+    integrand, limits = f.args
+    if not isinstance(integrand, Expr) or not isinstance(limits, Tuple) or len(limits.args) != 3:
+        return None
+    variable, lower, upper = limits.args
     if not isinstance(variable, Symbol) or lower != 0 or upper != t:
         return None
-    integrand = as_expr(f.function)
     p: Expr = S.One
     q: Expr = S.One
-    w = Dummy('w')
+    w = _fresh('w')
     for g in _factors(integrand):
         if not g.has(t):
             p = p * g
             continue
-        shifted = as_expr(g.subs(variable, t - w))
+        shifted = g.subs(variable, t - w)
         if shifted.has(t):
             return None
         q = q * shifted.subs(w, variable)
-    v = Dummy('v', positive=True)
+    v = _fresh('v', positive=True)
     first = transform(p, variable, v, _renamed(assumptions, s, v))
     second = transform(q, variable, v, _renamed(assumptions, s, v))
     if first is None or second is None:
         return None
-    return ConditionalValue(as_expr((first * second).subs(v, s)))
+    return ConditionalValue((first * second).subs(v, s))
 
 
 def real_arguments(value: Expr, assumptions: Assumptions = None) -> Expr:
@@ -279,34 +345,42 @@ def real_arguments(value: Expr, assumptions: Assumptions = None) -> Expr:
     decided under the assumptions written as ``atan(y/x)`` (``x > 0``) or
     ``atan(y/x) +- pi`` (``x < 0``), the way the limits of an
     antiderivative come out of SymPy (``arg(-s - I*a)`` for the transform
-    of ``sin(a t)/t``); then simplified.
+    of ``sin(a t)/t``); then simplified (the native ``simplify``).
 
-    >>> from sympy import symbols, arg, I
+    >>> from sympy_extras.core import I, Symbol, pi
+    >>> from sympy_extras.functions import Arg
     >>> from sympy_extras.integrals.laplace import real_arguments
-    >>> s, a = symbols('s a', positive=True)
-    >>> real_arguments(arg(-s - I*a)/2 - arg(-s + I*a)/2 + pi)
+    >>> s, a = Symbol('s', positive=True), Symbol('a', positive=True)
+    >>> real_arguments(Arg(-s - I*a)/2 - Arg(-s + I*a)/2 + pi)
     atan(a/s)
     """
-    replacement: dict[Expr, Expr] = {}
-    for node in value.atoms(arg):
-        z = as_expr(node.args[0])
-        x, y = as_expr(re(z)), as_expr(im(z))
-        if x.has(re, im) or y.has(re, im):
+    replacement: dict[Basic, Basic] = {}
+    for node in value.atoms(Arg):
+        z = _expr(node.args[0])
+        x, y = re(z), im(z)
+        if x.has(Re, Im) or y.has(Re, Im):
             continue
-        sign_x = ask(as_boolean(x > 0), assumptions)
-        if sign_x is True:
-            replacement[as_expr(node)] = atan(y / x)
-        elif ask(as_boolean(x < 0), assumptions) is True:
-            sign_y = ask(as_boolean(y >= 0), assumptions)
-            if sign_y is True:
-                replacement[as_expr(node)] = atan(y / x) + pi
-            elif ask(as_boolean(y < 0), assumptions) is True:
-                replacement[as_expr(node)] = atan(y / x) - pi
+        if ask(x > 0, assumptions) is True:
+            replacement[node] = atan(y / x)
+        elif ask(x < 0, assumptions) is True:
+            if ask(y >= 0, assumptions) is True:
+                replacement[node] = atan(y / x) + pi
+            elif ask(y < 0, assumptions) is True:
+                replacement[node] = atan(y / x) - pi
     if not replacement:
         return value
-    rewritten = as_expr(value.xreplace(replacement))
-    simpler = attempt(lambda: as_expr(simplify(rewritten)), settings.timeout)
+    rewritten = _expr(value._xreplace_evaluated(replacement))
+    simpler = attempt(lambda: simplify(rewritten), settings.timeout, native=True)
     return rewritten if simpler is None else simpler
+
+
+#: a rule of the module: the transform of ``f(t)`` at ``s`` under the
+#: assumptions, or ``None``
+Rule = Callable[[Expr, Symbol, Expr, Assumptions], Optional[ConditionalValue]]
+
+#: the rules in the order they are tried
+_RULES: Final[tuple[Rule, ...]] = (laplace_of_convolution, _heaviside_rule, _exponential_rule, _periodic_rule,
+                                    _division_rule, _multiplication_rule)
 
 
 def laplace_rules(f: ExprLike, t: Symbol, s: ExprLike, assumptions: Assumptions = None) -> Optional[ConditionalValue]:
@@ -318,26 +392,26 @@ def laplace_rules(f: ExprLike, t: Symbol, s: ExprLike, assumptions: Assumptions 
     Examples
     ========
 
-    >>> from sympy import symbols, sin, cos, Heaviside, exp
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import sin, heaviside, exp
     >>> from sympy_extras.integrals.laplace import laplace_rules
-    >>> t = symbols('t')
-    >>> s, a = symbols('s a', positive=True)
+    >>> t = Symbol('t')
+    >>> s, a = Symbol('s', positive=True), Symbol('a', positive=True)
     >>> laplace_rules(sin(a*t)/t, t, s)
     ConditionalValue(atan(a/s))
-    >>> laplace_rules(Heaviside(t - 1)*exp(-t), t, s)
+    >>> laplace_rules(heaviside(t - 1)*exp(-t), t, s)
     ConditionalValue(exp(-s - 1)/(s + 1))
     """
-    f_, s_ = as_expr(f), as_expr(s)
+    f_, s_ = to_expr(f), to_expr(s)
     if isinstance(f_, Add):
         total = ConditionalValue(S.Zero)
         for term in f_.args:
-            found = laplace_rules(as_expr(term), t, s_, assumptions)
+            found = laplace_rules(term, t, s_, assumptions)
             if found is None:
                 return None
             total = total.add(found)
         return total
-    for rule in (laplace_of_convolution, _heaviside_rule, _exponential_rule, _periodic_rule,
-                 _division_rule, _multiplication_rule):
+    for rule in _RULES:
         found = rule(f_, t, s_, assumptions)
         if found is not None:
             value = tidy(real_arguments(found.value, assumptions), assumptions, found.condition)
@@ -355,27 +429,28 @@ def laplace_integral(f: ExprLike, t: Symbol, a: ExprLike, b: ExprLike,
     Examples
     ========
 
-    >>> from sympy import symbols, cos, exp, oo
+    >>> from sympy_extras.core import Symbol, oo
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.laplace import laplace_integral
-    >>> t = symbols('t')
-    >>> s, a = symbols('s a', positive=True)
+    >>> t = Symbol('t')
+    >>> s, a = Symbol('s', positive=True), Symbol('a', positive=True)
     >>> laplace_integral((exp(-a*t) - exp(-2*a*t))*exp(-s*t)/t, t, 0, oo)
     ConditionalValue(log((2*a + s)/(a + s)))
     """
-    f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
+    f_, a_, b_ = to_expr(f), to_expr(a), to_expr(b)
     if a_ != 0 or b_ != oo:
         return None
     for g in _factors(f_):
-        if isinstance(g, exp) and g.has(t):
-            found = monomial(as_expr(g.args[0]), t)
+        if isinstance(g, Exp) and g.has(t):
+            found = monomial(_expr(g.args[0]), t)
             if found is None or found[1] != 1:
                 continue
-            s = as_expr(-found[0])
+            s = -found[0]
             if not (isinstance(s, Symbol) or s.is_positive):
                 continue
-            if isinstance(s, Symbol) and not s.is_positive and ask(as_boolean(s > 0), assumptions) is not True:
+            if isinstance(s, Symbol) and not s.is_positive and ask(s > 0, assumptions) is not True:
                 continue
-            rest = as_expr(f_ / g)
+            rest = f_ / g
             if rest == 1 or not rest.has(t):
                 continue
             return laplace_rules(rest, t, s, assumptions)

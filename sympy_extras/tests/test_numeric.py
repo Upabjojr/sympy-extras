@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from sympy import CRootOf, Gt, I, Integer, Rational, asin, atan, cos, exp, im, log, pi, sin, sqrt, symbols
 
-from sympy_extras._numeric import reliable_form, reliable_value
-from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras._numeric_sympy import reliable_form, reliable_value
+from sympy_extras._typing_sympy import as_boolean, as_expr
 
 x = symbols('x')
 
@@ -66,7 +66,7 @@ def test_the_checks_of_the_package_go_through_them() -> None:
     # each of these gave the wrong answer, or raised RecursionError, in
     # some runs: the thirty digits of numerically_equal put the argument of
     # the logarithm below the cut
-    from sympy_extras.integrals.conditions import numerically_equal
+    from sympy_extras.integrals.conditions_sympy import numerically_equal
     assert numerically_equal(as_expr(L), as_expr(RIGHT)) is True
     assert numerically_equal(as_expr(L), as_expr(WRONG)) is False
     positive = symbols('p', positive=True)
@@ -79,10 +79,10 @@ def test_the_checks_of_the_package_go_through_them() -> None:
     from sympy_extras.assumptions.solve_sympy import _clearly_not_real
     assert _clearly_not_real(as_expr(L - I * pi)) is False
     assert _clearly_not_real(as_expr(L)) is True
-    from sympy_extras.solvers.transcendental import _real_root
+    from sympy_extras.solvers.transcendental_sympy import _real_root
     t = symbols('t', real=True)
     assert _real_root(as_expr(t - log(2 * sqrt(2))), t, as_expr(L - I * pi)) is True
-    from sympy_extras.integrals.residues import _numerically
+    from sympy_extras.integrals.residues_sympy import _numerically
     # (unevaluated: SymPy's own im(L) > 0 is decided by the rounding, or
     # raises RecursionError)
     assert _numerically(as_boolean(Gt(im(L, evaluate=False), 0, evaluate=False))) is True

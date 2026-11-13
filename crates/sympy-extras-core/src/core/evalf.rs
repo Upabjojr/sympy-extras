@@ -141,20 +141,80 @@ pub fn parts(z: &Complex) -> (Real, Real) {
     z.clone().into_parts()
 }
 
+/// The principal square root from the parts (mpmath's `mpc_sqrt`: exact
+/// on the real axis).
+pub fn complex_sqrt(z: &Complex, prec: usize) -> Complex {
+    let (a, b) = parts(z);
+    let zero: Real = real_zero(prec);
+    if b.repr().significand().is_zero() {
+        if a >= Real::ZERO {
+            return complex(a.sqrt(), zero);
+        }
+        return complex(zero, (-a).sqrt());
+    }
+    let two: Real = real_int(&Int::from(2u8), prec);
+    let modulus: Real = (&a * &a + &b * &b).sqrt();
+    // the larger half from the modulus, the other as b/(2 x): no
+    // cancellation of |z| - |a| for a small imaginary part (mpmath's way)
+    if a >= Real::ZERO {
+        let x: Real = ((&modulus + &a) / &two).sqrt();
+        let y: Real = &b / &(&two * &x);
+        return complex(x, y);
+    }
+    let t: Real = ((&modulus - &a) / &two).sqrt();
+    let x: Real = abs_of(&b) / (&two * &t);
+    complex(x, if b < Real::ZERO { -t } else { t })
+}
+
+fn abs_of(r: &Real) -> Real {
+    if *r < Real::ZERO {
+        -r.clone()
+    } else {
+        r.clone()
+    }
+}
+
 /// `z**w` on the principal branch: repeated squaring for an integer `w`,
-/// `exp(w ln z)` otherwise (`z` nonzero).
-fn power(z: &Complex, w: &Basic, wz: &Complex, prec: usize) -> Complex {
+/// the square root to an integer power for a half-integer (mpmath's
+/// `mpc_pow_mpf`), `exp(w ln z)` otherwise (`z` nonzero).
+fn power(z: &Complex, w: &Basic, wz: &Complex, prec: usize) -> Option<Complex> {
     if let Some(r) = w.as_rational() {
+        if denom(r) == Int::from(2u8) && bits(&numer(r)) <= 62 {
+            let n: Int = numer(r);
+            let root: Complex = complex_sqrt(z, prec);
+            if is_negative(&n) {
+                let one: Complex = complex_real(real_int(&Int::ONE, prec), prec);
+                return Some(&one / &root.powi(-n));
+            }
+            return Some(root.powi(n));
+        }
         if r.is_int() {
             let n: Int = numer(r);
+            if bits(&n) > 62 {
+                // beyond the exponents of dashu's floats unless |z| = 1 exactly
+                let (re, im) = parts(z);
+                let unit: bool = im.repr().significand().is_zero()
+                    && (re == real_int(&Int::ONE, prec) || re == real_int(&-Int::ONE, prec));
+                if !unit {
+                    return None;
+                }
+                let odd: bool = bit(&n, 0);
+                let sign: Int = if odd && re < Real::ZERO { -Int::ONE } else { Int::ONE };
+                return Some(complex_real(real_int(&sign, prec + GUARD), prec + GUARD));
+            }
+            if n.is_zero() {
+                // dashu's powi(0) is a one of unlimited precision, on which
+                // later operations panic
+                return Some(complex_real(real_int(&Int::ONE, prec + GUARD), prec + GUARD));
+            }
             if is_negative(&n) {
                 let one: Complex = complex_real(real_int(&Int::ONE, prec + GUARD), prec + GUARD);
-                return &one / &z.powi(-n);
+                return Some(&one / &z.powi(-n));
             }
-            return z.powi(n);
+            return Some(z.powi(n));
         }
     }
-    (wz * &z.ln()).exp()
+    Some((wz * &z.ln()).exp())
 }
 
 /// The value of a numerical expression at the working precision `prec`
@@ -165,6 +225,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
     let real = |x: Real| -> Option<Complex> { Some(complex_real(x, wp)) };
     match e.head() {
         Head::Rational { value, .. } => real(real_rat(value, wp)),
+        Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_value(e, wp),
         Head::Pi => real(Real::pi(wp)),
         Head::Exp1 => real(Real::e(wp)),
         Head::EulerGamma => real(euler_gamma(wp)),
@@ -193,7 +254,401 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 }
                 return None;
             }
-            Some(power(&b, exponent, &x, wp))
+            let value: Complex = power(&b, exponent, &x, wp)?;
+            // mpmath's exponents are unbounded, dashu's are machine words: a
+            // value beyond them has no representation here (no panic)
+            let (re, im) = parts(&value);
+            if re.repr().is_infinite() || im.repr().is_infinite() {
+                return None;
+            }
+            Some(value)
+        }
+        Head::Function(g @ (super::basic::Function::Arg | super::basic::Function::Atan2)) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec)?);
+            }
+            crate::functions::elementary::argument::argument_value(*g, &values, wp)
+        }
+        Head::Function(
+            g @ (super::basic::Function::LowerGamma
+            | super::basic::Function::UpperGamma
+            | super::basic::Function::MultiGamma),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::gamma_functions::incomplete_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::EllipticK
+            | super::basic::Function::EllipticF
+            | super::basic::Function::EllipticE
+            | super::basic::Function::EllipticPi),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::elliptic_integrals::elliptic_value(*g, &values, prec)
+        }
+        Head::Function(g @ (super::basic::Function::Ynm | super::basic::Function::Znm)) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::spherical_harmonics::spherical_value(*g, &values, prec)
+        }
+        Head::Function(super::basic::Function::SingularityFunction) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::singularity_functions::singularity_value(&values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Gamma
+            | super::basic::Function::LogGamma
+            | super::basic::Function::PolyGamma
+            | super::basic::Function::DiGamma
+            | super::basic::Function::TriGamma),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::gamma_functions::gamma_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Expint
+            | super::basic::Function::Ei
+            | super::basic::Function::Si
+            | super::basic::Function::Ci
+            | super::basic::Function::Shi
+            | super::basic::Function::Chi
+            | super::basic::Function::LogIntegral
+            | super::basic::Function::OffsetLogIntegral
+            | super::basic::Function::FresnelS
+            | super::basic::Function::FresnelC),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::error_functions::integral_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Erf
+            | super::basic::Function::Erfc
+            | super::basic::Function::Erfi
+            | super::basic::Function::Erfinv
+            | super::basic::Function::Erfcinv
+            | super::basic::Function::Erf2
+            | super::basic::Function::Erf2inv),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::error_functions::error_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Beta
+            | super::basic::Function::BetaInc
+            | super::basic::Function::BetaIncRegularized),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::beta_functions::beta_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Catalan
+            | super::basic::Function::Fibonacci
+            | super::basic::Function::Lucas
+            | super::basic::Function::Harmonic
+            | super::basic::Function::Bernoulli
+            | super::basic::Function::Euler
+            | super::basic::Function::Bell
+            | super::basic::Function::Genocchi
+            | super::basic::Function::Partition),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::combinatorial::numbers::number_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Zeta
+            | super::basic::Function::DirichletEta
+            | super::basic::Function::PolyLog
+            | super::basic::Function::LerchPhi
+            | super::basic::Function::RiemannXi
+            | super::basic::Function::Stieltjes),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::zeta_functions::zeta_value(*g, &values, prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::Factorial
+            | super::basic::Function::Binomial
+            | super::basic::Function::RisingFactorial
+            | super::basic::Function::FallingFactorial
+            | super::basic::Function::Subfactorial
+            | super::basic::Function::Factorial2),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::combinatorial::factorials::combinatorial_value(*g, &values, prec)
+        }
+        Head::Function(g @ (super::basic::Function::DiracDelta | super::basic::Function::Heaviside)) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec)?);
+            }
+            crate::functions::special::delta_functions::delta_value(*g, &values)
+        }
+        Head::Function(g @ (super::basic::Function::Max | super::basic::Function::Min)) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec)?);
+            }
+            crate::functions::elementary::miscellaneous::minmax_value(*g, &values)
+        }
+        Head::Function(f) => {
+            let v: Complex = numeric_value(&e.args()[0], prec)?;
+            let value: Complex = match f {
+                super::basic::Function::Exp => {
+                    // beyond the exponents of dashu's floats (mpmath's are unbounded)
+                    if parts(&v).0.repr().exponent() > 40 {
+                        return None;
+                    }
+                    v.exp()
+                }
+                super::basic::Function::Log => {
+                    if is_zero(&v) {
+                        return None;
+                    }
+                    v.ln()
+                }
+                super::basic::Function::Sin
+                | super::basic::Function::Cos
+                | super::basic::Function::Tan
+                | super::basic::Function::Cot
+                | super::basic::Function::Sec
+                | super::basic::Function::Csc => {
+                    use super::basic::Function as F;
+                    if parts(&v).1.repr().exponent() > 40 {
+                        return None;
+                    }
+                    // sin z = (e^(iz) - e^(-iz))/(2i), cos z = (e^(iz) + e^(-iz))/2
+                    let i: Complex = complex(real_zero(wp), real_int(&Int::ONE, wp));
+                    let iz: Complex = &i * &v;
+                    let (a, b) = (iz.exp(), (-&iz).exp());
+                    let two: Complex = complex_real(real_int(&Int::from(2u8), wp), wp);
+                    let s: Complex = &(&a - &b) / &(&two * &i);
+                    let c: Complex = &(&a + &b) / &two;
+                    match f {
+                        F::Sin => s,
+                        F::Cos => c,
+                        F::Tan | F::Sec => {
+                            if is_zero(&c) {
+                                return None;
+                            }
+                            if matches!(f, F::Tan) {
+                                &s / &c
+                            } else {
+                                &complex_real(real_int(&Int::ONE, wp), wp) / &c
+                            }
+                        }
+                        _ => {
+                            if is_zero(&s) {
+                                return None;
+                            }
+                            if matches!(f, F::Cot) {
+                                &c / &s
+                            } else {
+                                &complex_real(real_int(&Int::ONE, wp), wp) / &s
+                            }
+                        }
+                    }
+                }
+                super::basic::Function::Sinh
+                | super::basic::Function::Cosh
+                | super::basic::Function::Tanh
+                | super::basic::Function::Coth
+                | super::basic::Function::Sech
+                | super::basic::Function::Csch => {
+                    use super::basic::Function as F;
+                    if parts(&v).0.repr().exponent() > 40 {
+                        return None;
+                    }
+                    let (a, b) = (v.exp(), (-&v).exp());
+                    let two: Complex = complex_real(real_int(&Int::from(2u8), wp), wp);
+                    let one: Complex = complex_real(real_int(&Int::ONE, wp), wp);
+                    let s: Complex = &(&a - &b) / &two;
+                    let c: Complex = &(&a + &b) / &two;
+                    match f {
+                        F::Sinh => s,
+                        F::Cosh => c,
+                        F::Tanh | F::Sech => {
+                            if is_zero(&c) {
+                                return None;
+                            }
+                            if matches!(f, F::Tanh) {
+                                &s / &c
+                            } else {
+                                &one / &c
+                            }
+                        }
+                        _ => {
+                            if is_zero(&s) {
+                                return None;
+                            }
+                            if matches!(f, F::Coth) {
+                                &c / &s
+                            } else {
+                                &one / &s
+                            }
+                        }
+                    }
+                }
+                g @ (super::basic::Function::Asin
+                | super::basic::Function::Acos
+                | super::basic::Function::Atan
+                | super::basic::Function::Acot
+                | super::basic::Function::Asec
+                | super::basic::Function::Acsc
+                | super::basic::Function::Asinh
+                | super::basic::Function::Acosh
+                | super::basic::Function::Atanh
+                | super::basic::Function::Acoth
+                | super::basic::Function::Asech
+                | super::basic::Function::Acsch) => crate::functions::elementary::inverse::inverse_value(*g, &v, wp)?,
+                super::basic::Function::Arg
+                | super::basic::Function::Atan2
+                | super::basic::Function::Max
+                | super::basic::Function::Min
+                | super::basic::Function::DiracDelta
+                | super::basic::Function::Heaviside
+                | super::basic::Function::Factorial
+                | super::basic::Function::Binomial
+                | super::basic::Function::RisingFactorial
+                | super::basic::Function::FallingFactorial
+                | super::basic::Function::Subfactorial
+                | super::basic::Function::Factorial2
+                | super::basic::Function::Gamma
+                | super::basic::Function::LogGamma
+                | super::basic::Function::PolyGamma
+                | super::basic::Function::SingularityFunction
+                | super::basic::Function::Ynm
+                | super::basic::Function::EllipticK
+                | super::basic::Function::EllipticF
+                | super::basic::Function::EllipticE
+                | super::basic::Function::EllipticPi
+                | super::basic::Function::Znm
+                | super::basic::Function::LowerGamma
+                | super::basic::Function::UpperGamma
+                | super::basic::Function::MultiGamma
+                | super::basic::Function::DiGamma
+                | super::basic::Function::TriGamma
+                | super::basic::Function::Zeta
+                | super::basic::Function::DirichletEta
+                | super::basic::Function::PolyLog
+                | super::basic::Function::LerchPhi
+                | super::basic::Function::RiemannXi
+                | super::basic::Function::Stieltjes => {
+                    unreachable!("evaluated above with all their arguments")
+                }
+                // no numerical value (neither SymPy nor mpmath has one)
+                super::basic::Function::MathieuS
+                | super::basic::Function::MathieuC
+                | super::basic::Function::MathieuSPrime
+                | super::basic::Function::MathieuCPrime => return None,
+                // no value of its own (Python asks SymPy)
+                super::basic::Function::Mod
+                | super::basic::Function::KroneckerDelta
+                | super::basic::Function::LeviCivita
+                | super::basic::Function::Catalan
+                | super::basic::Function::Fibonacci
+                | super::basic::Function::Lucas
+                | super::basic::Function::Harmonic
+                | super::basic::Function::Bernoulli
+                | super::basic::Function::Euler
+                | super::basic::Function::Bell
+                | super::basic::Function::Genocchi
+                | super::basic::Function::Partition
+                | super::basic::Function::Totient
+                | super::basic::Function::ReducedTotient
+                | super::basic::Function::DivisorSigma
+                | super::basic::Function::UDivisorSigma
+                | super::basic::Function::PrimeNu
+                | super::basic::Function::PrimeOmega
+                | super::basic::Function::Mobius
+                | super::basic::Function::PrimePi
+                | super::basic::Function::LegendreSymbol
+                | super::basic::Function::JacobiSymbol
+                | super::basic::Function::KroneckerSymbol
+                | super::basic::Function::Tribonacci
+                | super::basic::Function::Motzkin
+                | super::basic::Function::Andre
+                | super::basic::Function::Beta
+                | super::basic::Function::BetaInc
+                | super::basic::Function::BetaIncRegularized
+                | super::basic::Function::Erf
+                | super::basic::Function::Erfc
+                | super::basic::Function::Erfi
+                | super::basic::Function::Erfinv
+                | super::basic::Function::Erfcinv
+                | super::basic::Function::Erf2
+                | super::basic::Function::Erf2inv
+                | super::basic::Function::Expint
+                | super::basic::Function::Ei
+                | super::basic::Function::Si
+                | super::basic::Function::Ci
+                | super::basic::Function::Shi
+                | super::basic::Function::Chi
+                | super::basic::Function::LogIntegral
+                | super::basic::Function::OffsetLogIntegral
+                | super::basic::Function::FresnelS
+                | super::basic::Function::FresnelC => {
+                    return None;
+                }
+                g
+                @ (super::basic::Function::Floor | super::basic::Function::Ceiling | super::basic::Function::Frac) => {
+                    crate::functions::elementary::integers::rounding_value(*g, &v)
+                }
+                super::basic::Function::Re => complex_real(parts(&v).0, wp),
+                super::basic::Function::Im => complex_real(parts(&v).1, wp),
+                super::basic::Function::Conjugate => {
+                    let (re, im) = parts(&v);
+                    complex(re, -im)
+                }
+                super::basic::Function::Abs | super::basic::Function::Sign => {
+                    let (re, im) = parts(&v);
+                    let modulus: Real = (&re * &re + &im * &im).sqrt();
+                    if matches!(f, super::basic::Function::Abs) {
+                        complex_real(modulus, wp)
+                    } else if is_zero(&v) {
+                        complex_real(real_zero(wp), wp)
+                    } else {
+                        complex(re / &modulus, im / &modulus)
+                    }
+                }
+            };
+            let (re, im) = parts(&value);
+            if re.repr().is_infinite() || im.repr().is_infinite() {
+                return None;
+            }
+            Some(value)
         }
         _ => None,
     }

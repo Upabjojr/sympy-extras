@@ -33,12 +33,19 @@ The conditions of validity -- the strip of each transform, the
 convergence of the Mellin–Barnes integral, the parameters of the kernels
 -- are inequalities on the parameters; they are returned with the value
 as a :class:`~.conditions.ConditionalValue` and decided against the
-assumptions by the caller (:func:`~sympy_extras.integrals.definite_integral`).
+assumptions by the caller (:func:`~sympy_extras.integrals.definite.definite_integral`).
+
+The module works on the objects of the core (:mod:`sympy_extras.core`, the
+functions of :mod:`sympy_extras.functions`) with the native ``ask``,
+``refine``, ``hyperexpand``, ``simplify`` and limits, and imports no
+SymPy: :mod:`sympy_extras.integrals.marichev_sympy` is its face on SymPy
+objects, used by the integrators which are still written on SymPy.
 
 Examples
 ========
 
->>> from sympy import symbols, exp, sin, besselj, sqrt, log, oo
+>>> from sympy_extras.core import Symbol, symbols
+>>> from sympy_extras.functions import exp, log, sin
 >>> from sympy_extras.integrals.marichev import mellin_integrate
 >>> x, k = symbols('x k')
 >>> a, b = symbols('a b', positive=True)
@@ -65,112 +72,164 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sympy.core.add import Add
-from sympy.core.mul import Mul
-from sympy.functions.elementary.trigonometric import sin, cos
-from sympy.functions.elementary.hyperbolic import sinh, cosh
-from sympy.functions.elementary.exponential import exp
-from sympy.core.basic import Basic
-from sympy.core.expr import Expr
-from sympy.core.numbers import I, nan, oo, pi, zoo
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.complexes import polar_lift, unpolarify, principal_branch, re, im
-from sympy.functions.elementary.exponential import log
-from sympy.functions.elementary.exponential import exp_polar
-from sympy.functions.special.gamma_functions import polygamma, lowergamma
-from sympy.functions.special.zeta_functions import lerchphi, dirichlet_eta
-from sympy.functions.special.hyper import meijerg, hyper
-from sympy.functions.special.elliptic_integrals import elliptic_k, elliptic_e, elliptic_f, elliptic_pi
-from sympy.core.function import Derivative, Subs, expand_func
-from sympy.core.power import Pow
-from sympy.core.numbers import Integer
-from sympy.functions.special.bessel import besseli, besselk
-from sympy.functions.elementary.integers import ceiling
-from .mellin import monomial
-from sympy.series.limits import Limit, limit
-from sympy.simplify.gammasimp import gammasimp
-from sympy.polys.polytools import cancel, factor
-from sympy.core.exprtools import factor_terms
-from sympy.simplify.simplify import simplify
-from sympy.logic.boolalg import And, Boolean, true
-
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
-from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.refine_sympy import refine
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.refine import refine
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.evalf import evalf
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.exprtools import factor_terms
+from sympy_extras.core.function import Derivative, Subs, count_ops, expand_complex, expand_func
+from sympy_extras.core.limits import Limit, limit
+from sympy_extras.core.logic import Boolean, BooleanFalse, BooleanTrue, and_, to_boolean, true
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Float, I, Integer, pi
+from sympy_extras.core.power import Pow
+from sympy_extras.core.relational import lt
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import Im, PolarLift, PrincipalBranch, Re, re, unpolarify
+from sympy_extras.functions.elementary.exponential import Exp, ExpPolar, Log, exp, log
+from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh
+from sympy_extras.functions.elementary.integers import ceiling
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin, sin
+from sympy_extras.functions.special.bessel import BesselI, besseli, besselk
+from sympy_extras.functions.special.elliptic_integrals import EllipticE, EllipticF, EllipticK, EllipticPi
+from sympy_extras.functions.special.gamma_functions import LowerGamma, PolyGamma
+from sympy_extras.functions.special.hyper import MeijerG as MeijerGFunction, hyper
+from sympy_extras.functions.special.zeta_functions import DirichletEta, LerchPhi
+from sympy_extras.polys.polytools import cancel, factor
+from sympy_extras.sets.sets import Reals
 from sympy_extras.settings import settings
+from sympy_extras.simplify.gammasimp import gammasimp
+from sympy_extras.simplify.simplify import simplify
 from .conditions import ConditionalValue, decide, numerical_verdict
-from .mellin import BETA_LOWER, GammaQuotient, Match, Product, _beta_kernel, decompose_integrand
+from .mellin import BETA_LOWER, GammaQuotient, Match, Product, _beta_kernel, decompose_integrand, monomial
 from .slater import expand_meijerg, line_conditions, mellin_barnes
 
-__all__ = ['mellin_integrate', 'integrate_product', 'evaluate_quotient', 'tidy', 'real_logarithms']
+__all__ = ['mellin_integrate', 'integrate_product', 'evaluate_quotient', 'tidy', 'checked_tidy', 'real_logarithms',
+           'polar_elliptic', 'polar_lowergamma', 'projected_sums', 'real_constant', 'right_half_plane_powers', 'bessel_k_forms', 'exponential_form',
+           'reduce_positive_powers']
+
+
+def _xreplace(e: Expr, rule: dict[Basic, Basic]) -> Expr:
+    """``e`` with the keys of ``rule`` replaced, evaluated (SymPy's ``xreplace``)."""
+    replaced = e._xreplace_evaluated(rule)
+    if not isinstance(replaced, Expr):
+        raise TypeError("an expression is expected, got %s" % (replaced,))
+    return replaced
+
+
+def _expr(b: Basic) -> Expr:
+    if not isinstance(b, Expr):
+        raise TypeError("an expression is expected, got %s" % (b,))
+    return b
+
+
+def _has_infinity(e: Expr) -> bool:
+    """``e.has(nan, zoo, oo)``."""
+    return e.has(S.NaN, S.ComplexInfinity, S.Infinity)
 
 
 def evaluate_quotient(quotient: GammaQuotient, point: Expr) -> Optional[Expr]:
     """The value of the quotient at ``point``, by a limit when a pole of
     the numerator meets a zero of the denominator (``sin(x)/x`` at
-    ``s = 0``); ``None`` when SymPy cannot take the limit."""
+    ``s = 0``); ``None`` when the limit is not found.
+
+    >>> from sympy_extras.core import Integer
+    >>> from sympy_extras.integrals.mellin import GammaQuotient
+    >>> from sympy_extras.integrals.marichev import evaluate_quotient
+    >>> evaluate_quotient(GammaQuotient(1, [], [(0, 1)], [(1, 1)], 0), Integer(2))
+    1/2
+    """
     value = quotient.as_expr(point)
-    if not value.has(nan, zoo, oo):
+    if not _has_infinity(value):
         return value
     s = Dummy('s')
-    found = attempt(lambda: as_expr(limit(quotient.as_expr(s), s, point)), settings.timeout)
-    if found is None or found.has(nan, zoo, oo, Limit):
+    found = attempt(lambda: limit(quotient.as_expr(s), s, point), settings.timeout, native=True)
+    if found is None or _has_infinity(found) or found.has(Limit):
         return None
     return found
+
+
+def _facts(assumptions: Assumptions, condition: Boolean) -> list[Boolean]:
+    """The condition and the assumptions as a list of statements."""
+    facts: list[Boolean] = [] if isinstance(condition, BooleanTrue) else [condition]
+    if isinstance(assumptions, (Basic, bool)):
+        facts.append(to_boolean(assumptions))
+    elif assumptions is not None:
+        facts.extend(to_boolean(a) for a in assumptions)
+    return facts
 
 
 def tidy(value: Expr, assumptions: Assumptions = None, condition: Boolean = true) -> Expr:
     """The value with polar numbers removed and simplified, under the
     time limit of the settings; ``refine`` uses the assumptions and the
-    condition under which the value holds."""
+    condition under which the value holds.
+
+    >>> from sympy_extras.core import Symbol, sqrt
+    >>> from sympy_extras.functions import gamma
+    >>> from sympy_extras.integrals.marichev import tidy
+    >>> a = Symbol('a')
+    >>> tidy(gamma(a + 1)/gamma(a) + sqrt(a**2), a > 0)
+    2*a
+    """
     result = value
     # a quarter of the budget for each simplification: ``trigsimp`` of a
     # sine of a complex argument factors over Q(i) for half a minute
-    limit = None if settings.timeout is None else settings.timeout / 4
-    if result.has(lowergamma) and result.has(exp_polar):
+    budget = None if settings.timeout is None else settings.timeout / 4
+    if result.has(LowerGamma) and result.has(ExpPolar):
         result = polar_lowergamma(result)
-    if result.has(exp_polar) and result.has(elliptic_k, elliptic_e, elliptic_f, elliptic_pi):
+    if result.has(ExpPolar) and result.has(EllipticK, EllipticE, EllipticF, EllipticPi):
         result = polar_elliptic(result)
-    if result.has(exp_polar, polar_lift, principal_branch):
-        unpolar = attempt(lambda: as_expr(unpolarify(result)), limit)
+    if result.has(PolarLift, ExpPolar):
+        result = projected_sums(result)
+    if result.has(ExpPolar, PolarLift, PrincipalBranch):
+        current = result
+        unpolar = attempt(lambda: unpolarify(current), budget, native=True)
         if unpolar is not None:
             result = unpolar
-    if result.has(meijerg):
+    if result.has(MeijerGFunction):
         return result
-    if result.has(besseli):
+    if result.has(BesselI):
         result = bessel_k_forms(result)
-    if result.has(polygamma):
-        expanded = attempt(lambda: as_expr(expand_func(result)), limit)
+    if result.has(PolyGamma):
+        current = result
+        expanded = attempt(lambda: expand_func(current), budget, native=True)
         if expanded is not None and _size(expanded) < _size(result):
             result = expanded
-    if result.has(lerchphi, dirichlet_eta):
+    if result.has(LerchPhi, DirichletEta):
         # the Dirichlet functions at integers are logarithms and constants
-        expanded = attempt(lambda: as_expr(simplify(expand_func(result))), limit)
-        if expanded is not None and not expanded.has(lerchphi, dirichlet_eta):
+        current = result
+        expanded = attempt(lambda: simplify(expand_func(current)), budget, native=True)
+        if expanded is not None and not expanded.has(LerchPhi, DirichletEta):
             result = expanded
-    simpler = attempt(lambda: as_expr(simplify(gammasimp(result))), limit)
+    current = result
+    simpler = attempt(lambda: simplify(gammasimp(current)), budget, native=True)
     if simpler is not None and _size(simpler) <= _size(result):
         result = simpler
-    factored = attempt(lambda: as_expr(factor_terms(factor(result))), limit)
+    current = result
+    factored = attempt(lambda: factor_terms(factor(current)), budget, native=True)
     if factored is not None and _size(factored) < _size(result):
         result = factored
-    facts: list[Boolean] = [] if condition is true else [condition]
-    if isinstance(assumptions, (Basic, bool)):
-        facts.append(as_boolean(assumptions))
-    elif assumptions is not None:
-        facts.extend(as_boolean(a) for a in assumptions)
-    if result.has(log):
+    facts = _facts(assumptions, condition)
+    if result.has(Log):
         result = real_logarithms(result, facts)
     if result.has(I):
         result = right_half_plane_powers(result, facts)
+    if not result.free_symbols and _has_complex_unit(result):
+        current = result
+        real = attempt(lambda: real_constant(current), budget, native=True)
+        if real is not None:
+            result = real
     if facts:
-        refined = attempt(lambda: as_expr(refine(result, facts)), limit)
+        current = result
+        refined = attempt(lambda: _expr(refine(current, facts)), budget, native=True)
         if refined is not None and _size(refined) <= _size(result):
             result = refined
-    if result.has(lowergamma) and result.has(exp_polar):
+    if result.has(LowerGamma) and result.has(ExpPolar):
         # simplify's hyperexpand brings the polar form back
         result = polar_lowergamma(result)
     return result
@@ -194,10 +253,11 @@ def checked_tidy(value: Expr, assumptions: Assumptions = None, condition: Boolea
     Examples
     ========
 
-    >>> from sympy import symbols, exp_polar, log, sqrt
+    >>> from sympy_extras.core import Integer, Symbol, sqrt
+    >>> from sympy_extras.functions import exp_polar, log
     >>> from sympy_extras.integrals.marichev import checked_tidy
-    >>> a = symbols('a')
-    >>> checked_tidy(sqrt(a**2) + log(a*exp_polar(0)), a > 0)
+    >>> a = Symbol('a')
+    >>> checked_tidy(sqrt(a**2) + log(a*exp_polar(Integer(0))), a > 0)
     a + log(a)
     """
     tidied = tidy(value, assumptions, condition)
@@ -205,11 +265,69 @@ def checked_tidy(value: Expr, assumptions: Assumptions = None, condition: Boolea
         return tidied
     # under a time limit, as the simplifications are: the sampling asks
     # the solver for an instance of the assumptions and the condition
-    limit = None if settings.timeout is None else settings.timeout / 4
-    verdict = attempt(lambda: numerical_verdict(value, tidied, assumptions, condition), limit)
+    budget = None if settings.timeout is None else settings.timeout / 4
+    verdict = attempt(lambda: numerical_verdict(value, tidied, assumptions, condition), budget, native=True)
     if verdict is False:
         return value
     return tidied
+
+
+def _projected(e: Expr) -> Expr:
+    """A summand with its polar factors replaced by their projections on
+    the complex plane (the projection of a product is the product of the
+    projections, of an integer power the power of the projection)."""
+    if isinstance(e, PolarLift):
+        return _projected(_expr(e.args[0]))
+    if isinstance(e, ExpPolar):
+        return exp(_projected(_expr(e.args[0])))
+    if isinstance(e, Mul):
+        return mul(*[_projected(f) for f in Mul.make_args(e)])
+    if isinstance(e, Pow) and e.exp.is_integer:
+        return _projected(e.base)**e.exp
+    return e
+
+
+def _is_polar_sum(node: Basic) -> bool:
+    return isinstance(node, Add) and node.has(PolarLift, ExpPolar)
+
+
+def _project_sum(node: Basic) -> Basic:
+    if not isinstance(node, Add):
+        return node
+    return add(*[_projected(t) for t in Add.make_args(node)])
+
+
+def projected_sums(value: Expr) -> Expr:
+    """The polar numbers in the terms of sums replaced by their projections:
+    a sum is an ordinary number, which depends on the projections of its
+    terms only, so that ``1 - polar_lift(w)`` is ``1 - w``, but
+    ``unpolarify`` leaves the polar number in the base of a power
+    (``hyperexpand`` writes ``1/sqrt(1 - polar_lift(3/25 - 4*I/25))`` for
+    ``1F0(1/2;; 3/25 - 4*I/25)``, which the Marichev–Adamchik value of
+    ``exp(-x)*cos(2*x)*besselj(0, x)`` over ``(0, oo)`` has; the value was
+    refused as a branch which could not be resolved).
+
+    >>> from sympy_extras.core import I, Rational, sqrt
+    >>> from sympy_extras.functions import polar_lift
+    >>> from sympy_extras.integrals.marichev import projected_sums
+    >>> projected_sums(1/sqrt(1 - polar_lift(Rational(3, 25) - 4*I/25)))
+    1/sqrt(22/25 + 4*I/25)
+    """
+    return _expr(value.replace(_is_polar_sum, _project_sum))
+
+
+def _split_polar(m: Expr) -> tuple[Expr, Expr]:
+    """``m.as_independent(exp_polar, as_Add=False)``: the factors free of
+    ``exp_polar`` and the others."""
+    factors = Mul.make_args(m)
+    free = [f for f in factors if not f.has(ExpPolar)]
+    dependent = [f for f in factors if f.has(ExpPolar)]
+    return mul(*free), mul(*dependent)
+
+
+def _is_polar_minus_one(e: Expr) -> bool:
+    """Whether ``e`` is ``exp_polar(I*pi)``."""
+    return isinstance(e, ExpPolar) and e.args[0] == I * pi
 
 
 def polar_elliptic(value: Expr) -> Expr:
@@ -219,22 +337,22 @@ def polar_elliptic(value: Expr) -> Expr:
     analytic in the parameter off ``[1, oo)``, so the negative axis needs
     no branch.
 
-    >>> from sympy import elliptic_k, exp_polar, I, pi, symbols
+    >>> from sympy_extras.core import I, Symbol, pi
+    >>> from sympy_extras.functions import elliptic_k, exp_polar
     >>> from sympy_extras.integrals.marichev import polar_elliptic
-    >>> a = symbols('a', positive=True)
+    >>> a = Symbol('a', positive=True)
     >>> polar_elliptic(elliptic_k(4*exp_polar(I*pi)/a**2))
     elliptic_k(-4/a**2)
     """
-    replacement: dict[Expr, Expr] = {}
-    for node in value.atoms(elliptic_k, elliptic_e, elliptic_f, elliptic_pi):
-        m = as_expr(node.args[-1])
-        polar, rest = m.as_independent(exp_polar, as_Add=False)
-        polar_, rest_ = as_expr(polar), as_expr(rest)
-        if isinstance(rest_, exp_polar) and rest_.args[0] == I * pi and polar_.is_extended_real:
-            replacement[m] = -polar_
+    replacement: dict[Basic, Basic] = {}
+    for node in value.atoms(EllipticK, EllipticE, EllipticF, EllipticPi):
+        m = _expr(node.args[-1])
+        polar, rest = _split_polar(m)
+        if _is_polar_minus_one(rest) and polar.is_extended_real:
+            replacement[m] = -polar
     if not replacement:
         return value
-    return as_expr(value.xreplace(replacement))
+    return _xreplace(value, replacement)
 
 
 def polar_lowergamma(value: Expr) -> Expr:
@@ -244,24 +362,25 @@ def polar_lowergamma(value: Expr) -> Expr:
     incomplete gamma function, DLMF 8.7.1, at the polar argument; the
     phase ``(-1)**a`` combines with the one of the coefficient).
 
-    >>> from sympy import lowergamma, exp_polar, I, pi, symbols, Rational
+    >>> from sympy_extras.core import I, Rational, Symbol, pi
+    >>> from sympy_extras.functions import exp_polar, lowergamma
     >>> from sympy_extras.integrals.marichev import polar_lowergamma
-    >>> w = symbols('w', positive=True)
+    >>> w = Symbol('w', positive=True)
     >>> polar_lowergamma(lowergamma(Rational(1, 3), w*exp_polar(I*pi)))
     3*(-1)**(1/3)*w**(1/3)*hyper((1/3,), (4/3,), w)
     """
-    replacement: dict[Expr, Expr] = {}
-    for node in value.atoms(lowergamma):
-        a, argument = as_expr(node.args[0]), as_expr(node.args[1])
-        polar, w = argument.as_independent(exp_polar, as_Add=False)
-        polar_, w_ = as_expr(polar), as_expr(w)
-        if isinstance(polar_, exp_polar) and polar_.args[0] == I * pi and w_.is_positive:
-            replacement[as_expr(node)] = S.NegativeOne**a * w_**a * hyper((a,), (a + 1,), w_) / a
-        elif isinstance(w_, exp_polar) and w_.args[0] == I * pi and polar_.is_positive:
-            replacement[as_expr(node)] = S.NegativeOne**a * polar_**a * hyper((a,), (a + 1,), polar_) / a
+    replacement: dict[Basic, Basic] = {}
+    for node in value.atoms(LowerGamma):
+        a, argument = _expr(node.args[0]), _expr(node.args[1])
+        # SymPy's as_independent(exp_polar): the free factors first
+        polar, w = _split_polar(argument)
+        if _is_polar_minus_one(polar) and w.is_positive:
+            replacement[node] = Integer(-1)**a * w**a * hyper([a], [a + 1], w) / a
+        elif _is_polar_minus_one(w) and polar.is_positive:
+            replacement[node] = Integer(-1)**a * polar**a * hyper([a], [a + 1], polar) / a
     if not replacement:
         return value
-    return as_expr(value.xreplace(replacement))
+    return _xreplace(value, replacement)
 
 
 def right_half_plane_powers(value: Expr, assumptions: Assumptions = None) -> Expr:
@@ -270,39 +389,48 @@ def right_half_plane_powers(value: Expr, assumptions: Assumptions = None) -> Exp
     ``a + I*b`` for ``a > 0``): the principal argument of ``w**2`` is
     twice the one of ``w`` when ``|arg w| < pi/2``.
 
-    >>> from sympy import I, sqrt, symbols
+    >>> from sympy_extras.core import I, sqrt, symbols
     >>> from sympy_extras.integrals.marichev import right_half_plane_powers
     >>> a, b = symbols('a b', positive=True)
     >>> right_half_plane_powers(sqrt((a + I*b)**2)/(a + I*b))
     1
     """
-    replacement: dict[Expr, Expr] = {}
+    replacement: dict[Basic, Basic] = {}
     for node in value.atoms(Pow):
-        base, exponent = as_expr(node.base), as_expr(node.exp)
+        if not isinstance(node, Pow):
+            continue
+        base, exponent = node.base, node.exp
         if not (isinstance(base, Pow) and base.exp == 2) or exponent.is_integer:
             continue
-        w = as_expr(base.base)
-        if w.is_extended_real or ask(element(w, S.Reals), assumptions):
+        w = base.base
+        if w.is_extended_real or ask(element(w, Reals), assumptions):
             continue
-        real_part = as_expr(re(w))
-        if real_part.has(re, im):
+        real_part = re(w)
+        if real_part.has(Re, Im):
             continue
-        if ask(as_boolean(real_part > 0), assumptions) is True:
-            replacement[as_expr(node)] = w**(2 * exponent)
+        if ask(real_part > 0, assumptions) is True:
+            replacement[node] = w**(2 * exponent)
     if not replacement:
         return value
-    return as_expr(value.xreplace(replacement))
+    return _xreplace(value, replacement)
 
 
 def _order_derivative_at_zero(node: Basic) -> bool:
     """``Subs(Derivative(besseli(nu, z), nu), nu, 0)``."""
-    if not isinstance(node, Subs) or len(node.args) != 3 or node.args[2] != (S.Zero,):
+    if not isinstance(node, Subs) or node.point != (S.Zero,):
         return False
-    derivative = node.args[0]
-    if not isinstance(derivative, Derivative) or not isinstance(derivative.expr, besseli):
+    derivative = node.expr
+    if not isinstance(derivative, Derivative) or not isinstance(derivative.expr, BesselI):
         return False
     variables = derivative.variables
-    return len(variables) == 1 and variables[0] == derivative.expr.args[0] and node.args[1] == (variables[0],)
+    return len(variables) == 1 and variables[0] == derivative.expr.args[0] and node.variables == (variables[0],)
+
+
+def _minus_k0(node: Basic) -> Basic:
+    """``-besselk(0, z)`` for ``Subs(Derivative(besseli(nu, z), nu), nu, 0)``."""
+    if not isinstance(node, Subs) or not isinstance(node.expr, Derivative):
+        return node
+    return -besselk(0, _expr(node.expr.expr.args[1]))
 
 
 def bessel_k_forms(value: Expr) -> Expr:
@@ -314,7 +442,8 @@ def bessel_k_forms(value: Expr) -> Expr:
     check of `t**(n - 1)*exp(-a/t - s*t)` over `(0, oo)` divided by
     ``sin(pi*n)`` at an integer sample of ``n``).
 
-    >>> from sympy import symbols, besseli, sin, pi
+    >>> from sympy_extras.core import pi, symbols
+    >>> from sympy_extras.functions import besseli, sin
     >>> from sympy_extras.integrals.marichev import bessel_k_forms
     >>> n, z = symbols('n z')
     >>> bessel_k_forms(pi*(besseli(-n, z) - besseli(n, z))/sin(pi*n))
@@ -323,19 +452,20 @@ def bessel_k_forms(value: Expr) -> Expr:
     # the derivative in the order at 0, which the limit of the logarithmic
     # case of Slater's theorem leaves: d/dnu I_nu(z) at nu = 0 is -K_0(z)
     # (DLMF 10.38.6); exp(-k**2/(4*t) - s*t)/t over (0, oo) is 2*K_0(k*sqrt(s))
-    value = as_expr(value.replace(_order_derivative_at_zero, lambda node: -besselk(0, as_expr(node.args[0].args[0].args[1]))))
-    orders = {(as_expr(node.args[0]), as_expr(node.args[1])) for node in value.atoms(besseli)}
-    replacement: dict[Expr, Expr] = {}
-    for order, argument in orders:
+    value = _expr(value.replace(_order_derivative_at_zero, _minus_k0))
+    nodes = [node for node in value.atoms(BesselI)]
+    orders = {(_expr(node.args[0]), _expr(node.args[1])) for node in nodes}
+    replacement: dict[Basic, Basic] = {}
+    for node in nodes:
+        order, argument = _expr(node.args[0]), _expr(node.args[1])
         if (-order, argument) in orders and order.could_extract_minus_sign():
             # I_{-nu} = I_nu + (2/pi) sin(nu pi) K_nu for the order written
             # with the minus sign
-            replacement[besseli(order, argument)] = (besseli(-order, argument)
-                                                     + 2 * sin(-pi * order) * besselk(-order, argument) / pi)
+            replacement[node] = besseli(-order, argument) + 2 * sin(-pi * order) * besselk(-order, argument) / pi
     if not replacement:
         return value
-    rewritten = as_expr(cancel(value.xreplace(replacement)))
-    simpler = attempt(lambda: as_expr(simplify(gammasimp(rewritten))), settings.timeout)
+    rewritten = cancel(_xreplace(value, replacement))
+    simpler = attempt(lambda: simplify(gammasimp(rewritten)), settings.timeout, native=True)
     return rewritten if simpler is None else simpler
 
 
@@ -344,46 +474,87 @@ def real_logarithms(value: Expr, assumptions: Assumptions = None) -> Expr:
     ``log(-u) + I*pi``, so that the imaginary parts of a real value cancel
     (the bug: ``I*c**2*(log(c**2) - log(-c**2))``, SymPy's value of the
     area of a disc of radius ``-c``, was left as it was and then refined
-    to 0 under ``c < 0``)."""
-    replacement: dict[Expr, Expr] = {}
-    for node in value.atoms(log):
-        argument = as_expr(node.args[0])
+    to 0 under ``c < 0``).
+
+    >>> from sympy_extras.core import I, Symbol
+    >>> from sympy_extras.functions import log
+    >>> from sympy_extras.integrals.marichev import real_logarithms
+    >>> c = Symbol('c')
+    >>> real_logarithms(I*c**2*(log(c**2) - log(-c**2)), c < 0)
+    pi*c**2
+    """
+    replacement: dict[Basic, Basic] = {}
+    for node in value.atoms(Log):
+        argument = _expr(node.args[0])
         if argument.is_extended_real is False:
             # a complex argument, 1 + 43*sqrt(771)*I/2313 (the crash: the
             # relation argument < 0 cannot be formed)
             continue
         if not argument.free_symbols:
-            # a number: its sign numerically (SymPy's relation expands an
+            # a number: its sign numerically (the relation expands an
             # algebraic number with thousands of digits, and ran out of memory)
-            numeric = attempt(lambda: as_expr(argument.evalf(50)), settings.timeout)
-            if numeric is not None and numeric.is_Float and numeric < -1e-40:
-                replacement[as_expr(node)] = log(-argument) + I * pi
+            numeric = attempt(lambda: evalf(argument, 50), settings.timeout, native=True)
+            if (numeric is not None and isinstance(numeric, Float)
+                    and isinstance(lt(numeric, Float(-1e-40)), BooleanTrue)):
+                replacement[node] = log(-argument) + I * pi
             continue
         try:
-            negative = ask(as_boolean(argument < 0), assumptions)
+            negative = ask(argument < 0, assumptions)
         except TypeError:
             continue
         if negative is True:
-            replacement[as_expr(node)] = log(-argument) + I * pi
+            replacement[node] = log(-argument) + I * pi
     if not replacement:
         return value
-    rewritten = as_expr(value.xreplace(replacement))
-    simpler = attempt(lambda: as_expr(simplify(rewritten)), settings.timeout)
+    rewritten = _xreplace(value, replacement)
+    simpler = attempt(lambda: simplify(rewritten), settings.timeout, native=True)
     return rewritten if simpler is None else simpler
 
 
+def _is_root_of_minus_one(node: Basic) -> bool:
+    """``(-1)**q`` for a non-integer ``q``."""
+    return isinstance(node, Pow) and node.base == -1 and node.exp.is_integer is not True
+
+
+def _has_complex_unit(e: Expr) -> bool:
+    return e.has(I) or bool(e.find(_is_root_of_minus_one))
+
+
+def real_constant(value: Expr) -> Expr:
+    """A constant written with ``I`` or roots of ``-1`` in real terms, by
+    its real and imaginary parts simplified, when that removes them and
+    is not longer; ``value`` itself otherwise (the Marichev–Adamchik value
+    of ``cbrt(x)/(1 + x)`` over ``(0, 1)``, through the polar numbers of
+    ``hyperexpand`` projected by :func:`projected_sums`, is
+    ``-log(2) + 3 - (-1)**(2/3)*log(1 - (-1)**(1/3)) + (-1)**(1/3)*log(1 + (-1)**(2/3))``).
+
+    >>> from sympy_extras.core import Integer, Rational
+    >>> from sympy_extras.functions import log
+    >>> from sympy_extras.integrals.marichev import real_constant
+    >>> w = Integer(-1)**Rational(1, 3)
+    >>> real_constant(3 - log(2) - w**2*log(1 - w) + w*log(1 + w**2))
+    -sqrt(3)*pi/3 - log(2) + 3
+    """
+    if value.free_symbols or not _has_complex_unit(value):
+        return value
+    candidate = simplify(expand_complex(value))
+    if _has_complex_unit(candidate) or _size(candidate) > _size(value):
+        return value
+    return candidate
+
+
 def _size(e: Expr) -> int:
-    return int(e.count_ops(visual=False)) if isinstance(e, Expr) else 0
+    n = count_ops(e, visual=False)
+    return int(n) if isinstance(n, Integer) else 0
 
 
 def _one_kernel(product: Product, assumptions: Assumptions) -> Optional[ConditionalValue]:
     quotient = product.matches[0].quotient(assumptions)
-    point = as_expr(product.alpha + 1)
+    point = product.alpha + 1
     value = evaluate_quotient(quotient, point)
     if value is None:
         return None
-    return ConditionalValue(product.constant * value,
-                            And(quotient.strip_condition(point), quotient.condition))
+    return ConditionalValue(product.constant * value, and_(quotient.strip_condition(point), quotient.condition))
 
 
 def _two_kernels(product: Product, assumptions: Assumptions) -> Optional[ConditionalValue]:
@@ -391,15 +562,14 @@ def _two_kernels(product: Product, assumptions: Assumptions) -> Optional[Conditi
     second = product.matches[1].quotient(assumptions)
     if not first.is_gamma_quotient() or not second.is_gamma_quotient():
         return None
-    point = as_expr(product.alpha + 1)
+    point = product.alpha + 1
     # Parseval: (1/2 pi i) Integral(F(t) G(alpha + 1 - t), t) on a line in both strips
     integrand = first.times(second.compose(point, -1)).cancelled()
-    if integrand.lower != -oo and integrand.upper != oo:
-        nonempty: Boolean = as_boolean(integrand.lower < integrand.upper)
-        if nonempty is S.false:
+    nonempty: Boolean = true
+    if integrand.lower != -S.Infinity and integrand.upper != S.Infinity:
+        nonempty = integrand.lower < integrand.upper
+        if isinstance(nonempty, BooleanFalse):
             return None
-    else:
-        nonempty = true
     g = mellin_barnes(integrand)
     if g is None:
         return None
@@ -410,7 +580,7 @@ def _two_kernels(product: Product, assumptions: Assumptions) -> Optional[Conditi
     if expanded is None:
         return None
     return ConditionalValue(product.constant * expanded.value,
-                            And(nonempty, integrand.condition, line, expanded.condition))
+                            and_(nonempty, integrand.condition, line, expanded.condition))
 
 
 def integrate_product(product: Product, assumptions: Assumptions = None,
@@ -418,7 +588,16 @@ def integrate_product(product: Product, assumptions: Assumptions = None,
     """``Integral(product, (x, 0, oo))`` for a decomposed integrand, see
     the module documentation; ``None`` when the method does not apply.
     With ``regularize`` the strip conditions are dropped (the analytic
-    continuation of the value)."""
+    continuation of the value).
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import exp
+    >>> from sympy_extras.integrals.mellin import decompose_integrand
+    >>> from sympy_extras.integrals.marichev import integrate_product
+    >>> x = Symbol('x')
+    >>> integrate_product(decompose_integrand(x**2*exp(-x), x))
+    ConditionalValue(2)
+    """
     if not product.matches:
         return None
     if product.one_minus_power > 0:
@@ -431,7 +610,7 @@ def integrate_product(product: Product, assumptions: Assumptions = None,
         parameter: Optional[Expr] = None
         for m in product.matches:
             if m.kernel.name == BETA_LOWER and parameter is None:
-                parameter = as_expr(m.kernel.parameters[0])
+                parameter = m.kernel.parameters[0]
                 matches.append(Match(_beta_kernel(beta), m.beta, m.gamma, m.constant, m.cutoff))
             else:
                 matches.append(m)
@@ -443,9 +622,8 @@ def integrate_product(product: Product, assumptions: Assumptions = None,
             return None
         value = found.value
         for _ in range(product.one_minus_power):
-            value = as_expr(value.diff(beta))
-        return ConditionalValue(as_expr(value.subs(beta, parameter)),
-                                as_boolean(found.condition.subs(beta, parameter)))
+            value = value.diff(beta)
+        return ConditionalValue(value.subs(beta, parameter), to_boolean(found.condition.subs(beta, parameter)))
     if product.log_power > 0:
         alpha = Dummy('alpha', real=True)
         shifted = Product(product.constant, alpha, 0, product.matches, product.one_minus_power)
@@ -454,9 +632,9 @@ def integrate_product(product: Product, assumptions: Assumptions = None,
             return None
         value = found.value
         for _ in range(product.log_power):
-            value = as_expr(value.diff(alpha))
+            value = value.diff(alpha)
         return ConditionalValue(value.subs(alpha, product.alpha),
-                                as_boolean(found.condition.subs(alpha, product.alpha)))
+                                to_boolean(found.condition.subs(alpha, product.alpha)))
     if len(product.matches) == 1:
         found = _one_kernel(product, assumptions)
     else:
@@ -465,7 +643,7 @@ def integrate_product(product: Product, assumptions: Assumptions = None,
         return found
     # keep the conditions on the parameters of the kernels, drop the strips
     kept = [m.quotient(assumptions).condition for m in product.matches]
-    return ConditionalValue(found.value, as_boolean(And(*kept)))
+    return ConditionalValue(found.value, and_(*kept))
 
 
 def exponential_form(term: Expr, x: Symbol) -> Expr:
@@ -474,20 +652,28 @@ def exponential_form(term: Expr, x: Symbol) -> Expr:
     J_0(c x)``) becomes a sum of products of two (the exponential with
     the complex scale ``a - I b``, whose condition ``Re(a - I b) > 0`` is
     decided by the real part). The exponentials of one term are combined
-    into one (``exp(-a x)*exp(I b x)`` is ``exp((-a + I b) x)``)."""
-    factors = [as_expr(u) for u in Mul.make_args(term)]
+    into one (``exp(-a x)*exp(I b x)`` is ``exp((-a + I b) x)``).
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import cosh, exp
+    >>> from sympy_extras.integrals.marichev import exponential_form
+    >>> x, a = symbols('x a')
+    >>> exponential_form(exp(-x)*cosh(a*x), x)
+    exp(x*(a - 1))/2 + exp(-x*(a + 1))/2
+    """
+    factors = list(Mul.make_args(term))
     sums: list[Expr] = []
     others: list[Expr] = []
     for piece in factors:
-        if piece.has(x) and isinstance(piece, (sin, cos, sinh, cosh)):
-            sums.append(as_expr(piece.rewrite(exp)))
+        if piece.has(x) and isinstance(piece, (Sin, Cos, Sinh, Cosh)):
+            sums.append(_expr(piece.rewrite(Exp)))
         else:
             others.append(piece)
     if not sums:
         return term
-    rest = Mul(*others)
-    summands = Add.make_args(as_expr(Mul(*sums).expand()))
-    return as_expr(Add(*[_combine_linear_exponentials(as_expr(u) * rest, x) for u in summands]))
+    rest = mul(*others)
+    summands = Add.make_args(mul(*sums).expand())
+    return add(*[_combine_linear_exponentials(u * rest, x) for u in summands])
 
 
 def _combine_linear_exponentials(term: Expr, x: Symbol) -> Expr:
@@ -495,7 +681,8 @@ def _combine_linear_exponentials(term: Expr, x: Symbol) -> Expr:
     combined into one (``exp(-a x)*exp(I b x)`` is ``exp((-a + I b) x)``),
     the others (``exp(-x**2)``, a kernel of its own) left alone.
 
-    >>> from sympy import exp, I, symbols
+    >>> from sympy_extras.core import I, symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.marichev import _combine_linear_exponentials
     >>> x, a, b = symbols('x a b')
     >>> _combine_linear_exponentials(exp(-a*x)*exp(I*b*x)*exp(-x**2), x)
@@ -503,16 +690,15 @@ def _combine_linear_exponentials(term: Expr, x: Symbol) -> Expr:
     """
     linear: list[Expr] = []
     others: list[Expr] = []
-    for piece in Mul.make_args(term):
-        factor_ = as_expr(piece)
-        if isinstance(factor_, exp) and factor_.has(x) and as_expr(factor_.args[0]).diff(x).has(x) is False:
-            linear.append(as_expr(factor_.args[0]))
+    for factor_ in Mul.make_args(term):
+        if isinstance(factor_, Exp) and factor_.has(x) and _expr(factor_.args[0]).diff(x).has(x) is False:
+            linear.append(_expr(factor_.args[0]))
         else:
             others.append(factor_)
     if len(linear) < 2:
         return term
-    argument = as_expr(factor_terms(Add(*linear)))
-    return as_expr(Mul(*others) * exp(argument))
+    argument = factor_terms(add(*linear))
+    return mul(*others) * exp(argument)
 
 
 def reduce_positive_powers(f: Expr, x: Symbol) -> Expr:
@@ -521,36 +707,36 @@ def reduce_positive_powers(f: Expr, x: Symbol) -> Expr:
     with ``n = ceiling(e)`` and the polynomial expanded, so that every
     term has the kernel ``(1 + b*x**g)**(e - n)`` of the table.
 
-    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.core import Symbol, sqrt
     >>> from sympy_extras.integrals.marichev import reduce_positive_powers
-    >>> x = symbols('x')
+    >>> x = Symbol('x')
     >>> reduce_positive_powers(sqrt(1 + x), x)
     x/sqrt(x + 1) + 1/sqrt(x + 1)
     """
     def rewrite(node: Expr) -> Expr:
         if not isinstance(node, Pow) or not isinstance(node.base, Add):
             return node
-        exponent = as_expr(node.exp)
+        exponent = node.exp
         if not exponent.is_positive or exponent.is_integer is not False or exponent.has(x):
             return node
         constant, rest = node.base.as_independent(x, as_Add=True)
-        if as_expr(constant) == 0 or monomial(as_expr(rest), x) is None:
+        if constant == 0 or monomial(rest, x) is None:
             return node
-        n = as_expr(ceiling(exponent))
+        n = ceiling(exponent)
         if not isinstance(n, Integer):
             return node
-        expanded = as_expr((as_expr(node.base)**n).expand())
+        expanded = (node.base**n).expand()
         # term by term, so that the powers of the base are not merged back
-        return as_expr(Add(*[as_expr(term) * node.base**(exponent - n) for term in Add.make_args(expanded)]))
+        return add(*[term * node.base**(exponent - n) for term in Add.make_args(expanded)])
 
     result = f
     for node in f.atoms(Pow):
-        replacement = rewrite(as_expr(node))
+        replacement = rewrite(_expr(node))
         if replacement != node:
-            result = as_expr(result.xreplace({node: replacement}))
+            result = _xreplace(result, {node: replacement})
     if result == f:
         return f
-    return as_expr(result.expand(mul=True, multinomial=False, power_exp=False, log=False))
+    return result.expand(mul=True, multinomial=False, power_exp=False, log=False)
 
 
 def mellin_integrate(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
@@ -590,7 +776,8 @@ def mellin_integrate(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
     Examples
     ========
 
-    >>> from sympy import symbols, exp, cos, besselk, log
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import besselk, cos, exp, log
     >>> from sympy_extras.integrals.marichev import mellin_integrate
     >>> x, s = symbols('x s')
     >>> a, nu = symbols('a nu', positive=True)
@@ -601,14 +788,14 @@ def mellin_integrate(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
     >>> mellin_integrate(log(x)**2, x, cutoff='lower')
     ConditionalValue(2)
     """
-    terms = [as_expr(t) for t in Add.make_args(reduce_positive_powers(as_expr(f), x))]
+    terms = list(Add.make_args(reduce_positive_powers(to_expr(f), x)))
     total: Optional[ConditionalValue] = None
     for term in terms:
         pieces = [term]
         if decompose_integrand(term, x, cutoff) is None:
             # three kernels with trigonometric or hyperbolic factors:
             # exponentials with complex scales, two kernels per piece
-            pieces = [as_expr(u) for u in Add.make_args(exponential_form(term, x))]
+            pieces = list(Add.make_args(exponential_form(term, x)))
         for piece in pieces:
             product = decompose_integrand(piece, x, cutoff)
             if product is None:
@@ -623,7 +810,7 @@ def mellin_integrate(f: ExprLike, x: Symbol, assumptions: Assumptions = None,
     if condition is None:
         return None
     value = tidy(total.value, assumptions, condition)
-    if value.has(exp_polar, polar_lift, principal_branch, Limit):
+    if value.has(ExpPolar, PolarLift, PrincipalBranch, Limit):
         # a branch which could not be resolved: not an answer
         return None
     return ConditionalValue(value, condition)

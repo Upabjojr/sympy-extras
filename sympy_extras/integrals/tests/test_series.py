@@ -7,8 +7,8 @@ from sympy import symbols, log, exp, oo, pi, S, Dummy, atan, Catalan, polygamma
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.series import expansions, moments, sum_series, series_integral
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
+from sympy_extras.integrals.series_sympy import expansions, moments, sum_series, series_integral
 from sympy_extras.settings import configure
 
 x = symbols('x')
@@ -73,7 +73,7 @@ def test_wrong_types_are_rejected() -> None:
 
 def test_fourier_expansion_table() -> None:
     from sympy import sin, cos, tan, Abs, sign, zeta
-    from sympy_extras.integrals.series import fourier_expansion
+    from sympy_extras.integrals.series_sympy import fourier_expansion
     two_pi = 2 * pi
     e = fourier_expansion(log(2 * sin(x / 2)), x, 0, two_pi)
     assert e is not None
@@ -110,38 +110,42 @@ def test_fourier_table_numerically() -> None:
     coefficients: the function integrated against the harmonics."""
     import mpmath
     from sympy import lambdify, Symbol, sin, cos
-    from sympy_extras.integrals.series import _FOURIER_TABLE, _harmonic_parts, _u, _k
+    from sympy_extras._numeric_sympy import sympy_expr
+    from sympy_extras.integrals import series as native
     u = Symbol('u', real=True)
-    for entry in _FOURIER_TABLE:
-        lower, upper = entry.lower, entry.upper
+    _u, _k = sympy_expr(native._u), sympy_expr(native._k)
+    for native_entry in native._FOURIER_TABLE:
+        lower, upper = sympy_expr(native_entry.lower), sympy_expr(native_entry.upper)
         if lower == -oo:
             lower, upper = S.Zero, 2 * pi
         points = [mpmath.mpf(float(lower + (upper - lower) * i / 8)) for i in range(9)]
-        evaluate = lambdify(u, entry.function.xreplace({_u: u}), 'mpmath')
+        tabulated, constant = sympy_expr(native_entry.function), sympy_expr(native_entry.constant)
+        coefficient = sympy_expr(native_entry.coefficient)
+        evaluate = lambdify(u, tabulated.xreplace({_u: u}), 'mpmath')
 
         def function(v: mpmath.mpf, evaluate: Callable[..., object] = evaluate) -> mpmath.mpf:
             # the quadrature may hit the logarithmic singularity at an endpoint
             value = mpmath.re(evaluate(v))
             return value if mpmath.isfinite(value) else mpmath.mpf(0)
 
-        parts = _harmonic_parts(entry.basis.xreplace({_u: u}), u)
-        assert parts is not None
-        cosine, sine, frequency = parts
+        found = native._harmonic_parts(native_entry.basis, native._u)
+        assert found is not None
+        cosine, sine, frequency = [sympy_expr(part).xreplace({_u: u}) for part in found]
         mean = mpmath.quad(function, points) / float(upper - lower)
-        assert abs(mean - float(entry.constant)) < 1e-8, entry.function
+        assert abs(mean - float(constant)) < 1e-8, tabulated
         for m in (1, 2, 3):
             w = frequency.subs(_k, m)
             for amplitude, harmonic in ((cosine, cos(w * u)), (sine, sin(w * u))):
-                expected = float(entry.coefficient.subs(_k, m) * amplitude.subs(_k, m))
+                expected = float(coefficient.subs(_k, m) * amplitude.subs(_k, m))
                 projection = lambdify(u, harmonic, 'mpmath')
                 found = mpmath.quad(lambda v: function(v) * projection(v), points)
                 norm = mpmath.quad(lambda v: projection(v)**2, points)
-                assert abs(found / norm - expected) < 1e-8, (entry.function, m, harmonic)
+                assert abs(found / norm - expected) < 1e-8, (tabulated, m, harmonic)
 
 
 def test_fourier_products_and_harmonics() -> None:
     from sympy import sin, cos, symbols, zeta, Abs
-    from sympy_extras.integrals.series import fourier_integral
+    from sympy_extras.integrals.series_sympy import fourier_integral
     n = symbols('n', integer=True, positive=True)
     # orthogonality reduces the double series to a single one
     found = fourier_integral(log(sin(x))**2, x, 0, pi)
@@ -183,13 +187,13 @@ def test_fourier_through_series_integral() -> None:
     assert series_integral(log(sin(x)), x, 0, pi) == ConditionalValue(-pi * log(2))
     assert series_integral(x * log(sin(x)), x, 0, pi, expand=log(sin(x))) == ConditionalValue(-pi**2 * log(2) / 2)
     assert series_integral(x * log(sin(x)), x, 0, pi, expand=x) == ConditionalValue(-pi**2 * log(2) / 2)
-    from sympy_extras.integrals.series import fourier_integral
+    from sympy_extras.integrals.series_sympy import fourier_integral
     assert fourier_integral(x * log(sin(x)), x, 0, pi, expand=exp(x)) is None
 
 
 def test_parametric_and_computed_fourier_expansions() -> None:
     from sympy import sin, cos, symbols, Rational
-    from sympy_extras.integrals.series import fourier_expansion, _computed_expansion
+    from sympy_extras.integrals.series_sympy import fourier_expansion, _computed_expansion
     a = symbols('a', positive=True)
     # the Poisson kernel and its logarithm, GR 1.447-1.448, with the root
     # inside the unit circle; numeric P, Q give the root directly
@@ -219,7 +223,7 @@ def test_parametric_and_computed_fourier_expansions() -> None:
 
 def test_computed_fourier_integrals() -> None:
     from sympy import sin, cos, symbols, polylog, zeta
-    from sympy_extras.integrals.series import fourier_integral
+    from sympy_extras.integrals.series_sympy import fourier_integral
     a = symbols('a', positive=True)
     n = symbols('n', integer=True, positive=True)
     # a polynomial against a harmonic, GR 2.633

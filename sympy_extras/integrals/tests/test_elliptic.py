@@ -8,12 +8,12 @@ from sympy import (symbols, sqrt, oo, S, pi, sin, elliptic_k, elliptic_e, ellipt
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import ExprLike, as_expr
+from sympy_extras._typing_sympy import ExprLike, as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.definite import verify_numerically
-from sympy_extras.integrals.elliptic import (elliptic_integral, radicand, real_roots, legendre_reduction,
-                                             Reduction)
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
+from sympy_extras.integrals.definite_sympy import verify_numerically
+from sympy_extras.integrals.elliptic_sympy import (elliptic_integral, radicand, real_roots, legendre_reduction,
+                                                   Reduction)
 
 x, theta = symbols('x theta')
 k = symbols('k', positive=True)
@@ -315,7 +315,7 @@ def test_two_complex_pairs() -> None:
     # Byrd-Friedman 267: a quartic without real roots, positive on the
     # line, through the tangent map
     from sympy import N, CRootOf, Dummy, Eq, Symbol
-    from sympy_extras.integrals.elliptic import _decide_numerically, _restore
+    from sympy_extras.integrals.elliptic_sympy import _decide_numerically, _restore
     found = elliptic_integral(1 / sqrt((x**2 + 1) * (x**2 + 4)), x, -oo, oo)
     assert found is not None and found.value == elliptic_k(Rational(3, 4))
     found = elliptic_integral(1 / sqrt((x**2 + 1) * (x**2 + 4)), x, 0, 1)

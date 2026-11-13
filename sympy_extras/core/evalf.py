@@ -20,7 +20,7 @@ from .basic import Basic, SubsMapping
 from .coreerrors import PrecisionExhausted
 from .expr import Expr, UnevaluatedExpr, as_expr
 from .numbers import (AlgebraicNumber, CatalanType, EulerGammaType, Exp1, Float, GoldenRatioType,
-    ImaginaryUnit, Number, Pi, TribonacciConstantType, dps_to_prec, number_from_fraction)
+    ImaginaryUnit, Number, Pi, TribonacciConstantType, dps_to_prec, fraction_to_mpf, number_from_fraction)
 
 __all__ = ['evalf', 'N', 'to_float', 'to_complex', 'numeric_value', 'mpf_to_fraction', 'PrecisionExhausted']
 
@@ -55,7 +55,7 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
             value = e.exact_value()
             if value is None:
                 return None
-            return mpmath.mpc(mpmath.mpf(value.numerator) / value.denominator)
+            return mpmath.mpc(fraction_to_mpf(value))
         if isinstance(e, Pi):
             return mpmath.mpc(mpmath.pi)
         if isinstance(e, Exp1):
@@ -94,6 +94,10 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
                 return None
             return mpmath.mpc(mpmath.power(b, x))
         if isinstance(e, DefinedFunction):
+            whole = e._numeric_node(prec)
+            if whole is not None:
+                # a rule on the node itself (periodic_argument of a polar number)
+                return whole
             values = [numeric_value(a, prec) for a in e.args]
             known = [v for v in values if v is not None]
             if len(known) != len(values):
@@ -102,8 +106,9 @@ def numeric_value(e: Expr, prec: int) -> Optional[mpmath.mpc]:
         own = e._numeric_node(prec)
         if own is not None:
             return own
-        if e.args and e.is_number:
-            # a number node with no numeric rule here: the foreign system's
+        if e.args and e.is_number and e._has_foreign_class():
+            # a wrapped foreign node with no numeric rule here: the
+            # foreign system's (a native node without one has no value)
             from .bridge import bridge
             parts = [numeric_value(a, prec) for a in e.args if isinstance(a, Expr)]
             if any(p is None for p in parts):

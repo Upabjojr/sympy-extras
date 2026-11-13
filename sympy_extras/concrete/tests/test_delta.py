@@ -41,3 +41,13 @@ def test_canonical_orders_by_nodes_as_sympy() -> None:
         ours = from_sympy(r)
         assert isinstance(ours, Relational)
         assert str(to_sympy(ours.canonical, evaluate=False)) == str(r.canonical), r
+
+
+def test_delta_solutions_respect_the_assumptions_of_the_index() -> None:
+    # the native solve of pi*k = 1 gives {1/pi} for an integer k; taken
+    # as the point of the delta, the sum was Piecewise((1/pi, n >= 1/pi),
+    # (0, True)) where SymPy's solve (dropping 1/pi) gives 0
+    from sympy_extras.core import Integer, pi
+    from sympy_extras.functions.special.tensor_functions import KroneckerDelta
+    k, n = Symbol('k', integer=True), Symbol('n', integer=True)
+    assert deltasummation(k*KroneckerDelta(pi*k, 1), (k, Integer(0), n)) == 0

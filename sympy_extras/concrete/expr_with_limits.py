@@ -7,7 +7,9 @@ the variables kept and the others folded).
 Ported from SymPy's ``sympy.concrete.expr_with_limits``,
 ``sympy.concrete.summations`` and ``sympy.concrete.products``: the bound
 variables (``free_symbols``, substitution), the printing. The
-evaluation (``doit``) goes through SymPy for the node.
+evaluation (``doit``) is native: ``Sum`` and ``Product`` by
+:mod:`~sympy_extras.concrete.summations` and
+:mod:`~sympy_extras.concrete.products`.
 
 Examples
 ========
@@ -29,16 +31,17 @@ Examples
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; the limits are (variable, lower, upper) triples (Sum and
 # Product require them); the classes are unevaluated and sum_/product_
-# construct as SymPy's __new__; doit goes through SymPy.
+# construct as SymPy's __new__; doit is native.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
 from typing import Final, Optional, Sequence, Union
 
-from sympy_extras.core.basic import Basic
+import mpmath
+
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey
 from sympy_extras.core.symbol import Dummy, Symbol
 
@@ -117,7 +120,7 @@ class ExprWithLimits(Expr):
         return self._evaluated(args)
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_Sum
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         limits = ', '.join('(%s)' % ', '.join(printer.doprint(e) for e in lim) for lim in self._limits)
         return '%s(%s, %s)' % (self.name, printer.doprint(self._function), limits)
 
@@ -174,10 +177,12 @@ class ExprWithLimits(Expr):
         new_limits: list[LimitLike] = [Tuple(*lim) for lim in limits]
         return type(self)(func, *new_limits)
 
+    # PORTED FROM SYMPY: sympy/core/basic.py:Basic.doit
     def doit(self) -> Expr:
-        """The node evaluated (through SymPy)."""
-        from sympy_extras.interop import expr_through_sympy
-        return expr_through_sympy(self, lambda s: s.doit())
+        """The node with its function and bounds evaluated (SymPy's
+        ``Basic.doit``: ``Sum`` and ``Product`` evaluate themselves)."""
+        limits: list[LimitLike] = [(v, a.doit(), b.doit()) for v, a, b in self._limits]
+        return type(self)(self._function.doit(), *limits)
 
 
 # PORTED FROM SYMPY: sympy/concrete/summations.py:Sum
@@ -193,6 +198,37 @@ class Sum(ExprWithLimits):
         """The sum evaluated (:func:`~sympy_extras.concrete.summations.sum_doit`)."""
         from .summations import sum_doit
         return sum_doit(self)
+
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        # PORTED FROM SYMPY: sympy/core/evalf.py:evalf_sum (sympy_extras.concrete._evalf)
+        from ._evalf import evalf_sum
+        if len(self._limits) != 1:
+            return None
+        i, a, b = self._limits[0]
+        return evalf_sum(self._function, i, a, b, prec)
+
+    # PORTED FROM SYMPY: sympy/concrete/summations.py:Sum.euler_maclaurin
+    def euler_maclaurin(self, m: int = 0, n: int = 0, eps: ExprLike = 0,
+                        eval_integral: bool = True) -> tuple[Expr, Expr]:
+        """SymPy's ``Sum.euler_maclaurin``: ``(s, e)``, the
+        Euler-Maclaurin approximation with ``m`` leading terms summed
+        directly and ``n`` terms in the tail, and the estimated error
+        (:func:`~sympy_extras.concrete._evalf.euler_maclaurin`).
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.concrete.expr_with_limits import Sum
+        >>> k, b = Symbol('k'), Symbol('b')
+        >>> Sum(k, (k, 2, b)).euler_maclaurin()
+        (b**2/2 + b/2 - 1, 0)
+        """
+        from ._evalf import euler_maclaurin
+        if len(self._limits) != 1:
+            raise ValueError("More than 1 limit")
+        i, a, b = self._limits[0]
+        found = euler_maclaurin(self._function, i, a, b, m, n, eps, eval_integral)
+        if found is None:
+            raise TypeError("cannot determine truth value of Relational")
+        return found
 
     def _eval_facts(self) -> dict[str, bool]:
         facts = ExprWithLimits._eval_facts(self)

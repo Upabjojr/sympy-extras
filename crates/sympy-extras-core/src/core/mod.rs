@@ -27,14 +27,25 @@
 // never read it, so nodes are sound keys of maps and sets
 #![allow(clippy::mutable_key_type)]
 
+pub mod accumbounds;
+pub mod add;
 pub mod assumptions;
 pub mod basic;
 pub mod evalf;
+pub mod expr;
+pub mod exprtools;
+pub mod function;
+pub mod logic;
+pub mod modulo;
+pub mod mul;
 pub mod numbers;
 pub mod parameters;
 pub mod power;
+pub mod printing;
+pub mod relational;
 pub mod sorting;
+pub mod subs;
 pub mod symbol;
 
-pub use basic::{Basic, Head, Node};
+pub use basic::{Basic, Function, Head, Node};
 pub use symbol::{Dummy, Symbol, Wild};

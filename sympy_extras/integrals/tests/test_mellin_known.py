@@ -4,7 +4,7 @@ closed forms), SymPy's ``mellin_transform`` where it has one, and
 numerical quadrature."""
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Union
 
 import mpmath
 
@@ -12,11 +12,20 @@ from sympy import (Integer, Symbol, symbols, exp, sin, cos, log, sqrt, besselj, 
                    Rational, S, atan, erf, erfc, Ei, expint, mellin_transform as sympy_mellin,
                    simplify, lambdify, sinh, cosh)
 
-from sympy_extras.integrals import mellin as M
-from sympy_extras.integrals.mellin import KERNELS, mellin_transform
+from sympy.core.basic import Basic
+
+from sympy_extras._numeric_sympy import core_expr
+from sympy_extras.integrals import mellin as N
+from sympy_extras.integrals import mellin_sympy as M
+from sympy_extras.integrals.mellin_sympy import KERNELS, mellin_transform
 
 x, s = symbols('x s')
 a = Symbol('a', positive=True)
+
+
+def _face(builder: Callable[..., N.Kernel], *args: Union[str, Basic]) -> M.Kernel:
+    """A kernel of the native table with parameters on SymPy objects."""
+    return M.Kernel.from_core(builder(*[p if isinstance(p, str) else core_expr(p) for p in args]))
 
 
 def _value(name: str, point: Rational) -> float:
@@ -26,7 +35,7 @@ def _value(name: str, point: Rational) -> float:
 def test_values_mathematica() -> None:
     # MellinTransform[...] evaluated to 20 digits by Mathematica 14
     third = Rational(1, 3)
-    assert abs(float(M._bessely_kernel(third).quotient.as_expr(S.Half).evalf(20)) - (-5.3190781252801530603)) < 1e-15
+    assert abs(float(_face(N._bessely_kernel, third).quotient.as_expr(S.Half).evalf(20)) - (-5.3190781252801530603)) < 1e-15
     assert abs(_value('cos - 1', Rational(-1, 2)) - (-2.5066282746310005024)) < 1e-15
     assert abs(_value('cos - 1', Rational(-3, 2)) - (-1.6710855164206670016)) < 1e-15
     assert abs(_value('sin - x', Rational(-2)) - (-0.78539816339744830962)) < 1e-15
@@ -37,10 +46,10 @@ def test_values_mathematica() -> None:
     assert abs(_value('exp - 1', -S.Half) - (-3.5449077018110320546)) < 1e-15
     assert abs(_value('log(1 + x)', -S.Half) - 6.2831853071795864769) < 1e-15
     assert abs(_value('theta(x - 1)', Rational(-7, 10)) - 1.4285714285714285714) < 1e-15
-    assert abs(float(M._exp_besseli_kernel(third).quotient.as_expr(Rational(3, 10)).evalf(20))
+    assert abs(float(_face(N._exp_besseli_kernel, third).quotient.as_expr(Rational(3, 10)).evalf(20))
                - 3.0372021556683050603) < 1e-15
-    assert abs(float(M._besselk_kernel(third).quotient.as_expr(S.Half).evalf(20)) - 8.6499275138179498683) < 1e-15
-    assert abs(float(M._expint_kernel(S.Half).quotient.as_expr(Rational(7, 10)).evalf(20))
+    assert abs(float(_face(N._besselk_kernel, third).quotient.as_expr(S.Half).evalf(20)) - 8.6499275138179498683) < 1e-15
+    assert abs(float(_face(N._expint_kernel, S.Half).quotient.as_expr(Rational(7, 10)).evalf(20))
                - 6.4902766632377889284) < 1e-15
 
 
@@ -48,11 +57,11 @@ def test_closed_forms_mathematica() -> None:
     # MellinTransform[BesselY[1/3, x], x, s] ==
     #   -2^(s-1) Cos[Pi/6 - Pi s/2] Gamma[s/2 - 1/6] Gamma[s/2 + 1/6] / Pi
     third = Rational(1, 3)
-    ours = M._bessely_kernel(third).quotient.as_expr(s)
+    ours = _face(N._bessely_kernel, third).quotient.as_expr(s)
     theirs = -2**(s - 1) * cos(pi / 6 - pi * s / 2) * gamma(s / 2 - Rational(1, 6)) * gamma(s / 2 + Rational(1, 6)) / pi
     assert abs(complex((ours - theirs).evalf(20, subs={s: 0.7}))) < 1e-15
     # MellinTransform[Exp[-x] BesselI[1/3, x], x, s] == Gamma[1/2 - s] Gamma[1/3 + s] / (2^s Sqrt[Pi] Gamma[4/3 - s])
-    ours = M._exp_besseli_kernel(third).quotient.as_expr(s)
+    ours = _face(N._exp_besseli_kernel, third).quotient.as_expr(s)
     theirs = gamma(S.Half - s) * gamma(third + s) / (2**s * sqrt(pi) * gamma(Rational(4, 3) - s))
     assert simplify(ours - theirs) == 0
     # MellinTransform[Cos[x] - 1, x, s] == Cos[Pi s / 2] Gamma[s]
@@ -71,10 +80,10 @@ def test_against_sympy_mellin_transform() -> None:
             if strip[1] != oo else strip[0] + 1
         assert abs(complex((ours.as_expr(point) - theirs.subs(s, point)).evalf(20))) < 1e-15, name
     theirs, strip, _ = sympy_mellin(besselj(a, x), x, s)
-    ours = M._besselj_kernel(a).quotient
+    ours = _face(N._besselj_kernel, a).quotient
     assert simplify(ours.as_expr(s) - theirs) == 0
     theirs, strip, _ = sympy_mellin(1 / (1 + x)**a, x, s)
-    assert simplify(M._power_kernel(a).quotient.as_expr(s) - theirs) == 0
+    assert simplify(_face(N._power_kernel, a).quotient.as_expr(s) - theirs) == 0
 
 
 def test_against_quadrature() -> None:
@@ -88,12 +97,12 @@ def test_against_quadrature() -> None:
         exact = KERNELS[name].quotient.as_expr(Rational(point)).evalf(20)
         assert abs(complex(exact) - complex(approx)) < 1e-8 * (1 + abs(complex(approx))), name
     # the kernels with parameters and the cutoffs
-    parametric = [((1 + x)**(-Rational(7, 3)), M._power_kernel(Rational(7, 3)), 2.0, (0, mpmath.inf)),
-                  ((1 - x)**Rational(1, 2), M._beta_kernel(Rational(3, 2)), 0.5, (0, 1)),
-                  ((x - 1)**(-Rational(2, 3)), M._beta_upper_kernel(Rational(1, 3)), -0.5, (1, mpmath.inf)),
-                  (expint(2, x), M._expint_kernel(Integer(2)), 0.5, (0, mpmath.inf)),
-                  ((-log(x))**Rational(1, 2), M._log_power_lower_kernel(Rational(1, 2)), 0.7, (0, 1)),
-                  (S.One, M._theta_lower_kernel(), 0.7, (0, 1)), (S.One, M._theta_upper_kernel(), -0.7, (1, mpmath.inf))]
+    parametric = [((1 + x)**(-Rational(7, 3)), _face(N._power_kernel, Rational(7, 3)), 2.0, (0, mpmath.inf)),
+                  ((1 - x)**Rational(1, 2), _face(N._beta_kernel, Rational(3, 2)), 0.5, (0, 1)),
+                  ((x - 1)**(-Rational(2, 3)), _face(N._beta_upper_kernel, Rational(1, 3)), -0.5, (1, mpmath.inf)),
+                  (expint(2, x), _face(N._expint_kernel, Integer(2)), 0.5, (0, mpmath.inf)),
+                  ((-log(x))**Rational(1, 2), _face(N._log_power_lower_kernel, Rational(1, 2)), 0.7, (0, 1)),
+                  (S.One, _face(N._theta_lower_kernel), 0.7, (0, 1)), (S.One, _face(N._theta_upper_kernel), -0.7, (1, mpmath.inf))]
     for f, kernel, point, (lo, hi) in parametric:
         g = lambdify(x, f, 'mpmath')
         approx = mpmath.quad(lambda t: t**(point - 1) * g(t), [lo, hi] if hi != mpmath.inf else [lo, lo + 1, lo + 10, hi])
@@ -117,14 +126,14 @@ def test_poles_lie_on_the_right_sides_of_the_strips() -> None:
     # lies to the right of the strip (-1, 0); the G-function built from
     # the product with exp(-v x) then missed the residue at 0 and
     # Integral(exp(-v*x)*erf(x), (x, 0, oo)) came out with a spurious -1/v
-    from sympy_extras.integrals.mellin import poles_separated
+    from sympy_extras.integrals.mellin_sympy import poles_separated
     for name, kernel in KERNELS.items():
         assert poles_separated(kernel.quotient) is True, name
     third = Rational(1, 3)
-    for kernel in [M._power_kernel(third), M._beta_kernel(third), M._beta_upper_kernel(third),
-                   M._expint_kernel(Integer(2)), M._besselj_kernel(third), M._bessely_kernel(third),
-                   M._besselk_kernel(third), M._exp_besseli_kernel(third), M._log_power_lower_kernel(third),
-                   M._polylog_kernel(Integer(1)), M._polylog_kernel(Integer(3))]:
+    for kernel in [_face(N._power_kernel, third), _face(N._beta_kernel, third), _face(N._beta_upper_kernel, third),
+                   _face(N._expint_kernel, Integer(2)), _face(N._besselj_kernel, third), _face(N._bessely_kernel, third),
+                   _face(N._besselk_kernel, third), _face(N._exp_besseli_kernel, third), _face(N._log_power_lower_kernel, third),
+                   _face(N._polylog_kernel, Integer(1)), _face(N._polylog_kernel, Integer(3))]:
         assert poles_separated(kernel.quotient) is True, kernel.name
 
 
@@ -141,29 +150,29 @@ def test_airy_polylog_fresnel_and_erfc_kernels() -> None:
         approx = mpmath.quad(lambda t: t**(float(point) - 1) * f(t), cuts)
         assert abs(exact - float(approx)) < tolerance, (kernel.name, point, exact, approx)
 
-    check(M._airyai_kernel(), mpmath.airyai, Rational(17, 10), 1e-12, [0, 1, mpmath.inf])
+    check(_face(N._airyai_kernel), mpmath.airyai, Rational(17, 10), 1e-12, [0, 1, mpmath.inf])
     assert abs(_value('airyai', Rational(3, 10)) - 1.0703613413320555124) < 1e-12
-    check(M._polylog_kernel(Integer(1)), lambda t: -mpmath.log(1 + t), -S.Half, 1e-9, [0, 1, mpmath.inf])
-    check(M._polylog_kernel(Integer(2)), lambda t: mpmath.polylog(2, -t), -S.Half, 1e-8, [0, 1, mpmath.inf])
-    check(M._polylog_kernel(Integer(3)), lambda t: mpmath.polylog(3, -t), -S.Half, 1e-6, [0, 1, mpmath.inf])
-    assert simplify(M._polylog_kernel(Integer(2)).quotient.as_expr(s) - pi / (s**2 * sin(pi * s))) == 0
+    check(_face(N._polylog_kernel, Integer(1)), lambda t: -mpmath.log(1 + t), -S.Half, 1e-9, [0, 1, mpmath.inf])
+    check(_face(N._polylog_kernel, Integer(2)), lambda t: mpmath.polylog(2, -t), -S.Half, 1e-8, [0, 1, mpmath.inf])
+    check(_face(N._polylog_kernel, Integer(3)), lambda t: mpmath.polylog(3, -t), -S.Half, 1e-6, [0, 1, mpmath.inf])
+    assert simplify(_face(N._polylog_kernel, Integer(2)).quotient.as_expr(s) - pi / (s**2 * sin(pi * s))) == 0
     cuts = mpmath.linspace(0, 60, 121) + [mpmath.inf]
-    check(M._fresnels_kernel(), mpmath.fresnels, Rational(-7, 10), 1e-4, cuts)
-    check(M._fresnelc_kernel(), mpmath.fresnelc, Rational(-7, 10), 1e-4, cuts)
+    check(_face(N._fresnels_kernel), mpmath.fresnels, Rational(-7, 10), 1e-4, cuts)
+    check(_face(N._fresnelc_kernel), mpmath.fresnelc, Rational(-7, 10), 1e-4, cuts)
     # erfc(t) exp(t^2) ~ (1 - 1/(2 t^2)) / (sqrt(pi) t): the tail beyond 30 in closed form
     point = Rational(3, 10)
     head = mpmath.quad(lambda t: t**(float(point) - 1) * mpmath.exp(t**2 + mpmath.log(mpmath.erfc(t))), [0, 1, 10, 30])
     tail = (30**(float(point) - 1) / (1 - float(point)) - 30**(float(point) - 3) / (2 * (3 - float(point)))) / mpmath.sqrt(mpmath.pi)
-    assert abs(float(M._erfc_exp_kernel().quotient.as_expr(point).evalf(20)) - float(head + tail)) < 1e-6
+    assert abs(float(_face(N._erfc_exp_kernel).quotient.as_expr(point).evalf(20)) - float(head + tail)) < 1e-6
 
 
 def test_log_one_minus_kernel() -> None:
     # Erdelyi, Tables of Integral Transforms I, 6.6 (7): the Mellin transform of
     # log(1 - x) on (0, 1) is -(psi(1 + s) + EulerGamma)/s
-    q = M._log_one_minus_kernel().quotient
+    q = _face(N._log_one_minus_kernel).quotient
     approx = mpmath.quad(lambda t: t**0.5 * mpmath.log(1 - t), [0, 1])
     assert abs(float(q.as_expr(Rational(3, 2)).evalf(20)) - float(approx)) < 1e-12
-    from sympy_extras.integrals.mellin import decompose_integrand
+    from sympy_extras.integrals.mellin_sympy import decompose_integrand
     p = decompose_integrand(log(1 - x**2), x, 'lower')
     assert p is not None and p.matches[0].kernel.name.startswith('log(1 - x)') and p.matches[0].gamma == 2
 
@@ -172,12 +181,12 @@ def test_bessel_product_kernels() -> None:
     # products of two Bessel functions of the same argument as one kernel:
     # Mathematica's MellinTransform, its NIntegrate (ExtrapolatingOscillatory)
     # at sample points, and quadrature for the decaying products
-    from sympy_extras.integrals.mellin import poles_separated
+    from sympy_extras.integrals.mellin_sympy import poles_separated
     third = Rational(1, 3)
-    kernels = [M._bessel_product_kernel('JJ', S.Zero, S.One), M._bessel_product_kernel('JJ', S.Half, Rational(3, 2)),
-               M._bessel_product_kernel('KK', S.Zero, S.One), M._bessel_product_kernel('KK', third, third),
-               M._bessel_product_kernel('IK', S.One, S.Zero), M._bessel_product_kernel('JY', S.One, S.One),
-               M._bessel_product_kernel('JK', S.Zero, S.Zero), M._bessel_product_kernel('JK', S.Half, S.Half)]
+    kernels = [_face(N._bessel_product_kernel, 'JJ', S.Zero, S.One), _face(N._bessel_product_kernel, 'JJ', S.Half, Rational(3, 2)),
+               _face(N._bessel_product_kernel, 'KK', S.Zero, S.One), _face(N._bessel_product_kernel, 'KK', third, third),
+               _face(N._bessel_product_kernel, 'IK', S.One, S.Zero), _face(N._bessel_product_kernel, 'JY', S.One, S.One),
+               _face(N._bessel_product_kernel, 'JK', S.Zero, S.Zero), _face(N._bessel_product_kernel, 'JK', S.Half, S.Half)]
     for kernel in kernels:
         assert poles_separated(kernel.quotient) is True, kernel.name
 
@@ -187,7 +196,7 @@ def test_bessel_product_kernels() -> None:
     assert abs(value(kernels[0], -S.Half) - 1.0975065212915833) < 1e-8
     assert abs(value(kernels[1], Rational(-3, 2)) - 0.51583047638837877) < 1e-10
     assert abs(value(kernels[5], S.Half) - (-0.82312885006837007)) < 1e-5
-    assert abs(value(M._bessel_product_kernel('JY', S.Zero, S.Zero), S.Half) - (-2.4693886103128770)) < 1e-5
+    assert abs(value(_face(N._bessel_product_kernel, 'JY', S.Zero, S.Zero), S.Half) - (-2.4693886103128770)) < 1e-5
     mpmath.mp.dps = 20
     assert value(kernels[2], Integer(3)) == 0.5 and value(kernels[6], Integer(2)) == 0.5
     approx = mpmath.quad(lambda t: t**0.5 * mpmath.besselk(0, t) * mpmath.besselk(1, t), [0, 1, mpmath.inf])

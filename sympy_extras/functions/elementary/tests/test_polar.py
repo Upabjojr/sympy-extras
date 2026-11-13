@@ -7,7 +7,7 @@ import itertools
 
 import sympy
 
-from sympy_extras._typing import as_expr as sympy_expr
+from sympy_extras._typing_sympy import as_expr as sympy_expr
 from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
@@ -70,3 +70,13 @@ def test_products_powers_and_polarify() -> None:
     from sympy_extras.core.function import Derivative
     assert exp_polar(x).is_polar is True and exp_polar(x).diff(x) == Derivative(exp_polar(x), x)
 
+
+
+def test_exp_polar_of_a_real_number_is_positive() -> None:
+    # exp_polar(0).is_positive was None (SymPy's is True, found numerically):
+    # the conditions of the Meijer G-function theorems ask whether the
+    # polar coefficient of an argument, x*exp_polar(0), is positive
+    assert exp_polar(Integer(0)).is_positive is True
+    assert exp_polar(Integer(2)).is_positive is True
+    assert exp_polar(I * pi).is_positive is not True
+    assert exp_polar(x).is_positive is None

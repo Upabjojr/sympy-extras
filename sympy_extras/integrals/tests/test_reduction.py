@@ -1,8 +1,8 @@
 """Tests of the reduction-based creative telescoping."""
 from sympy import Expr, I, Rational, cancel, cos, exp, oo, pi, sqrt, symbols
 
-from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.reduction import (HermiteReducer, hermite_reduce, reduction_integral, reduction_ode,
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
+from sympy_extras.integrals.reduction_sympy import (HermiteReducer, hermite_reduce, reduction_integral, reduction_ode,
                                               reduction_telescoper)
 
 x = symbols('x')

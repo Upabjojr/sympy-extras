@@ -950,6 +950,26 @@ class ExpPolar(DefinedFunction):
     # SymPy's exp_polar has no fdiff: its derivative stays unevaluated
     # (Derivative(exp_polar(x), x))
 
+    # PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:exp_polar._eval_evalf (the value of exp)
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        """The value of ``exp(z)`` when it evaluates to another node
+        (``exp_polar(I*pi)`` is ``-1`` exactly, as SymPy's ``exp(I*pi)``),
+        for ``-pi < im(z) <= pi`` only; ``None`` to fall back to
+        :meth:`numeric`."""
+        from sympy_extras.core.evalf import numeric_value
+        from .complexes import im
+        z = self.args[0]
+        part = numeric_value(im(z), prec)
+        if part is None or mpmath.im(part) != 0:
+            return None
+        with mpmath.workprec(prec):
+            if not -mpmath.pi < mpmath.re(part) <= mpmath.pi:
+                return None
+        value = exp(z)
+        if isinstance(value, Exp):
+            return None
+        return numeric_value(value, prec)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         z = values[0]
         if not -mpmath.pi < mpmath.im(z) <= mpmath.pi:
@@ -961,8 +981,22 @@ class ExpPolar(DefinedFunction):
 
     def _eval_facts(self) -> dict[str, bool]:
         facts: dict[str, bool] = {'commutative': True, 'polar': True, 'zero': False}
-        if facts_of(self.args[0]).get('extended_real'):
+        argument = facts_of(self.args[0])
+        if argument.get('extended_real'):
             facts['extended_real'] = True
+        z = self.args[0]
+        if z.is_number and not z.free_symbols:
+            # SymPy decides the sign of a number by its value, exp(z) for
+            # -pi < im(z) <= pi: exp_polar(1) is positive, exp_polar(I*pi)
+            # negative
+            from .complexes import as_real_imag
+            parts = as_real_imag(z)
+            if parts is not None and facts_of(parts[0]).get('real'):
+                ratio = parts[1] / pi
+                if ratio.is_zero:
+                    facts.update(extended_real=True, real=True, positive=True, negative=False)
+                elif ratio.is_Number and ratio == 1:
+                    facts.update(extended_real=True, real=True, positive=False, negative=True)
         return facts
 
 

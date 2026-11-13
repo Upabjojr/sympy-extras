@@ -5,8 +5,14 @@ polynomials. For an expression `f(x)` with exponentials, logarithms,
 trigonometric or other elementary functions, the sign of `f` on the set
 where `x` is assumed to lie is found from calculus:
 
-1. `f` must be continuous on the set (SymPy's ``continuous_domain``);
-2. the zeros of `f` on the set are computed exactly with ``solveset``;
+1. `f` must be continuous on the set: every function applied is
+   continuous where its argument lies (the functions of SymPy's
+   ``continuous_domain``, checked on the signs of their arguments);
+2. the zeros of `f` on the set are computed exactly (the rational
+   functions by :func:`~sympy_extras.polys.rationalsolve.solveset_rational`,
+   the others factor by factor with the transcendental solver
+   :func:`~sympy_extras.solvers.transcendental.solve_transcendental`, the
+   periodic families listed on bounded sets);
    between consecutive zeros (and endpoints) the sign is constant, so it
    is read off at one rational sample point per piece, with exact
    evaluation or, when :data:`sympy_extras.settings.settings` allows it,
@@ -25,18 +31,15 @@ Expressions of several variables are handled on the box of their
 assumptions by branch and bound with interval arithmetic, by monotonicity
 in every variable, or through the range of a single inner argument.
 
-Every answer is a proof modulo the correctness of ``solveset`` and
-``continuous_domain``; the undecided cases give ``None``.
+Every answer is a proof modulo the correctness of the solvers; the
+undecided cases give ``None``.
 
 The module works on the expressions of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.analysis_sympy` is its face on SymPy
-objects. Three steps are not ported and go through SymPy at run time
-(the face holds them): ``continuous_domain`` and ``solveset`` for
-expressions which are not rational in the variable (the rational ones
-are handled by :func:`~sympy_extras.polys.rationalsolve.solveset_rational`),
-and the intersection of the solutions of a polynomial assumption which is
-not a bound (the native CAD's ``solution_set``) with other intervals,
-when the core does not compare their ends.
+objects. No step goes through SymPy at run time: the intersection of the
+solutions of a polynomial assumption which is not a bound (the native
+CAD's ``solution_set``) with other intervals, when the core does not
+compare their ends, is made by certified comparisons.
 """
 from __future__ import annotations
 
@@ -46,19 +49,26 @@ from sympy_extras.core.accumbounds import AccumBounds, accum_bounds
 from sympy_extras.core.add import Add
 from sympy_extras.core.basic import Basic, preorder_traversal
 from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.core.exprtools import factor_terms
 from sympy_extras.core.function import count_ops
 from sympy_extras.core.limits import limit
-from sympy_extras.core.logic import Boolean, false, true
+from sympy_extras.core.logic import And, Boolean, Or, false, true
 from sympy_extras.core.mul import Mul
 from sympy_extras.core.numbers import (Float, I, ImaginaryUnit, Infinity, Integer, NegativeInfinity, Rational,
     number_from_fraction, oo)
 from sympy_extras.core.power import Pow
 from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
 from sympy_extras.core.symbol import Symbol
-from sympy_extras.functions.elementary.exponential import Log
+from sympy_extras.functions.elementary.complexes import Abs
+from sympy_extras.functions.elementary.exponential import Exp, Log
+from sympy_extras.functions.elementary.hyperbolic import (Acosh, Acoth, Asech, Asinh, Atanh, Cosh, Coth, Csch, Sech,
+    Sinh, Tanh)
+from sympy_extras.functions.elementary.trigonometric import (Acos, Acot, Acsc, Asec, Asin, Atan, Cos, Cot, Csc, Sec,
+    Sin, Tan, cos, sin)
 from sympy_extras.polys.rationalsolve import solveset_rational
-from sympy_extras.sets.sets import (Contains, EmptySetClass, Interval, Reals, Set, Union, intersection, interval,
-    union)
+from sympy_extras.sets.fancysets import ImageSet, IntegersClass, Naturals0Class, NaturalsClass
+from sympy_extras.sets.sets import (Contains, EmptySet, EmptySetClass, FiniteSet, Intersection, Interval, Reals, Set,
+    Union, finite_set, intersection, interval, union)
 from sympy_extras._timeout import attempt
 from sympy_extras.settings import settings
 
@@ -258,9 +268,10 @@ def domain_of(x: Symbol, facts: Facts) -> Optional[Set]:
         found = intersection(domain, piece)
         if on_roots and not _is_union_of_intervals(found):
             # ends which the core does not compare (roots of polynomials
-            # against other numbers): SymPy's intersection
-            from .analysis_sympy import intersection_of_core
-            found = intersection_of_core(domain, piece)
+            # against other numbers): by certified comparisons
+            certified = _certified_intersection(domain, piece)
+            if certified is not None:
+                found = certified
         domain = found
     if isinstance(domain, (EmptySetClass, Interval)):
         return domain
@@ -275,6 +286,56 @@ def _cad_solution_set(atom: Boolean, x: Symbol) -> Optional[Set]:
     fails or does not end in time."""
     from sympy_extras.polys.cad.qe import solution_set
     return attempt(lambda: solution_set(atom, x), settings.timeout, native=True)
+
+
+def _intersect_pieces(a: Interval, b: Interval) -> Optional[Set]:
+    """The intersection of two intervals whose ends are compared by
+    :func:`certified_compare` (``None`` when two ends cannot be told
+    apart)."""
+    starts = certified_compare(a.start, b.start)
+    ends = certified_compare(a.end, b.end)
+    if starts is None or ends is None:
+        return None
+    if starts > 0 or (starts == 0 and a.left_open):
+        start, left_open = a.start, a.left_open
+    else:
+        start, left_open = b.start, b.left_open
+    if ends < 0 or (ends == 0 and a.right_open):
+        end, right_open = a.end, a.right_open
+    else:
+        end, right_open = b.end, b.right_open
+    order = certified_compare(start, end)
+    if order is None:
+        return None
+    if order > 0:
+        return EmptySet
+    if order == 0:
+        return EmptySet if left_open or right_open else finite_set(start)
+    return Interval(start, end, left_open, right_open)
+
+
+def _certified_intersection(a: Set, b: Set) -> Optional[Set]:
+    """The intersection of two unions of intervals, their ends compared by
+    certified numerical comparisons (roots of polynomials against other
+    constants), ``None`` when a comparison is undecided."""
+    first, second = _pieces(a), _pieces(b)
+    if first is None or second is None:
+        return None
+    parts: list[Set] = []
+    for p in first:
+        for q in second:
+            part = _intersect_pieces(p, q)
+            if part is None:
+                return None
+            if isinstance(part, EmptySetClass):
+                continue
+            if not isinstance(part, Interval):
+                # an isolated point: not a union of intervals
+                return None
+            parts.append(part)
+    if not parts:
+        return EmptySet
+    return union(*parts)
 
 
 def _is_union_of_intervals(s: Set) -> bool:
@@ -377,36 +438,370 @@ def _real_zeros_in(f: Expr, x: Symbol, domain: Set) -> tuple[bool, list[Expr]]:
     return True, zeros
 
 
+#: the functions continuous on the whole real line (of a continuous argument)
+_ENTIRE: tuple[type[Basic], ...] = (Exp, Sin, Cos, Atan, Sinh, Cosh, Tanh, Sech, Asinh, Abs)
+#: the functions continuous where their argument is not zero
+_POLE_AT_ZERO: tuple[type[Basic], ...] = (Coth, Csch, Acot)
+
+
+def _signs_within(f: Expr, x: Symbol, domain: Set, allowed: Signs) -> bool:
+    """Whether every sign of ``f`` on ``domain`` is among ``allowed``."""
+    signs = sign_on(f, x, domain)
+    return signs is not None and signs <= allowed
+
+
+def _either_side(f: Expr, low: Expr, high: Expr, strict: bool, x: Symbol, domain: Set) -> bool:
+    """Whether on every piece of ``domain`` the values of ``f`` stay on one
+    side: ``f <= low`` or ``f >= high`` (strictly with ``strict``)."""
+    pieces = _pieces(domain)
+    if pieces is None:
+        return False
+    below: Signs = frozenset([-1]) if strict else frozenset([-1, 0])
+    above: Signs = frozenset([1]) if strict else frozenset([0, 1])
+    for piece in pieces:
+        if not (_signs_within(f - low, x, piece, below) or _signs_within(f - high, x, piece, above)):
+            return False
+    return True
+
+
 def _continuous_on(f: Expr, x: Symbol, domain: Set) -> bool:
-    """Whether ``f`` is continuous on ``domain`` (SymPy's
-    ``continuous_domain`` contains it): a rational function natively,
-    when no zero of a denominator is in the domain."""
-    if _is_rational_in(f, x):
-        known = True
-        for node in preorder_traversal(f):
-            if isinstance(node, Pow) and isinstance(node.exp, Integer) and node.exp.p < 0 \
-                    and x in node.base.free_symbols:
-                found, poles = _real_zeros_in(node.base, x, domain)
-                if not found:
-                    known = False
-                    break
-                if poles:
-                    return False
-        if known:
-            return True
-    from .analysis_sympy import continuous_on_of_core
-    return continuous_on_of_core(f, x, domain)
+    """Whether ``f`` is continuous on ``domain`` (a union of intervals):
+    every function applied is continuous where its argument lies, as in
+    SymPy's ``continuous_domain`` (the functions it implements: powers,
+    ``exp``, ``log``, ``Abs``, the trigonometric and hyperbolic functions
+    and their inverses), checked natively on the subexpressions by the
+    signs of their arguments; ``False`` when this cannot be established
+    (another function, an undecided sign)."""
+    if x not in f.free_symbols or f == x:
+        return True
+    if isinstance(f, (Add, Mul)):
+        return all(isinstance(a, Expr) and _continuous_on(a, x, domain) for a in f.args)
+    if isinstance(f, Pow):
+        return _power_continuous_on(f, x, domain)
+    if len(f.args) != 1:
+        return False
+    argument = f.args[0]
+    if not isinstance(argument, Expr) or not _continuous_on(argument, x, domain):
+        return False
+    if isinstance(f, _ENTIRE):
+        return True
+    if isinstance(f, _POLE_AT_ZERO):
+        return _signs_within(argument, x, domain, frozenset([-1, 1]))
+    if isinstance(f, (Tan, Sec)):
+        return _signs_within(cos(argument), x, domain, frozenset([-1, 1]))
+    if isinstance(f, (Cot, Csc)):
+        return _signs_within(sin(argument), x, domain, frozenset([-1, 1]))
+    if isinstance(f, Log):
+        return _signs_within(argument, x, domain, frozenset([1]))
+    if isinstance(f, (Asin, Acos)):
+        return _signs_within(argument - 1, x, domain, frozenset([-1, 0])) and \
+            _signs_within(argument + 1, x, domain, frozenset([0, 1]))
+    if isinstance(f, Acosh):
+        return _signs_within(argument - 1, x, domain, frozenset([0, 1]))
+    if isinstance(f, Atanh):
+        return _signs_within(argument - 1, x, domain, frozenset([-1])) and \
+            _signs_within(argument + 1, x, domain, frozenset([1]))
+    if isinstance(f, Asech):
+        return _signs_within(argument, x, domain, frozenset([1])) and \
+            _signs_within(argument - 1, x, domain, frozenset([-1, 0]))
+    if isinstance(f, (Asec, Acsc)):
+        return _either_side(argument, Integer(-1), Integer(1), False, x, domain)
+    if isinstance(f, Acoth):
+        return _either_side(argument, Integer(-1), Integer(1), True, x, domain)
+    return False
+
+
+def _power_continuous_on(f: Pow, x: Symbol, domain: Set) -> bool:
+    """A power ``b**e`` on ``domain``: an integer or odd-root exponent
+    needs a nonzero base when negative; another constant exponent a base
+    which is not negative (positive for a negative exponent); an exponent
+    in ``x`` a positive base."""
+    base, exponent = f.base, f.exp
+    if x not in exponent.free_symbols:
+        if not _continuous_on(base, x, domain):
+            return False
+        if isinstance(exponent, Integer):
+            if exponent.p >= 0:
+                return True
+            if _is_rational_in(base, x):
+                found, poles = _real_zeros_in(base, x, domain)
+                if found:
+                    return not poles
+            return _signs_within(base, x, domain, frozenset([-1, 1]))
+        if isinstance(exponent, Rational) and exponent.q % 2 == 1:
+            return exponent.p > 0 or _signs_within(base, x, domain, frozenset([-1, 1]))
+        if exponent.is_positive is True:
+            return _signs_within(base, x, domain, frozenset([0, 1]))
+        return _signs_within(base, x, domain, frozenset([1]))
+    if not _continuous_on(exponent, x, domain):
+        return False
+    if x not in base.free_symbols:
+        if exponent.is_integer is True:
+            # an integer variable (as SymPy's continuous_domain, whose
+            # rational exponents have no constraint): (-1)**k
+            return certified_sign(base) in (-1, 1)
+        return certified_sign(base) == 1
+    return _continuous_on(base, x, domain) and _signs_within(base, x, domain, frozenset([1]))
+
+
+def _native_solver(formula: Boolean, v: Symbol) -> Optional[Set]:
+    """The solver of the relations polynomial in a kernel variable with
+    constant coefficients which :func:`solve_transcendental` is given: the
+    linear relations and the quadratic equations natively, ``None`` for
+    the others."""
+    from sympy_extras.solvers.transcendental import _linear_solution
+    if isinstance(formula, Relational):
+        linear = _linear_solution(formula, v)
+        if linear is not None:
+            return linear
+        return _quadratic_solution(formula, v)
+    if isinstance(formula, (And, Or)):
+        parts: list[Set] = []
+        for a in formula.args:
+            if not isinstance(a, Boolean):
+                return None
+            part = _native_solver(a, v)
+            if part is None:
+                return None
+            parts.append(part)
+        return intersection(*parts) if isinstance(formula, And) else union(*parts)
+    return None
+
+
+def _quadratic_solution(relation: Relational, v: Symbol) -> Optional[Set]:
+    """The real solutions of ``a v**2 + b v + c = 0`` with real constant
+    coefficients (``tan(1)``, ...) by the sign of the discriminant, decided
+    by :func:`certified_sign`; ``None`` for another relation or an
+    undecided sign. (SymPy's ``solveset`` before: the half-angle
+    substitution makes ``sin(x) - tan(1)*cos(x)`` such an equation.)"""
+    from sympy_extras.core.function import expand
+    from sympy_extras.core.power import sqrt
+    from sympy_extras.solvers.transcendental import _coefficients
+    if not isinstance(relation, Eq):
+        return None
+    coefficients = _coefficients(expand(relation.lhs - relation.rhs), v)
+    if coefficients is None or set(coefficients) - {0, 1, 2} or 2 not in coefficients:
+        return None
+    a = coefficients[2]
+    b = coefficients.get(1, Integer(0))
+    c = coefficients.get(0, Integer(0))
+    if any(not (e.is_number and e.is_real is True) for e in (a, b, c)) or certified_sign(a) in (None, 0):
+        return None
+    discriminant = b**2 - 4*a*c
+    sign = certified_sign(discriminant)
+    if sign is None:
+        return None
+    if sign < 0:
+        return EmptySet
+    if sign == 0:
+        return finite_set(-b/(2*a))
+    root = sqrt(discriminant)
+    return finite_set((-b - root)/(2*a), (-b + root)/(2*a))
+
+
+def _zero_set(f: Expr, x: Symbol) -> Optional[Set]:
+    """The real zeros of ``f`` by the native
+    :func:`~sympy_extras.solvers.transcendental.solve_transcendental`
+    (no step on SymPy: the linear relations of its kernels natively, no
+    Lambert W candidates), factor by factor of its common factors as
+    SymPy's ``solveset`` does (``exp(x)*(sin(x) + cos(x))``; the callers
+    have checked that every factor is finite); ``None`` when it fails.
+    The zeros are those of a real variable whatever the assumptions of
+    ``x``: the domain is the caller's."""
+    from sympy_extras.core.symbol import Dummy
+    v = Dummy('v', real=True)
+    found = _zero_set_of(as_expr(f._xreplace_evaluated({x: v})), v)
+    if found is None:
+        return None
+    rebuilt = found._xreplace_evaluated({v: x})
+    return rebuilt if isinstance(rebuilt, Set) else None
+
+
+def _zero_set_of(f: Expr, x: Symbol) -> Optional[Set]:
+    from sympy_extras.solvers.transcendental import solve_transcendental
+    g = factor_terms(f)
+    if isinstance(g, Mul):
+        parts: list[Set] = []
+        for a in g.args:
+            if not isinstance(a, Expr) or x not in a.free_symbols:
+                continue
+            part = _zero_set_of(a, x)
+            if part is None:
+                return None
+            parts.append(part)
+        return union(*parts) if parts else EmptySet
+    if isinstance(g, Pow) and x not in g.exp.free_symbols:
+        if g.exp.is_positive is True:
+            return _zero_set_of(g.base, x)
+        if g.exp.is_negative is True:
+            return EmptySet
+    if isinstance(g, Exp):
+        return EmptySet
+    harmonic = _harmonic_zeros(g, x)
+    if harmonic is not None:
+        return harmonic
+    return solve_transcendental(Eq(g, Integer(0)), x, solver=_native_solver, lambert=False)
+
+
+def _harmonic_zeros(g: Expr, x: Symbol) -> Optional[Set]:
+    """The zeros of ``a*sin(u) + b*cos(u)`` (``a``, ``b`` real constants,
+    ``u = c*x + d`` linear): ``u = atan(-b/a) + k*pi``, in the form which
+    keeps ``atan(tan(1)) = 1`` exact (the half-angle substitution of the
+    transcendental solver writes the zero 1 of ``sin(x) - tan(1)*cos(x)``
+    as ``2*atan((sqrt(1 + tan(1)**2) - 1)/tan(1))``, which no comparison
+    decides against 1); ``None`` for another expression."""
+    from sympy_extras.core.symbol import Dummy
+    from sympy_extras.sets.fancysets import Integers, image_set
+    from sympy_extras.core.containers import Tuple
+    terms = Add.make_args(g)
+    argument: Optional[Expr] = None
+    a: Expr = Integer(0)
+    b: Expr = Integer(0)
+    for t in terms:
+        coefficient, rest = t.as_independent(x, as_Add=False)
+        if not isinstance(rest, (Sin, Cos)) or not isinstance(rest.args[0], Expr):
+            return None
+        if argument is None:
+            argument = rest.args[0]
+        elif rest.args[0] != argument:
+            return None
+        if isinstance(rest, Sin):
+            a = a + coefficient
+        else:
+            b = b + coefficient
+    if argument is None or len(terms) != 2:
+        return None
+    slope = argument.diff(x)
+    if slope.has(x) or certified_sign(slope) in (None, 0):
+        return None
+    if not all(e.is_number and e.is_real is True for e in (a, b)) or certified_sign(a) in (None, 0):
+        return None
+    offset = as_expr(argument.subs(x, Integer(0)))
+    k = Dummy('k', integer=True)
+    from sympy_extras.functions.elementary.trigonometric import atan
+    from sympy_extras.core.numbers import pi
+    return image_set(Tuple(k), (atan(-b/a) + k*pi - offset)/slope, Integers)
+
+
+#: the most points of a periodic family of zeros listed in a bounded piece
+_MAX_PERIODIC_POINTS = 1000
+
+
+def _image_points(image: Expr, k: Symbol, piece: Interval) -> Optional[list[Expr]]:
+    """The points ``a*k + b`` (``k`` an integer, ``a`` and ``b`` real
+    constants) in a bounded piece, ``None`` when the image is not linear
+    or the piece is unbounded."""
+    a = image.diff(k)
+    b = as_expr(image.subs(k, Integer(0)))
+    if a.has(k) or _symbols(a) or _symbols(b):
+        return None
+    sa = certified_sign(a)
+    if sa is None:
+        return None
+    if sa == 0:
+        member = piece.contains(b)
+        if member is true:
+            return [b]
+        return [] if member is false else None
+    if not (piece.start.is_finite and piece.end.is_finite):
+        return None
+    ends: list[float] = []
+    for end in (piece.start, piece.end):
+        value = ((end - b)/a).evalf(settings.precision)
+        if not isinstance(value, (Float, Rational)):
+            return None
+        ends.append(float(value))
+    low, high = int(min(ends)) - 2, int(max(ends)) + 2
+    if high - low > _MAX_PERIODIC_POINTS:
+        return None
+    points: list[Expr] = []
+    for j in range(low, high + 1):
+        point = as_expr(image.subs(k, Integer(j)))
+        above = certified_compare(point, piece.start)
+        below = certified_compare(piece.end, point)
+        if above is None or below is None:
+            return None
+        if (above > 0 or (above == 0 and not piece.left_open)) and \
+                (below > 0 or (below == 0 and not piece.right_open)):
+            points.append(point)
+    return points
+
+
+def _points_in(zeros: Set, domain: Set) -> Optional[list[Expr]]:
+    """The points of a set of zeros in ``domain`` when they are finitely
+    many and each is decided in or out (``None`` otherwise)."""
+    if isinstance(zeros, EmptySetClass):
+        return []
+    if isinstance(zeros, FiniteSet):
+        points: list[Expr] = []
+        for z in zeros.args:
+            if not isinstance(z, Expr):
+                return None
+            member = domain.contains(z)
+            if member is true:
+                points.append(z)
+            elif member is not false:
+                return None
+        return points
+    if isinstance(zeros, Union):
+        collected: list[Expr] = []
+        for part in zeros.args:
+            if not isinstance(part, Set):
+                return None
+            found = _points_in(part, domain)
+            if found is None:
+                return None
+            collected.extend(z for z in found if z not in collected)
+        return collected
+    if isinstance(zeros, ImageSet):
+        variables, image = zeros.variables, zeros.image
+        if len(variables) != 1 or len(zeros.base_sets) != 1 or not isinstance(zeros.base_sets[0], IntegersClass) \
+                or not isinstance(image, Expr):
+            return None
+        pieces = _pieces(domain)
+        if pieces is None:
+            return None
+        listed: list[Expr] = []
+        for piece in pieces:
+            part_points = _image_points(image, variables[0], piece)
+            if part_points is None:
+                return None
+            listed.extend(z for z in part_points if z not in listed)
+        return listed
+    return None
+
+
+def _is_discrete(zeros: Set, piece: Interval) -> bool:
+    """Whether a set of zeros meets the piece in isolated points: finite
+    sets, images of the integers, intervals meeting the piece in at most
+    one point, and their unions."""
+    if isinstance(zeros, (FiniteSet, EmptySetClass)):
+        return True
+    if isinstance(zeros, ImageSet):
+        return len(zeros.base_sets) == 1 and isinstance(zeros.base_sets[0], (IntegersClass, NaturalsClass,
+                                                                              Naturals0Class))
+    if isinstance(zeros, Interval):
+        return isinstance(intersection(zeros, piece), (EmptySetClass, FiniteSet))
+    if isinstance(zeros, Union):
+        return all(isinstance(a, Set) and _is_discrete(a, piece) for a in zeros.args)
+    if isinstance(zeros, Intersection):
+        return any(isinstance(a, Set) and _is_discrete(a, piece) for a in zeros.args)
+    return False
 
 
 def _finite_zeros(f: Expr, x: Symbol, domain: Set) -> Optional[list[Expr]]:
-    """The zeros of ``f`` in ``domain`` when ``solveset`` finds a finite
-    set of them, ``None`` otherwise."""
+    """The zeros of ``f`` in ``domain`` when they are finitely many and
+    found exactly, ``None`` otherwise: a rational ``f`` by
+    :func:`~sympy_extras.polys.rationalsolve.solveset_rational`, another
+    one by the native transcendental solver."""
     if _is_rational_in(f, x):
         found, zeros = _real_zeros_in(f, x, domain)
         if found:
             return zeros
-    from .analysis_sympy import finite_zeros_of_core
-    return finite_zeros_of_core(f, x, domain)
+    solutions = _zero_set(f, x)
+    if solutions is None:
+        return None
+    return _points_in(solutions, domain)
 
 
 def _has_discrete_zeros(f: Expr, x: Symbol, piece: Interval) -> bool:
@@ -414,8 +809,8 @@ def _has_discrete_zeros(f: Expr, x: Symbol, piece: Interval) -> bool:
     finite set, or a periodic family)."""
     if _is_rational_in(f, x) and _real_zeros_in(f, x, piece)[0]:
         return True
-    from .analysis_sympy import has_discrete_zeros_of_core
-    return has_discrete_zeros_of_core(f, x, piece)
+    solutions = _zero_set(f, x)
+    return solutions is not None and _is_discrete(solutions, piece)
 
 
 def sign_on(f: Expr, x: Symbol, domain: Set, depth: int = 1) -> Optional[Signs]:

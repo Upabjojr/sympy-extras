@@ -12,9 +12,9 @@ from typing import Optional
 from sympy import Rational, S, Symbol, cos, exp, log, oo, pi, simplify, sin, sqrt, symbols, gamma
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import as_expr
-from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.residues import residue_integral
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
+from sympy_extras.integrals.residues_sympy import residue_integral
 
 x = Symbol('x')
 a, b = symbols('a b', positive=True)

@@ -4,7 +4,7 @@ stay on SymPy.
 :class:`Ideal` takes SymPy expressions or ``Poly`` generators, SymPy
 symbols, a SymPy coefficient domain (inferred from the coefficients, with
 ``extension=True``, when omitted) and a SymPy monomial order (a name, or
-one of :mod:`sympy_extras.polys.orderings`); its Gröbner bases are SymPy
+one of :mod:`sympy_extras.polys.orderings_sympy`); its Gröbner bases are SymPy
 ``Poly`` objects, its ring elements those of SymPy's
 :func:`~sympy.polys.rings.ring`, and its results SymPy expressions,
 ``Poly`` objects and matrices, as before the native port. The work is done
@@ -67,7 +67,7 @@ from sympy.polys.orderings import MonomialOrder, grevlex, grlex, lex
 from sympy.polys.polytools import Poly
 from sympy.polys.rings import PolyElement, PolyRing, ring as _ring
 
-from sympy_extras._typing import DomainElement, Monomial, OrderSpec, as_expr, as_symbol, free_symbols, sorted_symbols
+from sympy_extras._typing_sympy import DomainElement, Monomial, OrderSpec, as_expr, as_symbol, free_symbols, sorted_symbols
 from sympy_extras.core.expr import as_expr as core_as_expr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy as core_from_sympy, to_sympy as core_to_sympy
@@ -83,8 +83,8 @@ from .domains.integerring import ZZ as CoreZZ
 from .domains.rationalfield import QQ as CoreQQ, RationalField
 from .domains.sparsefractionfield import SparseFractionField
 from .domains.sparsepolynomialring import RationalPolynomialRing
-from .hilbert import hilbert_numerator
-from .orderings import BlockOrder, WeightOrder, as_order
+from .hilbert_sympy import hilbert_numerator
+from .orderings_sympy import BlockOrder, WeightOrder, as_order
 
 __all__ = ['Ideal', 'hilbert_numerator', 'separating_forms', 'core_order', 'sympy_order', 'native_ideal']
 
@@ -123,7 +123,7 @@ def separating_forms(variables: Sequence[Symbol], points: int) -> Iterator[Expr]
 
 def core_order(order: MonomialOrder, nvars: int) -> typed.MonomialOrder:
     """The native order of a SymPy order (``lex``, ``grlex``, ``grevlex``,
-    the weight and block orders of :mod:`sympy_extras.polys.orderings`;
+    the weight and block orders of :mod:`sympy_extras.polys.orderings_sympy`;
     any other order through the flattened key of
     :func:`sympy_extras.polys.interop.typed_order`)."""
     if isinstance(order, WeightOrder):

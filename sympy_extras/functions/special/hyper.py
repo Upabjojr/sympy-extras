@@ -12,7 +12,8 @@ infinite parameters and an ``a_i - b_j`` that is a positive integer.
 Both have the derivative in the argument (``Derivative`` when a
 parameter depends on the variable: SymPy's derivatives in the
 parameters are not available either), mpmath values, and ``hyper`` its
-radius of convergence. Not ported: ``hyperexpand``, the series,
+radius of convergence; ``meijerg`` its quantities ``nu``, ``delta`` and
+``get_period`` of the integration theorems. Not ported: ``hyperexpand``, the series,
 ``convergence_statement`` and the polar arguments. Appell's ``appellf1``
 (a function of the core, its parameters being plain arguments) is here
 too.
@@ -30,7 +31,8 @@ Examples
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/special/hyper.py (hyper, meijerg, _prep_tuple,
-# TupleParametersBase._eval_derivative) (SymPy 1.14)
+# TupleParametersBase._eval_derivative, meijerg.nu, delta, get_period), sympy/core/function.py
+# (Function._eval_nseries, the asymptotic branch) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed expression nodes with the parameter lists as fields,
@@ -41,23 +43,19 @@ Examples
 from __future__ import annotations
 
 from collections import Counter
-from typing import Final, Optional, Sequence, Union
+from typing import Callable, Final, Optional, Sequence, Union
 
 import mpmath
 
 from sympy_extras.core.add import add, sub
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.logic import Boolean
 from sympy_extras.core.mul import div, mul
 from sympy_extras.core.numbers import ComplexInfinity, Infinity, Integer, NegativeInfinity, Rational, oo
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.sorting import ClassKey, default_sort_key
 from sympy_extras.core.symbol import Symbol
-
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from sympy_extras.core.logic import Boolean
 
 __all__ = ['Hyper', 'MeijerG', 'AppellF1', 'hyper', 'meijerg', 'appellf1']
 
@@ -84,14 +82,62 @@ def _depends(parameters: Sequence[Expr], s: Symbol) -> bool:
 
 
 def _numeric_list(parameters: Sequence[Expr], prec: int) -> Optional[list[mpmath.mpc]]:
+    """The values of the parameters, the real ones as mpmath reals (the
+    bug: mpmath's ``meijerg`` compares its parameters with integers to
+    find the poles, which raises ``TypeError`` on complex numbers, so the
+    G-functions with half-integer parameters had no value)."""
     from sympy_extras.core.evalf import numeric_value
     values: list[mpmath.mpc] = []
     for a in parameters:
         value = numeric_value(a, prec)
         if value is None:
             return None
-        values.append(value)
+        values.append(mpmath.mpf(value.real) if value.imag == 0 else value)
     return values
+
+
+# PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries (the branch of an argument going to an infinity)
+def _asymptotic_nseries(name: str, parameters: Sequence[Expr], z: Expr, rebuild: Callable[[Expr], Expr],
+                        x: Symbol, n: int, logx: Optional[Expr]) -> Expr:
+    """SymPy's generic expansion of ``hyper`` and ``meijerg`` (``rebuild``
+    puts the argument back) when an argument goes to an infinity: the
+    leading terms going to an infinity call ``_eval_aseries``, which these
+    classes do not have (``PoleError``, as SymPy raises); otherwise (the
+    argument grows like ``log(x)``, ``logx`` standing for it) the
+    expansion around the logarithmic term, ``f(a0 + p)`` expanded in ``p``
+    with ``p`` the rest of the series of the argument."""
+    from sympy_extras.core.coreerrors import PoleError
+    from sympy_extras.core.limits import limit
+    from sympy_extras.core.numbers import NaN
+    from sympy_extras.core.order import Order, order
+    from sympy_extras.core.symbol import Dummy
+    zero = Integer(0)
+    args = list(parameters) + [z]
+    a0 = [limit(a.as_leading_term(x, logx=logx), x, zero) for a in args]
+    if any(t.has(Infinity, NegativeInfinity, ComplexInfinity, NaN) or isinstance(t, (Infinity, NegativeInfinity,
+                                                                                     ComplexInfinity, NaN))
+           for t in a0):
+        points = ', '.join(str(limit(a, x, zero)) for a in args)
+        raise PoleError('Asymptotic expansion of %s around [%s] is not implemented.' % (name, points))
+    if any(x in a.free_symbols for a in parameters):
+        # SymPy expands in one argument only
+        raise NotImplementedError('the parameters of %s depend on %s' % (name, x))
+    series = z._eval_nseries(x, n, logx, zero)
+    rest = series - a0[-1]
+    if not rest.has(x):
+        return rebuild(a0[-1])
+    p = Dummy('p')
+    s = rebuild(a0[-1] + p)._eval_nseries(p, n, logx, zero)
+    o = s.getO()
+    terms = s.removeO()
+    expanded = terms.subs(p, rest)
+    assert isinstance(expanded, Expr)
+    if o is None:
+        return expanded.expand()
+    assert isinstance(o, Order)
+    big = o.expr.subs(p, rest)
+    assert isinstance(big, Expr)
+    return expanded.expand() + order(big, x)
 
 
 # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper
@@ -118,7 +164,6 @@ class Hyper(Expr):
         """The power series in the argument when it is ``x`` itself, else
         the generic expansion of functions, hyperexpanded."""
         from sympy_extras.core.function import _generic_function_nseries
-        from sympy_extras.interop import nseries_node_through_sympy
         from sympy_extras.core.limits import limit
         from sympy_extras.core.order import order
         from sympy_extras.functions.combinatorial.factorials import factorial, rf
@@ -128,8 +173,8 @@ class Hyper(Expr):
         if not (arg == x and x0 == 0):
             generic = _generic_function_nseries(self, x, n, logx)
             if generic is None:
-                # SymPy's asymptotic branch of the generic expansion is not ported
-                return nseries_node_through_sympy(self, x, n, logx, cdir)
+                ap, bq = self.ap, self.bq
+                generic = _asymptotic_nseries('hyper', ap + bq, arg, lambda w: Hyper(ap, bq, w), x, n, logx)
             return hyperexpand(generic)
         terms: list[Expr] = []
         for i in range(n):
@@ -185,7 +230,7 @@ class Hyper(Expr):
             raise TypeError("hyper takes two parameter tuples and an expression")
         return hyper(ap, bq, z)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'hyper(%s, %s, %s)' % (printer.doprint(Tuple(*self._ap)), printer.doprint(Tuple(*self._bq)),
                                       printer.doprint(self._z))
 
@@ -286,7 +331,21 @@ def hyper(ap: Parameters, bq: Parameters, z: ExprLike) -> Expr:
     counted_bottom -= common
     new_top = [k for k in sorted(counted_top, key=default_sort_key) for _ in range(counted_top[k])]
     new_bottom = [k for k in sorted(counted_bottom, key=default_sort_key) for _ in range(counted_bottom[k])]
-    return Hyper(new_top, new_bottom, z)
+    return Hyper(new_top, new_bottom, _unpolarified_argument(new_top, new_bottom, to_expr(z)))
+
+
+# PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper.eval
+def _unpolarified_argument(ap: Sequence[Expr], bq: Sequence[Expr], z: Expr) -> Expr:
+    """The argument without its polar numbers where the series is entire
+    (``p <= q``) or converges on ``|z| <= 1`` (``p = q + 1``): the
+    function is single valued there (``hyperexpand`` leaves
+    ``hyper((1/6,), (1/2,), exp_polar(I*pi))`` when it finds no formula)."""
+    from sympy_extras.core.logic import BooleanTrue
+    from sympy_extras.core.relational import le
+    from sympy_extras.functions.elementary.complexes import abs_, unpolarify
+    if len(ap) <= len(bq) or (len(ap) == len(bq) + 1 and isinstance(le(abs_(z), 1), BooleanTrue)):
+        return unpolarify(z)
+    return z
 
 
 # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg
@@ -326,13 +385,97 @@ class MeijerG(Expr):
     def bother(self) -> tuple[Expr, ...]:
         return self._bother
 
+    @property
+    def ap(self) -> tuple[Expr, ...]:
+        """All the ``a`` parameters, ``an`` then ``aother``."""
+        return self._an + self._aother
+
+    @property
+    def bq(self) -> tuple[Expr, ...]:
+        """All the ``b`` parameters, ``bm`` then ``bother``."""
+        return self._bm + self._bother
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg.nu
+    @property
+    def nu(self) -> Expr:
+        """``sum(bq) - sum(ap)``, a quantity of the convergence region of the
+        Mellin–Barnes integral."""
+        total: Expr = Integer(0)
+        for b in self.bq:
+            total = add(total, b)
+        for a in self.ap:
+            total = sub(total, a)
+        return total
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg.delta
+    @property
+    def delta(self) -> Rational:
+        """``m + n - (p + q)/2``, a quantity of the convergence region of the
+        Mellin–Barnes integral.
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions.special.hyper import meijerg
+        >>> g = meijerg([], [], [Symbol('a')], [Symbol('b')], Symbol('z'))
+        >>> g.delta, g.nu
+        (0, a + b)
+        """
+        return Rational(2 * (len(self._bm) + len(self._an)) - len(self.ap) - len(self.bq), 2)
+
+    # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg.get_period
+    def get_period(self) -> Expr:
+        """The period of the function in ``log(z)``: ``2*pi`` times the least
+        common multiple of the denominators of the rational ``bm`` (``an``,
+        for ``p > q``; both for ``p = q``), ``oo`` when a parameter is not
+        rational or two of them differ by an integer.
+
+        >>> from sympy_extras.core import Rational, Symbol
+        >>> from sympy_extras.functions.special.hyper import meijerg
+        >>> z = Symbol('z')
+        >>> meijerg([], [], [0], [], z).get_period(), meijerg([], [], [Rational(1, 2)], [0], z).get_period()
+        (2*pi, 4*pi)
+        >>> meijerg([], [], [0, 1], [], z).get_period()
+        oo
+        """
+        from math import lcm
+        from sympy_extras.core.mod import mod
+        from sympy_extras.core.numbers import pi
+        from sympy_extras.simplify.simplify import simplify
+
+        def compute(parameters: Sequence[Expr]) -> Optional[int]:
+            # None for SymPy's oo: a parameter not rational, or two
+            # differing by an integer
+            for i, b in enumerate(parameters):
+                if not isinstance(b, Rational):
+                    return None
+                for other in parameters[i + 1:]:
+                    r = mod(simplify(sub(b, other)), Integer(1))
+                    if isinstance(r, Integer) and r == 0:
+                        return None
+            period = 1
+            for b in parameters:
+                if isinstance(b, Rational):
+                    period = lcm(period, b.q)
+            return period
+
+        beta = compute(self._bm)
+        alpha = compute(self._an)
+        p, q = len(self.ap), len(self.bq)
+        if p == q:
+            if alpha is None or beta is None:
+                return oo
+            return mul(Integer(2), mul(pi, Integer(lcm(alpha, beta))))
+        if p < q:
+            return oo if beta is None else mul(Integer(2), mul(pi, Integer(beta)))
+        return oo if alpha is None else mul(Integer(2), mul(pi, Integer(alpha)))
+
     # PORTED FROM SYMPY: sympy/core/function.py:Function._eval_nseries (meijerg has none of its own)
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         from sympy_extras.core.function import _generic_function_nseries
-        from sympy_extras.interop import nseries_node_through_sympy
         generic = _generic_function_nseries(self, x, n, logx)
         if generic is None:
-            return nseries_node_through_sympy(self, x, n, logx, cdir)
+            an, aother, bm, bother = self.an, self.aother, self.bm, self.bother
+            return _asymptotic_nseries('meijerg', an + aother + bm + bother, self.argument,
+                                       lambda w: MeijerG(an, aother, bm, bother, w), x, n, logx)
         return generic
 
     # PORTED FROM SYMPY: sympy/functions/special/hyper.py:meijerg._eval_as_leading_term
@@ -361,7 +504,7 @@ class MeijerG(Expr):
         an, aother, bm, bother = (_parameters(t) for t in lists if isinstance(t, Tuple))
         return meijerg(an, aother, bm, bother, z)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         first = Tuple(Tuple(*self._an), Tuple(*self._aother))
         second = Tuple(Tuple(*self._bm), Tuple(*self._bother))
         return 'meijerg(%s, %s, %s)' % (printer.doprint(first), printer.doprint(second), printer.doprint(self._z))

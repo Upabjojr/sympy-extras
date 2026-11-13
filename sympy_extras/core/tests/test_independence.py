@@ -4,6 +4,7 @@ functions, and running the usual operations leave ``sympy`` out of
 through :mod:`sympy_extras.core.bridge`)."""
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 
@@ -26,14 +27,11 @@ except SympifyError:
     pass
 else:
     raise AssertionError('should not parse without the bridge')
-try:
-    from sympy_extras.core import Symbol
-    assert str(Symbol('x').integrate(Symbol('x'))) == 'x**2/2'   # native (term by term)
-    (1/(Symbol('x') + 1)).integrate(Symbol('x'))
-except ForeignOperationUnavailable:
-    pass
-else:
-    raise AssertionError('integrate should need the bridge')
+from sympy_extras.core import Symbol
+assert str(Symbol('x').integrate(Symbol('x'))) == 'x**2/2'   # native (term by term)
+# native (indefinite_integral), no bridge: it raised ForeignOperationUnavailable before
+assert str((1/(Symbol('x') + 1)).integrate(Symbol('x'))) == 'log(x + 1)'
+assert ForeignOperationUnavailable is not None
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -87,14 +85,21 @@ assert str(zeilberger_sum(binomial(n, k)**2, (k, 0, n))) == 'binomial(2*n, n)'
 assert str(zeilberger_sum(1/k, (k, 1, n))) == 'harmonic(n)'
 assert str(zeilberger_sum(binomial(2*n, k), (k, 0, n))) == '4**n/2 + factorial(2*n)/(2*factorial(n)**2)'
 assert wz_prove(binomial(n, k), 2**n, n, k) is True
+# the cases of the isolated values of a parameter (SymPy's
+# with_sum_special_values, through karr_sympy, before)
+from sympy_extras.concrete.karr import karr_sum
+y = symbols('y')
+assert str(karr_sum(y**k, (k, 0, n))) == 'Piecewise((n + 1, Eq(y, 1)), ((y*y**n - 1)/(y - 1), True))'
+assert str(karr_sum(k*y**k, (k, 0, n))).startswith('Piecewise((n*(n + 1)/2, Eq(y, 1)),')
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
 
 def test_native_zeilberger_does_not_load_sympy() -> None:
     """:mod:`sympy_extras.concrete.zeilberger` on a summand without
-    parameters (the cases of the parameters are the only step through
-    SymPy) does not load SymPy."""
+    parameters does not load SymPy, nor do the cases of the isolated values
+    of the parameters of a sum (SymPy's ``with_sum_special_values``
+    before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ZEILBERGER], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -185,6 +190,16 @@ assert sign_on((x - 1)/(x**2 + 1), x, Reals) == frozenset([-1, 0, 1])
 assert sign_on(1/x, x, Interval(-1, 1, True, True)) is None
 assert decide_relational(x**2 > 1, Facts([x > 2])) is True
 assert decide_relational(1/(x - 3) < 0, Facts([x > 0, x < 2])) is True
+# continuity and zeros of functions which are not rational (SymPy's
+# continuous_domain and solveset before)
+from sympy_extras.functions import tan, cos, asin
+from sympy_extras.assumptions.analysis import _continuous_on, _finite_zeros, _has_discrete_zeros
+assert sign_on(sin(x), x, Interval(0, pi, True, True)) == frozenset([1])
+assert sorted(sign_on(exp(x) - 2, x, Reals)) == [-1, 0, 1]
+assert _continuous_on(log(x) + sqrt(x - 1), x, Interval(1, 2)) and not _continuous_on(tan(x), x, Interval(0, 2))
+assert _continuous_on(asin(x/2), x, Interval(-2, 2)) and not _continuous_on(log(x), x, Interval(0, 1))
+assert str(_finite_zeros(exp(x)*sin(x) + exp(x)*cos(x), x, Interval(0, 5, True, True))) == '[3*pi/4]'
+assert str(_finite_zeros(exp(x) - 2, x, Reals)) == '[log(2)]' and _has_discrete_zeros(sin(x), x, Reals)
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -192,8 +207,9 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 def test_native_analysis_does_not_load_sympy() -> None:
     """:mod:`sympy_extras.assumptions.intervals` and
     :mod:`sympy_extras.assumptions.analysis` on rational functions,
-    boxes and constants do not load SymPy (``continuous_domain`` and
-    ``solveset`` of the other expressions and the CAD go through it)."""
+    boxes and constants do not load SymPy, nor do the continuity and the
+    zeros of the other expressions (SymPy's ``continuous_domain`` and
+    ``solveset`` before)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ANALYSIS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -236,6 +252,11 @@ assert 'sympy' not in sys.modules
 x, a = symbols('x a')
 assert str(solve(x**2 + 1, x)) == '{-I, I}' and str(solve(x**2 - 2, x)) == '{-sqrt(2), sqrt(2)}'
 assert str(solve(a*x - 1, x, a > 0)) == '{1/a}'
+# a periodic inequality: the period was SymPy's periodicity
+from sympy_extras.functions import sin, Abs
+from sympy_extras.calculus.util import periodicity
+assert str(solve(sin(x) > 0, x, (x > 0) & (x < 10))) == 'Union(Interval.open(0, pi), Interval.open(2*pi, 3*pi))'
+assert str(periodicity(Abs(sin(x)), x)) == 'pi'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -255,9 +276,8 @@ print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 
 def test_native_solve_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.assumptions.solve` does not load SymPy,
-    nor do the rational equations over the complex numbers (``solveset``,
-    the CAD and the triangular decompositions go through SymPy at run
-    time)."""
+    nor do the rational equations over the complex numbers and the
+    periodic inequalities (their periods were SymPy's ``periodicity``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVE], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -266,8 +286,7 @@ def test_native_solve_does_not_load_sympy() -> None:
 def test_native_sat_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.assumptions.sat` does not load SymPy,
     nor do the formulas decided without a SAT search or a decomposition
-    (SymPy's SAT solver, the predicates' facts, the CAD and Hermite's
-    count go through SymPy at run time)."""
+    (see :func:`test_native_sat_search_does_not_load_sympy` for those)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_SAT], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -301,6 +320,20 @@ a, x = symbols('a x')
 assert limit(sin(x)/x, x, Integer(0)) == 1 and limit(exp(a*x), x, oo, assumptions=a < 0) == 0
 assert limit(x**a, x, oo, assumptions=a > 0) == oo
 assert str(series(sqrt(a**2 + x), x, 0, 2, assumptions=a > 0)) == 'x/(2*a) + a + O(x**2)'
+# limits of sequences (SymPy's limit_seq before)
+from sympy_extras.core import EulerGamma, Rational
+from sympy_extras.core.accumbounds import accum_bounds
+from sympy_extras.functions import binomial, factorial, harmonic, log
+n = symbols('n')
+assert limit_seq(a**n, n, assumptions=a > 1) == oo and limit_seq((-1)**n, n) == accum_bounds(-1, 1)
+assert limit_seq(harmonic(n) - log(n), n) == EulerGamma and limit_seq(binomial(2*n, n)/4**n, n) == 0
+assert limit_seq((-2)**n, n) == accum_bounds(-oo, oo)
+# the core's limit of a gamma function: its tractable form exp(loggamma)
+# was SymPy's rule only, and without SymPy exp(x)/gamma(x) came out oo
+from sympy_extras.core.limits import limit as core_limit
+from sympy_extras.functions import gamma
+assert core_limit(exp(x)/gamma(x), x, oo) == 0 and core_limit(2**x/gamma(x + 1), x, oo) == 0
+assert limit_seq(2**n/factorial(n), n) == 0
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -318,9 +351,8 @@ def test_native_structure_does_not_load_sympy() -> None:
 def test_native_limits_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.assumptions.limits` does not load
     SymPy, nor do the limits and series whose parameters have signs
-    decided by the predicates (SymPy's ``limit_seq``, the reliable
-    numerical values, and the SAT and CAD of the case distinctions go
-    through SymPy at run time)."""
+    decided by the predicates, the limits of sequences (SymPy's
+    ``limit_seq`` before) and the core's limits of gamma functions."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_LIMITS], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -370,6 +402,11 @@ assert minimal_nonnegative_solutions([[3, 5]], [22]) == ([[4, 2]], [])
 assert str(cooper((x > y) & (x < y + 2), x)) == 'True' and is_presburger(Eq(Mod(x, 3), 1), {x})
 assert str(with_sides(x - y > 0)) == 'x > y'
 assert radical_form(x) is None and in_radicals(finite_set(1, 2)) == finite_set(1, 2)
+# a function which is not rational: its continuity was SymPy's continuous_domain
+from sympy_extras.functions import sin, log
+roots = isolate_real_roots(exp(x)*sin(x) - 1, x, interval(0, 5))
+assert roots is not None and len(roots) == 2 and compare_points(roots[0], roots[1]) == -1
+assert str(isolate_real_roots(log(x) - 1, x, interval(0, oo, True, True))) == '[E]'
 print('SYMPY' if 'sympy' in sys.modules else 'FREE')
 '''
 
@@ -389,10 +426,9 @@ def test_native_isolation_integers_roots_do_not_load_sympy() -> None:
     :mod:`sympy_extras.solvers.integers` and :mod:`sympy_extras.polys.roots`
     does not load SymPy, nor do the polynomial and rational roots, the root
     objects, the Diophantine systems and the eliminations which need no
-    simplification (SymPy's ``real_roots`` with ``CRootOf``,
-    ``continuous_domain``, ``solveset`` of the transcendental functions,
-    ``simplify_logic`` and ``roots`` over ``EX`` go through it at run
-    time)."""
+    simplification, nor the roots of the functions which are not rational
+    (SymPy's ``real_roots`` with ``CRootOf``, ``simplify_logic`` and
+    ``roots`` over ``EX`` go through it at run time)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_ISOLATION], capture_output=True, text=True, timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
@@ -496,9 +532,8 @@ def test_native_cad_qe_does_not_load_sympy() -> None:
 
 def test_native_virtual_substitution_does_not_load_sympy() -> None:
     """Importing :mod:`sympy_extras.polys.virtual_substitution` does not
-    load SymPy, nor do the eliminations whose result is a truth value or
-    a single relation (SymPy's ``simplify_logic`` of a compound result
-    goes through it at run time)."""
+    load SymPy, nor do the eliminations (the compound results are
+    simplified by the native ``simplify_logic``)."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_VIRTUAL_SUBSTITUTION], capture_output=True, text=True,
                          timeout=600)
     assert out.returncode == 0, out.stderr
@@ -745,5 +780,2968 @@ def test_native_differential_does_not_load_sympy() -> None:
     solutions), the Rosenfeld-Groebner algorithm (factors, saturations,
     regular chains, membership) and Ritt's reduction."""
     out = subprocess.run([sys.executable, '-c', _NATIVE_DIFFERENTIAL], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PUISEUX_FUNCTIONFIELDS = r"""
+import sys
+from fractions import Fraction
+from sympy_extras.core import symbols, Integer, I, oo, sqrt
+from sympy_extras.polys.domains import QQ
+from sympy_extras.polys.puiseux import (puiseux_expansions, adjoin_root, field_from_polynomial, field_of,
+    minimal_polynomial_of, in_subfield)
+from sympy_extras.polys.functionfields import function_field, integral_basis
+from sympy_extras.polys.cad.indexedroot import IndexedRoot, bound_variable
+assert 'sympy' not in sys.modules
+x, y, a = symbols('x y a')
+assert str([b.as_expr() for b in puiseux_expansions(y**2 - x**3 - x**2, x, y, Integer(0), 4)]) == \
+    '[x**3/8 - x**2/2 - x, -x**3/8 + x**2/2 + x]'
+assert str([b.as_expr() for b in puiseux_expansions(y**2 - x**3 - 1, x, y, oo, 3)]) == '[x**(3/2) + 1/(2*x**(3/2))]'
+[b] = puiseux_expansions(y**2 - 2 - x, x, y, Integer(0), 2)
+assert (b.conjugates, str(b.field)) == (2, 'QQ<sqrt(2)>')
+assert sum(b.ramification * b.conjugates for b in puiseux_expansions(y**2 - x**2 - 1, x, y, I, 3)) == 2
+t = bound_variable('t')
+branches = puiseux_expansions(y**4 - 4*x*y**2 + 4, x, y, IndexedRoot(t**3 - t - 1, t, 0), 2)
+assert sum(b.ramification * b.conjugates for b in branches) == 4
+K = field_from_polynomial([Fraction(1), Fraction(0), Fraction(-2)])
+L, into, u = adjoin_root(K, [K.one, K.zero, K.neg(K.alpha)])
+assert minimal_polynomial_of(u, L) == [1, 0, 0, 0, -2] and in_subfield(u, L, into) is None
+assert field_of(sqrt(Integer(3)))[0].degree == 2
+E = function_field(y**4 + (x**2 + x)*y - x**2, x, y, QQ)
+assert str([w.as_expr() for w in E.integral_basis()]) == '[1, y, y**2, y**3/x]'
+assert str([w.as_expr() for w in E.normal_basis()]) == '[1, y, y**2, y**3/x]'
+assert E.pole_orders_at_infinity(E.normal_basis()) == [0, 1, 2, 1]
+assert str([w.as_expr() for w in E.local_basis_at_infinity()]) == '[1, y/x, y**2/x**2, y**3/x**2]'
+assert E.is_integral(E.element(y**3/x)) and not E.is_integral(E.element(y/x))
+assert str(integral_basis(y**2 - (x - a)**2*(x - 1), x, y)) == '[1, y/(-a + x)]'
+F = function_field(y**2 - 2*x**2 - x**3, x, y, K)
+assert str([w.as_expr() for w in F.integral_basis()]) == '[1, y/x]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_puiseux_and_function_fields_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.polys.puiseux` and
+    :mod:`sympy_extras.polys.functionfields` does not load SymPy, nor do
+    the expansions at rational, algebraic (radicals, ``I``, real roots) and
+    infinite points, the exact number fields, the integral bases over the
+    rationals, a number field and the parameters, the local and normal
+    bases at infinity and the integrality test."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PUISEUX_FUNCTIONFIELDS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_THUE = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.solvers.thue_equation import ThueEquation, elements_of_norm, thue, units_of_order
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+assert thue(x**3 - 2*y**3, 1, x, y) == [(-1, -1), (1, 0)]
+assert thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y) == [(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0),
+                                                          (2, -1), (4, -9), (5, 4)]
+assert thue(x**4 + y**4, 2, x, y) == [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+try:
+    thue(x**3 - y**3, 1, x, y)
+except ValueError:
+    pass
+else:
+    raise AssertionError('a reducible form should be refused')
+units, torsion = units_of_order([1, 0, 0, -2])
+assert units in ([(1, -1, 0)], [(1, 1, 1)]) and elements_of_norm([1, 0, 0, -2], 2, units) == [(0, 1, 0)]
+assert ThueEquation([1, 0, 0, -2], 1).small_solutions(2) == [(-1, -1), (1, 0)]
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_NUMERIC = r'''
+import random, sys
+from sympy_extras.core import symbols, sqrt, Integer, Rational, I, pi
+from sympy_extras.functions import Log, log, sin, cos, exp, atan
+from sympy_extras._numeric import reliable_form, reliable_value, reliable_complex
+x = symbols('x')
+z = -6 + (-2 + sqrt(2))**2 + 4*sqrt(2)
+assert str(reliable_form(Log(-2*sqrt(2) - 2*sqrt(z)))) == 'log(2*sqrt(2)) + I*pi'
+assert reliable_form(sqrt(sin(1)**2 + cos(1)**2 - 1) + 1) is None
+assert str(reliable_value(Log(-x - sqrt(z)), 15, {x: Integer(2)})) == '0.693147180559945 + 3.14159265358979*I'
+assert reliable_complex(sqrt(x), 15, {x: Integer(-4)}) == 2j
+assert str(reliable_value(exp(-1000000*x**2 - 50), 30, {x: Integer(2)})) == '2.27857274099872593085040751845e-1737200'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_thue_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.thue_equation` does not load
+    SymPy, nor do the resolution of Thue equations (the units of the
+    order, the elements of a given norm, Baker's bound, de Weger's
+    reduction and the enumeration), on totally complex forms too, and the
+    refusal of reducible forms."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_THUE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_numeric_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras._numeric` does not load SymPy, nor do
+    the hidden zeros (proved by the minimal polynomial), the cuts and the
+    values at points."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_NUMERIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_POLYS = r"""
+import importlib
+import pkgutil
+import sys
+import sympy_extras.polys as polys
+modules = []
+packages = [(list(polys.__path__), 'sympy_extras.polys.')]
+while packages:
+    path, prefix = packages.pop()
+    for info in pkgutil.iter_modules(path, prefix):
+        last = info.name.rsplit('.', 1)[-1]
+        if last in ('tests', 'interop') or last.endswith('_sympy'):
+            continue
+        module = importlib.import_module(info.name)
+        modules.append(info.name)
+        if info.ispkg:
+            packages.append((list(module.__path__), info.name + '.'))
+assert len(modules) > 70, modules
+assert 'sympy' not in sys.modules, [m for m in modules if 'sympy' in sys.modules]
+from fractions import Fraction
+from sympy_extras.core import Integer, Rational, symbols
+from sympy_extras.polys.domains import GF, QQ, ZZ
+from sympy_extras.polys.f4 import f4
+from sympy_extras.polys.groebnerwalk import extended_groebner, groebner_walk
+from sympy_extras.polys.hilbert import hilbert_numerator, hilbert_series
+from sympy_extras.polys.orderings import WeightOrder, elimination_order, grevlex, lex
+from sympy_extras.polys.polyerrors import NotInvertible
+from sympy_extras.polys.polytools import cancel, factor, invert
+from sympy_extras.polys.rings import PolyRing
+from sympy_extras.polys.subresultants import dup_psc, psc
+x, y, z, t = symbols('x y z t')
+R = PolyRing(QQ, ['x', 'y', 'z'], grevlex)
+X, Y, Z = R.gens
+G = f4([X*Z - Y**2, X**2 - Y*Z], R)
+for lift in ('normal_form', 'cofactors'):
+    assert [str(g) for g in groebner_walk(G, R, lex, check=True, lift=lift)] == \
+        ['x**2 - y*z', 'x*y**2 - y*z**2', 'x*z - y**2', 'y**4 - y*z**3']
+assert [str(g) for g in groebner_walk(G, R, WeightOrder((1, 2, 3), lex))] == ['y**3 - x**3', 'y*z - x**2', 'x*z - y**2']
+S = PolyRing(GF(7), ['x', 'y'], elimination_order(1, 2))
+H, C = extended_groebner([S.gens[0]**2 - S.gens[1], S.gens[0]*S.gens[1] - S.one], S)
+assert len(H) == len(C)
+assert hilbert_numerator([(2, 0), (0, 2)], t).rep == [1, 0, -2, 0, 1]
+assert str(hilbert_series([(2, 0, 0), (1, 1, 0), (0, 2, 0)], 3, t)) == '(2*t + 1)/(1 - t)'
+assert dup_psc([1, 0, 1], [1, 0, -1], ZZ) == [4, 0, 1]
+T2 = PolyRing(ZZ, ['x', 'y'])
+assert [str(c) for c in psc(T2.gens[0]**2*T2.gens[1] + T2.gens[0], T2.gens[0] + T2.gens[1])] == ['y**3 - y', '1']
+assert str(invert(x**2 - 1, 2*x - 1)) == '-4/3' and invert(Integer(3), Integer(7)) == Integer(5)
+for a, b, error in [(x*y + 1, y**2 + 1, ValueError), (Rational(1, 2), Integer(3), NotInvertible)]:
+    try:
+        invert(a, b)
+    except error:
+        pass
+    else:
+        raise AssertionError('%s expected' % error.__name__)
+assert str(cancel((x**2 - 1)/(x - 1))) == 'x + 1' and str(cancel((-x*y - y)/(x*y + x), x)) == '(-x*y - y)/(x*(y + 1))'
+assert str(factor(x**2*y - y**3)) == 'y*(x - y)*(x + y)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_polys_do_not_load_sympy() -> None:
+    """Every module of :mod:`sympy_extras.polys` but ``interop`` and the
+    SymPy faces (``*_sympy``) imports without SymPy, and the Gröbner walk,
+    the orders, the Hilbert series, the principal subresultant
+    coefficients and ``invert``, ``cancel`` and ``factor`` over the ported
+    domains run without it."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_POLYS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_KOVACIC = r'''
+import sys
+from sympy_extras.core import Eq, Function, Rational, symbols
+from sympy_extras.functions import exp
+from sympy_extras.solvers.kovacic import KovacicSolution, dsolve_kovacic, liouvillian_solution, normal_form
+from sympy_extras.solvers._special_values import (as_zero, determinant, explicit_solution, general_solution_cases,
+    ode_order, solution_jacobian, defined_equation)
+assert 'sympy' not in sys.modules
+x, a, b, C1, C2 = symbols('x a b C1 C2')
+y = Function('y')(x)
+assert normal_form(1/x, 1 - 1/(4*x**2), x) == -1
+assert liouvillian_solution(x, x) is None and liouvillian_solution(x**3, x) is None
+assert liouvillian_solution(1/x**3, x) is None
+z = liouvillian_solution(Rational(0), x)
+assert isinstance(z, KovacicSolution) and z.case == 1 and z.solution == 1
+assert dsolve_kovacic(y.diff(x, 2) - x*y, y) is None and dsolve_kovacic(y.diff(x, 2) - y**2, y) is None
+assert ode_order(y.diff(x, 2) + y.diff(x)**3, y) == 2
+assert str(solution_jacobian(C1*exp(a*x) + C2*exp(b*x), [C1, C2], x)) == '-a*exp(a*x)*exp(b*x) + b*exp(a*x)*exp(b*x)'
+assert determinant([[a, b, 0, 0], [0, a, b, 0], [0, 0, a, b], [b, 0, 0, a]]).expand() == a**4 - b**4
+assert explicit_solution([Eq(y, C1*exp(x))], y) == C1*exp(x) and as_zero(Eq(y, x)) == y - x
+assert general_solution_cases(C1*exp(x), y.diff(x) - y, y, lambda e: None) == C1*exp(x)
+assert not defined_equation((a**(b*x)).subs(a, 0), x)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_CONDITIONS = r'''
+import random, sys
+from sympy_extras.core import symbols, sqrt, Integer, Rational, I, pi, Eq
+from sympy_extras.core.logic import or_
+from sympy_extras.functions import Abs, arg, log, sin, cos, exp, piecewise, gamma
+from sympy_extras.sets import Reals
+from sympy_extras.assumptions.facts import element
+from sympy_extras.integrals.conditions import (ConditionalValue, decide, real_form, canonical, positive,
+    sample_values, numerically_equal, numerical_verdict, combine)
+a, b, x, k = symbols('a b x k')
+v = ConditionalValue(1/a, a > 0).add(ConditionalValue(a, a < 1))
+assert str(v) == 'ConditionalValue(a + 1/a, (a > 0) & (a < 1))'
+assert str(ConditionalValue(piecewise((a, a > 1), (-a, a < 0)), or_(a > 1, a < 0)).as_piecewise(Integer(0))) == \
+    'Piecewise((a, a > 1), (-a, a < 0), (0, True))'
+assert str(decide((a > 0) & (b > 1), a > 1)) == 'b > 1' and decide(a < 0, a > 1) is None
+assert str(real_form(Abs(arg(a)) < pi/2, element(a, Reals))) == 'a > 0' and str(canonical(k + 1 < 1)) == 'k < 0'
+assert positive(a*Abs(b), a > 0)
+point = sample_values([a, b], [a > 1, b < a], random.Random(1))
+assert point is not None and point[a] > 1 and point[b] < point[a]
+assert numerically_equal(sin(x)**2 + cos(x)**2, Integer(1)) and not numerically_equal(sqrt(x**2), x, x < 0)
+assert not numerically_equal(exp(-10**6*x**2), Integer(0), x > 1)     # the structure theorem's second opinion
+assert numerical_verdict(log(-a), log(a) + I*pi, None, a > 0) is True
+assert numerical_verdict(gamma(Integer(0)), gamma(Integer(0)) + 1) is None
+assert str(combine([ConditionalValue(a, a > 0), ConditionalValue(1, a < 2)])) == 'ConditionalValue(a + 1, (a > 0) & (a < 2))'
+from sympy_extras.assumptions.ask import ask
+from sympy_extras.functions import atan
+assert ask(Eq(4*atan(Rational(1, 5)) - atan(Rational(1, 239)), pi/4)) is True
+assert ask(Eq(log(x**2), 2*log(x)), x > 0) is True and ask(Eq(log(x**2), 2*log(x))) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_CHARPIT_DAE = r'''
+import sys
+from sympy_extras.core import Eq, Function, symbols
+from sympy_extras.functions import cos, sin
+from sympy_extras.matrices.dense import ExprMatrix
+from sympy_extras.solvers.charpit import check_complete_integral, complete_integral
+from sympy_extras.solvers.dae import (check_dae, core_nilpotent_decomposition, dae_index, dae_matrices, dsolve_dae,
+    matrix_exponential)
+assert 'sympy' not in sys.modules
+x, y, a, b = symbols('x y a b')
+u = Function('u')(x, y)
+p, q = u.diff(x), u.diff(y)
+for equation in (p*q - 1, Eq(u, p*x + q*y + p*q), p**2 + q**2 - 1, p**2 - q, p*x - q*y, p*q - x):
+    solution = complete_integral(equation, u)
+    assert solution is not None and check_complete_integral(equation, u, solution), (equation, solution)
+assert str(complete_integral(p*q - 1, u)) == 'Eq(u(x, y), a*x + b + y/a)'
+assert complete_integral(p*q - u*x*y, u) is None
+assert not check_complete_integral(p*q - 1, u, Eq(u, a*x + y + b))
+E = ExprMatrix.from_rows
+T, C, N, k = core_nilpotent_decomposition(E([[2, 0, 0], [0, 0, 1], [0, 0, 0]]))
+assert (C, N, k) == (E([[2]]), E([[0, 1], [0, 0]]), 2)
+assert dae_index(E([[1, 0], [0, 0]]), E([[0, 1], [1, 0]])) == 2
+A, B, f = E([[1, 0], [0, 0]]), E([[0, -1], [1, 0]]), ExprMatrix.column([0, sin(x)])
+result = dsolve_dae(A, B, f, x)
+assert result.solution == ExprMatrix.column([sin(x), cos(x)]) and result.index == 2
+oscillator = dsolve_dae(ExprMatrix.eye(2), B, None, x)
+assert len(oscillator.constants) == 2 and check_dae(ExprMatrix.eye(2), B, None, oscillator.solution, x)
+jordan = dsolve_dae(ExprMatrix.eye(2), E([[1, 1], [0, 1]]), None, x)
+assert check_dae(ExprMatrix.eye(2), E([[1, 1], [0, 1]]), None, jordan.solution, x)
+y1, y2 = Function('y1')(x), Function('y2')(x)
+assert dae_matrices([Eq(y1.diff(x), y2), Eq(y1, sin(x))], [y1, y2])[:3] == (A, B, f)
+assert str(matrix_exponential(E([[1, 1], [0, 1]]), x)) == 'ExprMatrix([[exp(x), x*exp(x)], [0, exp(x)]])'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_kovacic_and_ode_special_values_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.kovacic` and
+    :mod:`sympy_extras.solvers._special_values` does not load SymPy, nor
+    do the normal form, the decision that an equation has no Liouvillian
+    solution (the poles, the sets of the cases and their linear systems),
+    the order of an equation, the Jacobians of the solutions and an
+    equation without parameters (SymPy's ``integrate`` and its Riccati
+    solver go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_KOVACIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_charpit_and_dae_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.charpit` and
+    :mod:`sympy_extras.solvers.dae` does not load SymPy, nor do the
+    complete integrals whose equations are polynomial in the unknowns and
+    whose integrands are sums of powers (Charpit's standard forms, Clairaut,
+    the separable and first integral cases, the checks), the
+    core-nilpotent decomposition, the index, the solutions of
+    differential-algebraic systems whose regular part needs no integral
+    (Putzer's matrix exponential with complex and repeated eigenvalues,
+    the nilpotent part) and the extraction of the matrices."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CHARPIT_DAE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_conditions_do_not_load_sympy() -> None:
+    """The package ``sympy_extras.integrals`` exports nothing, so importing
+    :mod:`sympy_extras.integrals.conditions` does not load the integrators
+    written on SymPy; its decisions, sample points and numerical
+    comparisons (with the structure theorem as a second opinion), and the
+    numerical step of the native ``ask``, run without SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CONDITIONS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_LIE_PDE = r'''
+import sys
+from sympy_extras.core import Function, symbols
+from sympy_extras.functions import exp, sin
+from sympy_extras.solvers.lie import JetSpace, Symmetry, symmetries, check_symmetry, symmetry_janet_basis
+from sympy_extras.solvers.pde import pde_symmetries, similarity_reduction, check_pde_solution
+x, t, m = symbols('x t m')
+u = Function('u')(x, t)
+y = Function('y')(x)
+burgers = u.diff(t) + u*u.diff(x) - u.diff(x, 2)
+syms = symmetries(burgers, u)
+assert len(syms) == 5 and all(check_symmetry(burgers, u, s) for s in syms)
+assert str(symmetry_janet_basis(u.diff(t) + u*u.diff(x) + u.diff(x, 3), u).dimension) == '4'
+assert len(symmetries(u.diff(t) - (u**m*u.diff(x)).diff(x), u)) == 4
+assert len(pde_symmetries(u.diff(t) - u.diff(x, 2), u, degree=3)) == 6
+assert len(symmetries(y.diff(x) + 2*x*y - x*exp(-x**2), y, basis=[exp(-x**2)])) >= 1
+assert len(symmetries(u.diff(x, 2)**2 - u.diff(t), u, degree=1)) == 6
+r = similarity_reduction(burgers, u, Symmetry(JetSpace([u]), [0, 1], [0]))
+assert str(r.z) == 'x', r
+assert check_pde_solution(u.diff(t) - u.diff(x, 2), u, exp(-t)*sin(x))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_MELLIN = r'''
+import sys
+from sympy_extras.core import Integer, S, oo, sqrt, symbols
+from sympy_extras.assumptions.facts import element
+from sympy_extras.functions import Abs, besselj, besselk, erfc, exp, hyper, log, sin
+from sympy_extras.sets import Reals
+from sympy_extras.integrals.mellin import (KERNELS, GammaQuotient, decompose_integrand, mellin_kernel,
+    mellin_transform, monomial, poles_separated)
+x, s, a, b = symbols('x s a b')
+assert str(mellin_transform(exp(-2*x), x, s)) == 'MellinTransform(gamma(s)/2**s, (0, oo))'
+assert str(mellin_transform(sin(x)/x, x, s)) == \
+    'MellinTransform(2**s*sqrt(pi)*gamma(s/2)/(4*gamma(3/2 - s/2)), (0, 2))'
+assert str(mellin_transform(exp(-x)*log(x)**2, x, s).transform) == '(polygamma(0, s)**2 + polygamma(1, s))*gamma(s)'
+assert str(mellin_transform(hyper([a], [b], -x), x, s).transform) == \
+    'gamma(b)*gamma(s)*gamma(a - s)/(gamma(a)*gamma(b - s))'
+assert mellin_transform(besselj(Integer(0), 3*x)/(x**2 + 4), x, s) is None
+assert monomial(3*a*sqrt(x), x) == (3*a, S.Half)
+assert str(mellin_kernel(1/(x + 2)**a, x)) == 'Match((1 + x)**(-a), beta=1/2, gamma=1, constant=2**(-a))'
+p = decompose_integrand(x*besselk(Integer(0), x)**2, x)
+assert [m.kernel.name for m in p.matches] == ['besselk*besselk']
+assert [m.kernel.name for m in decompose_integrand(erfc(x), x, 'lower').matches] == ['erfc', 'theta(1 - x)']
+q = mellin_kernel(sin(a*x), x).quotient(element(a, Reals))
+assert q.bases[-1][0] == Abs(a)
+q = GammaQuotient(1, [(2, -1)], [(0, S.One)], [], 0, oo).compose(1, -2)
+assert str(q.as_expr(s)) == '2**(2*s)*gamma(1 - 2*s)/2' and q.strip == (-oo, S.Half)
+assert all(poles_separated(k.quotient) for k in KERNELS.values())
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_TRANSCENDENTAL = r'''
+import sys
+from sympy_extras.core import symbols, Eq, Rational, sqrt, cbrt, pi
+from sympy_extras.functions import exp, log, sin, cos, tan, sinh, cosh, Abs
+from sympy_extras.solvers.transcendental import solve_transcendental, polynomialize
+from sympy_extras.solvers.inequalities import solve_inequality
+assert 'sympy' not in sys.modules
+x, = symbols('x,')
+assert str(solve_transcendental(Eq(exp(2*x) - 3*exp(x) + 2, 0), x)) == '{0, log(2)}'
+assert str(solve_transcendental(exp(x) + exp(-x) > 3, x)) == \
+    'Union(Interval.open(-oo, log(3/2 - sqrt(5)/2)), Interval.open(log(sqrt(5)/2 + 3/2), oo))'
+assert str(solve_transcendental(Eq(sin(x) + cos(x), 1), x)) == \
+    'Union(ImageSet(Lambda(_k, 2*_k*pi), Integers), ImageSet(Lambda(_k, 2*_k*pi + pi/2), Integers))'
+assert str(solve_transcendental(Eq(sin(2*x), Rational(1, 2)), x)) == \
+    'Union(ImageSet(Lambda(_k, _k*pi + pi/12), Integers), ImageSet(Lambda(_k, _k*pi + 5*pi/12), Integers))'
+assert str(solve_transcendental(Eq(log(x)**2, 3*log(x) - 2), x)) == '{E, exp(2)}'
+assert str(solve_transcendental(Eq(sqrt(x + 1) + cbrt(x + 1), 2), x)) == '{0}'
+assert str(solve_transcendental(Eq(Abs(x - 1) + Abs(x + 1), 3), x)) == '{-3/2, 3/2}'
+assert str(solve_transcendental(Eq(sinh(x), 2), x)) == '{log(2 + sqrt(5))}'
+assert str(solve_transcendental(Eq(cosh(2*x), 3), x)) == '{-log(3 - 2*sqrt(2))/2, -log(2*sqrt(2) + 3)/2}'
+assert str(solve_transcendental(Eq(2**x, 8), x)) == '{3}' and str(solve_transcendental(Eq(exp(x), pi), x)) == '{log(pi)}'
+assert str(solve_transcendental(Abs(exp(x) - 3) < 1, x)) == 'Interval.open(log(2), log(4))'
+assert str(solve_transcendental(Eq(tan(x), 1), x)).startswith('Union(ImageSet(Lambda(_k, 2*_k*pi - 3*pi/4)')
+assert str(polynomialize(Eq(exp(x/2) + exp(x), 6), x)) == 'Reduction(Eq(_t**2 + _t - 6, 0), _t = exp(x/2))'
+assert str(solve_inequality(x**2 - 4 < 0, x)) == '(-2 < x) & (x < 2)'
+assert str(solve_inequality(x < x*(2/x - 1), x)) == '(x < 1) & Ne(x, 0)'
+# relationals which are not rational (SymPy's _solve_inequality before)
+assert str(solve_inequality(exp(x) > 2, x)) == 'log(2) < x'
+assert str(solve_inequality(1/Abs(x) > 1, x)) == '(x > -1) & (x < 1) & Ne(x, 0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_LINEAR_ODE = r'''
+import sys
+from sympy_extras.core import Function, Integer, Rational, Symbol
+from sympy_extras.core.power import sqrt
+from sympy_extras.functions import exp
+from sympy_extras.solvers.linear_ode import (LinearOperator, UPoly, gcrd, hyperexponential_search,
+    hyperexponential_solutions, lclm, log_derivative, polynomial_solutions, rational_solutions, reduce_order_linear)
+from sympy_extras.solvers.factorization import factor_operator, left_factor, right_factor
+from sympy_extras.solvers.irregular import Place, conjugate_sum, finite_exponential_parts, irregular_places
+from sympy_extras.solvers.special import bessel_solutions, hypergeometric_solutions, whittaker_m
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+y = Function('y')(x)
+zero, one = Integer(0), Integer(1)
+D = LinearOperator([zero, one], x)
+R = D - LinearOperator([1/x], x)
+assert gcrd((D*D + LinearOperator([one], x))*R, (D - LinearOperator([x], x))*R) == R
+assert lclm(D - LinearOperator([one], x), LinearOperator([-one, x], x)).order == 2
+L = LinearOperator.from_equation(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
+assert polynomial_solutions(L) == [x**2 + 2*x + 2]
+assert hyperexponential_solutions(L) == [x**2 + 2*x + 2, exp(x)]
+assert rational_solutions(LinearOperator.from_equation(x**2*y.diff(x, 2) + 4*x*y.diff(x) + 2*y, y)) == [x**-2, 1/x]
+L = LinearOperator.from_equation(x**4*y.diff(x, 2) + 2*x**3*y.diff(x) - y, y)
+assert finite_exponential_parts(L) == ([zero, 1/x, -1/x], True) and len(irregular_places(L)) == 1
+assert hyperexponential_search(LinearOperator([-one, zero, x**2], x)) == ([], False)
+assert reduce_order_linear(LinearOperator([Integer(2), Integer(-3), one], x), exp(x)) == LinearOperator([-one, one], x)
+P = Place(UPoly.of(x**2 - 2, x), x)
+assert conjugate_sum(P, P.alpha, 2) == 8*x/(x**2 - 2)**2
+assert log_derivative(sqrt(x)*exp(x), x) == (2*x + 1)/(2*x)
+F = factor_operator(LinearOperator([zero, -one, zero, one], x))
+assert len(F.factors) == 3 and F.is_complete
+assert left_factor(R*(D*D + LinearOperator([one], x)), 1) == R
+assert right_factor((D*D + LinearOperator([one], x))*R, 1) == R
+assert bessel_solutions(-x, x) is not None and hypergeometric_solutions(x, x) is None
+assert str(whittaker_m(zero, Rational(1, 2), x)) == 'x*exp(-x/2)*hyper((1,), (2,), x)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_lie_and_pde_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.lie` and
+    :mod:`sympy_extras.solvers.pde` does not load SymPy, nor do the
+    symmetries with parameters, a basis of functions and a quadratic
+    leading derivative, their checks, the Janet basis of the determining
+    system, the similarity reductions which need no ODE solution and the
+    check of a solution (SymPy's ``dsolve``, and ``solve`` for equations
+    which are not linear in the unknown, go through the faces at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LIE_PDE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_transcendental_and_inequalities_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.transcendental` and
+    :mod:`sympy_extras.solvers.inequalities` does not load SymPy, nor do
+    the equations and inequalities in exponentials, logarithms, sines and
+    cosines, roots and absolute values whose reduced polynomial formulas
+    are rational or linear, and the relationals solved for a variable,
+    rational in it or not (SymPy's ``solveset`` of the other polynomial
+    relations, the Lambert W candidates of its ``solve`` and the reliable
+    numerical values go through it at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRANSCENDENTAL], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_linear_ode_cluster_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.linear_ode`,
+    :mod:`~sympy_extras.solvers.factorization`,
+    :mod:`~sympy_extras.solvers.irregular` and
+    :mod:`~sympy_extras.solvers.special` does not load SymPy, nor do the
+    operator arithmetic, the polynomial, rational and hyperexponential
+    solutions, the exponential parts at irregular points, Beke's
+    factorisation of an operator whose factors are of order one and the
+    special function forms (SymPy's ``integrate``, ``dsolve`` and
+    ``solve``, which Beke's method asks for the Grassmann–Plücker
+    relations of several solutions, go through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LINEAR_ODE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_LINEAR_SYSTEMS = r'''
+import sys
+from sympy_extras.core import Integer, Symbol
+from sympy_extras.functions import exp
+from sympy_extras.matrices.dense import ExprMatrix
+from sympy_extras.polys.polytools import cancel
+from sympy_extras.solvers.linear_ode import LinearOperator
+from sympy_extras.solvers.linear_systems import (cyclic_reduction, cyclic_vector, dsolve_linear_system, dsolve_system,
+    hyperexponential_system_solutions, rational_system_solutions, system_to_scalar)
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+E = ExprMatrix.from_rows
+c, L = cyclic_vector(E([[1, 0], [0, 2]]), x)
+assert str((c, L)) == '(ExprMatrix([[2, -3]]), LinearOperator([2, -3, 1], x))', (c, L)
+L = LinearOperator([Integer(2), -2*x, x**2], x)
+assert system_to_scalar(E([[1/x, 1], [0, 1/x]]), x) == (L, E([[1, 0], [1/x, 1]]))
+R = cyclic_reduction(E([[0, 1], [2/x**2, 0]]), x)
+assert R.to_system(x**2) == ExprMatrix.column([x**2, 2*x])
+assert rational_system_solutions(E([[1/x, 1], [0, 1/x]]), x) == [ExprMatrix.column([x, 0]),
+                                                             ExprMatrix.column([x**2, x])]
+assert len(rational_system_solutions(E([[-1/x, 0], [1/x, -3/x]]), x)) == 2
+assert rational_system_solutions(E([[1/x**2, 0], [0, -1/x**2]]), x) == []
+assert hyperexponential_system_solutions(E([[1, 1/x], [0, 0]]), x) == [ExprMatrix.column([exp(x), 0])]
+S = dsolve_system(E([[0, 1], [2/x**2, 0]]), x)
+assert S.complete is True and S.fundamental == E([[1/x, x**2], [-1/x**2, 2*x]])
+S = dsolve_system(E([[1, 1], [4, 1]]), x)
+assert S.complete is True and S.fundamental == E([[exp(3*x), exp(-x)], [2*exp(3*x), -2*exp(-x)]]), S
+assert len(dsolve_linear_system(E([[0, 1], [-1, 0]]), x)) == 2
+A = E([[0, 1], [2/x**2, 0]])
+Yp = ExprMatrix.column([1/(x + 1), x**3])
+b = (Yp.diff(x) - A*Yp).applyfunc(cancel)
+S = dsolve_system(A, x, b)
+assert S.complete is True and S.particular is not None
+assert all(e.is_rational_function(x) for e in S.particular.entries)
+# a double pole with det N = 0 (A singular): the constant solution (1, -1)
+assert len(rational_system_solutions(E([[1/x**2, 1/x**2], [1/x**2, 1/x**2]]), x)) == 1
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_DARBOUX = r'''
+import sys
+from sympy_extras.core import Function, I, Integer, Symbol, sqrt
+from sympy_extras.solvers.darboux import (darboux_first_integral, darboux_integrating_factor, darboux_polynomials,
+    exponential_factors, prelle_singer, vector_field)
+assert 'sympy' not in sys.modules
+x, Y, a, b = Symbol('x'), Symbol('y'), Symbol('a'), Symbol('b')
+y = Function('y')(x)
+assert str(darboux_polynomials(Y*(x - 1), x*(1 - Y), x, Y)) == '[DarbouxPolynomial(y, x - 1), DarbouxPolynomial(x, 1 - y)]'
+assert str(darboux_polynomials(x + Y, x - Y, x, Y, degree=1, extension=I)) == \
+    '[DarbouxPolynomial(x - I*y, 1 - I), DarbouxPolynomial(x + I*y, 1 + I)]'
+assert str(darboux_polynomials(sqrt(2)*Y, x, x, Y, degree=1)) == '[DarbouxPolynomial(y, sqrt(2)), DarbouxPolynomial(x, 1)]'
+assert str(darboux_polynomials(b - a*Y**2, 1, x, Y)) == '[DarbouxPolynomial(y**2 - b/a, -2*a*y)]'
+assert str(exponential_factors(x*Y + 1, 1, x, Y, degree=1)) == '[ExponentialFactor(x, 1, 1), ExponentialFactor(x**2/2, 1, x)]'
+assert str(darboux_integrating_factor(x*Y + 1, 1, x, Y, degree=1)) == 'exp(-x**2/2)'
+assert str(darboux_first_integral(Y*(x - 1), x*(1 - Y), x, Y)) == '-x - y + log(x) + log(y)'
+assert str(darboux_first_integral(x*Y**2 - Y, x**2*Y - x, x, Y, degree=2)) == 'x/y'
+assert str(darboux_first_integral(x + Y, x - Y, x, Y, degree=1)) == '(x + I*y)/(x - I*y)**I'
+assert darboux_first_integral(Y**2 + x, 1, x, Y, degree=2) is None
+assert str(vector_field((x - y)*y.diff(x) - x - y, y)) == '(x + y, x - y, x, y)'
+assert str(prelle_singer(x*(1 - y)*y.diff(x) - y*(x - 1), y)) == 'Eq(-x - y(x) + log(x) + log(y(x)), C1)'
+assert str(prelle_singer(y.diff(x) - (x*y**2 - y)/(x**2*y - x), y)) == 'Eq(y(x), x/C1)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_FIRST_ORDER = r'''
+import sys
+from sympy_extras.core import Eq, Function, Integer, Rational, symbols
+from sympy_extras.solvers.first_order import (_derivative_polynomial, _explicit_rhs, abel_ode, chini_ode,
+    dsolve_first_order, lagrange_ode, riccati_ode)
+from sympy_extras.solvers.abel import (_defines_solution, _transformed, abel_coefficients, abel_invariants,
+    constant_invariant)
+assert 'sympy' not in sys.modules
+x, t, C1 = symbols('x t C1')
+y = Function('y')(x)
+F, _, u, p = _derivative_polynomial(Eq(y.diff(x), x*y**2), y)
+assert _explicit_rhs(F, p) == x*u**2
+assert abel_coefficients(y.diff(x) - x*y**3 - y**2 + 1, y) == ((x, Integer(1), Integer(0), Integer(-1)), x)
+assert str(abel_invariants((-1, -2*x, 0, 0), x).I1) == '11664*x**6*(8*x**3 - 15)**3/(8*x**3 - 9)**5'
+assert abel_invariants((1, 0, 0, x**Rational(-3, 2)), x).I1 == Rational(-27, 8)
+assert constant_invariant((-1, -2*x, 0, 0), x) is False
+airy = (Integer(-1), -2*t, Integer(0), Integer(0))
+assert str(_transformed(airy, t, x**2, x, Integer(1), x)) == \
+    '(-2*x**3, -4*x**4 - 6*x**2, (-8*x**4 - 6*x**2 - 1)/x, -4*x**2 - 2)'
+# a relation without x implies y' = 0 (sympy-extras#38); 1/y**2 + 2 x = C1 solves y' = y**3
+assert not _defines_solution(y - C1, (x, Integer(1), Integer(0), Integer(0)), x, y, C1)
+assert _defines_solution(1/y**2 + 2*x - C1, (Integer(1), Integer(0), Integer(0), Integer(0)), x, y, C1)
+assert all(found is None for found in (chini_ode(y.diff(x) - y**3 - x, y), abel_ode(y.diff(x) - y**2, y),
+                                       lagrange_ode(y.diff(x) - y**2, y), riccati_ode(y.diff(x) - y**3, y),
+                                       lagrange_ode(Eq(y, x*y.diff(x) + y.diff(x)**2), y),
+                                       chini_ode(y.diff(x) - y**2*x - y**3, y)))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_linear_systems_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.linear_systems` does not load
+    SymPy, nor do the cyclic vectors and their scalar equations, the
+    rational solutions (Barkatou's bounds), the hyperexponential ones, the
+    fundamental matrices which the scalar solvers find without quadratures
+    and a rational particular solution (SymPy's ``integrate``, its rational
+    integrator with ``RootSum`` and ``linodesolve`` go through
+    :mod:`~sympy_extras.solvers.linear_systems_sympy` at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LINEAR_SYSTEMS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_darboux_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.darboux` does not load SymPy,
+    nor do the Darboux polynomials over the rationals, number fields and
+    fields of parameters, the exponential factors, the integrating
+    factors, the first integrals from a vanishing combination of the
+    cofactors (rational or logarithmic, the search repeated over the
+    field of the conjugate lines), the parsing of an equation and an
+    implicit or explicit solution from such a first integral (SymPy's
+    ``integrate``, for the quadratures of an integrating factor, goes
+    through SymPy at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DARBOUX], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_first_order_and_abel_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.first_order` and
+    :mod:`sympy_extras.solvers.abel` does not load SymPy, nor do the
+    reading of an equation, the coefficients, the invariants and the
+    transformations of Abel equations, the decision that the invariant is
+    not constant, the numerical check of an implicit relation and the
+    equations outside the classes recognised (SymPy's ``integrate``,
+    ``dsolve`` and ``solve``, and the Prelle–Singer procedure of
+    :mod:`~sympy_extras.solvers.darboux`, go through the faces at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_FIRST_ORDER], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_mellin_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.mellin` does not load SymPy,
+    nor do the table of transforms, the matching of the integrands, the
+    scale conditions decided by the native ``ask`` and the operations on
+    the gamma quotients."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_MELLIN], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ODE = r'''
+import sys
+from sympy_extras.core import Eq, Function, Symbol, symbols
+from sympy_extras.functions import exp
+from sympy_extras.solvers.lie import JetSpace, Symmetry
+from sympy_extras.solvers.ode import canonical_coordinates, check_ode_solution, ode_symmetries
+from sympy_extras.solvers.second_order import (commuting_pair, integrating_factor_p, integrating_factor_xy,
+    is_linearizable, linearize, second_order_rhs)
+assert 'sympy' not in sys.modules
+x, yy, p, C1 = symbols('x y p C1')
+y = Function('y')(x)
+assert len(ode_symmetries(y.diff(x, 2), y)) == 8
+assert [X.generator() for X in ode_symmetries(y.diff(x, 2) + 2*y.diff(x)/x + y**5, y)] == ['x*d/dx - y/2*d/dy']
+jets = JetSpace([y])
+u = jets.u[0]
+assert canonical_coordinates(Symmetry(jets, [0], [0])) is None
+assert check_ode_solution(y.diff(x) - y, Eq(y, C1*exp(x)), y)
+assert not check_ode_solution(y.diff(x) - y, Eq(y, C1*exp(2*x)), y)
+assert check_ode_solution(y.diff(x, 2) - y, C1*exp(-x), y)
+assert str(second_order_rhs(x*y.diff(x, 2) + y.diff(x) - y**2, y)[0]) == '(-_p + _y**2)/x'
+assert is_linearizable(-3*yy*p - yy**3, x, yy, p) and not is_linearizable(yy**2, x, yy, p)
+assert linearize(yy**2, x, yy, p) is None
+assert integrating_factor_xy(p**3, x, yy, p) is None and integrating_factor_p(p**3*(yy**2 + x*p), x, yy, p) is None
+basis = [Symmetry(jets, [1], [1]), Symmetry(jets, [1], [-1]), Symmetry(jets, [x], [u])]
+assert commuting_pair(basis, x, u) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_SLATER_MARICHEV = r'''
+import sys
+from sympy_extras.core import Integer, S, symbols, sqrt
+from sympy_extras.functions import besselj, exp, exp_polar, log, meijerg, sin
+from sympy_extras.integrals.mellin import GammaQuotient
+from sympy_extras.integrals.slater import expand_meijerg, line_conditions, mellin_barnes, slater_expansion
+from sympy_extras.integrals.marichev import checked_tidy, mellin_integrate
+x, k = symbols('x k')
+a, b, z = symbols('a b z', positive=True)
+g = mellin_barnes(GammaQuotient(1, [(3, -1)], [(0, S.One), (1, -S.One)], [], 0, 1))
+assert str(g) == 'MeijerG(1, meijerg(((1,), ()), ((1,), ()), 1/3))'
+assert str(expand_meijerg(g)) == 'ConditionalValue(1/4)' and line_conditions(g, Integer(0), Integer(1)) is S.true
+assert str(slater_expansion(meijerg([1 - a], [], [0], [], z))) == 'gamma(a)/(z + 1)**a'
+assert str(mellin_integrate(exp(-a*x)*sin(b*x), x)) == 'ConditionalValue(b/(a**2 + b**2))'
+assert str(mellin_integrate(x**k/(x + 3), x)) == 'ConditionalValue(-3**k*pi/sin(pi*k), (k > -1) & (k < 0))'
+assert str(mellin_integrate(exp(-x**2)*log(x), x)) == 'ConditionalValue(sqrt(pi)*(-log(4) - EulerGamma)/4)'
+assert str(mellin_integrate(x**(b - 1)*(1 - x)**(a - 1), x, cutoff='lower')) == \
+    'ConditionalValue(gamma(a)*gamma(b)/gamma(a + b))'
+assert str(mellin_integrate(exp(-x)*besselj(Integer(0), x), x)) == 'ConditionalValue(sqrt(2)/2)'
+assert str(checked_tidy(sqrt(a**2) + log(a*exp_polar(Integer(0))))) == 'a + log(a)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_BRACKETS_DIRICHLET = r'''
+import sys
+from sympy_extras.core import Integer, Rational, I, oo, symbols
+from sympy_extras.core.symbol import Dummy
+from sympy_extras.functions import atan, exp, factorial, rf, sin
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin
+from sympy_extras.integrals.brackets import SeriesCoefficient, _factors, _order_at_infinity
+from sympy_extras.integrals.dirichlet import dirichlet_integral, trigonometric_sum
+x, a = symbols('x a')
+assert str(dirichlet_integral(sin(x)**3/x**2, x, 0, oo)) == 'ConditionalValue(3*log(3)/4)'
+assert str(dirichlet_integral(sin(x)*sin(3*x)*sin(5*x)*sin(7*x)/(105*x**4), x, -oo, oo)) == 'ConditionalValue(44*pi/315)'
+assert dirichlet_integral(sin(x)**2/x, x, 0, oo) is None
+assert str(dirichlet_integral(sin(a*x)/x, x, 0, oo, a < 0)) == 'ConditionalValue(-pi/2)'
+assert trigonometric_sum(exp(2*I*x), x)[1] == {(Integer(2), Cos): Integer(1), (Integer(2), Sin): I}
+j = Dummy('j', integer=True, nonnegative=True)
+c = SeriesCoefficient((Integer(-1)/4)**j/(rf(Rational(3, 2), j)*factorial(j)), j, 2, Integer(1))
+assert str(c.phi()) == 'sqrt(pi)/(2*2**(2*_j)*gamma(_j + 3/2))'
+assert str(_factors(3*x**2*exp(-x)*sin(2*x), x)) == '(3, 2, [(exp(-_y), 1, 1), (sin(_y), 2, 1)])'
+assert (_order_at_infinity(1/(1 + x)**2, x), _order_at_infinity(atan(x), x)) == (2, 0)
+# the power series and the strips (SymPy's fps and mellin_transform before)
+from sympy_extras.integrals.brackets import ramanujan_master_theorem, taylor_coefficient
+from sympy_extras.functions import cos, log, sqrt
+s = symbols('s')
+assert str(ramanujan_master_theorem(exp(-x), x, s)) == 'MellinTransform(gamma(s), (0, oo))'
+assert str(ramanujan_master_theorem(cos(sqrt(x)), x, s).strip) == '(0, 1/2)'
+assert str(ramanujan_master_theorem(log(1 + x), x, s).strip) == '(-1, 0)'
+c = taylor_coefficient(sin(x), x)
+assert c is not None and (c.period, c.offset) == (2, 1)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ode_and_second_order_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.solvers.ode` and
+    :mod:`sympy_extras.solvers.second_order` does not load SymPy, nor do
+    the symmetries of an equation, the check of an explicit solution (the
+    port of SymPy's ``checkodesol``), the right-hand side of a second
+    order equation, Lie's linearisation test, the integrating factors
+    refused before a quadrature and a commuting pair of symmetries found
+    in a centralizer (SymPy's ``dsolve``, ``solve`` and ``integrate`` go
+    through the faces at run time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ODE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_brackets_and_dirichlet_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.brackets` and
+    :mod:`sympy_extras.integrals.dirichlet` does not load SymPy, nor do the
+    Dirichlet integrals (the product formulas, the native ``ask``,
+    ``simplify`` and ``logcombine``) and the steps of the method of
+    brackets (the coefficient function, the factors, the decay at
+    infinity by the native series), nor the power series and the strips of
+    Ramanujan's master theorem (SymPy's ``fps`` and ``mellin_transform``
+    before)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_BRACKETS_DIRICHLET], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CONVERGENCE = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.functions import sin
+from sympy_extras.concrete.convergence import is_convergent, product_convergence, sum_convergence
+assert 'sympy' not in sys.modules
+n = symbols('n')
+assert str(sum_convergence(0, n)) == 'True' and str(sum_convergence(1, n)) == 'False'
+assert str(sum_convergence(1/n**2, n)) == 'True' and str(sum_convergence(1/n, n)) == 'False'
+assert str(sum_convergence(((-1)**n - 1)/n**3, n)) == 'True'
+assert str(sum_convergence((sin(n) + 3)/(n**2 + 1), n)) == 'True'
+assert str(sum_convergence(2**(-n), n)) == 'True'
+assert str(product_convergence(1, n)) == 'True' and str(product_convergence(1 + 1/n**2, n)) == 'True'
+assert is_convergent(1/(n**2 + 1), n) is True
+# the integral test and the port of SymPy's Sum.is_convergent (SymPy's
+# integrate and is_convergent before)
+from sympy_extras.core import Integer
+from sympy_extras.functions import log, factorial
+from sympy_extras.concrete.convergence import _is_convergent_native
+assert str(sum_convergence(1/(n*log(n)), n, lower=Integer(2))) == 'False'
+assert str(sum_convergence(1/(n*log(n)**2), n, lower=Integer(2))) == 'True'
+assert _is_convergent_native(2**n/factorial(n), n, Integer(1)) is True
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_HELPERS = r'''
+import sys
+import sympy_extras._typing, sympy_extras._timeout, sympy_extras._special_values
+assert 'sympy' not in sys.modules
+from sympy_extras._timeout import attempt, time_limit, remaining_time
+from sympy_extras._special_values import (special_points, with_special_values, condition_point, point_assumptions,
+    undefined_at, equality_points, defined_problem, point_condition)
+from sympy_extras.core import Eq, Function, Integer, Rational, symbols, sqrt
+from sympy_extras.functions import exp, log, sin, zeta, DiracDelta
+from sympy_extras.solvers._special_values import general_solution_cases
+a, b, k, y, x, z, C1, C2 = symbols('a b k y x z C1 C2')
+assert special_points((y**2 - 1)/log(y), [y]) == [{y: 0}, {y: 1}]
+assert special_points(1/(a**2 - b**2), [a, b]) == [{a: -b}, {a: b}]
+assert special_points(1/(a**2 - 2), [a]) == [{a: -sqrt(2)}, {a: sqrt(2)}]
+assert special_points((exp(k) - 1)/k + 1/(exp(a) - 1) + zeta(b), [a, b, k]) == [{a: 0}, {b: 1}, {k: 0}]
+assert str(with_special_values((y**2 - 1)/log(y), [y], None, lambda p, at: Integer(2))) == \
+    'Piecewise((2, Eq(y, 1)), ((y**2 - 1)/log(y), True))'
+assert str(with_special_values(exp(k)/k, [k], None, lambda p, at: Integer(1), sympy_style=True)) == \
+    'Piecewise((exp(k)/k, Ne(k, 0)), (1, True))'
+assert with_special_values(1/a, [a], a > 0, lambda p, at: Integer(1)) == 1/a
+assert condition_point(Eq(a, b) & Eq(b, 0)) == {a: 0, b: 0} and point_assumptions({a: Integer(0)}, a > 0) is None
+assert undefined_at(sin(a)/a, {a: Integer(0)}) and not defined_problem(DiracDelta(a*z).subs(a, 0), [z])
+assert equality_points(with_special_values(1/(a - 1), [a], None, lambda p, at: Integer(0)), [a]) == [{a: 1}]
+f = Function('f')(x)
+equation = f.diff(x, 2) - (a + b)*f.diff(x) + a*b*f
+assert str(general_solution_cases(C1*exp(a*x) + C2*exp(b*x), equation, f, lambda e: (C1 + C2*x)*exp(b*x))) == \
+    'Piecewise(((C1 + C2*x)*exp(b*x), Eq(a, b)), (C1*exp(a*x) + C2*exp(b*x), True))'
+def slow() -> int:
+    while True:
+        pass
+assert attempt(slow, 0.1, native=True) is None and remaining_time() is None
+with time_limit(10, native=True):
+    assert 0 < (remaining_time() or 0) <= 10
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_convergence_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.concrete.convergence` does not load
+    SymPy, nor do the comparison with a rational majorant, the term test
+    and the ratio and Raabe tests on series without parameters, and the
+    products reduced to them, nor the integral test and the port of SymPy's
+    ``Sum.is_convergent`` (SymPy's ``integrate`` and ``is_convergent``
+    before)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CONVERGENCE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_slater_and_marichev_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.slater` and
+    :mod:`sympy_extras.integrals.marichev` does not load SymPy, nor do the
+    Mellin–Barnes conversion, Slater's theorem with the native
+    ``hyperexpand``, the Marichev–Adamchik integrals of one and two kernels
+    and the simplification of their values."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SLATER_MARICHEV], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_helpers_do_not_load_sympy() -> None:
+    """Importing the top-level helpers :mod:`sympy_extras._typing`,
+    :mod:`sympy_extras._timeout` and :mod:`sympy_extras._special_values`
+    does not load SymPy, nor do the candidate points of the parameters
+    (zeros of denominators, logarithms and ``zeta``, linear, quadratic and
+    transcendental factors), the cases with their bookkeeping, the cases
+    of an ODE solution at a repeated characteristic root
+    (:mod:`sympy_extras.solvers._special_values`, which no longer goes
+    through SymPy for them) and native time limits."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HELPERS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EXPONENTIAL_RECOGNIZE = r'''
+import sys
+from sympy_extras.core import Float, Rational, symbols, oo, pi, sqrt
+from sympy_extras.functions import atan, exp, log
+from sympy_extras.integrals.exponential import (composite_gaussian, exponential_antiderivative, power_exponential,
+                                                rational_exponential, reciprocal_square_exponential,
+                                                nested_power_exponential, exponential_rational)
+from sympy_extras.integrals.recognize import quadrature, recognize_constant, recognize_integral
+assert 'sympy' not in sys.modules
+x, c = symbols('x c')
+v = symbols('v', positive=True)
+a = symbols('a', negative=True)
+assert str(exponential_antiderivative(x**(v - 1)*exp(a*x**2), x)) == '-uppergamma(v/2, -a*x**2)/(2*(-a)**(v/2))'
+assert str(exponential_antiderivative(x*exp(x**2 + 2*x), x)) == 'exp(-1)*exp((x + 1)**2)/2 - sqrt(pi)*exp(-1)*erfi(x + 1)/2'
+assert str(power_exponential(x**3*exp(x**2), x)) == 'x**2*exp(x**2)/2 - exp(x**2)/2'
+assert exponential_antiderivative(exp(x**3), x, [x > 0]) is not None
+assert str(rational_exponential(exp(c*x)/(x**2 - 1), x)) == 'exp(c)*Ei(c*(x - 1))/2 - exp(-c)*Ei(c*(x + 1))/2'
+assert str(composite_gaussian((1 - 1/x**2)*exp(-(x + 1/x)**2), x)) == 'sqrt(pi)*erf((x**2 + 1)/x)/2'
+assert str(reciprocal_square_exponential(exp(-x**2 - 1/x**2), x)) == 'sqrt(pi)*(exp(-2)*erf(x - 1/x) + exp(2)*erf(x + 1/x))/4'
+assert str(nested_power_exponential(exp(c*sqrt(x**2)), x)) == 'x*exp(c*sqrt(x**2))/(c*sqrt(x**2))'
+assert str(recognize_constant(Float('1.6449340668482264364724151666460251892', 38))) == 'pi**2/6'
+assert str(recognize_integral(1/(x**3 + 1), (x, 0, 1))) == 'log(2)/3 + sqrt(3)*pi/9'
+assert str(exponential_rational(1/(exp(x) + 1), x)) == 'x - log(exp(x) + 1)'
+assert str(exponential_rational(exp(x)/sqrt(exp(x) + 1), x)) == '2*sqrt(exp(x) + 1)'
+assert str(recognize_integral(atan(x)/x, (x, 0, 1))) == 'Catalan'
+assert quadrature(exp(-x**2), x, -oo, oo) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_ASYMPTOTIC = r'''
+import sys
+from sympy_extras.core import oo, symbols
+from sympy_extras.functions import cos, exp, log, sin, sqrt
+from sympy_extras.integrals.asymptotic import (asymptotic_integral, exponential_part, laplace_method,
+    oscillatory_part, stationary_phase, watson_lemma)
+x = symbols('x')
+t = symbols('t', positive=True)
+assert str(exponential_part(x**t*exp(-t*x)/(1 + x), x, t)) == '(1/(x + 1), -x + log(x))'
+assert str(oscillatory_part(cos(t*sin(x)), x, t)) == "(1, sin(x), 'cos')"
+assert str(asymptotic_integral(exp(-t*x)/(1 + x), x, 0, oo, t)) == '2/t**3 - 1/t**2 + 1/t + O(t**(-4), (t, oo))'
+assert str(asymptotic_integral(exp(-t*x)*sqrt(x), x, 0, oo, t)) == 'sqrt(pi)/(2*t**(3/2))'
+assert str(watson_lemma(sin(x), x, t, 2)) == '-1/t**4 + t**(-2) + O(t**(-6), (t, oo))'
+assert str(laplace_method(1, -x**4, x, -oo, oo, t, 1)) == 'gamma(1/4)/(2*t**(1/4)) + O(t**(-3/4), (t, oo))'
+assert str(laplace_method(1, -x - x**2, x, 0, 1, t, 2)) == '(t - 2)/t**2 + O(t**(-3), (t, oo))'
+assert str(laplace_method(1, -(x**2 - 1)**2, x, -oo, oo, t, 1)) == 'sqrt(pi)/sqrt(t) + O(t**(-3/2), (t, oo))'
+assert str(asymptotic_integral(exp(t*(log(x) - x)), x, 0, oo, t, order=2)) == \
+    'sqrt(2)*sqrt(pi)*(t + 1/12)*exp(-t)/t**(3/2) + O(exp(-t)/t**(5/2), (t, oo))'
+assert str(stationary_phase(1, x**2, x, -1, 1, t)) == 'sqrt(pi)*exp(I*pi/4)/sqrt(t) + O(t**(-3/2), (t, oo))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_RADICALS_TRIGONOMETRIC = r'''
+import sys
+from sympy_extras.core import symbols, sqrt
+from sympy_extras.functions import asin, cos, exp, sec, sin, sinh, tan
+from sympy_extras.integrals.radicals import quadratic_radical_antiderivative
+from sympy_extras.integrals.trigonometric import trigonometric_antiderivative
+assert 'sympy' not in sys.modules
+x = symbols('x')
+a, b = symbols('a b', positive=True)
+assert quadratic_radical_antiderivative(sqrt(1 - x**2), x) == x*sqrt(1 - x**2)/2 + asin(x)/2
+assert str(quadratic_radical_antiderivative(x**3*sqrt(x**2 + 1) + x, x)) == \
+    'x**2*(x**2 + 1)**(3/2)/5 + x**2/2 - 2*(x**2 + 1)**(3/2)/15'
+assert str(quadratic_radical_antiderivative(1/(x*sqrt(x**2 + 1)), x)) == '-log((2*sqrt(x**2 + 1) + 2)/x)'
+assert quadratic_radical_antiderivative(sqrt(x**3 + 1), x) is None
+assert str(trigonometric_antiderivative(sin(x)**3*cos(x)**2, x)) == 'cos(x)**5/5 - cos(x)**3/3'
+assert str(trigonometric_antiderivative(tan(x)**3, x)) == 'log(cos(x)) + tan(x)**2/2'
+assert str(trigonometric_antiderivative(sec(x)**3, x)) == '(log(tan(x) + sec(x)) + tan(x)*sec(x))/2'
+assert str(trigonometric_antiderivative(x*exp(x)*sin(x), x)) == '(2*x*(sin(x) - cos(x)) + 2*cos(x))*exp(x)/4'
+assert str(trigonometric_antiderivative(asin(x), x)) == 'x*asin(x) + sqrt(1 - x**2)'
+assert str(trigonometric_antiderivative(exp(-x)*sinh(x)**2, x)) == '(3*exp(x) + 6*exp(-x) - exp(-3*x))/12'
+assert str(trigonometric_antiderivative(sin(a*x)*cos(b*x), x)) == \
+    'Piecewise((-(cos(x*(a + b))/(a + b) + cos(x*(a - b))/(a - b))/2, Ne(a - b, 0)), (-cos(2*a*x)/(4*a), True))'
+assert trigonometric_antiderivative(x**2, x) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_HEURISCH_TABLES = r'''
+import sys
+from sympy_extras.core import Symbol, oo, pi, symbols
+from sympy_extras.functions import cos, erf, exp, log, sin, sqrt, tan
+from sympy_extras.integrals.heurisch import components, heurisch_antiderivative, heurisch_cases
+from sympy_extras.integrals.tables import lookup, table_integral
+x, y, n, a = symbols('x y n a')
+assert str(heurisch_antiderivative(y*x*cos(x**2), x)) == 'y*sin(x**2)/2'
+assert str(heurisch_antiderivative(exp(x)/x, x)) == 'Ei(x)'
+assert str(heurisch_antiderivative(exp(-x**2)*erf(x), x)) == 'sqrt(pi)*erf(x)**2/4'
+assert heurisch_antiderivative(1/(x**4 + 1), x) is not None             # arctangents over QQ(sqrt(2), I)
+assert heurisch_antiderivative(1/(sin(x) + cos(x)), x) is not None      # tangents of the half angle
+assert str(heurisch_antiderivative(y*tan(x), x)) == 'y*log(tan(x)**2 + 1)/2'
+assert str(heurisch_cases(cos(n*x), x)) == 'Piecewise((sin(n*x)/n, Ne(n, 0)), (x, True))'
+assert sorted(map(str, components(sin(x)*cos(x)**2, x))) == ['cos(x)', 'sin(x)', 'x']
+assert str(table_integral(log(1 - 2*a*cos(x) + a**2), x, 0, pi, a > 1)) == 'ConditionalValue(2*pi*log(a))'
+assert lookup(sin(a*x)**2/x**2, x, 0, oo)[0].reference == 'GR 3.821.9'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_exponential_and_recognize_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.exponential` and
+    :mod:`sympy_extras.integrals.recognize` does not load SymPy, nor do the
+    antiderivatives of powers times exponentials of powers, of shifted
+    quadratics, of rational functions times an exponential (the native
+    ``roots``), of composite and reciprocal-square Gaussians and of nested
+    powers (the native ``hyperexpand``, ``simplify`` and numerical checks),
+    the quadrature and the PSLQ recognition, nor the rational functions of
+    ``exp(c*x)`` (the native ``ratint``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EXPONENTIAL_RECOGNIZE], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_heurisch_and_tables_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.heurisch` and
+    :mod:`sympy_extras.integrals.tables` does not load SymPy, nor do the
+    heuristic Risch integrator (its linear systems over number fields and
+    over the fractions of the parameters, the tangents of the half angle,
+    the special functions of the tower, the cases of the parameters) and
+    the lookups of the table."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HEURISCH_TABLES], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_asymptotic_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.asymptotic` does not load
+    SymPy, nor do the shapes of the integrands, Watson's lemma (the
+    native series), Laplace's method at interior and endpoint maxima with
+    polynomial and logarithmic exponents (the native CAD for the
+    stationary points, the native limits at infinity) and the stationary
+    phase; the stationary points of transcendental phases and the complex
+    saddle points go through SymPy's ``solveset`` at run time."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ASYMPTOTIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_VALIDATED = r'''
+import sys
+import mpmath
+from sympy_extras.core import Integer, Rational, Symbol, oo, pi, sqrt
+from sympy_extras.functions import cos, exp, log, sin
+from sympy_extras.integrals.validated import enclosure, validated_integral
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+found = validated_integral(exp(-x**2), x, 0, 1)
+assert found is not None and str(found[0]).startswith('0.7468241328124270') and float(found[1]) < 1e-15
+found = validated_integral(cos(x)**2, x, 0, pi, 10)                       # irrational bounds
+assert found is not None and abs(float(found[0]) - 1.5707963267948966) < 1e-9
+assert validated_integral(x**Rational(-1, 2), x, 0, 1) is not None           # x = u**2
+assert validated_integral(log(x), x, 0, 1) is not None                       # the endpoint model
+assert validated_integral(1/(1 + x**2), x, 0, oo, 12) is not None            # the rational map
+assert validated_integral(x*exp(-x), x, 0, oo) is not None                   # the exponential map
+assert validated_integral(exp(-x**2), x, 0, oo) is not None                  # the stretched map
+assert validated_integral(sin(x)/x, x, 0, oo, 8) is not None                 # the oscillatory tail
+assert validated_integral(1/x, x, 0, 1) is None
+r = enclosure(log(1 + x), x, Integer(0), Integer(1), mpmath.mpf('1e-12'))
+assert r is not None and r.a <= 2*mpmath.log(2) - 1 <= r.b
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_RATINT = r'''
+import sys
+from sympy_extras.core import symbols, Lambda, I
+from sympy_extras.functions import log
+from sympy_extras.integrals.risch.rationaltools import ratint, ratint_ratpart, ratint_logpart, log_to_real
+from sympy_extras.polys.rootoftools import RootSum, root_sum
+from sympy_extras.solvers.linear_systems import rational_integral
+x, a, b, t = symbols('x a b t')
+p = symbols('p', positive=True)
+assert str(ratint(36/(x**5 - 2*x**4 - 2*x**3 + 4*x**2 + x - 2), x)) == '(12*x + 6)/(x**2 - 1) + 4*log(x - 2) - 4*log(x + 1)'
+assert str(ratint(1/(x**2 + x + 1), x)) == '2*sqrt(3)*atan(2*sqrt(3)*x/3 + sqrt(3)/3)/3'
+assert str(ratint(1/(x*(a + b*x)**3), x)) == '(3*a + 2*b*x)/(2*a**4 + 4*a**3*b*x + 2*a**2*b**2*x**2) + (log(x) - log(a/b + x))/a**3'
+assert str(ratint(1/(x**2 + a**2), x)) == '(-I*log(-I*a + x)/2 + I*log(I*a + x)/2)/a'
+assert str(ratint(1/(x**2 + p**2), x)) == 'atan(x/p)/p'
+F = ratint(1/(x**3 - x - 1), x, real=False)
+assert isinstance(F, RootSum)
+assert str(F.diff(x)) == '1/(x**3 - x - 1)', F.diff(x)
+assert ratint(1/(x**3 - x - 1), x).has(RootSum) is False
+assert str(ratint_ratpart(36, x**5 - 2*x**4 - 2*x**3 + 4*x**2 + x - 2, x)) == '((12*x + 6)/(x**2 - 1), 12/(x**2 - x - 2))'
+assert str(ratint_logpart(1, x**2 + x + 1, x, t)) == '[(3*t/2 + x + 1/2, 3*t**2 + 1)]'
+# the value of SymPy's RootSum(...).subs(x, 2).evalf(10)
+assert str(root_sum(t**3 - t - 1, Lambda(t, t*log(x + t)), t).subs(x, 2).evalf(10)) == '0.6508608717'
+assert str(rational_integral(1/(x**3 - x - 1) + 1/x**2, x)).endswith('- 1/x')
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_ELLIPTIC = r'''
+import sys
+from sympy_extras.core import Rational, S, Symbol, oo, pi, sqrt, symbols
+from sympy_extras.functions import sin
+from sympy_extras.integrals.elliptic import Reduction, elliptic_integral, legendre_reduction, radicand, real_roots
+x, theta = symbols('x theta')
+k = Symbol('k', positive=True)
+s, m = Symbol('s', positive=True), Symbol('m', positive=True)
+assert str(elliptic_integral(1/sqrt(x*(1 - x)*(1 - k**2*x)), x, 0, 1, k < 1)) == 'ConditionalValue(2*elliptic_k(k**2))'
+assert str(elliptic_integral(1/sqrt(x*(x - 1)*(2 - x)*(3 - x)), x, 1, 2)) == 'ConditionalValue(elliptic_k(3/4))'
+assert str(elliptic_integral(sqrt(1 - k**2*sin(theta)**2), theta, 0, pi/2, k < 1)) == 'ConditionalValue(elliptic_e(k**2))'
+assert str(elliptic_integral(1/sqrt((x**2 + 1)*(x + 2)*(3 - x)), x, -2, 3)) == \
+    'ConditionalValue(2**(3/4)*sqrt(5)*elliptic_k(sqrt(2)/4 + 1/2)/5)'
+assert elliptic_integral(x**2/sqrt((x**2 + 1)*(x + 2)*(3 - x)), x, -2, 3) is not None   # over QQ(2**(1/4), sqrt(5))
+assert str(elliptic_integral(1/sqrt((x**2 + 1)*(x**2 + 4)), x, -oo, oo)) == 'ConditionalValue(elliptic_k(3/4))'
+assert elliptic_integral(1/sqrt(x**3 + 1), x, 0, oo) is not None
+assert elliptic_integral(1/sqrt(x**4 + x - 1), x, 1, 2) is not None     # through the indexed roots
+assert str(real_roots((1 - x**2)*(1 - k**2*x**2), x, k < 1)) == '[-1/k, -1, 1, 1/k]'
+assert str(radicand(x/sqrt((1 - x**2)*(4 - x**2)), x)) == '(x, (1 - x**2)*(4 - x**2), -1/2)'
+assert str(legendre_reduction(Reduction(1/(1 + 2*s)**2, m, s, 0, 1), m < 1)) != 'None'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_validated_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.validated` does not load
+    SymPy, nor does the validated integration on finite and irrational
+    ranges, the power substitution, the endpoint model, the rational,
+    exponential and stretched maps of infinite ranges and the oscillatory
+    tail (the native interval evaluator, derivatives, ``together``,
+    ``cancel``, ``simplify``, ``powdenest``, limits and Sturm sequences)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_VALIDATED], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_CURVES = r'''
+import sys
+from sympy_extras.core import symbols, Dummy
+from sympy_extras.functions import sqrt, cbrt
+from sympy_extras.integrals.curves import (AlgebraicIntegrand, curve_antiderivative, curve_reduce,
+                                           integrate_on_curve, is_nonelementary_on_curve)
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+A = AlgebraicIntegrand(1/(sqrt(x + 1) + sqrt(x - 1)), x)
+assert str(A.curve.xreplace({A.y: y})) == '-4*x*y**2 + y**4 + 4'
+assert str(curve_antiderivative(1/(sqrt(x + 1) + sqrt(x - 1)), x)) == \
+    '-x*sqrt(x - 1)/3 + x*sqrt(x + 1)/3 + sqrt(x - 1)/3 + sqrt(x + 1)/3'
+assert str(curve_reduce(x/sqrt(1 - x**3), x)) == '(-2*sqrt(1 - x**3)/x, 2*sqrt(1 - x**3)/(x**5 - x**2))'
+assert is_nonelementary_on_curve(1/sqrt(x**3 + 1), x) is True
+assert is_nonelementary_on_curve(1/cbrt(x**3 + 1), x) is False
+result = integrate_on_curve(sqrt(x**2 + 1)/(x**2 - 2), x)    # residues in QQ(sqrt(6))
+assert result.nonelementary is False and result.residue_field.degree == 2
+result = integrate_on_curve(sqrt(x**2 + 1)/(x**4 + 1), x)    # a field of degree 8, no real generator
+assert result.nonelementary is False and result.residue_field.degree == 8
+result.elementary_part(Dummy('theta'))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_curves_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.curves` does not load SymPy,
+    nor does Trager's algorithm on a general curve: the primitive element
+    of the radicals, the Hermite reduction in a normal integral basis,
+    the residues in number fields by Puiseux expansions and the
+    logarithmic part."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CURVES], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_TRAGER = r'''
+import sys
+from sympy_extras.core import symbols, Rational
+from sympy_extras.functions import sqrt
+from sympy_extras.integrals.trager import (hermite_reduce_algebraic, is_nonelementary_algebraic,
+                                           trager_antiderivative, trager_reduce)
+assert 'sympy' not in sys.modules
+x, a, b, c = symbols('x a b c')
+assert str(trager_antiderivative(1/(x*sqrt(x**3 + 1)), x)) == '-log((x**3/2 + sqrt(x**3 + 1) + 1)/x**3)/3'
+assert str(trager_reduce((2*x**2 + 1)/((x**2 + 1)*sqrt(x**4 + x**2 + 1)), x)) == \
+    '(-I*log((-I*x + sqrt(x**4 + x**2 + 1))/(x**2 + 1))/2, 3/(2*sqrt(x**4 + x**2 + 1)))'
+assert str(hermite_reduce_algebraic(1/(x**2*sqrt(x**3 + 1)), x)) == '(-sqrt(x**3 + 1)/x, x/(2*sqrt(x**3 + 1)))'
+assert is_nonelementary_algebraic(x/sqrt(x**3 + 1), x) is True
+assert is_nonelementary_algebraic(sqrt(x**7/(1 - 5*x**2)), x) is True     # Chebyshev
+assert trager_antiderivative(1/sqrt(x**2 + a), x) is not None                # over QQ(a)
+assert trager_antiderivative(sqrt(a + b*x**2 + c*x**4)/(a - c*x**4), x) is not None   # reparametrized
+assert trager_antiderivative(1/(x*(x**4 + 1)**Rational(1, 4)), x) is not None          # index four
+assert trager_antiderivative(x**2*(x**3 + a)**Rational(1, 3), x) is not None           # the Risch DE
+assert trager_antiderivative(sqrt(x) + sqrt(x + 1), x) is not None                     # the general curve
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_trager_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.trager` does not load SymPy,
+    nor does Trager's algorithm on the square roots (the Hermite reduction,
+    the residues in number fields and fields of the parameters, the
+    torsion search, the reparametrization of algebraic residues), on the
+    roots of index ``n`` (the Risch differential equation, the orbits of
+    places) or through the general curve."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRAGER], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PERIODIC = r'''
+import sys
+from sympy_extras.core import Symbol, symbols, pi
+from sympy_extras.functions import exp, cos, sin, cosh, sinh, tan
+from sympy_extras.integrals.periodic import laurent_coefficient, mean_value_integral, to_laurent
+assert 'sympy' not in sys.modules
+x, z = symbols('x z')
+a = Symbol('a', positive=True)
+assert str(to_laurent(cos(2*x) + sin(x), x, z)) == 'z**2/2 - I*(z - 1/z)/2 + 1/(2*z**2)'
+assert to_laurent(x*cos(x), x, z) is None and to_laurent(tan(x), x, z) is not None
+assert str(mean_value_integral(exp(cos(x))*cos(sin(x)), x, 0, 2*pi)) == 'ConditionalValue(2*pi)'
+assert str(mean_value_integral(exp(a*cos(x))*cos(x), x, 0, 2*pi)) == 'ConditionalValue(2*pi*besseli(1, a))'
+assert str(mean_value_integral(cos(cos(x)), x, 0, 2*pi)) == 'ConditionalValue(2*pi*besselj(0, 1))'
+assert str(mean_value_integral(cos(x)**4, x, 0, 4*pi)) == 'ConditionalValue(3*pi/2)'
+assert mean_value_integral(cosh(cos(x))*sinh(sin(x)), x, -pi, pi) is not None
+assert mean_value_integral(1/(2 + cos(x)), x, 0, 2*pi) is None
+assert str(laurent_coefficient(exp(z)*exp(2/z), z, 1)) == 'sqrt(2)*besseli(1, 2*sqrt(2))/2'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_periodic_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.periodic` does not load
+    SymPy, nor do the mean value integrals over whole periods: the Laurent
+    form in ``exp(I*x)``, the Taylor series of ``exp``, ``sin``, ``cos``,
+    ``sinh`` and ``cosh`` written down, the native summation of the
+    products of two series and ``simplify``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PERIODIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_elliptic_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.elliptic` does not load SymPy,
+    nor do the reductions to Legendre's integrals on the cells of real
+    roots, the cosine map of a complex pair (partial fractions over the
+    number field of the constants), the tangent map of two pairs, the
+    numeric radicands through indexed roots, and the trigonometric forms;
+    SymPy's ``integrate`` is reached through the face only by the
+    elementary odd part of the two-pairs case."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ELLIPTIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_ratint_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.risch.rationaltools`,
+    :mod:`sympy_extras.polys.rootoftools` and running the rational
+    integrator over ``QQ`` and with parameters (the domain ``EX``), its
+    ``RootSum`` (the derivative by the trace, the numerical value) and the
+    rational antiderivatives of :mod:`sympy_extras.solvers.linear_systems`
+    does not load SymPy."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RATINT], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_LAPLACE = r'''
+import sys
+from sympy_extras.core import I, Symbol, oo, pi
+from sympy_extras.functions import Arg, cos, exp, heaviside, sin, sqrt
+from sympy_extras.integrals.laplace import has_integral, laplace_integral, laplace_of_convolution, laplace_rules, real_arguments
+assert 'sympy' not in sys.modules
+t, k = Symbol('t'), Symbol('k')
+s, a = Symbol('s', positive=True), Symbol('a', positive=True)
+assert str(real_arguments(Arg(-s - I*a)/2 - Arg(-s + I*a)/2 + pi)) == 'atan(a/s)'
+assert str(real_arguments(Arg(s + I*a))) == 'atan(a/s)' and real_arguments(Arg(k + I*a)).has(Arg)
+assert real_arguments(sqrt(s)) == sqrt(s) and not has_integral(t**2)
+assert laplace_of_convolution(sin(t), t, s) is None
+assert laplace_integral(sin(t)/t, t, 0, 1) is None and laplace_integral(sin(t)/t, t, 0, oo) is None
+assert laplace_integral(exp(s*t)*sin(t)/t, t, 0, oo) is None
+assert laplace_rules(exp(t**2), t, s) is None and laplace_rules(heaviside(t + 1)*cos(t), t, s) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_RISCH = r'''
+import sys
+from sympy_extras.core import I, symbols
+from sympy_extras.functions import atan, cos, exp, log, sin, tan
+from sympy_extras.integrals.risch.risch import (DifferentialExtension, NonElementaryIntegral, risch_integrate,
+                                                risch_integrate_separate)
+from sympy_extras.integrals.risch.rde import rischDE
+from sympy_extras.integrals.risch.prde import is_deriv_k, limited_integrate, param_rischDE
+from sympy_extras.integrals.risch.cde import coupled_DE_system
+from sympy_extras.integrals.risch.tower import TowerPoly
+x, a = symbols('x a')
+assert str(risch_integrate(exp(x)*exp(exp(x)), x)) == 'exp(exp(x))'
+assert isinstance(risch_integrate(exp(-x**2), x), NonElementaryIntegral)
+assert str(risch_integrate(tan(x)**2, x)) == '-x + tan(x)'
+assert str(risch_integrate(exp(x)/((exp(x) + 1)**2 + 1), x)) == 'atan(exp(x) + 1)'
+assert str(risch_integrate(1/(x*(log(x)**2 + 1)), x)) == 'atan(log(x))'
+assert str(risch_integrate(sin(x), x)) == '-cos(x)'
+assert str(risch_integrate(x**x*log(x) + x**x, x)) == 'x**x'
+assert str(risch_integrate(exp(x)*log(exp(x) + 1), x)) == 'exp(x)*log(exp(x) + 1) - exp(x) + log(exp(x) + 1)'
+assert risch_integrate(exp(a*x), x).has(x)                       # the Piecewise of a parameter
+assert risch_integrate(sin(x)*exp(I*x), x).has(x)                # rewrite_complex: QQ(I)
+g, i = risch_integrate_separate((2*log(x)**2 - log(x) - x**2)/(log(x)**3 - x**2*log(x)), x)
+assert isinstance(i, NonElementaryIntegral)
+DE = DifferentialExtension.manual([TowerPoly.one(x)])
+P = lambda e: TowerPoly.from_expr(e, x)
+assert rischDE(P(1), P(x), P(1), P(1), DE) == (P(x**2/2), P(x))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_laplace_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.laplace` does not load SymPy,
+    nor do the real forms of the arguments (the native ask and
+    ``simplify``) and the rules which do not apply; the transforms of the
+    pieces reach SymPy's side (``definite_integral``) and ``periodicity``
+    through the face only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LAPLACE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_radicals_and_trigonometric_do_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.radicals` and
+    :mod:`sympy_extras.integrals.trigonometric` does not load SymPy, nor
+    do the radical table (Gradshteyn and Ryzhik 2.26 with its numerical
+    check), the powers and products of trigonometric and hyperbolic
+    functions, the polynomials and exponentials times sines and cosines,
+    the frequencies which may vanish and the inverse functions by parts
+    with an algebraic remainder (the rational functions of the Euler and
+    Weierstrass substitutions go through SymPy's ``ratint`` at run
+    time)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RADICALS_TRIGONOMETRIC], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_TRANSFORMATIONS = r'''
+import sys
+from sympy_extras.core import S, Symbol, oo
+from sympy_extras.functions import atan, cos, exp
+from sympy_extras.integrals.transformations import frullani, glasser, transformation_integral
+assert 'sympy' not in sys.modules
+x, k = Symbol('x'), Symbol('k')
+a, b = Symbol('a', positive=True), Symbol('b', positive=True)
+assert str(frullani((exp(-a*x) - exp(-b*x))/x, x)) == 'ConditionalValue(log(b/a))'
+assert str(frullani((atan(a*x) - atan(b*x))/x, x)) == 'ConditionalValue(-pi*log(b/a)/2)'
+assert frullani((cos(a*x) - cos(b*x))/x, x) is None and frullani(exp(-a*x)/x, x) is None
+assert frullani((exp(-a*x) - exp(-b*x**2))/x, x) is None
+assert glasser(exp(-(x + 1/x)**2), x, -oo, oo) is None
+assert glasser(exp(-(x - 1/x)**2)*(x - 1/x), x, 0, oo) is None
+assert glasser(x*exp(x)*exp(k*x)/(exp(x) + 3), x, -oo, oo) is None
+assert transformation_integral(exp(-x), x, S.Zero, S.One) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_RESIDUES = r'''
+import sys
+from sympy_extras.core import Symbol, symbols, oo, pi, sqrt, Rational
+from sympy_extras.functions import cos, sin, exp, log
+from sympy_extras.integrals.residues import (fourier_integral, keyhole_integral, period_integral, poles,
+                                             rational_function, real_line_integral, residue_integral)
+assert 'sympy' not in sys.modules
+x, k, c = symbols('x k c')
+a, b = Symbol('a', positive=True), Symbol('b', positive=True)
+assert str(residue_integral(1/(x**4 + 1), x, -oo, oo)) == 'ConditionalValue(sqrt(2)*pi/2)'
+assert str(residue_integral(cos(b*x)/(x**2 + a**2), x, -oo, oo)) == 'ConditionalValue(pi*exp(-a*b)/a)'
+assert str(residue_integral(1/(2 + cos(x)), x, 0, 2*pi)) == 'ConditionalValue(2*sqrt(3)*pi/3)'
+assert str(residue_integral(sqrt(x)/(x**2 + 1), x, 0, oo)) == 'ConditionalValue(sqrt(2)*pi/2)'
+assert str(real_line_integral(1/(x**2 + 1)**2, x)) == 'ConditionalValue(pi/2)'
+assert str(fourier_integral(x*sin(k*x)/(x**2 + 4), x)) == 'ConditionalValue(pi*exp(-2*k), k > 0)'
+assert str(keyhole_integral(x**c/(x + 1), x)) == 'ConditionalValue(-pi/sin(pi*c), (c > -1) & (c < 0))'
+assert str(residue_integral(log(x)**2/(x**2 + 1), x, 0, oo)) == 'ConditionalValue(pi**3/8)'
+assert str(residue_integral(x**Rational(1, 3)/(1 + x)**2, x, 0, oo)) != 'None'
+assert str(period_integral(1/(3 + sin(x))**2, x, 0, 2*pi)) != 'None'
+assert str(period_integral(1/(1 - 2*a*cos(x) + a**2), x, 0, 2*pi, a < 1)) == 'ConditionalValue(2*pi/(1 - a**2))'
+assert period_integral(1/(a + b*cos(x)), x, 0, 2*pi, a > b) is not None   # placed at a sample, verified natively
+assert sorted(str(p.point) for p in poles(rational_function(1/((x**2 + 1)**2*(x - 3)), x).denominator)) == \
+    ['-I', '3', 'I']
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_transformations_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.transformations` does not
+    load SymPy, nor does Frullani's theorem (the native limits under
+    assumptions) or the recognition of Glasser's maps (the native partial
+    fractions); only the transformed integral reaches SymPy's side
+    (``conditional_integral``) through the face."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRANSFORMATIONS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_residues_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.residues` does not load
+    SymPy, nor do the integrals over the real line, the Fourier integrals
+    by Jordan's lemma, the keyhole contour with powers and logarithms
+    (the branch of the logarithm as a symbol in the derivatives at a
+    multiple pole), the rational functions of sines and cosines over a
+    period (the poles over ``ZZ_I``), and a pole placed at a sample of the
+    parameters with its value verified by the native quadratures."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RESIDUES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+
+_NATIVE_SUMMABILITY = r'''
+import sys
+from sympy_extras.core import Symbol, oo
+from sympy_extras.functions import sin
+from sympy_extras.integrals.summability import METHODS, oscillatory_tail, summable_integral
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+assert str(summable_integral(sin(x), x, 2, 2, 'abel')) == 'ConditionalValue(0)' and 'cesaro' in METHODS
+for call in (lambda: summable_integral(sin(x), x, 0, oo, 'borel'), lambda: oscillatory_tail(sin(x), x, 0, 'abel ')):
+    try:
+        call()
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('not a method')
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_CONTOURS = r'''
+import sys
+from sympy_extras.core import Symbol, symbols, oo, pi, sqrt
+from sympy_extras.functions import cos, sin, exp, sinh, cosh
+from sympy_extras.integrals.contours import contour_integral, indented_integral, rectangular_integral, sector_integral
+assert 'sympy' not in sys.modules
+x = symbols('x')
+a, b, n = symbols('a b n', positive=True)
+assert str(contour_integral(x/sinh(x), x, -oo, oo)) == 'ConditionalValue(pi**2/2)'
+assert str(contour_integral(exp(a*x)/(1 + exp(x)), x, -oo, oo, a < 1)) == 'ConditionalValue(pi/sin(pi*a), a < 1)'
+assert str(contour_integral(x**a/(1 + x**n), x, 0, oo, a < n - 1)) == \
+    'ConditionalValue(pi/(n*sin(pi*(a + 1)/n)), a < n - 1)'
+assert str(contour_integral(sin(a*x)/(x*(x**2 + b**2)), x, 0, oo)) == \
+    'ConditionalValue(pi*(exp(a*b) - 1)*exp(-a*b)/(2*b**2))'
+assert str(rectangular_integral(x**2/cosh(x), x)) == 'ConditionalValue(pi**3/4)'
+assert str(rectangular_integral(1/cosh(x)**2, x)) == 'ConditionalValue(2)'     # a double pole: the core's residue
+assert str(sector_integral(x**2/(3 + 2*x**6), x)) == 'ConditionalValue(sqrt(6)*pi/36)'
+assert str(indented_integral(sin(x)/(x*(x**2 + 1)), x, 0, oo)) == 'ConditionalValue(-pi*exp(-1)/2 + pi/2)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_TELESCOPING = r'''
+import sys
+from sympy_extras.core import symbols, oo
+from sympy_extras.functions import exp, cos, sin
+from sympy_extras.settings import configure
+from sympy_extras.integrals.telescoping import (almkvist_zeilberger, holonomic_ode, holonomic_integral,
+                                                is_hyperexponential, logarithmic_derivative)
+assert 'sympy' not in sys.modules
+x = symbols('x')
+t = symbols('t', positive=True)
+T = almkvist_zeilberger(exp(-x**2 - t**2/x**2), x, t)
+assert str(T) == 'DifferentialTelescoper([-4, 0, 1], 2/x)' and T.check()
+T = almkvist_zeilberger(exp(-x**2)*cos(2*t*x), x, t)
+assert T is not None and T.coefficients == [2*t, 1] and T.check()
+assert str(almkvist_zeilberger(1/(x**2 + t**2), x, t)) == 'DifferentialTelescoper([1, t], -x)'
+assert str(logarithmic_derivative(x**t*exp(-x**2), x)) == '(t - 2*x**2)/x'
+assert is_hyperexponential(exp(-x*t)*x**3/(x**2 + t**2), x, t) and not is_hyperexponential(exp(-x*t)*sin(x), x, t)
+assert str(holonomic_ode(exp(-x**2)*exp(2*x*t), x, -oo, oo, t)) == 'Eq(-2*t*I(t) + Derivative(I(t), t), 0)'
+with configure(numerical_checks=False):
+    assert str(holonomic_integral(x*exp(-t*x**2), x, 0, oo, t)) == 'ConditionalValue(1/(2*t))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_summability_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.summability` does not load
+    SymPy, nor do its checks of the method and the range; the regularised
+    integrals reach SymPy's side (``conditional_integral``) through the
+    face only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SUMMABILITY], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_telescoping_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.telescoping` does not load
+    SymPy, nor do the Almkvist–Zeilberger telescopers (over ``QQ(t)`` and,
+    for trigonometric integrands written as exponentials, ``QQ_I(t)``),
+    their check, the equation of the integral with its boundary limits and
+    an integral whose equation has order zero (the initial values, SymPy's
+    ``dsolve`` and the numerical check go through
+    :mod:`~sympy_extras.integrals.telescoping_sympy`)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TELESCOPING], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PARAMETRIC = r'''
+import sys
+from sympy_extras.core import S, Symbol, oo
+from sympy_extras.functions import exp, log, sin
+from sympy_extras.integrals.parametric import candidate_parameters, parametric_integral
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+p, t = Symbol('p', positive=True), Symbol('t', positive=True)
+assert candidate_parameters(exp(-p*x)*sin(x)/x, x) == [p] and candidate_parameters(t*exp(-x), x) == []
+assert candidate_parameters(log(1 + t**2*x**2)/(1 + x**2), x) == [t]
+assert parametric_integral(exp(-x), x, S.Zero, oo, p) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_REDUCTION = r'''
+import sys
+from sympy_extras.core import symbols, oo
+from sympy_extras.functions import exp, cos
+from sympy_extras.settings import configure
+from sympy_extras.integrals.reduction import (HermiteReducer, hermite_reduce, reduction_integral, reduction_ode,
+                                              reduction_telescoper)
+assert 'sympy' not in sys.modules
+x = symbols('x')
+t = symbols('t', positive=True)
+assert str(hermite_reduce(1/x**2, -2*x, x)) == '(-1/x, -2)'
+assert str(hermite_reduce(1/(x**2 + 1)**2, (2*x + 2)/(x**2 + 1), x)) == '(1/(2*x**2 + 2), 0)'
+reducer = HermiteReducer(2/x + 1/(x - t)**2, x, t)
+assert str((reducer.shell, reducer.A, reducer.B)) == '(x**2, 1, t**2 - 2*t*x + x**2)'
+assert str(reducer.reduce(1/x)) == '(t**2/2 - t*x + x**2/2, t - 1/2)'
+found = reduction_telescoper(exp(-t*x**2) + exp(-t**2*x**2), x, t)
+assert found is not None and str(found.coefficients) == '[1, 5*t, 2*t**2]' and found.check()
+found = reduction_telescoper(exp(-x**2)*cos(2*t*x), x, t)
+assert found is not None and found.order == 1 and found.check()
+assert str(reduction_ode(exp(-x**2)*exp(2*x*t), x, -oo, oo, t)) == 'Eq(-2*t*I(t) + Derivative(I(t), t), 0)'
+with configure(numerical_checks=False):
+    assert str(reduction_integral(x*exp(-t*x**2), x, 0, oo, t)) == 'ConditionalValue(1/(2*t))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_parametric_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.parametric` does not load
+    SymPy, nor does the choice of the parameters; the integrals reach
+    SymPy's side (the integrator of ``definite`` and ``integrate``)
+    through the face only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PARAMETRIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_reduction_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.reduction` does not load
+    SymPy, nor do the Hermite reduction (the shell, the poles away from
+    and at the factors of ``B``, the polynomial reduction, conjugate poles
+    refactored over ``QQ_I``), the reduction-based telescopers of single
+    terms and of sums, and the equation of the integral."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REDUCTION], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_contours_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.contours` does not load
+    SymPy, nor do the rectangle (the triangular system solved on core
+    expressions, the core's residue at a multiple pole), the sector and
+    the indented real line."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_CONTOURS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ALGEBRAIC = r'''
+import sys
+from sympy_extras.core import Rational, Symbol, sqrt
+from sympy_extras.integrals.algebraic import (binomial_differential, binomial_exponents,
+                                              binomial_hypergeometric_antiderivative, chebyshev_elementary,
+                                              euler_substitutions, moebius_root)
+assert 'sympy' not in sys.modules
+x, c = Symbol('x'), Symbol('c')
+assert str(binomial_exponents(sqrt(x**7/(1 - 5*x**2)), x)) == 'BinomialDifferential(x**(7/2)*(1 + -5*x**(2))**(-1/2))'
+assert chebyshev_elementary(binomial_exponents(x**3*sqrt(x**2 + 1), x))
+assert str(moebius_root((x + 1)**Rational(1, 3)/x, x).t_of_x) == '(x + 1)**(1/3)'
+assert len(euler_substitutions(1/sqrt(x**2 + 1), x, 0, 1)) == 2 and len(euler_substitutions(1/sqrt(x**2 - 1), x, 2, 3)) == 2
+assert str(binomial_differential(3*x**3*sqrt(x**2 + 1), x)) == '(3, 3, 1, 1, 2, 1/2)'
+assert str(binomial_hypergeometric_antiderivative(sqrt(x**3 + 1), x)) == 'x*hyper((-1/2, 1/3), (4/3,), -x**3)'
+assert binomial_hypergeometric_antiderivative(sqrt(1 + c*x**3), x).has(c)
+assert binomial_hypergeometric_antiderivative(sqrt(x**7/(1 - 5*x**2)), x) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_SERIES = r'''
+import sys
+from sympy_extras.core import Dummy, Integer, Symbol, pi
+from sympy_extras.functions import cos, log, sin
+from sympy_extras.integrals.series import fourier_expansion, fourier_integral, sum_series
+assert 'sympy' not in sys.modules
+x = Symbol('x')
+a = Symbol('a', positive=True)
+n = Symbol('n', integer=True, positive=True)
+e = fourier_expansion(log(sin(x)), x, 0, pi)
+assert e is not None and str(e.constant) == '-log(2)' and e.basis.subs(e.index, Integer(1)) == cos(2*x)
+assert fourier_expansion(log(sin(x)), x, 0, 2*pi) is None
+e = fourier_expansion(1/(1 - 2*a*cos(x) + a**2), x, 0, pi, a < 1)
+assert e is not None and str(e.constant) == '-1/(a**2 - 1)'
+j = Dummy('j', integer=True, nonnegative=True)
+k = Dummy('k', integer=True, positive=True)
+assert str(sum_series((-1)**j/(2*j + 1)**2, j, 0)) == 'Catalan'
+assert str(sum_series(2/(k*(4*k**2 - 1)), k, 1)) == '-2 + 4*log(2)'
+assert sum_series(sin(k*a)/k**2, k, 1).has(Symbol('a', positive=True))
+assert str(fourier_integral(log(sin(x)), x, 0, pi)) == 'ConditionalValue(-pi*log(2))'
+assert str(fourier_integral(log(2*sin(x/2))*cos(n*x), x, 0, 2*pi)) == 'ConditionalValue(-pi/n)'
+assert fourier_integral(log(sin(x))*log(cos(x)), x, 0, pi/2) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_DFINITE = r'''
+import sys
+from sympy_extras.core import symbols, oo
+from sympy_extras.functions import exp, sin, besselj, erf, log
+from sympy_extras.integrals.dfinite import Annihilator, chyzak, closure, dfinite_ode, normal_form
+assert 'sympy' not in sys.modules
+x = symbols('x')
+t = symbols('t', positive=True)
+found = chyzak(exp(-t*x)*besselj(0, x), x, t)
+assert str(found) == 'DFiniteTelescoper([t, t**2 + 1], {exp(-t*x)*besselj(0, x): t*x, -exp(-t*x)*besselj(1, x): x})'
+assert found.check()
+assert chyzak(x*exp(-x**2)*besselj(0, t*x), x, t).order == 1
+assert chyzak(erf(t*x)*exp(-x**2), x, t) is not None and chyzak(exp(-t*x)*log(x), x, t) is not None
+assert str(closure(x*exp(-x**2)*besselj(0, t*x), x, t)) == '(x, [Factor(besselj(0, t*x), 2), Factor(exp(-x**2), 1)])'
+assert str(dfinite_ode(exp(-t*x)*sin(x)/x, x, 0, oo, t)) == 'Eq(Derivative(I(t), t), -1/(t**2 + 1))'
+reduce = normal_form(Annihilator(x, [2*t*x, 1]), Annihilator(t, [x**2, 1]), x, t)
+assert str(reduce(2, 0)) == '{(0, 0): 4*t**2*x**2 - 2*t}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_series_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.series` does not load SymPy,
+    nor do the tabulated and parametric Fourier series, the summation of
+    the series (the native summation, partial fractions over the roots,
+    polylogarithms) and the Fourier integrals by termwise integration and
+    orthogonality; the moments (``definite``), the computed coefficients
+    (``antiderivative``) and the formal power series (``fps``) reach
+    SymPy through the faces only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SERIES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_AXISYMMETRIC = r'''
+import sys
+from sympy_extras.core import Symbol, sqrt
+from sympy_extras.functions import heaviside
+from sympy_extras.integrals.axisymmetric import aligned_frame, rotation_group, rotation_invariant
+assert 'sympy' not in sys.modules
+x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+assert rotation_invariant(x**2 + y**2, [x, y]) and not rotation_invariant(heaviside(x), [x, y])
+assert rotation_group(z, (x**2 + y**2 + z**2 < 1) & (z > x**2 + y**2), [x, y, z]) == (x, y)
+assert rotation_group(1, (x**2 + y**2 + z**2 < 1) & (x > 0), [x, y, z]) == (y, z)
+assert rotation_group(x*y, x**2 + y**2 + z**2 < 1, [x, y, z]) is None
+frame = aligned_frame(1, (x**2 + y**2 + z**2 < 1) & (x + y + z > 1), [x, y, z])
+assert frame is not None and frame.ratio == sqrt(3)
+assert aligned_frame(1, (x**2 + y**2 + z**2 < 1) & (x + y + z > 0) & (x - y > 0), [x, y, z]) is None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+
+def test_native_regions_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.regions` does not load
+    SymPy, nor do the region integrals with an integrator written on the
+    core (the polytopes, polar and cylindrical coordinates, the
+    decomposition with its explicit branches and parameter cells, the
+    Hausdorff measure and the rotational symmetry); only the default
+    integrator (``definite_integral``) reaches SymPy's side, through the
+    face."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REGIONS], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REGIONS = r'''
+import sys
+from sympy_extras.core import Integer, Rational, Symbol, eq, expand, oo, pi
+from sympy_extras.integrals.axisymmetric import axisymmetric_integral
+from sympy_extras.integrals.regions import IntegralByRanges, _coefficients, integrate_by_ranges
+assert 'sympy' not in sys.modules
+x, y, z, a = Symbol('x'), Symbol('y'), Symbol('z'), Symbol('a')
+def polynomial(f, v, lower, upper, assumptions):
+    terms = _coefficients(f, [v])
+    if lower == -oo or upper == oo or terms is None:
+        return None
+    F = Integer(0)
+    for (k,), c in terms.items():
+        F = F + c*v**(k + 1)/(k + 1)
+    return expand(F.subs(v, upper) - F.subs(v, lower))
+one = Integer(1)
+assert integrate_by_ranges(x*y, (x > 0) & (y > 0) & (x + y < 1), integrator=polynomial) == Rational(1, 24)
+assert integrate_by_ranges(one, (0 < x) & (x < y) & (y < x**2) & (x < 2), integrator=polynomial) == Rational(5, 6)
+assert integrate_by_ranges(one, x**2 + y**2 < 1, integrator=polynomial) == pi
+assert integrate_by_ranges(one, (x**2 + y**2 < 1) & (z > 0) & (z < x**2 + y**2), integrator=polynomial) == pi/2
+found = integrate_by_ranges(one, (x > 0) & (x < a), [x], integrator=polynomial)
+assert [found.subs(a, v) for v in (-1, 0, 2)] == [0, 0, 2]
+assert integrate_by_ranges(one, eq(y, 2*x) & (x > 0) & (x < 1), measure='hausdorff', integrator=polynomial) \
+    == 5**Rational(1, 2)
+assert axisymmetric_integral(one, (x**2 + y**2 < 1) & (z > 0) & (z < 1), [x, y, z], integrator=polynomial) == pi
+assert isinstance(integrate_by_ranges(x**2*y, (x > 0) & (x < 1) & (y > 0) & (y < x**2), [x, y], a > 0,
+                                      integrator=lambda f, v, lo, hi, facts: None), IntegralByRanges)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_algebraic_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.algebraic` does not load
+    SymPy, nor do the recognition of the substitutions (Möbius roots,
+    Euler's, binomial differentials, Chebyshev's criterion) or the
+    hypergeometric antiderivatives with their one-sided limits; only the
+    rational integral and its numerical check reach SymPy's side
+    (``conditional_integral``, ``verify_numerically``) through the face."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ALGEBRAIC], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REWRITING = r'''
+import sys
+from sympy_extras.core import Rational, Symbol, sqrt
+from sympy_extras.functions import Abs, asinh, cosh, exp, log
+from sympy_extras.integrals.rewriting import implied_assumptions, power_substitutions, rewritten_forms, substitute_back
+assert 'sympy' not in sys.modules
+x, c, d = Symbol('x'), Symbol('c'), Symbol('d')
+assert len(rewritten_forms(2**x*cosh(x), x)) == 2
+assert str(rewritten_forms(asinh(x)/sqrt(x**2 + 1), x)) == '[log(x + sqrt(x**2 + 1))/sqrt(x**2 + 1)]'
+assert str(rewritten_forms(x*Abs(x), x, [x > 0])) == '[x**2]'
+assert str(implied_assumptions(c**(d*x), x)) == '[c > 0]'
+for f in (sqrt(x)/(1 + x), exp(x)/(exp(2*x) - 1), 1/(x*log(x)**2), sqrt(x**4 + 1)/x**5, sqrt(1 - sqrt(x))/(x**2 - 1)):
+    assert power_substitutions(f, x), f
+assert [len(s.facts) for s in power_substitutions(((x - 1)**2*(x + 1))**Rational(1, 3)/x**2, x)] == [1, 1]
+t = Symbol('t')
+assert str(substitute_back(t**2, t, sqrt(x))) == 'x'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_rewriting_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.rewriting` does not load
+    SymPy, nor do the canonical forms (the native rewriting rules,
+    powsimp, cancel) or the substitutions (the Möbius roots by region on
+    the native factorisation, Chebyshev's, the nested radicals)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REWRITING], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_dfinite_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.dfinite` does not load
+    SymPy, nor do Chyzak's telescopers of products of the factors whose
+    equations are written down (``exp``, ``sin``, ``besselj``, ``erf``,
+    ``log``, ...), the closure, the equation of the integral and the
+    normal forms modulo given annihilators (SymPy's ``expr_to_holonomic``
+    of other factors and of whole integrands goes through
+    :mod:`~sympy_extras.integrals.dfinite_sympy`)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DFINITE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_axisymmetric_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.axisymmetric` does not load
+    SymPy, nor do the rotation tests (finite and infinitesimal), the
+    choice of the group and the aligned frame (the ported Gram–Schmidt
+    process); the profile integral reaches SymPy's ``integrate_by_ranges``
+    through the face only."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_AXISYMMETRIC], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ANTIDERIVATIVE = r'''
+import sys
+from sympy_extras.core import Integer, Rational, S, Symbol, oo, pi
+from sympy_extras.functions import Piecewise, atan, log, sin
+from sympy_extras.integrals.antiderivative import (antiderivative_integral, by_parts_shape, discontinuities,
+                                                   elementary_polynomial, finite_part_integral, one_sided_limit,
+                                                   principal_value_integral, quick_shape, real_logarithms,
+                                                   select_branch, singularities)
+from sympy_extras.integrals.risch.rationaltools import ratint
+assert 'sympy' not in sys.modules
+x, t = Symbol('x'), Symbol('t')
+a = Symbol('a', positive=True)
+def step(f, x, assumptions, late):
+    return ratint(f, x) if f.is_rational_function(x) else None
+assert str(antiderivative_integral(1/(1 + x**2), x, -oo, oo, step=step)) == 'ConditionalValue(pi)'
+assert str(antiderivative_integral(1/x**2, x, -S.One, S.One, step=step)) == 'ConditionalValue(oo)'
+assert antiderivative_integral(1/x, x, -S.One, Integer(2), step=step) is None
+assert str(antiderivative_integral(1/x, x, Integer(-3), -S.One, step=step)) == 'ConditionalValue(-log(3))'
+assert antiderivative_integral(1/(x**2 + a**2), x, S.Zero, oo, a > 0, step=step) is not None
+assert str(principal_value_integral(1/x, x, -S.One, Integer(2), step=step)) == 'ConditionalValue(log(2))'
+assert str(finite_part_integral(1/x**2, x, -S.One, S.One, step=step)) == 'ConditionalValue(-2)'
+assert str(finite_part_integral(1/(x - 1)**3, x, S.Zero, Integer(3), step=step)) == 'ConditionalValue(3/8)'
+assert singularities(1/(x**2 - 1), x, [x > 0]) == [1]
+assert discontinuities(log(x - 1) + atan(1/(x - 2)), x, S.Zero, Integer(3)) == [1, 2]
+assert one_sided_limit(-1/x, x, S.Zero, '+') == -oo and one_sided_limit(atan(x), x, oo, '-') == pi/2
+assert select_branch(Piecewise((t**2, t > 1), (t**3, True)), t, S.Zero, S.One) == t**3
+assert str(real_logarithms(log(x - 1), x)) == 'log(Abs(x - 1))'
+assert elementary_polynomial(sin(pi*t/4 + pi/4)**3, t) and not elementary_polynomial(sin(t)/t, t)
+assert not by_parts_shape(x*log(x), x) and not quick_shape(sin(x)/x, x)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_antiderivative_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.antiderivative` does not load
+    SymPy, nor does the whole method (the singularities by the native
+    solve, their placement by the native ask, the one-sided limits, the
+    branches, the principal values and finite parts) with a native
+    antiderivative step (the native ``ratint``); only the default step,
+    SymPy's ``integrate`` and the methods of ``indefinite``, reaches
+    SymPy through the face."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ANTIDERIVATIVE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_risch_does_not_load_sympy() -> None:
+    """Importing the transcendental Risch package
+    (:mod:`sympy_extras.integrals.risch`: ``risch``, ``rde``, ``prde``,
+    ``cde``, ``polymatrix``, ``tower``) does not load SymPy, nor do the
+    tower construction (exponentials, logarithms, tangents, the half-angle
+    rewriting of sines and cosines, the complex rewriting with ``I``), the
+    Hermite and residue reductions, the Risch differential equation and its
+    parametric and coupled versions, the structure theorems and the proofs
+    of nonelementarity."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RISCH], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SAT_SEARCH = r'''
+import sys
+from sympy_extras.core import symbols, Integer, Eq
+from sympy_extras.functions import sin
+from sympy_extras.sets import Integers
+from sympy_extras.assumptions.sat import satisfiable, tautology, find_instance, _floor, _compare
+from sympy_extras.assumptions.satask import predicates_consistent
+from sympy_extras.assumptions.limits import limit
+from sympy_extras.polys.cad.indexedroot import IndexedRoot
+from sympy_extras.core import Q
+p, q, x, y, a = symbols('p q x y a')
+models = satisfiable((p | q) & (~p | (x > 1)), all_models=True)
+assert models is not None and len(models) == 4, models
+assert satisfiable(Q.positive(x) & Q.negative(x)) is False and tautology(p | ~p) is True
+assert not predicates_consistent(Q.positive(x) & Q.positive(y) & Q.negative(x + y))
+found = find_instance((x > 1) | p, [x], domain=None, count=3)
+assert found is not None and len(found) >= 1, found
+assert str(find_instance((x**2 > 5) & (x < 0), [x], Integers)) == '[{x: -3}]'
+assert str(limit(sin(a*x)/x, x, Integer(0))) == 'a'
+r2, r3 = IndexedRoot(x**2 - 2, x, 1), IndexedRoot(x**3 - 2, x, 0)
+assert _floor(3*r2) == 4 and _floor(-r2*r3) == -2 and _compare(r2*r3, Integer(2)) == -1
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_sat_search_does_not_load_sympy() -> None:
+    """The native ``satisfiable``, ``tautology`` and ``find_instance`` do
+    not load SymPy: the SAT solver (a port of DPLL2), the consistency of
+    the predicates with their known facts and the floor and comparison
+    of real algebraic numbers are native, and so is the native ``limit``
+    with a parameter carrying no assumptions, which asks ``satisfiable``
+    for the cases of the parameter."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SAT_SEARCH], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SIMPLIFY_LOGIC = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.logic.boolalg import simplify_logic
+from sympy_extras.polys.virtual_substitution import linear_quantifier_elimination, eliminate_linear
+from sympy_extras.solvers.integers import cooper
+x, y, z, a, b = symbols('x y z a b')
+assert str(simplify_logic((a & b) | (a & ~b) | (x > 0) | ((x <= 0) & (y > 1)))) == 'a | (x > 0) | (y > 1)'
+assert str(cooper((3*x > y) & (3*x < y + 3), x)) == 'Eq(Mod(y + 1, 3), 0) | Eq(Mod(y + 2, 3), 0)'
+assert str(eliminate_linear(((x > y) | (x > z)) & (x < 1), x)) == '(y < 1) | (z < 1)'
+result, prefix = linear_quantifier_elimination(((x > y) & (x < 1)) | ((x > z) & (x < 2)), [('exists', x)])
+assert not prefix and len(result.args) == 6, result
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_INDEFINITE = r'''
+import sys
+from sympy_extras.core import symbols, Rational
+from sympy_extras.functions import sqrt, exp, log, sin, tan, atan, cosh, sign
+from sympy_extras.integrals.indefinite import (indefinite_integral, verified_antiderivative, is_antiderivative,
+                                               real_form, conjugate_logarithms)
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.core import I
+x, k, a = symbols('x k a')
+expected = {x/(x**2 + 1): 'rational', sqrt(1 - x**2): 'radicals', x*exp(x): 'exponential', tan(x)**3: 'trigonometric',
+            1/(x*(log(x)**2 + 1)): 'risch', x/sqrt(x**4 + 1): 'trager', sqrt(x**3 + 1): 'binomial',
+            2**x*cosh(x): 'rewriting', sin(a*x)*sin(k*x): 'trigonometric'}
+for f, method in expected.items():
+    found = verified_antiderivative(f, x)
+    assert found is not None and found[1] == method, (f, found)
+assert str(indefinite_integral(x*exp(k*x), x)) == 'Piecewise((x*exp(k*x)/k - exp(k*x)/k**2, Ne(k, 0)), (x**2/2, True))'
+assert is_antiderivative(sin(x), sin(x), x) is False and is_antiderivative(x**2*sign(x)/2, x*sign(x), x) is True
+assert str(real_form(-I*log(x - I)/2 + I*log(x + I)/2, 1/(x**2 + 1), x)) == 'atan(x)'
+assert conjugate_logarithms(-I*log(x - I)/2 + I*log(x + I)/2, x) == atan(x)
+assert Integral(exp(x**2), x).diff(x) == exp(x**2)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_simplify_logic_does_not_load_sympy() -> None:
+    """The simplification of the compound results of virtual substitution
+    and of Cooper's algorithm does not load SymPy: it is the native port
+    of ``simplify_logic`` (:mod:`sympy_extras.logic.boolalg`); it went
+    through SymPy's ``simplify_logic`` (``simplify_logic_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SIMPLIFY_LOGIC], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REAL_ROOTS = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.cad.indexedroot import IndexedRoot
+from sympy_extras.sets import interval
+from sympy_extras.solvers.isolation import isolate_real_roots
+x = symbols('x')
+roots = isolate_real_roots((x**5 - x - 1)*(x**2 - 2)*(3*x - 1), x)
+assert roots is not None and str(roots[:2] + roots[3:]) == '[-sqrt(2), 1/3, sqrt(2)]', roots
+assert isinstance(roots[2], IndexedRoot) and str(roots[2].evalf(10)) == '1.167303978', roots
+assert str(isolate_real_roots(x**5 - x - 1, x, interval(1, 2))) == '[IndexedRoot(x**5 - x - 1, x, 0)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_real_roots_of_polynomials_do_not_load_sympy() -> None:
+    """The real roots of a polynomial which are not in radicals are
+    native ``IndexedRoot`` nodes (they went through SymPy's
+    ``real_roots`` and its ``CRootOf``, ``real_roots_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REAL_ROOTS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_POLYTOOLS_DOMAINS = r'''
+import sys
+from sympy_extras.core import symbols, I, Float, Integer, zoo, oo
+from sympy_extras.polys.polytools import cancel, factor, invert
+x, y = symbols('x y')
+assert str(cancel(zoo*x)) == 'zoo*x' and str(cancel(oo*x/(x**2 + x))) == 'oo/(x + 1)'
+assert str(cancel((Float(1.5) + I)*x/(x**2 + x))) == '(1.5 + 1.0*I)/(1.0*x + 1.0)'
+assert str(cancel((I*x*y + I*x)/(y + 1), x)) == 'I*x'
+assert str(factor(x**2 + 2*I*x - 1, x)) == '(x + I)**2' and str(factor(zoo*x**2 + zoo)) == 'zoo*(x**2 + 1)'
+assert str(invert(I, Integer(3))) == '-I' and str(invert(Float(1.5), Integer(3))) == '0.666666666666667'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_polytools_domains_do_not_load_sympy() -> None:
+    """``cancel`` over ``CC`` and ``EX`` and with generators over a
+    composite domain, ``factor`` with generators over ``ZZ_I``, ``invert``
+    of Gaussian and float numbers do not load SymPy (they went through
+    ``polytools_sympy``: ``cancel_of_core``, ``factor_of_core``,
+    ``invert_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_POLYTOOLS_DOMAINS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+
+_NATIVE_RELATION_SIMPLIFY = r"""
+import sys
+from sympy_extras.core import symbols, Eq
+from sympy_extras.functions import abs_, sin
+from sympy_extras.assumptions.refine import simplify
+a, x = symbols('a x')
+assert str(simplify(2*a < 1)) == 'a < 1/2' and str(simplify(Eq(2*a, 1))) == 'Eq(a, 1/2)'
+assert str(simplify(abs_(x) > 1)) == 'Abs(x) > 1' and str(simplify(sin(x) > 0)) == 'sin(x) > 0'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_simplify_of_a_relation_does_not_load_sympy() -> None:
+    """The native ``simplify`` of a relation which is not polynomial in
+    real variables is the port of SymPy's ``Relational._eval_simplify``
+    (it went through ``simplify_boolean_of_core``, which keeps only the
+    compound formulas)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RELATION_SIMPLIFY], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+
+_NATIVE_EX_ROOTS = r"""
+import sys
+from sympy_extras.core import symbols, pi, expand
+from sympy_extras.polys.polyroots import ex_roots, roots
+from sympy_extras.polys.polytools import Poly
+from sympy_extras._special_values import _real_roots
+x, a = symbols('x a')
+assert str(ex_roots(x**2 - pi, x)) == '[-sqrt(pi), sqrt(pi)]'
+assert sum(roots(Poly(expand((x**2 + x)**3 - 2), x)).values()) == 6
+assert roots(Poly(x**10 - 2*x**6 - 2*x**5 + x**2 + 2*x - 1, x)) == {}
+assert str(_real_roots(a**2 - pi, a)) == '[-sqrt(pi), sqrt(pi)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+"""
+
+
+def test_native_roots_over_ex_do_not_load_sympy() -> None:
+    """The roots of the components of a decomposition over ``EX`` and of
+    polynomials with coefficients like ``pi`` are native (they went
+    through SymPy's ``roots``, ``roots_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EX_ROOTS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DEFINITE = r'''
+import sys
+from sympy_extras.core import Integer, oo, pi, sqrt, symbols
+from sympy_extras.functions import abs_, atan, cos, exp, log, sin
+from sympy_extras.integrals.definite import conditional_integral, definite_integral, verify_numerically
+from sympy_extras.integrals.integral import Integral
+assert 'sympy' not in sys.modules
+x, k, c = symbols('x k c')
+a = symbols('a', positive=True)
+cases = [(1/x, (x, 0, 1), None, 'oo'),
+         (exp(-a*x)*cos(k*x), (x, 0, oo), k > 0, 'a/(a**2 + k**2)'),
+         (1/sqrt(1 - x**2), (x, -1, 1), None, 'pi'),
+         (exp(-x)*x**k, (x, 0, oo), k > -1, 'gamma(k + 1)'),
+         (log(1 + x)/(1 + x**2), (x, 0, 1), None, 'pi*log(2)/8'),
+         (atan(x)/(x*(1 + x**2)), (x, 0, oo), None, 'pi*log(2)/2'),
+         (sin(x)**2, (x, 0, pi), None, 'pi/2'),
+         (abs_(x - 1), (x, 0, 3), None, '5/2'),
+         (exp(-x**2), (x, -oo, oo), None, 'sqrt(pi)'),
+         (sqrt(x)*sqrt(2 - x), (x, 0, 2), None, 'pi/2'),
+         (1/(x**2 + c**2), (x, 0, oo), c > 0, 'pi/(2*c)'),
+         (x**a*log(x), (x, 0, 1), None, '-1/(a + 1)**2')]
+for f, limits, assumptions, expected in cases:
+    assert str(definite_integral(f, limits, assumptions)) == expected, (f, definite_integral(f, limits, assumptions))
+assert str(conditional_integral(exp(-a*x), x, Integer(0), oo)) == 'ConditionalValue(1/a)'
+assert verify_numerically(1/a, exp(-a*x), x, Integer(0), oo) is True
+assert verify_numerically(2/a, exp(-a*x), x, Integer(0), oo) is False
+assert str(Integral(exp(-x**2), x, Integer(0), oo)) == 'Integral(exp(-x**2), (x, 0, oo))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_definite_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.definite` does not load
+    SymPy, nor do the integrals which the native methods settle (the
+    divergences, the Mellin table and the Marichev–Adamchik method, the
+    residues, the tables, the splitting at kinks, the antiderivatives with
+    their limits, the numerical checks); only SymPy's ``integrate``, the
+    last of the methods, reaches SymPy's side, through
+    :mod:`~sympy_extras.integrals.definite_sympy`."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DEFINITE], capture_output=True, text=True, timeout=1200)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_indefinite_does_not_load_sympy() -> None:
+    """Importing :mod:`sympy_extras.integrals.indefinite` does not load
+    SymPy, nor do its native methods (the rational integrator, the radical,
+    exponential and trigonometric tables, the Risch package, Trager's
+    algorithm, the binomial differentials, the rewritings), the checks of
+    the candidates, the real forms and the cases of the special values:
+    only SymPy's routes, tried last, load it."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_INDEFINITE], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_COMPLEX_ROOTS = r'''
+import sys
+from sympy_extras.core import Symbol, symbols, oo
+from sympy_extras.polys.complexrootof import ComplexRootOf, rootof, all_roots, real_roots
+from sympy_extras.polys.numberfields.minpoly import minimal_polynomial
+from sympy_extras.polys.roots import radical_form
+assert 'sympy' not in sys.modules
+x, y = symbols('x y')
+r = rootof(x**5 - x - 1, 2)
+assert str(r) == 'CRootOf(x**5 - x - 1, 2)' and str(r.evalf(10)) == '-0.7648844336 + 0.352471546*I'
+assert str(all_roots((x**2 + 4)*(x**2 + 1), radicals=False)) == \
+    '[CRootOf(x**2 + 1, 0), CRootOf(x**2 + 1, 1), CRootOf(x**2 + 4, 0), CRootOf(x**2 + 4, 1)]'
+assert str(minimal_polynomial(r**2, y)) == 'y**5 - 2*y**3 + y - 1' and radical_form(r) is None
+assert r.is_real is False and ComplexRootOf(x**5 - x - 1, 0).is_positive
+# the residues at numerical poles without short radicals: the native CRootOf
+from sympy_extras.integrals.residues import poles, rational_function, residue_integral
+found = poles(rational_function(1/(x**5 - x - 1), x).denominator)
+assert found is not None and all(p.numeric for p in found) and isinstance(found[1].point, ComplexRootOf)
+assert residue_integral(1/(x**6 + x + 1), x, -oo, oo) is not None
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_complex_roots_and_residues_do_not_load_sympy() -> None:
+    """The native ``CRootOf`` (:mod:`sympy_extras.polys.complexrootof`):
+    its order, values, minimal polynomials and facts load no SymPy, nor
+    do the numerical poles of the residue integrator whose radicals are
+    unwieldy (they came from SymPy's ``CRootOf`` through
+    ``residues_sympy.complex_roots_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_COMPLEX_ROOTS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EXACT_SOLUTIONS = r'''
+import sys
+from sympy_extras.core import symbols
+from sympy_extras.polys.rur import rur
+from sympy_extras.polys.regularchains import triangularize
+assert 'sympy' not in sys.modules
+t, x, y = symbols('t x y')
+assert str(rur([x**2 - 2, y - x**3], x, y, t=t).solutions()) == '[{x: -sqrt(2), y: -2*sqrt(2)}, {x: sqrt(2), y: 2*sqrt(2)}]'
+R = rur([x**3 - x - 1, y - x**2], x, y, t=t)
+assert str(R.solutions(real=True)) == '[{x: IndexedRoot(t**3 - t - 1, t, 0), y: IndexedRoot(t**3 - t - 1, t, 0)**2}]'
+assert len(R.solutions()) == 3 and 'CRootOf(t**3 - t - 1, 1)' in str(R.solutions()[1])
+[chain] = triangularize([y**3 - y - 1, x**2 - y], x, y)
+points = chain.solutions()
+assert len(points) == 6 and str(points[2][x]) == 'CRootOf(x**6 - x**2 - 1, 3)'
+assert len(chain.solutions(real=True)) == 2
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_exact_solutions_do_not_load_sympy() -> None:
+    """The exact solutions of a rational univariate representation
+    (``RationalUnivariateRepresentation.solutions``, which went through
+    ``rur_sympy.solutions_of_core``) and of a regular chain
+    (``RegularChain.solutions``, through
+    ``regularchains_sympy.exact_solutions_of_core``) load no SymPy: the
+    roots are radicals, ``IndexedRoot`` and the native ``CRootOf``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EXACT_SOLUTIONS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DSOLVE = r'''
+import sys
+from sympy_extras.core import Function, Symbol, symbols, Integer
+from sympy_extras.functions import exp
+from sympy_extras.matrices.dense import ExprMatrix
+from sympy_extras.solvers.dsolve import dsolve
+from sympy_extras.solvers.ode import solve_ode
+from sympy_extras.solvers.kovacic import rational_riccati
+from sympy_extras.solvers.linear_systems import _commuting_columns, _entries
+from sympy_extras.solvers.first_order import lagrange_ode
+from sympy_extras.integrals.telescoping import _general_solution
+from sympy_extras.core import Eq
+x, k, t = symbols('x k t')
+y = Function('y')(x)
+assert str(dsolve(y.diff(x, 2) + y, y)) == '[Eq(y(x), C1*sin(x) + C2*cos(x))]'
+# solve_ode went to SymPy's dsolve first (pde_sympy.dsolve_of_core)
+assert str(solve_ode(y.diff(x) - k*y - exp(x), y)) == \
+    '[Eq(y(x), Piecewise(((C1 + x)*exp(x), Eq(k, 1)), (C1*exp(k*x) - exp(x)/(k - 1), True)))]'
+# lagrange_ode went to first_order_sympy.dsolve_of_core
+assert str(lagrange_ode(Eq(y, 2*x*y.diff(x) + y.diff(x)**2), y)) == \
+    '[Eq(x, C1/p**2 - 2*p/3), Eq(y(x), (6*C1 - p**3)/(3*p))]'
+# Kovacic case 1 went to kovacic_sympy.riccati_of_core
+assert str(rational_riccati(2/x**2, x)) == '[-1/x, 2/x]'
+# the last resort of dsolve_system went to linear_systems_sympy.linodesolve_of_core
+A = ExprMatrix.from_rows([[0, 2*x], [-2*x, 0]])
+assert str(_commuting_columns(_entries(A, x), x)) == '[[cos(x**2), -sin(x**2)], [sin(x**2), cos(x**2)]]'
+# telescoping's general solution went to telescoping_sympy.dsolve_of_core
+I = Function('I')(t)
+found = _general_solution([1/t, Integer(1)], Integer(1), t, Eq(I.diff(t) + I/t, 1))
+assert found is not None and len(found[1]) == 1, found
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_dsolve_routes_do_not_load_sympy() -> None:
+    """The ODE solvers which handed equations to SymPy's ``dsolve``
+    (``pde_sympy``, ``first_order_sympy``, ``linear_ode_sympy`` and
+    ``telescoping_sympy.dsolve_of_core``), to its rational Riccati solver
+    (``kovacic_sympy.riccati_of_core``) and to its ``linodesolve``
+    (``linear_systems_sympy.linodesolve_of_core``) load no SymPy: the
+    classical hints of ``solvers.dsolve``, the hyperexponential solutions
+    and the native matrix exponential replace them."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DSOLVE], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SOLVE_EQUATION = r'''
+import sys
+from sympy_extras.core import Eq, Function, symbols, sqrt
+from sympy_extras.functions import exp, log
+from sympy_extras.solvers.solvers import solve_equation, solve_system
+from sympy_extras.solvers.transcendental import solve_transcendental
+from sympy_extras.solvers.abel import particular_solution
+from sympy_extras.solvers.charpit import complete_integral
+assert 'sympy' not in sys.modules
+x, y, a, C1, C2 = symbols('x y a C1 C2')
+assert str(solve_equation(log(y) - C1*x - C2, y)) == '[exp(C1*x + C2)]'
+assert str(solve_equation(2*sqrt(x) - a, x)) == '[a**2/4]'
+assert str(solve_system([x*y - 1, x - y], [x, y])) == '[{x: -1, y: -1}, {x: 1, y: 1}]'
+assert str(solve_transcendental(Eq(x, exp(x) - 2), x)) == '{-2 - LambertW(-exp(-2)), -2 - LambertW(-exp(-2), -1)}'
+assert str(particular_solution((1, 0, -x**2, 1), x)) == 'x'
+u = Function('u')(x, y)
+p, q = u.diff(x), u.diff(y)
+assert str(complete_integral(Eq(u, p*x + q*y + sqrt(1 + p**2 + q**2)), u)) == \
+    'Eq(u(x, y), a*x + b*y + sqrt(a**2 + b**2 + 1))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_MANUALINTEGRATE = r'''
+import sys
+from sympy_extras.core import Symbol, S, pi
+from sympy_extras.functions import cos, exp, log, sin, sinh, sqrt, atan
+from sympy_extras.integrals.manualintegrate import manualintegrate, integral_steps
+from sympy_extras.integrals.indefinite import verified_antiderivative
+from sympy_extras.integrals.antiderivative import antiderivative, antiderivative_integral, elementary_antiderivative
+x, t = Symbol('x'), Symbol('t')
+assert str(manualintegrate(exp(x)/(1 + exp(2*x)), x)) == 'atan(exp(x))'
+assert str(manualintegrate(x*log(x), x)) == 'x**2*log(x)/2 - x**2/4'
+assert str(manualintegrate(exp(2*x)/x, x)) == 'Ei(2*x)'
+assert not integral_steps(sqrt(1 - x**2), x).contains_dont_know()
+# the method 'manual' went to indefinite_sympy.manualintegrate_of_core
+assert verified_antiderivative(t**2*cos(3*t - 1), t, methods=['manual']) is not None
+# the polynomials in elementary functions and the integrations by parts of
+# antiderivative went to antiderivative_sympy.integrate_of_core
+assert str(antiderivative(t**2*cos(3*t - 1), t)) == 't**2*sin(3*t - 1)/3 + 2*t*cos(3*t - 1)/9 - 2*sin(3*t - 1)/27'
+assert str(elementary_antiderivative(t*cos(t)*sinh(t), t, None)) == \
+    't*sin(t)*sinh(t)/2 + t*cos(t)*cosh(t)/2 - sin(t)*cosh(t)/2'
+assert antiderivative(t**3*exp(-t)*log(t), t) is not None
+assert str(antiderivative_integral(t*exp(-t), t, S.Zero, S.One)) == 'ConditionalValue(1 - 2*exp(-1))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_LAST_ROUTES = r'''
+import sys
+from sympy_extras.core import symbols, Symbol, Function, Ne, Eq, and_, or_, oo
+from sympy_extras.functions import exp, besselj, besseli, sin, Si, sqrt
+from sympy_extras.integrals.dfinite import annihilators, closure, chyzak
+from sympy_extras.integrals.parametric import parametric_integral
+from sympy_extras.solvers.charpit import complete_integral
+from sympy_extras.assumptions.refine import simplify
+x, t, y = symbols('x t y')
+# the annihilators went to SymPy's expr_to_holonomic (dfinite_sympy.holonomic_of_core)
+L_x, L_t = annihilators(exp(-x**2)*besselj(0, t*x), x, t)
+assert (L_x.order, L_t.order) == (2, 2)
+assert annihilators(Si(x) + sqrt(x), x, t) is not None
+assert [f.order for f in closure(besseli(0, x)*exp(-t*x), x, t)[1]] == [2, 1]
+assert chyzak(exp(-t*x)*besseli(0, x), x, t).coefficients == [t, t**2 - 1]
+# the antiderivative in the parameter went to SymPy's integrate (parametric_sympy.antiderivative_of_core)
+p = Symbol('p', positive=True)
+assert str(parametric_integral(exp(-p*x)*sin(x)/x, x, 0, oo, p)) == 'ConditionalValue(-atan(p) + pi/2)'
+# the quadratures of Charpit's method too (charpit_sympy.antiderivative_of_core)
+u = Function('u')(x, y)
+assert complete_integral(u.diff(x)**2 - x*u.diff(y), u) is not None
+# compound formulas went to SymPy's simplify (refine_sympy.simplify_boolean_of_core)
+assert str(simplify(and_(x > 1, x < 0))) == 'False' and str(simplify(and_(x > 0, Ne(x, 0)))) == 'x > 0'
+assert str(simplify(or_(x > 2, x < -2))) == 'Abs(x) > 2'
+assert str(simplify(and_(Eq(x, 1), y > x))) == 'Eq(x, 1) & (y > 1)'
+# SymPy's heurisch is no longer tried after the native one (indefinite_sympy.heurisch_of_core),
+# which does the integrand of SymPy's tests it missed
+from sympy_extras.integrals.heurisch import heurisch_cases
+from sympy_extras.integrals.indefinite import METHODS
+assert 'sympy heurisch' not in dict(METHODS)
+assert str(heurisch_cases(1/(x + sin(y)), x)) == 'log(x + sin(y))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_solve_equation_does_not_load_sympy() -> None:
+    """The native port of SymPy's ``solve`` (:mod:`sympy_extras.solvers.solvers`,
+    the Lambert W forms of :mod:`sympy_extras.solvers.bivariate`) loads no
+    SymPy, nor do the solvers which called SymPy's ``solve`` through the
+    ``solve_of_core`` functions of the faces of charpit, factorization, pde
+    and transcendental: a radical in the unknown of a Clairaut equation, the
+    undetermined coefficients of an Abel equation, the Lambert W roots of
+    ``x = exp(x) - 2``."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVE_EQUATION], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SOLVESET = r'''
+import sys
+from sympy_extras.core import Eq, I, sqrt, symbols
+from sympy_extras.functions import log, sin, sinh
+from sympy_extras.sets import Complexes, Reals
+from sympy_extras.solvers.solveset import solveset
+from sympy_extras.assumptions.solve import solve
+assert 'sympy' not in sys.modules
+x, y, n = symbols('x y n')
+assert str(solveset(Eq(sinh(x), I), x, Complexes)) == 'ImageSet(Lambda(_n, 2*_n*I*pi + I*pi/2), Integers)'
+assert str(solveset(Eq(sin(3/n), 0), n, Reals)) == \
+    'Union(ImageSet(Lambda(_n, 3/(2*_n*pi)), Integers), ImageSet(Lambda(_n, 3/(pi*(2*_n + 1))), Integers))'
+assert str(solveset(x**2 - 2 > sqrt(2), x, Reals)) == \
+    'Union(Interval.open(-oo, -sqrt(sqrt(2) + 2)), Interval.open(sqrt(sqrt(2) + 2), oo))'
+assert len(solve(y**4 - y**3 - 10*y**2 + 5*y + 24, y, domain=Complexes).args) == 4
+assert str(solve(Eq(log(x) + log(x - 1), log(2)), x, domain=Reals)) == '{2}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_solveset_does_not_load_sympy() -> None:
+    """The native port of SymPy's ``solveset`` (:mod:`sympy_extras.solvers.solveset`)
+    loads no SymPy, nor do the steps which went through the
+    ``solveset_of_core`` functions of ``assumptions.solve_sympy`` and
+    ``solvers.transcendental_sympy``: the images of the integers of
+    ``sinh(x) = I`` and ``sin(3/n) = 0``, a polynomial inequality with
+    irrational coefficients, a quartic over the complex numbers, and a sum
+    of logarithms."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SOLVESET], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SYSTEMS_AND_INTERSECTIONS = r'''
+import sys
+from sympy_extras.core import Rational, symbols
+from sympy_extras.functions import sin
+from sympy_extras.assumptions.solve import solve
+assert 'sympy' not in sys.modules
+x, y, z = symbols('x y z')
+assert str(solve([x*z - y, x - y*z], [x, y, z])) == '{(0, 0, z), (-y, y, -1), (y, y, 1)}'
+assert str(solve([x**2 + y**2 - 1], [x, y])) == '{(-sqrt(1 - y**2), y), (sqrt(1 - y**2), y)}'
+assert str(solve(sin(x) - Rational(1, 2), x, (x > 0) & (x < 1))) == '{pi/6}'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_systems_and_intersections_do_not_load_sympy() -> None:
+    """The systems in positive dimension which ``assumptions.solve`` gave
+    to SymPy's ``nonlinsolve`` (``solve_sympy.nonlinsolve_of_core``) and
+    the intersections of images of the integers with intervals which it
+    gave to SymPy's constructors (``solve_sympy.evaluated_set_of_core``)
+    load no SymPy: the native ``solve_system`` and evaluation."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SYSTEMS_AND_INTERSECTIONS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SUMMATION_ROUTES = r'''
+import sys
+from sympy_extras.core import Symbol, oo, pi
+from sympy_extras.functions import exp
+from sympy_extras.concrete.summations import summation, _solve
+i, s, a, x = Symbol('i', integer=True), Symbol('s'), Symbol('a'), Symbol('x')
+# the poles of the residue method as CRootOf (SymPy's own sum is 0)
+r = summation(1/(i**4 + i + 1), (i, -oo, oo))
+assert r.has(pi) and abs(complex(r.evalf(20)) - 2.4919745015915575) < 1e-12, r
+# coefficients our Poly does not take
+assert str(summation(1/(i**2 + pi), (i, -oo, oo))) == 'sqrt(pi)/tanh(pi**(3/2))'
+# the Hurwitz zeta function of Sum.doit
+assert str(summation((2*i + a)**(-s), (i, 1, oo))) == \
+    'Piecewise((zeta(s, a/2 + 1)/2**s, (re(s) > 1) & ~Contains(-a/2 - 1, Naturals0)), (Sum((a + 2*i)**(-s), (i, 1, oo)), True))'
+# SymPy's solve of an equation the linear and finite solvers do not list
+assert str(_solve(x*exp(x) - 1, x)) == '[LambertW(1)]'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_summation_routes_do_not_load_sympy() -> None:
+    """The residue method at poles SymPy writes as ``CRootOf`` and with
+    coefficients our Poly does not take, the zeta function match of
+    ``Sum.doit`` and the equations the linear and finite solvers do not
+    list load no SymPy (they went through SymPy's ``eval_sum_residue``,
+    ``Sum.doit`` and ``solve``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SUMMATION_ROUTES], capture_output=True, text=True,
+                         timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_DELTA_ROUTES = r'''
+import sys
+from sympy_extras.core import Symbol
+from sympy_extras.functions import exp
+from sympy_extras.functions.special.tensor_functions import KroneckerDelta
+from sympy_extras.concrete.delta import _solve, _solve_dicts, deltaproduct
+i, j, k, n = (Symbol(s, integer=True) for s in 'ijkn')
+x, y = Symbol('x'), Symbol('y')
+assert str(_solve(x*exp(x) - 1, x)) == '[LambertW(1)]'
+assert str(_solve_dicts([x*y - 1, x - y])) == '[{x: -1, y: -1}, {x: 1, y: 1}]'
+# two deltas: an underdetermined system (it went to SymPy's solve(..., dict=True))
+assert str(deltaproduct(KroneckerDelta(i, k)*KroneckerDelta(j, k), (k, 1, n))) == \
+    'KroneckerDelta(0, n) + KroneckerDelta(1, i)*KroneckerDelta(1, j)*KroneckerDelta(1, n)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_delta_routes_do_not_load_sympy() -> None:
+    """The equations of the deltas which neither the linear solver nor the
+    finite solutions of ``assumptions.solve`` give, and the systems of
+    several deltas, are solved by the native ``solve_equation`` and
+    ``solve_system`` (they went to SymPy's ``solve``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_DELTA_ROUTES], capture_output=True, text=True,
+                         timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EULERSUMS_INTEGRAL = r'''
+import sys
+from sympy_extras.core import Symbol
+from sympy_extras.functions import polygamma
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.concrete.eulersums import polygamma_integral_representation
+n, s = Symbol('n'), Symbol('s')
+r = polygamma_integral_representation(polygamma(0, n)/n**s, n)
+assert r is not None and r.has(Integral), r
+assert str(r) == '-EulerGamma*zeta(s) + Integral((zeta(s) - polylog(s, t)/t)/(1 - t), (t, 0, 1))', r
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_eulersums_integral_does_not_load_sympy() -> None:
+    """The integral representation of a polygamma series is the core's
+    ``Integral`` (it was SymPy's, wrapped)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EULERSUMS_INTEGRAL], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PRODUCT_OVER_EX = r'''
+import sys
+from sympy_extras.core import Symbol, I, sqrt, pi
+from sympy_extras.concrete.products import product
+k, n = Symbol('k', integer=True), Symbol('n', integer=True, positive=True)
+assert str(product(k + I, (k, 1, n))) == 'RisingFactorial(1 + I, n)'
+assert str(product(sqrt(2)*k + 1, (k, 1, n))) == '2**(n/2)*RisingFactorial(sqrt(2)/2 + 1, n)'
+assert str(product(k**2 + pi, (k, 1, n))) == \
+    'RisingFactorial(1 - I*sqrt(pi), n)*RisingFactorial(1 + I*sqrt(pi), n)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_product_over_ex_does_not_load_sympy() -> None:
+    """The product of a polynomial whose coefficients our Poly does not
+    take (SymPy's ``EX``) is native, by the roots of ``ex_roots`` (the
+    whole product went to SymPy's ``Product.doit``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PRODUCT_OVER_EX], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EXPR_WITH_LIMITS_DOIT = r'''
+import sys
+from sympy_extras.core import Symbol, Integer
+from sympy_extras.concrete.expr_with_limits import ExprWithLimits, Sum
+from sympy_extras.concrete.summations import summation
+i, n = Symbol('i', integer=True), Symbol('n', integer=True)
+e = ExprWithLimits(summation(i, (i, 1, n)) + Sum(i, (i, 1, n)), (n, Integer(1), Integer(2)))
+assert str(e.doit()) == 'ExprWithLimits(n**2 + n, (n, 1, 2))', e.doit()
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_expr_with_limits_doit_does_not_load_sympy() -> None:
+    """``ExprWithLimits.doit`` (the base class: ``Sum`` and ``Product``
+    have their own) evaluates its function and bounds as SymPy's
+    ``Basic.doit`` (it went through SymPy)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EXPR_WITH_LIMITS_DOIT], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_RATSIMP_DOMAINS = r'''
+import sys
+from sympy_extras.core import Symbol, I, Float
+from sympy_extras.simplify.ratsimp import ratsimp
+x, y = Symbol('x'), Symbol('y')
+assert str(ratsimp((x**2 + I)/(x + 1))) == 'x - 1 + (1 + I)/(x + 1)'
+assert str(ratsimp((I*x**3 + 2*x + 1)/(x**2 + I))) == 'I*x + (3*x + 1)/(x**2 + I)'
+assert str(ratsimp((x**2 + Float(0.5))/(x + 1))) == '1.0*x - 1.0 + 1.5/(1.0*x + 1.0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ratsimp_domains_do_not_load_sympy() -> None:
+    """``ratsimp`` divides over ``QQ_I`` and ``EX`` natively (Gaussian and
+    float coefficients went to SymPy's ``ratsimp``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RATSIMP_DOMAINS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_HYPER_ASYMPTOTIC_SERIES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer
+from sympy_extras.core.coreerrors import PoleError
+from sympy_extras.functions import exp, log
+from sympy_extras.functions.special.hyper import Hyper, hyper, meijerg
+x, L = Symbol('x'), Symbol('L')
+for e in (hyper([1, 2], [3], 1/x), meijerg([], [], [0], [], 1/x)):
+    try:
+        e._eval_nseries(x, 3, None, Integer(0))
+    except PoleError:
+        pass
+    else:
+        raise AssertionError('SymPy raises PoleError: no asymptotic expansion of %s' % e)
+s = Hyper([1], [2], log(x) + x)._eval_nseries(x, 2, L, Integer(0))
+# hyper([1], [2], w) = (exp(w) - 1)/w at w = L + x: f(L) + x*f'(L)
+expected = (exp(L) - 1)/L + x*(exp(L)/L - (exp(L) - 1)/L**2)
+assert (s.removeO() - expected).expand() == 0, s
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_hyper_asymptotic_series_do_not_load_sympy() -> None:
+    """The series of ``hyper`` and ``meijerg`` at an argument going to an
+    infinity follow SymPy's generic branch natively: ``PoleError`` when
+    the leading term goes to an infinity, the expansion around the
+    logarithmic term otherwise (they went through SymPy's
+    ``_eval_nseries``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_HYPER_ASYMPTOTIC_SERIES], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PIECEWISE_RELATIONAL_CONDITIONS = r'''
+import sys
+from sympy_extras.core import Symbol, sqrt, Ne
+from sympy_extras.functions import log
+from sympy_extras.functions.elementary.piecewise import _simplify_condition
+x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
+assert str(_simplify_condition(Ne(log(y), 0))) == 'Ne(log(y), 0)'
+assert str(_simplify_condition(x < -sqrt(5)/5)) == 'x < -sqrt(5)/5'
+assert str(_simplify_condition(2*x + 4 > 6*y)) == 'x - 3*y > -2'
+from sympy_extras.core.logic import and_, or_, not_
+assert str(_simplify_condition(and_(x < y, Ne(x, y)))) == 'x < y'
+assert str(_simplify_condition(or_(x > 1, x > 2, x < 0))) == '(x > 1) | (x < 0)'
+assert str(_simplify_condition(not_(and_(x > 0, x < 1)))) == '(x >= 1) | (x <= 0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_piecewise_relational_conditions_do_not_load_sympy() -> None:
+    """The conditions of ``piecewise_simplify_arguments``, relations and
+    compound formulas, are simplified by the native port of SymPy's
+    ``simplify`` of Booleans (:mod:`sympy_extras.logic.boolsimp`; they
+    went to SymPy's ``simplify``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PIECEWISE_RELATIONAL_CONDITIONS], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_PIECEWISE_XOR_CONDITIONS = r'''
+import sys
+from sympy_extras.core import Symbol, Integer
+from sympy_extras.core.logic import Not, Xor, or_
+from sympy_extras.functions import piecewise
+from sympy_extras.functions.elementary.piecewise import piecewise_simplify
+x, y, a, b = Symbol('x'), Symbol('y'), Symbol('a'), Symbol('b')
+assert str(piecewise_simplify(piecewise((x, Xor(a, or_(b, x > y))), (0, True)))) == \
+    'Piecewise((x, a ^ b ^ (x > y) ^ (b & (x > y))), (0, True))'
+assert str(piecewise_simplify(piecewise((x, Not(Xor(x > 1, x > 2))), (0, True)))) == \
+    'Piecewise((x, (x <= 1) | (x > 2)), (0, True))'
+assert str(piecewise_simplify(piecewise((x, Xor(x + y > 1, y > 0)), (0, True)))) == \
+    'Piecewise((x, (y > 0) ^ (x + y > 1)), (0, True))'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_piecewise_xor_conditions_do_not_load_sympy() -> None:
+    """A condition with an ``Xor`` is simplified by the native algebraic
+    normal form (:mod:`sympy_extras.logic.anf`, the port of SymPy's
+    ``Xor._eval_simplify`` in :mod:`sympy_extras.logic.boolsimp`; it
+    went to SymPy's ``simplify``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_PIECEWISE_XOR_CONDITIONS], capture_output=True,
+                         text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_last_small_routes_do_not_load_sympy() -> None:
+    """The annihilators of :mod:`sympy_extras.integrals.dfinite` (they
+    came from SymPy's ``expr_to_holonomic``,
+    ``dfinite_sympy.holonomic_of_core``), the antiderivatives of
+    :mod:`~sympy_extras.integrals.parametric` and
+    :mod:`~sympy_extras.solvers.charpit` (SymPy's ``integrate``, the
+    ``antiderivative_of_core`` of their faces) and the simplification of
+    compound Boolean formulas (SymPy's ``simplify``,
+    ``refine_sympy.simplify_boolean_of_core``) load no SymPy, and SymPy's
+    heuristic Risch integrator is no longer a method of the native
+    indefinite integrator (``indefinite_sympy.heurisch_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LAST_ROUTES], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ASK_HANDLERS = r'''
+import sys
+from sympy_extras.core import Q, Symbol, ask, sqrt, I
+from sympy_extras.functions import log, re, Abs
+x, k, n = Symbol('x'), Symbol('k'), Symbol('n')
+assert ask(Q.real(re(k) + 1)) is True and ask(Q.real(Abs(x) - 1)) is True
+assert ask(Q.positive(log(x)), Q.positive(x) & Q.negative(x - 1)) is False
+assert ask(Q.real(sqrt(x)), Q.real(x)) is None   # SymPy's True is a bug (x = -1)
+assert ask(Q.nonzero(x), Q.positive(x) | Q.negative(x)) is True
+assert ask(Q.even(2*n), Q.integer(n)) is True and ask(Q.real(I*x), Q.real(x) & Q.nonzero(x)) is False
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ask_handlers_do_not_load_sympy() -> None:
+    """What the facts of the core's ``ask`` do not decide goes to the
+    ported handlers of the classes and the SAT search
+    (:mod:`sympy_extras.assumptions.handlers`; it went to SymPy's
+    ``ask`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ASK_HANDLERS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_manualintegrate_does_not_load_sympy() -> None:
+    """The port of SymPy's ``manualintegrate`` loads no SymPy, nor do the
+    method ``'manual'`` of the native indefinite integration (which went
+    to ``indefinite_sympy.manualintegrate_of_core``) and the
+    antiderivatives of the polynomials in elementary functions and the
+    integrations by parts of the native ``antiderivative`` (which went to
+    SymPy's ``integrate`` through ``antiderivative_sympy.integrate_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_MANUALINTEGRATE], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_BASIC_SIMPLIFY = r'''
+import sys
+from sympy_extras.core import Eq, symbols
+x, y = symbols('x y')
+assert str(Eq(x + x, 2*x).simplify()) == 'True' and str((y > x).simplify()) == 'x < y'
+assert str((2*x + 4 > 6*y).simplify()) == 'x - 3*y > -2'
+assert str(((x > 1) | (x > 2)).simplify()) == 'x > 1'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_basic_simplify_does_not_load_sympy() -> None:
+    """``Basic.simplify`` of the relations and formulas is the native port
+    of SymPy's simplify of Booleans (it went to SymPy's ``simplify``
+    through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_BASIC_SIMPLIFY], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_EQUALS = r'''
+import sys
+from sympy_extras.core import Symbol, sqrt
+from sympy_extras.functions import sin, cos, exp
+x = Symbol('x')
+assert ((x + 1)**2).equals(x**2 + 2*x + 1) is True and (sin(x)**2 + cos(x)**2).equals(1) is True
+assert sqrt(5 + 2*sqrt(6)).equals(sqrt(2) + sqrt(3)) is True and (exp(x)*exp(-x)).equals(2) is False
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+_NATIVE_MEIJERINT = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, I, oo
+from sympy_extras.functions import besselj, dirac_delta, exp, sin, sinc
+from sympy_extras.integrals.meijerint import meijer_antiderivative, meijerint_definite, meijerint_indefinite
+from sympy_extras.integrals.indefinite import verified_antiderivative
+from sympy_extras.integrals.definite import _Integrator, definite_integral
+from sympy_extras.integrals.deltafunctions import deltaintegrate
+x = Symbol('x')
+assert str(meijerint_definite(sinc(x)**2, x, -oo, oo)) == '(pi, True)'
+assert str(meijerint_definite(exp(-x)*sin(x), x, Integer(0), oo)) == '(1/2, True)'
+assert str(meijerint_indefinite(x*besselj(0, x), x)) == '(x*besselj(1, x), True)'
+assert str(meijer_antiderivative(besselj(1, x), x)) == '-besselj(0, x)'
+# the method 'meijer' of indefinite went to indefinite_sympy.meijerint_of_core
+assert verified_antiderivative(besselj(1, x), x, methods=['meijer']) is not None
+# the last method of definite went to definite_sympy.integrate_of_core
+assert str(_Integrator(None)._last(exp(x), x, Integer(0), I)) == 'ConditionalValue(-1 + exp(I))'
+assert str(deltaintegrate(exp(x)*dirac_delta(x - 1), x)) == 'E*Heaviside(x - 1)'
+assert str(definite_integral(exp(x)*dirac_delta(x - 1), (x, Integer(0), Integer(2)))) == 'E'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_equals_does_not_load_sympy() -> None:
+    """``Expr.equals`` decides by the native steps of SymPy's: the
+    simplified difference, its factors, the minimal polynomial of a number
+    (the difference went to SymPy's ``equals`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_EQUALS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ORDER_POINT = r'''
+import sys
+from sympy_extras.core import Dummy
+from sympy_extras.functions import exp
+from sympy_extras.core.order import _solve_for
+k, d = Dummy('k'), Dummy('d')
+assert str(_solve_for(k - exp(-d), d)) == '-log(_k)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_order_point_does_not_load_sympy() -> None:
+    """The point of a substituted ``Order`` is solved by the native
+    ``solveset`` (it went to SymPy's through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ORDER_POINT], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_REWRITE_OF_PARAMETER_NODES = r'''
+import sys
+from sympy_extras.core import Symbol, Rational
+from sympy_extras.functions import factorial
+from sympy_extras.functions.elementary.trigonometric import Cos
+from sympy_extras.functions.special.gamma_functions import Gamma
+from sympy_extras.functions.special.hyper import hyper, meijerg
+from sympy_extras.functions.elementary.piecewise import piecewise
+from sympy_extras.polys.cad.indexedroot import IndexedRoot
+a, u, x = Symbol('a'), Symbol('u'), Symbol('x')
+assert str(hyper([a/2], [Rational(1, 2)], -1).rewrite(Cos)) == 'hyper((a/2,), (1/2,), -1)'
+assert str(meijerg([-1], [], [], [0], u*factorial(a)).rewrite(Gamma)) == 'meijerg(((-1,), ()), ((), (0,)), u*gamma(a + 1))'
+assert str(piecewise((factorial(a), a > 0), (0, True)).rewrite(Gamma)) == 'Piecewise((gamma(a + 1), a > 0), (0, True))'
+assert str(IndexedRoot(x**3 - x - 1, x, 0).rewrite(Gamma)) == 'IndexedRoot(x**3 - x - 1, x, 0)'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_rewrite_of_parameter_nodes_does_not_load_sympy() -> None:
+    """``hyper``, ``meijerg``, the pairs of ``Piecewise`` and ``IndexedRoot``
+    have no rule for a function target in SymPy: they are rebuilt with
+    their arguments rewritten (SymPy was asked through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_REWRITE_OF_PARAMETER_NODES], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_SUM_VALUES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, oo
+from sympy_extras.concrete.expr_with_limits import Sum
+from sympy_extras.functions import factorial
+i = Symbol('i', integer=True)
+assert str(Sum(1/factorial(i), (i, 0, oo)).evalf(20)) == '2.7182818284590452354'
+assert str(Sum(1/i**2, (i, 1, oo)).evalf()) == '1.64493406684823'
+try:
+    Sum(Integer(1), (i, 1, oo)).evalf()
+except ValueError as e:
+    assert str(e) == 'Sum diverges like n^0', e
+else:
+    raise AssertionError('a divergent sum has no value')
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_sum_values_do_not_load_sympy() -> None:
+    """The values of the hypergeometric sums are the port of SymPy's
+    ``evalf_sum`` (a divergent sum raises SymPy's ``ValueError``; it went
+    to SymPy's ``evalf`` through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_SUM_VALUES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_TRACTABLE_LIMITS = r'''
+import sys
+from sympy_extras.core import Symbol, oo, sqrt
+from sympy_extras.core.limits import limit
+from sympy_extras.core.rewriting import rewrite_tractable
+from sympy_extras.functions import exp, log
+from sympy_extras.functions.special.error_functions import erf, Ei, li, Si
+from sympy_extras.functions.special.bessel import besselk
+x = Symbol('x', positive=True)
+assert str(rewrite_tractable(erf(x), x)) == '1 - exp(-x**2)*_erfs(x)'
+assert str(rewrite_tractable(Ei(x), x)) == 'exp(x)*_eis(x)'
+assert str(limit((erf(x) - 1)*exp(x**2)*x, x, oo)) == '-1/sqrt(pi)'
+assert str(limit(Ei(x)*exp(-x)*x, x, oo)) == '1' and str(limit(li(x)*log(x)/x, x, oo)) == '1'
+assert str(limit(besselk(1, x)*exp(x)*sqrt(x), x, oo)) == 'sqrt(2)*sqrt(pi)/2'
+assert str(Si(1/x).nseries(x, n=3)) == '-(x + O(x**3))*cos(1/x) - (x**2 + O(x**3))*sin(1/x) + pi/2'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_tractable_limits_do_not_load_sympy() -> None:
+    """The Gruntz algorithm's helpers ``_erfs``, ``_eis``, ``_besseli``,
+    ``_besselk`` and the tractable rewrites and asymptotic series of the
+    special functions are native (they went to SymPy through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_TRACTABLE_LIMITS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_LAST_RULES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, Rational
+from sympy_extras.core.function import Derivative, Subs, expand_func
+from sympy_extras.core.logic import Or, Xor
+from sympy_extras.functions import cos, sin, exp, factorial, polygamma, harmonic
+from sympy_extras.functions.elementary import complexes as c, integers as n, trigonometric as t, hyperbolic as h
+from sympy_extras.functions.elementary.miscellaneous import Max
+from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
+from sympy_extras.functions.special import bessel as b, error_functions as er, gamma_functions as g
+from sympy_extras.functions.special.delta_functions import Heaviside
+from sympy_extras.functions.special.hyper import Hyper, hyper, meijerg
+from sympy_extras.functions.combinatorial import numbers as nb
+from sympy_extras.functions.special.polynomials import Legendre
+from sympy_extras.integrals.integral import Integral
+x, y = Symbol('x'), Symbol('y')
+r, p = Symbol('r', real=True), Symbol('p', real=True)
+assert t.Cos(x).rewrite(t.Tan) != t.Cos(x) and t.Acos(x).rewrite(t.Asin).has(t.Asin)
+assert h.Cosh(x).rewrite(h.Tanh).has(h.Tanh) and t.Cos(t.pi / 5).rewrite('sqrt').is_Atom is False
+assert c.Abs(r).rewrite(Heaviside).has(Heaviside) and c.Abs(r).rewrite('Piecewise').has(Piecewise)
+assert n.Floor(x).rewrite(n.Ceiling).has(n.Ceiling) and Max(r, p).rewrite('Piecewise').has(Piecewise)
+assert Xor(x > 0, y > 0).rewrite(Or).has(Or)
+assert er.Erf(x).rewrite(er.FresnelS).has(er.FresnelS) and er.Erf(x).rewrite('hyper').has(Hyper)
+assert er.SiNode(x).rewrite('Integral').has(Integral) and g.LowerGamma(x, y).rewrite(g.UpperGamma).has(g.UpperGamma)
+assert b.SphericalJ(x, y).rewrite(b.BesselJ).has(b.BesselJ) and b.AiryAi(x).rewrite('hyper').has(Hyper)
+assert nb.Fibonacci(x).rewrite('sqrt') != nb.Fibonacci(x) and Legendre(x, y).rewrite('Sum') != Legendre(x, y)
+assert expand_func(b.AiryAi((3 * x**3)**Rational(1, 3))) != b.AiryAi((3 * x**3)**Rational(1, 3))
+assert expand_func(meijerg([], [], [Integer(0)], [], x)) == exp(-x)
+assert not expand_func(hyper([Integer(1), Integer(1)], [Integer(2)], x)).has(Hyper)
+assert expand_func(polygamma(Rational(1, 2), x)).has(Subs)
+assert expand_func(harmonic(Rational(7, 3))) != harmonic(Rational(7, 3))
+assert factorial(x).nseries(x, n=3).getO() is not None
+assert Derivative(sin(x) * y, x).nseries(x, n=3).getO() is not None
+assert Subs(cos(y), y, x).nseries(x, n=3).getO() is not None
+assert piecewise((sin(x), y > 0), (cos(x), True)).nseries(x, n=3).has(Piecewise)
+assert Integral(exp(y), y, Integer(0), x).nseries(x, n=3).getO() is not None
+try:
+    Max(x, Integer(1)).nseries(x, n=3)
+    raise AssertionError('no NotImplementedError')
+except NotImplementedError:
+    pass
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_last_rewrites_expand_func_series_do_not_load_sympy() -> None:
+    """A sample of the rewrites, ``expand_func`` rules and series of the
+    native nodes which went to SymPy through the bridge (rules into
+    function classes, into ``Piecewise``, ``Integral``, ``Sum``, ``hyper``
+    and names; ``hyperexpand``; ``Function._eval_nseries``), with no bridge
+    registered."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LAST_RULES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_POLAR_NUMBERS = r'''
+import sys
+from sympy_extras.core import Symbol, I, pi, sqrt
+from sympy_extras.core.evalf import numeric_value
+from sympy_extras.functions.elementary.exponential import exp_polar
+from sympy_extras.functions.elementary.complexes import PrincipalBranch, polar_lift, sign
+z = Symbol('z')
+assert (sqrt(z)*exp_polar(3*I*pi/2) - 1).equals(0) is False
+assert (exp_polar(0) - 1).equals(0) is None   # SymPy's answer
+assert sign(exp_polar(I*pi)) == -1 and exp_polar(I*pi).is_negative is True
+value = numeric_value(PrincipalBranch(exp_polar(5*I*pi/2)*polar_lift(2 + I), 2*pi), 53)
+assert value is not None and abs(value - (-1 + 2j)) < 1e-12, value
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_polar_numbers_do_not_load_sympy() -> None:
+    """``equals`` of differences with polar numbers, the signs of polar
+    numbers and the values of ``periodic_argument`` and
+    ``principal_branch`` are native ports of SymPy's."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_POLAR_NUMBERS], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def test_native_meijerint_does_not_load_sympy() -> None:
+    """The port of SymPy's ``meijerint`` loads no SymPy, nor do the method
+    ``'meijer'`` of the native indefinite integration (which went to
+    ``indefinite_sympy.meijerint_of_core``) and the last method of the
+    native definite integration, the Meijer G-function theorems and the
+    antiderivatives at the endpoints with the delta functions (which went
+    to SymPy's ``integrate`` through ``definite_sympy.integrate_of_core``)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_MEIJERINT], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+def _native_module(rel: str) -> bool:
+    """Whether the file ``rel`` (relative to the package) is native code:
+    not a SymPy face, not the interop package, not a test."""
+    parts = rel.split('/')
+    if 'tests' in parts or parts[-1].endswith('_sympy.py') or 'interop' in parts:
+        return False
+    return not any(p.endswith('_sympy') for p in parts[:-1]) and parts[-1] != '_testing.py'
+
+
+def test_native_time_limits_do_not_prepare_sympy() -> None:
+    """A limit without ``native=True`` prepares SymPy's tables, importing
+    SymPy: native code sets its limits with ``native=True`` (the bug: the
+    series and simplifications of ``solvers.kovacic``, the antiderivatives
+    of ``solvers.darboux`` and the transfer of ``assumptions.resolve``
+    imported SymPy that way). The one exception asks the foreign system,
+    when one is registered."""
+    import os
+    import sympy_extras
+    root = os.path.dirname(sympy_extras.__file__)
+    allowed = {('_timeout.py', 'attempt'), ('_numeric.py', '_foreign_minimal_polynomial_is_x')}
+    found: list[str] = []
+    for directory, _, files in os.walk(root):
+        for name in files:
+            path = os.path.join(directory, name)
+            rel = os.path.relpath(path, root).replace(os.sep, '/')
+            if not name.endswith('.py') or not _native_module(rel):
+                continue
+            with open(path) as handle:
+                tree = ast.parse(handle.read())
+            for function in ast.walk(tree):
+                if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.iter_child_nodes(function):
+                    found.extend(_unprepared_limits(node, rel, function.name, allowed))
+    assert not found, sorted(set(found))
+
+
+def _unprepared_limits(tree: ast.AST, rel: str, function: str, allowed: set[tuple[str, str]]) -> list[str]:
+    """The calls of ``attempt`` and ``time_limit`` in ``tree`` without
+    ``native=True``, outside the ``allowed`` functions."""
+    if (rel, function) in allowed:
+        return []
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        called = callee.id if isinstance(callee, ast.Name) else callee.attr if isinstance(callee, ast.Attribute) else ''
+        if called not in ('attempt', 'time_limit') or len(node.args) >= 3:
+            continue
+        native = [k.value for k in node.keywords if k.arg == 'native']
+        if not (native and isinstance(native[0], ast.Constant) and native[0].value is True):
+            found.append('%s:%d' % (rel, node.lineno))
+    return found
+
+
+_NATIVE_GENERIC_FALLBACKS = r'''
+import sys
+from sympy_extras.core import symbols, Symbol, Integer, Rational, oo, sqrt, pi
+from sympy_extras.core.order import _solve_for
+from sympy_extras.functions import exp, log, sin, cos, harmonic
+from sympy_extras.concrete.expr_with_limits import Sum
+from sympy_extras.integrals.integral import Integral
+from sympy_extras.sets.sets import FiniteSet
+x, y, k, d = symbols('x y k d')
+i = Symbol('i', integer=True)
+assert str(Sum(1/i**Rational(3, 2), (i, 1, oo)).evalf(20)) == '2.6123753486854883434'
+assert str(Sum(harmonic(i)/i**3, (i, 1, oo)).evalf(15)) == '1.35290404213892'
+assert str(Integral(exp(-x**2), x, Integer(0), oo).evalf(20)) == '0.88622692545275801365'
+assert (sqrt(2) + sqrt(3)).equals(sqrt(5 + 2*sqrt(6))) is True
+assert (sin(x)**2 + cos(x)**2 + y).is_constant(x) is True and (log(x) + y).is_constant(x) is False
+assert str((x + y).invert(x**2 + 1, x)) == '-x/(y**2 + 1) + y/(y**2 + 1)'
+assert str((1/(x + 1)).integrate(x)) == 'log(x + 1)' and str(exp(-x**2).integrate((x, 0, oo))) == 'sqrt(pi)/2'
+assert str(_solve_for(log(d) - k, d)) == 'exp(k)'
+assert FiniteSet(sin(x)**2 + cos(x)**2).simplify() == FiniteSet(Integer(1))
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_generic_fallbacks_do_not_load_sympy() -> None:
+    """The Euler-Maclaurin values of sums, the quadrature of integrals,
+    equals, is_constant, invert with parameters, integrate, the first
+    solution of an Order and simplify of other nodes are native (they went
+    to SymPy through the bridge)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_GENERIC_FALLBACKS], capture_output=True, text=True,
+                         timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_FPS_FOURIER = r'''
+import sys
+from sympy_extras.core import Symbol, pi
+from sympy_extras.core.bridge import Bridge, bridge
+from sympy_extras.functions import atan, exp, log, piecewise, sin
+assert type(bridge()) is Bridge   # no bridge registered
+x = Symbol('x')
+assert str(sin(x).fps(x).truncate()) == 'x - x**3/6 + x**5/120 + O(x**6)'
+assert str((log(1 + x)*exp(x)).fps(x).truncate(3)) == 'x + x**2/2 + O(x**3)'
+from sympy_extras.series.formal import fps
+assert str(fps(atan(x), x, full=True).truncate()) == 'x - x**3/3 + x**5/5 + O(x**6)'
+assert str(fps(exp(x)).compose(fps(sin(x)), x).truncate(4)) == '1 + x + x**2/2 + O(x**4)'
+assert str((x**2).fourier_series((x, -pi, pi)).truncate()) == '-4*cos(x) + cos(2*x) + pi**2/3'
+s = piecewise((0, x < 0), (pi, True)).fourier_series((x, -pi, pi))
+assert str(s.truncate()) == '2*sin(x) + 2*sin(3*x)/3 + pi/2', s.truncate()
+assert str((sin(x)**3).fourier_series().truncate()) == '3*sin(x)/4 - sin(3*x)/4'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_fps_and_fourier_series_do_not_load_sympy() -> None:
+    """``Expr.fps`` and ``Expr.fourier_series`` of native expressions run
+    the native ports (:mod:`sympy_extras.series.formal`, ``fourier``;
+    SymPy's ``fps`` and ``fourier_series`` through the bridge before)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_FPS_FOURIER], capture_output=True, text=True, timeout=900)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

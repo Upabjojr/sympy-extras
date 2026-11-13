@@ -312,8 +312,8 @@ first order equations and `pdsolve` has no symmetry analysis.
 
 ```python
 >>> from sympy import Function, symbols
->>> from sympy_extras.solvers.pde import pde_symmetries, pdsolve_lie
->>> from sympy_extras.solvers.ode import dsolve_lie
+>>> from sympy_extras.solvers.pde_sympy import pde_symmetries, pdsolve_lie
+>>> from sympy_extras.solvers.ode_sympy import dsolve_lie
 >>> x, t = symbols('x t')
 >>> u = Function('u')(x, t)
 >>> burgers = u.diff(t) + u*u.diff(x) - u.diff(x, 2)
@@ -387,9 +387,9 @@ statement assumptions and case distinctions.
 
 ```python
 >>> from sympy import Function, binomial, exp, oo, symbols
->>> from sympy_extras.solvers.kovacic import dsolve_kovacic
->>> from sympy_extras.solvers.linear_ode import dsolve_linear
->>> from sympy_extras.solvers.charpit import complete_integral
+>>> from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic
+>>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
+>>> from sympy_extras.solvers.charpit_sympy import complete_integral
 >>> from sympy_extras.concrete.zeilberger import zeilberger_sum, wz_prove
 >>> from sympy_extras.assumptions.limits_sympy import limit
 >>> x, y = symbols('x y')
@@ -438,14 +438,14 @@ system for their exponents, and the first integral by quadrature
 ```python
 >>> from sympy import Function
 >>> from sympy.abc import x, a, n
->>> from sympy_extras.solvers.linear_ode import dsolve_linear
->>> from sympy_extras.solvers.special import special_solutions
+>>> from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
+>>> from sympy_extras.solvers.special_sympy import special_solutions
 >>> y = Function('y')(x)
 >>> dsolve_linear(x*y.diff(x, 2) - (x + 2)*y.diff(x) + 2*y, y)
 [x**2 + 2*x + 2, exp(x)]
 >>> special_solutions(x**2*y.diff(x, 2) + x*y.diff(x) + (x**2 - n**2)*y, y)
 [besselj(n, x), bessely(n, x)]
->>> from sympy_extras.solvers.darboux import prelle_singer
+>>> from sympy_extras.solvers.darboux_sympy import prelle_singer
 >>> prelle_singer(x*(1 - y)*y.diff(x) - y*(x - 1), y)          # Lotka–Volterra
 Eq(-x - y(x) + log(x) + log(y(x)), C1)
 
@@ -486,8 +486,8 @@ their invariants, and `polygamma_series` sums Euler sums and series of
 polygamma functions in zeta values.
 
 ```python
->>> from sympy_extras.solvers.thue_equation import thue
->>> from sympy_extras.solvers.second_order import dsolve_second_order
+>>> from sympy_extras.solvers.thue_equation_sympy import thue
+>>> from sympy_extras.solvers.second_order_sympy import dsolve_second_order
 >>> from sympy_extras.concrete.eulersums import polygamma_series
 >>> thue(x**3 + x**2*y - 2*x*y**2 - y**3, 1, x, y)
 [(-9, 5), (-1, -1), (-1, 1), (-1, 2), (0, -1), (1, 0), (2, -1), (4, -9), (5, 4)]
@@ -513,7 +513,8 @@ equations with constant coefficients through the core-nilpotent
 decomposition of the pencil (`sympy_extras.solvers.dae`); convergence
 of series and infinite products with conditions on the parameters by the
 tests of d'Alembert, Raabe, Bertrand, Cauchy and Leibniz
-(`sympy_extras.concrete.convergence`); Dirichlet series of the
+(`sympy_extras.concrete.convergence`, native; on SymPy objects
+`sympy_extras.concrete.convergence_sympy`); Dirichlet series of the
 arithmetic functions by pattern matching (`sympy_extras.concrete.dirichlet`);
 sequence limits with assumptions (`limit_seq`); linear questions in `ask`
 decided by virtual substitution and the parity of integer polynomials in
@@ -526,8 +527,8 @@ decided by virtual substitution and the parity of integer polynomials in
 >>> from sympy_extras.assumptions.refine_sympy import refine
 >>> from sympy_extras.assumptions.limits_sympy import limit_seq
 >>> from sympy_extras.assumptions.facts_sympy import element
->>> from sympy_extras.solvers.dae import dsolve_dae
->>> from sympy_extras.concrete.convergence import sum_convergence
+>>> from sympy_extras.solvers.dae_sympy import dsolve_dae
+>>> from sympy_extras.concrete.convergence_sympy import sum_convergence
 >>> solve(Eq(x, cos(x)), x, domain=S.Reals)
 {TranscendentalRoot(x - cos(x), x, 5/8, 3/4)}
 >>> dsolve_dae(Matrix([[1, 0], [0, 0]]), Matrix([[0, -1], [1, 0]]), Matrix([0, sin(x)]), x).solution.T
@@ -570,7 +571,9 @@ of intervals by the cylindrical algebraic decomposition. See
 ```python
 >>> from sympy import symbols, exp, sin, cos, sqrt, Abs, log, oo, pi, S
 >>> from sympy_extras.assumptions.facts_sympy import element
->>> from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform
+>>> from sympy_extras.integrals.definite_sympy import definite_integral
+>>> from sympy_extras.integrals.regions_sympy import IntegralByRanges
+>>> from sympy_extras.integrals.mellin_sympy import mellin_transform
 >>> x, y, k, s = symbols('x y k s')
 >>> a, b = symbols('a b', positive=True)
 >>> definite_integral(x**k/(x + 3), (x, 0, oo))
@@ -631,7 +634,7 @@ table are integrated termwise:
 ```python
 >>> from sympy import besselj, I
 >>> definite_integral(exp(-2*x)*cos(x)*besselj(0, x), (x, 0, oo))
-2**(3/4)*sqrt(sqrt(2) + 2)/8
+2**(3/4)*sqrt(5)*(sin(atan(1/7)/2) + 2*cos(atan(1/7)/2))/20
 >>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo), regularize=True)
 -2*sqrt(pi)
 >>> definite_integral(x*log(sin(x)), (x, 0, pi/2))
@@ -705,7 +708,7 @@ The size of the symmetry algebra of a differential equation follows from
 the Janet basis of its determining equations:
 
 ```python
->>> from sympy_extras.solvers.lie import symmetry_janet_basis
+>>> from sympy_extras.solvers.lie_sympy import symmetry_janet_basis
 >>> symmetry_janet_basis(p.diff(x, 2), p).dimension
 8
 
@@ -792,13 +795,16 @@ random expressions, and the arithmetic runs within a factor of two of
 
 ### Principal subresultant coefficients (`sympy_extras.polys.subresultants`)
 
-`dup_psc`, `dmp_psc` and `psc` compute the principal subresultant
-coefficients of two polynomials, the leading coefficients of the
-subresultant sequence, which are needed by Hong's projection operator.
+`dup_psc` and `psc` compute the principal subresultant coefficients of two
+polynomials, the leading coefficients of the subresultant sequence, which
+are needed by Hong's projection operator: natively on the typed dense
+polynomials and rings, and in the SymPy face
+`sympy_extras.polys.subresultants_sympy` (with `dmp_psc`) on SymPy's dense
+representation and rings.
 
 ```python
 >>> from sympy import ring, ZZ
->>> from sympy_extras.polys.subresultants import psc
+>>> from sympy_extras.polys.subresultants_sympy import psc
 >>> R, x, y = ring("x,y", ZZ)
 >>> psc(x**2*y + x, x + y)
 [y**3 - y, 1]
@@ -1173,7 +1179,7 @@ True
 
 ```
 
-### Fourier series (`sympy_extras.series.fourier`)
+### Fourier series (`sympy_extras.series.fouriercoefficients`)
 
 The coefficients of the Fourier series of a piecewise polynomial
 function, as formulas in the index:
@@ -1181,7 +1187,7 @@ function, as formulas in the index:
 ```python
 >>> from sympy_extras.core import Symbol, pi
 >>> from sympy_extras.functions import piecewise
->>> from sympy_extras.series.fourier import fourier_coefficients
+>>> from sympy_extras.series.fouriercoefficients import fourier_coefficients
 >>> x = Symbol('x')
 >>> square = fourier_coefficients(piecewise((-1, x < 0), (1, True)), x, (-pi, pi))
 >>> square.an, square.bn, square.partial_sum(3)
@@ -1260,26 +1266,62 @@ sympy_extras/
         zeilberger_sympy.py  the SymPy face of zeilberger: zeilberger_sum, wz_certificate, wz_prove
         qhyper_sympy.py      the SymPy face of qhyper: QPochhammer as a SymPy function, qgosper_sum, qzeilberger, ...
     integrals/
-        mellin.py            Mellin transforms as gamma quotients, the table of kernels
-        slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem
-        marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo)
-        residues.py          rational, Fourier and trigonometric integrals by residues
-        definite.py          definite_integral: splitting, range mappings, verified fallback
-        regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD)
-        telescoping.py       Almkvist–Zeilberger creative telescoping (holonomic integrals)
-        parametric.py        differentiation under the integral sign
-        antiderivative.py    antiderivatives evaluated by one-sided limits
+        mellin.py            Mellin transforms as gamma quotients, the table of kernels (native)
+        mellin_sympy.py      the SymPy face of mellin
+        slater.py            Mellin–Barnes integrals as Meijer G-functions, Slater's theorem (native)
+        slater_sympy.py      the SymPy face of slater
+        marichev.py          the Marichev–Adamchik method over (0, oo), (0, 1), (1, oo) (native)
+        marichev_sympy.py    the SymPy face of marichev
+        residues.py          rational, Fourier and trigonometric integrals by residues (native)
+        residues_sympy.py    the SymPy face of residues
+        contours.py          the rectangle, the sector and the indented line for residues (native)
+        contours_sympy.py    the SymPy face of contours
+        definite.py          definite_integral: splitting, range mappings, verified fallback (native)
+        definite_sympy.py    the SymPy face of definite
+        integral.py          Integral: the unevaluated integral of the core
+        regions.py           IntegralByRanges: integrals over semialgebraic regions (CAD) (native)
+        regions_sympy.py     the SymPy face of regions
+        telescoping.py       Almkvist–Zeilberger creative telescoping (holonomic integrals) (native)
+        telescoping_sympy.py the SymPy face of telescoping
+        reduction.py         reduction-based creative telescoping by Hermite reduction (native)
+        reduction_sympy.py   the SymPy face of reduction
+        dfinite.py           Chyzak's algorithm for D-finite integrands (native)
+        dfinite_sympy.py     the SymPy face of dfinite
+        parametric.py        differentiation under the integral sign (native)
+        parametric_sympy.py  the SymPy face of parametric
+        laplace.py           the operational rules of the Laplace transform (native)
+        laplace_sympy.py     the SymPy face of laplace
+        transformations.py   Frullani's theorem, Glasser's master theorem (native)
+        transformations_sympy.py the SymPy face of transformations
+        antiderivative.py    antiderivatives evaluated by one-sided limits (native)
+        antiderivative_sympy.py the SymPy face of antiderivative
         brackets.py          Ramanujan's master theorem, method of brackets
+        periodic.py          integrals over whole periods by the constant Laurent coefficient (native)
+        periodic_sympy.py    the SymPy face of periodic
+        series.py            series expansion of a factor and termwise integration, Fourier series (native)
+        series_sympy.py      the SymPy face of series
         recognize.py         PSLQ recognition of integrals (an oracle)
-        risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests
-        trager.py            Trager's algorithm for algebraic functions (one square root)
-        summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals
-        axisymmetric.py      region integrals with a rotational symmetry reduced to their profile
+        risch/               Risch algorithm ported from Aaron Meurer's SymPy pull requests (native; risch_sympy.py is the face)
+        trager.py            Trager's algorithm for algebraic functions (one square root, roots of index n) (native)
+        trager_sympy.py      the SymPy face of trager
+        curves.py            Trager's algorithm on a general curve (several or nested radicals) (native)
+        curves_sympy.py      the SymPy face of curves
+        summability.py       Abel, Cesàro and Gaussian means of divergent oscillatory integrals (native)
+        summability_sympy.py the SymPy face of summability
+        axisymmetric.py      region integrals with a rotational symmetry reduced to their profile (native)
+        axisymmetric_sympy.py the SymPy face of axisymmetric
         radicals.py          real antiderivatives of x**n * Q**(m/2), Q quadratic
-        indefinite.py        indefinite integration by the typed methods in turn, every antiderivative checked
+        indefinite.py        indefinite integration by the typed methods in turn, every antiderivative checked (native;
+                             SymPy's routes last, through indefinite_sympy)
+        indefinite_sympy.py  the SymPy face of indefinite
+        integral.py          Integral: the unevaluated indefinite integral of the core (native)
         trigonometric.py     products and rational functions of trigonometric and hyperbolic functions
-        heurisch.py          the heuristic Risch integrator, typed, verified, with an extended candidate table
-        rewriting.py         canonical forms and substitutions tried before SymPy's routes
+        heurisch.py          the heuristic Risch integrator, typed, verified, with an extended candidate table (native)
+        heurisch_sympy.py    the SymPy face of heurisch
+        rewriting.py         canonical forms and substitutions tried before SymPy's routes (native)
+        rewriting_sympy.py   the SymPy face of rewriting
+        algebraic.py         Euler's substitutions, Möbius roots, Chebyshev's binomial differentials (native)
+        algebraic_sympy.py   the SymPy face of algebraic
         exponential.py       powers times exponentials of powers by the incomplete gamma function, exponential-rational integrands
     solvers/
         lie.py               jet spaces, prolongation, determining equations, symmetries
@@ -1288,19 +1330,29 @@ sympy_extras/
         integers.py          Hermite normal form, Contejean-Devie, Cooper's algorithm
         transcendental.py    transcendental equations reduced to polynomial ones
         kovacic.py           Kovacic's algorithm
-        linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order, operator arithmetic
-        irregular.py         exponential parts at irregular finite singular points (local Newton polygons)
-        factorization.py     factorisation of linear differential operators (Beke), solving through the factors
-        special.py           Bessel, Whittaker, hypergeometric solutions
-        linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants
-        first_order.py       Abel, Chini, d'Alembert-Lagrange equations
+        linear_ode.py        polynomial/rational/hyperexponential solutions, reduction of order, operator arithmetic (native)
+        linear_ode_sympy.py  the SymPy face of linear_ode
+        irregular.py         exponential parts at irregular finite singular points (local Newton polygons) (native)
+        irregular_sympy.py   the SymPy face of irregular
+        factorization.py     factorisation of linear differential operators (Beke), solving through the factors (native)
+        factorization_sympy.py the SymPy face of factorization
+        special.py           Bessel, Whittaker, hypergeometric solutions (native)
+        special_sympy.py     the SymPy face of special
+        linear_systems.py    systems Y' = A Y + b: cyclic vectors, rational solutions, variation of constants (native)
+        linear_systems_sympy.py the SymPy face of linear_systems
+        first_order.py       Riccati, Abel, Chini, d'Alembert-Lagrange equations (native)
+        first_order_sympy.py the SymPy face of first_order
+        abel.py              invariants, equivalence classes and the AIR class of Abel equations (native)
+        abel_sympy.py        the SymPy face of abel
         exponential_diophantine.py  Pillai's equation a**x - b**y = c (Baker–Wüstholz, continued fractions), integer zeros of exponential polynomials (native)
         simplex.py           exact linear programming over QQ with certificates (duality, Farkas, rays), strict inequalities (native)
         recurr.py            linear recurrences: polynomial, hypergeometric (Petkovšek), d'Alembertian (Abramov–Petkovšek) solutions (native)
-        charpit.py           complete integrals of first order PDEs
+        charpit.py           complete integrals of first order nonlinear PDEs by Charpit's method (native)
+        charpit_sympy.py     the SymPy face of charpit
+        dae.py               linear differential-algebraic equations, core-nilpotent decomposition (native)
+        dae_sympy.py         the SymPy face of dae
         kovacic.py           Kovacic's algorithm (Liouvillian solutions of second order linear ODEs)
-        linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order
-        charpit.py           complete integrals of first order nonlinear PDEs
+        linear_ode.py        polynomial, rational, hyperexponential solutions; reduction of order (native; linear_ode_sympy the face)
     simplify/
         structure.py         the structure theorem: ElementaryTower, canonical_form, is_zero, equal (native)
         structure_sympy.py   the SymPy face of structure
@@ -1322,8 +1374,10 @@ sympy_extras/
         multifactor.py       factorisation of multivariate polynomials over ZZ (Wang)
         multisqf.py          square-free decomposition of multivariate polynomials
         partfrac.py          apart: partial fraction decomposition
+        complexrootof.py     ComplexRootOf: complex roots of rational polynomials in SymPy's CRootOf order (native)
         polyroots.py         roots of univariate polynomials in radicals
-        subresultants.py     principal subresultant coefficients on SymPy's dense representation (CAD projections)
+        subresultants.py     principal subresultant coefficients on the typed layer (CAD projections) (native)
+        subresultants_sympy.py  its SymPy face (SymPy's dense representation and rings)
         polyutils.py         conversions between core expressions and the typed polynomials
         sqfreetools.py       square-free decomposition (Yun; over GF(p) with p-th roots)
         galoistools.py       factorisation over GF(p): distinct-degree, Cantor–Zassenhaus, Rabin's test
@@ -1342,19 +1396,22 @@ sympy_extras/
         idealdecomposition_sympy.py  its SymPy face
         hermite.py           real solutions of zero-dimensional systems counted by Hermite's quadratic form, sign determination (native)
         hermite_sympy.py     its SymPy face
-        groebnerwalk.py      Gröbner walk (order conversion for any ideal)
+        groebnerwalk.py      Gröbner walk (order conversion for any ideal) on the typed rings (native)
+        groebnerwalk_sympy.py  its SymPy face (SymPy's rings and orders)
         f4.py                Faugère's F4 on the typed rings: Gröbner bases by its own sparse row reduction, over any field
         interop.py           conversions between SymPy's polynomial rings and the typed ones (QQ, ZZ, GF(p))
-        hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm
+        hilbert.py           Hilbert series of monomial ideals by Bigatti's algorithm (native)
+        hilbert_sympy.py     its SymPy face (Poly, SymPy expressions)
         rur.py               the rational univariate representation of zero-dimensional ideals (Rouillier, native)
         rur_sympy.py         its SymPy face
         stronggroebner.py    strong Gröbner bases over the integers (Kandri-Rody–Kapur, Lichtblau)
         modulargroebner.py   proven modular Gröbner bases over the rationals (Arnold) (native)
         modulargroebner_sympy.py  the SymPy face of modulargroebner
         buchberger.py        Buchberger's algorithm on the typed rings (ported from SymPy)
-        orderings.py         WeightOrder, BlockOrder
+        orderings.py         monomial orders: lex, grlex, grevlex, WeightOrder, BlockOrder, elimination_order (native)
+        orderings_sympy.py   WeightOrder, BlockOrder as SymPy monomial orders (its SymPy face)
         virtual_substitution.py  linear and quadratic quantifier elimination by virtual substitution (native)
-        virtual_substitution_sympy.py  its SymPy face, and simplify_logic_of_core
+        virtual_substitution_sympy.py  its SymPy face
         comprehensive.py     comprehensive Gröbner systems, reduction over the complex numbers (native)
         comprehensive_sympy.py  its SymPy face
         roots.py             roots in radicals through functional decomposition

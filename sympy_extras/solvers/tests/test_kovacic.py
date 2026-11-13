@@ -4,9 +4,9 @@ from sympy import Function, exp, simplify, Rational, I, Symbol, Poly, Integral, 
 from sympy.abc import x
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.kovacic import liouvillian_solution, dsolve_kovacic, normal_form, KovacicSolution
+from sympy_extras.solvers.kovacic_sympy import liouvillian_solution, dsolve_kovacic, normal_form, KovacicSolution
 from sympy_extras.settings import configure
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 
 y = Function('y')(x)
 
@@ -89,7 +89,7 @@ def test_case_three_solution_has_no_auxiliary_symbol() -> None:
     # the KovacicSolution's omega_polynomial.
     from sympy import Rational, Symbol
     from sympy.abc import x
-    from sympy_extras.solvers.kovacic import liouvillian_solution
+    from sympy_extras.solvers.kovacic_sympy import liouvillian_solution
     r = -Rational(3, 16)/x**2 - Rational(2, 9)/(x - 1)**2 + Rational(3, 16)/(x*(x - 1))
     sol = liouvillian_solution(r, x)
     assert sol is not None and sol.case == 3

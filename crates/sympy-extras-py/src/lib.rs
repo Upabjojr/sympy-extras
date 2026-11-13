@@ -16,14 +16,23 @@ use pyo3::types::PyModule;
 
 mod algebraic;
 mod algorithms;
+mod complexroots;
 mod convert;
+mod core;
 mod dense;
 mod domains;
+mod expdioph;
 mod factor;
+mod galois;
 mod gaussian;
+mod lattice;
 mod ntheory;
+mod numberfields;
 mod polyerrors;
+mod qqbar;
+mod regularchains;
 mod rings;
+mod simplex;
 mod sparse;
 mod sparsefrac;
 
@@ -47,6 +56,14 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &submodule(&ntheory_module, "generate", "sympy_extras_rs.ntheory.generate")?,
         &submodule(&ntheory_module, "factor_", "sympy_extras_rs.ntheory.factor_")?,
     )?;
+    let solvers: Bound<'_, PyModule> = submodule(m, "solvers", "sympy_extras_rs.solvers")?;
+    simplex::register(&submodule(&solvers, "simplex", "sympy_extras_rs.solvers.simplex")?)?;
+    expdioph::register(&submodule(
+        &solvers,
+        "exponential_diophantine",
+        "sympy_extras_rs.solvers.exponential_diophantine",
+    )?)?;
+    core::register(&submodule(m, "core", "sympy_extras_rs.core")?)?;
     let polys: Bound<'_, PyModule> = submodule(m, "polys", "sympy_extras_rs.polys")?;
     let domains_module: Bound<'_, PyModule> = submodule(&polys, "domains", "sympy_extras_rs.polys.domains")?;
     domains::register(&domains_module)?;
@@ -59,6 +76,11 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &domains_module,
         "fractionfield",
         "sympy_extras_rs.polys.domains.fractionfield",
+    )?)?;
+    galois::register_galoisfield(&submodule(
+        &domains_module,
+        "galoisfield",
+        "sympy_extras_rs.polys.domains.galoisfield",
     )?)?;
     gaussian::register(&submodule(
         &domains_module,
@@ -104,12 +126,60 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     sparse::register_multisqf(&submodule(&polys, "multisqf", "sympy_extras_rs.polys.multisqf")?)?;
     algorithms::register_multifactor(&submodule(&polys, "multifactor", "sympy_extras_rs.polys.multifactor")?)?;
+    lattice::register(&submodule(&polys, "lattice", "sympy_extras_rs.polys.lattice")?)?;
+    complexroots::register(&submodule(
+        &polys,
+        "complexroots",
+        "sympy_extras_rs.polys.complexroots",
+    )?)?;
+    let numberfields_module: Bound<'_, PyModule> =
+        submodule(&polys, "numberfields", "sympy_extras_rs.polys.numberfields")?;
+    numberfields::register_basis(&submodule(
+        &numberfields_module,
+        "basis",
+        "sympy_extras_rs.polys.numberfields.basis",
+    )?)?;
+    qqbar::register(&submodule(
+        &numberfields_module,
+        "qqbar",
+        "sympy_extras_rs.polys.numberfields.qqbar",
+    )?)?;
+    qqbar::register_recognize(&submodule(
+        &numberfields_module,
+        "recognize",
+        "sympy_extras_rs.polys.numberfields.recognize",
+    )?)?;
+    qqbar::register_zerodim(&submodule(&polys, "zerodim", "sympy_extras_rs.polys.zerodim")?)?;
+    algebraic::register_algebraicfactor(&submodule(
+        &polys,
+        "algebraicfactor",
+        "sympy_extras_rs.polys.algebraicfactor",
+    )?)?;
+    let regularchains_module: Bound<'_, PyModule> =
+        submodule(&polys, "regularchains", "sympy_extras_rs.polys.regularchains")?;
+    regularchains::register_recursive(&submodule(
+        &regularchains_module,
+        "recursive",
+        "sympy_extras_rs.polys.regularchains.recursive",
+    )?)?;
+    regularchains::register_operations(&submodule(
+        &regularchains_module,
+        "operations",
+        "sympy_extras_rs.polys.regularchains.operations",
+    )?)?;
+    galois::register_galoisfactor(&submodule(
+        &polys,
+        "galoisfactor",
+        "sympy_extras_rs.polys.galoisfactor",
+    )?)?;
     algorithms::register_gaussianfactor(&submodule(
         &polys,
         "gaussianfactor",
         "sympy_extras_rs.polys.gaussianfactor",
     )?)?;
     algorithms::register_f4(&submodule(&polys, "f4", "sympy_extras_rs.polys.f4")?)?;
+    algorithms::register_buchberger(&submodule(&polys, "buchberger", "sympy_extras_rs.polys.buchberger")?)?;
+    algorithms::register_fglm(&submodule(&polys, "fglm", "sympy_extras_rs.polys.fglm")?)?;
     dense::register_subresultants(&submodule(
         &polys,
         "subresultants",
@@ -120,6 +190,12 @@ fn sympy_extras_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "modulargroebner",
         "sympy_extras_rs.polys.modulargroebner",
     )?)?;
+    algorithms::register_berlekampmassey(&submodule(
+        &polys,
+        "berlekampmassey",
+        "sympy_extras_rs.polys.berlekampmassey",
+    )?)?;
+    algorithms::register_bigatti(&submodule(&polys, "bigatti", "sympy_extras_rs.polys.bigatti")?)?;
     algorithms::register_hilbert(&submodule(&polys, "hilbert", "sympy_extras_rs.polys.hilbert")?)?;
     algorithms::register_groebnerwalk(&submodule(
         &polys,

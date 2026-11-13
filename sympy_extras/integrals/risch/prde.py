@@ -1,22 +1,6 @@
-# ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/integrals/prde.py (SymPy 1.14 and Aaron Meurer's pull requests)
-# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
-# see sympy_extras/LICENSE-SymPy.
-# Changes: imports only, so that the subpackage runs on the released SymPy.
-# ---------------------------------------------------------------------
-# Ported from SymPy (sympy.integrals.prde) and from Aaron Meurer's pull
-# requests to SymPy: sympy/sympy#30180 and #30221 ("Risch: Implement most
-# remaining exp-log cases from Bronstein", branch risch-rde-cancellation
-# @d7dafa43) and #30292 ("Hypertangent cases in the Risch algorithm", branch
-# risch-hypertangent @66bc72d6, the version taken here), by Claude Fable 5.1
-# for sympy-extras. The algorithm is Bronstein's (Symbolic Integration I:
-# Transcendental Functions, 2nd edition, Springer 2005) as implemented by
-# Aaron Meurer; only the imports were changed, so that the subpackage is
-# self-contained on the released SymPy. SymPy's licence (BSD 3-clause,
-# copyright the SymPy Development Team) applies to this file: see
-# LICENSE-SymPy in this directory.
 """
-Algorithms for solving Parametric Risch Differential Equations.
+Algorithms for solving Parametric Risch Differential Equations, on the typed
+core.
 
 The methods used for solving Parametric Risch Differential Equations parallel
 those for solving Risch Differential Equations.  See the outline in the
@@ -30,33 +14,106 @@ For the algorithms here G is a list of tuples of factions of the terms on the
 right hand side of the equation (i.e., gi in k(t)), and Q is a list of terms on
 the right hand side of the equation (i.e., qi in k[t]).  See the docstring of
 each function for more information.
+
+Ported from SymPy's ``sympy.integrals.prde`` (in the version of Aaron
+Meurer's pull requests, see the notice below), on the polynomials of
+:mod:`sympy_extras.integrals.risch.tower` and the matrices of
+:mod:`sympy_extras.integrals.risch.polymatrix`.
+
+Examples
+========
+
+>>> from sympy_extras.core import symbols
+>>> from sympy_extras.integrals.risch.risch import DifferentialExtension
+>>> from sympy_extras.integrals.risch.prde import limited_integrate
+>>> from sympy_extras.integrals.risch.tower import TowerPoly
+>>> x = symbols('x')
+>>> DE = DifferentialExtension.manual([TowerPoly.from_expr(1, x)])
+>>> P = lambda e: TowerPoly.from_expr(e, x)
+>>> limited_integrate(P(5*x**2), P(3), [(P(1), P(x))], DE)
+((TowerPoly(5*x**3/9, x), TowerPoly(1, x)), [0])
 """
-# Type annotations for sympy-extras (strict mypy), after Aaron Meurer's branch
-# risch-typing, sympy/sympy#30282, where the functions coincide.
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/integrals/prde.py (SymPy 1.14 and Aaron Meurer's pull requests)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: the typed core, the polynomials of integrals.risch.tower and the
+# FieldMatrix of polymatrix instead of SymPy's Poly and PolyMatrix; the
+# linear systems over the field solved by Gauss-Jordan elimination.
+# ---------------------------------------------------------------------
+# Ported from SymPy (sympy.integrals.prde) and from Aaron Meurer's pull
+# requests to SymPy: sympy/sympy#30180 and #30221 ("Risch: Implement most
+# remaining exp-log cases from Bronstein", branch risch-rde-cancellation
+# @d7dafa43) and #30292 ("Hypertangent cases in the Risch algorithm", branch
+# risch-hypertangent @66bc72d6, the version taken here), by Claude Fable 5.1
+# for sympy-extras; rewritten on the typed core by Claude Opus 5.5. The
+# algorithm is Bronstein's (Symbolic Integration I: Transcendental
+# Functions, 2nd edition, Springer 2005) as implemented by Aaron Meurer.
+# SymPy's licence (BSD 3-clause, copyright the SymPy Development Team)
+# applies to this file: see LICENSE-SymPy in this directory.
 from __future__ import annotations
+
 import itertools
+from fractions import Fraction
 from functools import reduce
-from typing import Optional, Sequence, Union
+from math import gcd as igcd, lcm as ilcm
+from typing import Optional, Sequence
 
-from sympy.core.intfunc import ilcm, igcd
-from sympy.core import Dummy, Add, Mul, Pow, S
-from sympy.core.expr import Expr
-from sympy.core.numbers import I, oo
-from sympy.core.symbol import Symbol
-from .rde import (_rational_roots, order_at, order_at_oo, weak_normalizer, Degree, finite,
+from sympy_extras.core.add import add
+from sympy_extras.core.expr import Expr
+from sympy_extras.core.mul import mul
+from sympy_extras.core.numbers import I, Integer, Rational
+from sympy_extras.core.power import pow
+from sympy_extras.core.symbol import Symbol
+from .polymatrix import FieldMatrix
+from .rde import (_rational_roots, order_at, order_at_oo, weak_normalizer, Degree, finite, is_oo,
     bound_degree, _special_denom_cancel_bound, _no_cancel_equal_applies)
-from .risch import (gcdex_diophantine, frac_in, derivation, DifferentialExtension,
-    residue_reduce, splitfactor, residue_reduce_derivation, DecrementLevel)
-from sympy.polys import Poly, lcm, cancel, sqf_list
-from .polymatrix import PolyMatrix as Matrix
-from sympy.solvers import solve
+from .risch import (gcdex_diophantine, frac_in, derivation, derivation_element, DifferentialExtension,
+    residue_reduce, splitfactor, _residue_derivation_element, DecrementLevel, unique_dummy)
+from .tower import RationalFunction, TowerPoly, UnsupportedConstant
 
-zeros = Matrix.zeros
-eye = Matrix.eye
+__all__ = ['prde_normal_denom', 'real_imag', 'prde_special_denom', 'prde_linear_constraints',
+           'poly_linear_constraints', 'constant_system', 'prde_spde', 'prde_no_cancel_b_large',
+           'prde_no_cancel_b_small', 'prde_no_cancel_b_equal', 'prde_cancel_liouvillian', 'prde_cancel_tan',
+           'param_poly_rischDE', 'param_rischDE', 'limited_integrate_reduce', 'limited_integrate',
+           'is_deriv_in_field', 'parametric_log_deriv_heu', 'parametric_log_deriv_structure',
+           'parametric_log_deriv', 'is_deriv_k', 'is_log_deriv_k_t_radical', 'is_deriv_k_atan',
+           'is_log_deriv_k_t_radical_tan', 'is_log_deriv_k_t_radical_in_field']
+
+zeros = FieldMatrix.zeros
+eye = FieldMatrix.eye
+
+#: a fraction of the tower (numerator, denominator)
+Fraction2 = tuple[TowerPoly, TowerPoly]
+#: the answer terms of the structure theorems: (term, coefficient)
+Terms = list[tuple[Expr, Expr]]
+
+_ZERO = RationalFunction.from_int(0)
+_ONE = RationalFunction.from_int(1)
 
 
-def prde_normal_denom(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension
-                      ) -> tuple[Poly, tuple[Poly, Poly], list[tuple[Poly, Poly]], Poly]:
+def _el(a: TowerPoly, d: TowerPoly) -> RationalFunction:
+    return a.as_element()/d.as_element()
+
+
+def _in_t(p: TowerPoly, DE: DifferentialExtension) -> TowerPoly:
+    return p if p.gen == DE.t else p.as_poly_strict(DE.t)
+
+
+def _poly(e: RationalFunction, DE: DifferentialExtension) -> TowerPoly:
+    return TowerPoly.from_element_strict(e, DE.t)
+
+
+def _number(q: Fraction) -> Expr:
+    return Rational(q.numerator, q.denominator)
+
+
+def _lcm_polys(polys: Sequence[TowerPoly], start: TowerPoly) -> TowerPoly:
+    return reduce(lambda i, j: i.lcm(j), polys, start)
+
+
+def prde_normal_denom(fa: TowerPoly, fd: TowerPoly, G: list[Fraction2], DE: DifferentialExtension
+                      ) -> tuple[TowerPoly, Fraction2, list[Fraction2], TowerPoly]:
     """
     Parametric Risch Differential Equation - Normal part of the denominator.
 
@@ -72,9 +129,10 @@ def prde_normal_denom(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: Differ
     This is ``ParamRdeNormalDenominator`` from Section 7.1 of Bronstein's
     book.
     """
+    fa, fd = _in_t(fa, DE), _in_t(fd, DE)
     dn, ds = splitfactor(fd, DE)
-    Gas, Gds = list(zip(*G))
-    gd = reduce(lambda i, j: i.lcm(j), Gds, Poly(1, DE.t))
+    Gds = [_in_t(gd, DE) for _, gd in G]
+    gd = _lcm_polys(Gds, TowerPoly.one(DE.t))
     en, es = splitfactor(gd, DE)
 
     p = dn.gcd(en)
@@ -86,11 +144,12 @@ def prde_normal_denom(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: Differ
     ba = a*fa - dn*derivation(h, DE)*fd
     ba, bd = ba.cancel(fd, include=True)
 
-    G = [(c*A).cancel(D, include=True) for A, D in G]
+    G = [(c*_in_t(A, DE)).cancel(_in_t(D, DE), include=True) for A, D in G]
 
     return (a, (ba, bd), G, h)
 
-def real_imag(ba: Poly, bd: Poly, gen: Symbol) -> tuple[Poly, Poly, Poly]:
+
+def real_imag(ba: TowerPoly, bd: TowerPoly, gen: Symbol) -> tuple[TowerPoly, TowerPoly, TowerPoly]:
     """
     Helper function, to get the real and imaginary part of a rational function
     evaluated at sqrt(-1) without actually evaluating it at sqrt(-1).
@@ -102,25 +161,37 @@ def real_imag(ba: Poly, bd: Poly, gen: Symbol) -> tuple[Poly, Poly, Poly]:
     mod 4. Returns a tuple (ba[0], ba[1], bd) where ba[0] is real part
     of the numerator ba[1] is the imaginary part and bd is the denominator
     of the rational function.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.risch.prde import real_imag
+    >>> from sympy_extras.integrals.risch.tower import TowerPoly
+    >>> t = symbols('t')
+    >>> real_imag(TowerPoly.from_expr(t**3 + 2*t + 5, t), TowerPoly.from_expr(t, t), t)
+    (TowerPoly(1, t), TowerPoly(-5, t), TowerPoly(1, t))
     """
-    bd_dict = bd.as_poly(gen).as_dict()
-    ba_dict = ba.as_poly(gen).as_dict()
-    denom_real = [value if key[0] % 4 == 0 else -value if key[0] % 4 == 2 else 0 for key, value in bd_dict.items()]
-    denom_imag = [value if key[0] % 4 == 1 else -value if key[0] % 4 == 3 else 0 for key, value in bd_dict.items()]
-    bd_real = sum(denom_real, S.Zero)
-    bd_imag = sum(denom_imag, S.Zero)
-    num_real = [value if key[0] % 4 == 0 else -value if key[0] % 4 == 2 else 0 for key, value in ba_dict.items()]
-    num_imag = [value if key[0] % 4 == 1 else -value if key[0] % 4 == 3 else 0 for key, value in ba_dict.items()]
-    ba_real = sum(num_real, S.Zero)
-    ba_imag = sum(num_imag, S.Zero)
-    real_part = Poly(ba_real*bd_real + ba_imag*bd_imag, gen)
-    imag_part = Poly(ba_imag*bd_real - ba_real*bd_imag, gen)
-    denominator = Poly(bd_real*bd_real + bd_imag*bd_imag, gen)
+    def parts(p: TowerPoly) -> tuple[RationalFunction, RationalFunction]:
+        real, imag = _ZERO, _ZERO
+        for k, c in p.as_poly_strict(gen).terms():
+            r = k % 4
+            if r == 0:
+                real = real + c
+            elif r == 2:
+                real = real - c
+            elif r == 1:
+                imag = imag + c
+            else:
+                imag = imag - c
+        return real, imag
+    bd_real, bd_imag = parts(bd)
+    ba_real, ba_imag = parts(ba)
+    real_part = TowerPoly.ground(ba_real*bd_real + ba_imag*bd_imag, gen)
+    imag_part = TowerPoly.ground(ba_imag*bd_real - ba_real*bd_imag, gen)
+    denominator = TowerPoly.ground(bd_real*bd_real + bd_imag*bd_imag, gen)
     return (real_part, imag_part, denominator)
 
 
-def prde_special_denom(a: Poly, ba: Poly, bd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension,
-                       case: str = 'auto') -> tuple[Poly, Poly, list[tuple[Poly, Poly]], Poly]:
+def prde_special_denom(a: TowerPoly, ba: TowerPoly, bd: TowerPoly, G: list[Fraction2], DE: DifferentialExtension,
+                       case: str = 'auto') -> tuple[TowerPoly, TowerPoly, list[Fraction2], TowerPoly]:
     """
     Parametric Risch Differential Equation - Special part of the denominator.
 
@@ -153,12 +224,12 @@ def prde_special_denom(a: Poly, ba: Poly, bd: Poly, G: list[tuple[Poly, Poly]], 
         case = DE.case
 
     if case == 'exp':
-        p = Poly(DE.t, DE.t)
+        p = TowerPoly.monomial(DE.t, 1)
     elif case == 'tan':
-        p = Poly(DE.t**2 + 1, DE.t)
+        p = TowerPoly.from_list([1, 0, 1], DE.t)
     elif case in ('primitive', 'base'):
         B = ba.quo(bd)
-        return (a, B, G, Poly(1, DE.t))
+        return (a, B, G, TowerPoly.one(DE.t))
     elif case in ('other_linear', 'other_nonlinear'):
         raise NotImplementedError("The %s case is not implemented in "
             "prde_special_denom()." % case)
@@ -178,15 +249,16 @@ def prde_special_denom(a: Poly, ba: Poly, bd: Poly, G: list[tuple[Poly, Poly]], 
     pn = p**-n  # This is 1/h
 
     A = a*pN
-    B = ba*pN.quo(bd) + Poly(n, DE.t)*a*derivation(p, DE).quo(p)*pN
-    G = [(Ga*pN*pn).cancel(Gd, include=True) for Ga, Gd in G]
+    B = ba*pN.quo(bd) + (a*derivation(p, DE).quo(p)*pN).mul_ground(n)
+    G = [(_in_t(Ga, DE)*pN*pn).cancel(_in_t(Gd, DE), include=True) for Ga, Gd in G]
     h = pn
 
     # (a*p**N, (b + n*a*Dp/p)*p**N, g1*p**(N - n), ..., gm*p**(N - n), p**-n)
     return (A, B, G, h)
 
 
-def prde_linear_constraints(a: Poly, b: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension) -> tuple[tuple[Poly, ...], Matrix]:
+def prde_linear_constraints(a: TowerPoly, b: TowerPoly, G: list[Fraction2], DE: DifferentialExtension
+                            ) -> tuple[tuple[TowerPoly, ...], FieldMatrix]:
     """
     Parametric Risch Differential Equation - Generate linear constraints on the constants.
 
@@ -200,28 +272,25 @@ def prde_linear_constraints(a: Poly, b: Poly, G: list[tuple[Poly, Poly]], DE: Di
     (c1, ..., cm) is a solution of Mx == 0, and p and the ci satisfy
     a*Dp + b*p == Sum(ci*qi, (i, 1, m)).
 
-    Because M has entries in k(t), and because Matrix does not play well with
-    Poly, M will be a Matrix of Basic expressions.
-
     This is ``LinearConstraints`` from Section 7.1 of Bronstein's book.
     """
     m = len(G)
 
-    Gns, Gds = list(zip(*G))
-    d = reduce(lambda i, j: i.lcm(j), Gds)
-    d = Poly(d, field=True)
-    Q = [(ga*(d).quo(gd)).div(d) for ga, gd in G]
+    Gds = [_in_t(gd, DE) for _, gd in G]
+    d = _lcm_polys(Gds[1:], Gds[0])
+    Q = [(_in_t(ga, DE)*d.quo(_in_t(gd, DE))).div(d) for ga, gd in G]
 
     if not all(ri.is_zero for _, ri in Q):
         N = max(ri.degree(DE.t) for _, ri in Q)
-        M = Matrix(N + 1, m, lambda i, j: Q[j][1].nth(i), DE.t)
+        M = FieldMatrix.from_function(N + 1, m, lambda i, j: Q[j][1].nth(i))
     else:
-        M = Matrix(0, m, [], DE.t)  # No constraints, return the empty matrix.
+        M = FieldMatrix(0, m, [])  # No constraints, return the empty matrix.
 
-    qs, _ = list(zip(*Q))
+    qs = tuple(q for q, _ in Q)
     return (qs, M)
 
-def poly_linear_constraints(p: Sequence[Poly], d: Poly) -> tuple[tuple[Poly, ...], Matrix]:
+
+def poly_linear_constraints(p: Sequence[TowerPoly], d: TowerPoly) -> tuple[tuple[TowerPoly, ...], FieldMatrix]:
     """
     Given p = [p1, ..., pm] in k[t]^m and d in k[t], return
     q = [q1, ..., qm] in k[t]^m and a matrix M with entries in k such
@@ -233,17 +302,20 @@ def poly_linear_constraints(p: Sequence[Poly], d: Poly) -> tuple[tuple[Poly, ...
     used by the Section 7.1 algorithms.
     """
     m = len(p)
-    q, r = zip(*[pi.div(d) for pi in p])
+    divs = [pi.div(d) for pi in p]
+    q = tuple(qi for qi, _ in divs)
+    r = [ri for _, ri in divs]
 
     if not all(ri.is_zero for ri in r):
         n = max(ri.degree() for ri in r)
-        M = Matrix(n + 1, m, lambda i, j: r[j].nth(i), d.gens)
+        M = FieldMatrix.from_function(n + 1, m, lambda i, j: r[j].nth(i))
     else:
-        M = Matrix(0, m, [], d.gens)  # No constraints.
+        M = FieldMatrix(0, m, [])  # No constraints.
 
     return q, M
 
-def constant_system(A: Matrix, u: Matrix, DE: DifferentialExtension) -> tuple[Matrix, Matrix]:
+
+def constant_system(A: FieldMatrix, u: FieldMatrix, DE: DifferentialExtension) -> tuple[FieldMatrix, FieldMatrix]:
     """
     Generate a system for the constant solutions.
 
@@ -263,52 +335,50 @@ def constant_system(A: Matrix, u: Matrix, DE: DifferentialExtension) -> tuple[Ma
     determining if an element a of K is a derivative of an element of K or the
     logarithmic derivative of a K-radical using the structure theorem approach.
 
-    Because Poly does not play well with Matrix yet, this algorithm assumes that
-    all matrix entries are Basic expressions.
+    The entries are elements of the field, whose zero is recognized
+    exactly (see :mod:`sympy_extras.integrals.risch.tower`).
 
     This is ``ConstantSystem`` from Section 7.1 of Bronstein's book.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.risch.risch import DifferentialExtension
+    >>> from sympy_extras.integrals.risch.prde import constant_system
+    >>> from sympy_extras.integrals.risch.polymatrix import FieldMatrix
+    >>> from sympy_extras.integrals.risch.tower import RationalFunction, TowerPoly
+    >>> x = symbols('x')
+    >>> DE = DifferentialExtension.manual([TowerPoly.from_expr(1, x)])
+    >>> X = RationalFunction.from_expr(x)
+    >>> constant_system(FieldMatrix.from_rows([[X, 1]]), FieldMatrix.column([X]), DE)
+    (FieldMatrix([[1, 0], [0, 1]]), FieldMatrix([[1], [0]]))
+
+    so the constant solution of ``x*c1 + c2 == x`` is ``c1 == 1, c2 == 0``.
     """
-    if not A:
+    if not len(A):
         return A, u
     Au = A.row_join(u)
     Au, _ = Au.rref()
-    # Warning: This will NOT return correct results if cancel() cannot reduce
-    # an identically zero expression to 0.  The danger is that we might
-    # incorrectly prove that an integral is nonelementary (such as
-    # risch_integrate(exp((sin(x)**2 + cos(x)**2 - 1)*x**2), x).
-    # But this is a limitation in computer algebra in general, and implicit
-    # in the correctness of the Risch Algorithm is the computability of the
-    # constant field (actually, this same correctness problem exists in any
-    # algorithm that uses rref()).
-    #
-    # We therefore limit ourselves to constant fields that are computable
-    # via the cancel() function, in order to prevent a speed bottleneck from
-    # calling some more complex simplification function (rational function
-    # coefficients will fall into this class).  Furthermore, (I believe) this
-    # problem will only crop up if the integral explicitly contains an
-    # expression in the constant field that is identically zero, but cannot
-    # be reduced to such by cancel().  Therefore, a careful user can avoid this
-    # problem entirely by being careful with the sorts of expressions that
-    # appear in his integrand in the variables other than the integration
-    # variable (the structure theorems should be able to completely decide these
-    # problems in the integration variable).
+    # As the entries are canonical rational functions of the constants,
+    # zero is recognized exactly (no cancel() limitation).
 
     A, u = Au[:, :-1], Au[:, -1]
 
-    D = lambda x: derivation(x, DE, basic=True)
+    def D(a: RationalFunction) -> RationalFunction:
+        return derivation_element(a, DE)
 
     # Repeat until no entry of A is nonconstant, processing rows appended
     # in earlier iterations as well ("while A is not constant do" in the
     # book's ConstantSystem; iterating over a snapshot of the original
     # rows would let nonconstant entries in the appended rows escape).
-    # The safety cap guards against nontermination in case cancel() fails
-    # to recognize an identically zero derivation (see the comment above).
+    # The safety cap guards against nontermination.
     for _ in range((Au.rows + 1)*(Au.cols + 1)*(len(DE.T) + 1) + 10):
+        found: Optional[tuple[int, int]] = None
         for j, i in itertools.product(range(A.cols), range(A.rows)):
-            if A[i, j].expr.has(*DE.T):
+            if A[i, j].has(*DE.T):
+                found = (i, j)
                 break
-        else:
+        if found is None:
             break
+        i, j = found
         # This assumes that const(F(t0, ..., tn)) == const(K) == F
         # TODO: If A[i, j] contains symbolic constants, D(A[i, j]) can
         # vanish for special values of them (e.g. an entry y*t is
@@ -316,29 +386,28 @@ def constant_system(A: Matrix, u: Matrix, DE: DifferentialExtension) -> tuple[Ma
         # reduced system valid only generically.  The same applies to
         # the pivots of the rref() calls, which also divide by
         # parameter-dependent entries.  The correct result would be a
-        # Piecewise over the (solve()-generated) vanishing conditions of
-        # each pivot.
+        # Piecewise over the vanishing conditions of each pivot.
         Ri = A[i, :]
         # Rm+1; m = A.rows
         DAij = D(A[i, j])
-        Rm1 = Ri.applyfunc(lambda x: D(x) / DAij)
-        um1 = D(u[i]) / DAij
+        Rm1 = Ri.applyfunc(lambda e: D(e) / DAij)
+        um1 = D(u[i, 0]) / DAij
 
         Aj = A[:, j]
         A = A - Aj * Rm1
         u = u - Aj * um1
 
         A = A.col_join(Rm1)
-        u = u.col_join(Matrix([um1], u.gens))
+        u = u.col_join(FieldMatrix.column([um1]))
     else:
         raise RuntimeError("constant_system() did not reach a constant "
-            "system; the constant field may not be computable by cancel().")
+            "system.")
 
     return (A, u)
 
 
-def prde_spde(a: Poly, b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension
-              ) -> tuple[Poly, Poly, list[Poly], list[Poly], Degree]:
+def prde_spde(a: TowerPoly, b: TowerPoly, Q: list[TowerPoly], n: Degree, DE: DifferentialExtension
+              ) -> tuple[TowerPoly, TowerPoly, list[TowerPoly], list[TowerPoly], Degree]:
     """
     Special Polynomial Differential Equation algorithm: Parametric Version.
 
@@ -354,17 +423,33 @@ def prde_spde(a: Poly, b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtens
 
     This is ``ParSPDE`` from Section 7.1 of Bronstein's book.
     """
-    R, Z = list(zip(*[gcdex_diophantine(b, a, qi) for qi in Q]))
+    a, b = _in_t(a, DE), _in_t(b, DE)
+    RZ = [gcdex_diophantine(b, a, _in_t(qi, DE)) for qi in Q]
+    R = [r for r, _ in RZ]
+    Z = [z for _, z in RZ]
 
     A = a
     B = b + derivation(a, DE)
     Qq = [zi - derivation(ri, DE) for ri, zi in zip(R, Z)]
     n1 = n - a.degree(DE.t)
 
-    return (A, B, Qq, list(R), n1)
+    return (A, B, Qq, R, n1)
 
 
-def prde_no_cancel_b_large(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
+def _constraints(Q: Sequence[TowerPoly], DE: DifferentialExtension) -> FieldMatrix:
+    """The constant system of ``Sum(ci*qi) == 0``."""
+    m = len(Q)
+    if all(qi.is_zero for qi in Q):
+        dc = -1
+    else:
+        dc = max(qi.degree(DE.t) for qi in Q)
+    M = FieldMatrix.from_function(dc + 1, m, lambda i, j: Q[j].nth(i))
+    A, _ = constant_system(M, zeros(dc + 1, 1), DE)
+    return A
+
+
+def prde_no_cancel_b_large(b: TowerPoly, Q: list[TowerPoly], n: Degree, DE: DifferentialExtension
+                           ) -> tuple[list[TowerPoly], FieldMatrix]:
     """
     Parametric Poly Risch Differential Equation - No cancellation: deg(b) large enough.
 
@@ -381,29 +466,28 @@ def prde_no_cancel_b_large(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialEx
     This is ``ParamPolyRischDENoCancel1`` from Section 7.1 of Bronstein's
     book.
     """
+    b = _in_t(b, DE)
+    for i in range(len(Q)):
+        Q[i] = _in_t(Q[i], DE)
     db = b.degree(DE.t)
     m = len(Q)
-    H = [Poly(0, DE.t)]*m
+    H = [TowerPoly.zero(DE.t)]*m
 
     for N, i in itertools.product(range(finite(n), -1, -1), range(m)):  # [n, ..., 0]
         si = Q[i].nth(N + db)/b.LC()
-        sitn = Poly(si*DE.t**N, DE.t)
+        sitn = TowerPoly.monomial(DE.t, N, si)
         H[i] = H[i] + sitn
         Q[i] = Q[i] - derivation(sitn, DE) - b*sitn
 
-    if all(qi.is_zero for qi in Q):
-        dc = -1
-    else:
-        dc = max(qi.degree(DE.t) for qi in Q)
-    M = Matrix(dc + 1, m, lambda i, j: Q[j].nth(i), DE.t)
-    A, u = constant_system(M, zeros(dc + 1, 1, DE.t), DE)
-    c = eye(m, DE.t)
-    A = A.row_join(zeros(A.rows, m, DE.t)).col_join(c.row_join(-c))
+    A = _constraints(Q, DE)
+    c = eye(m)
+    A = A.row_join(zeros(A.rows, m)).col_join(c.row_join(-c))
 
     return (H, A)
 
 
-def prde_no_cancel_b_small(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
+def prde_no_cancel_b_small(b: TowerPoly, Q: list[TowerPoly], n: Degree, DE: DifferentialExtension
+                           ) -> tuple[list[TowerPoly], FieldMatrix]:
     """
     Parametric Poly Risch Differential Equation - No cancellation: deg(b) small enough.
 
@@ -420,38 +504,38 @@ def prde_no_cancel_b_small(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialEx
     This is ``ParamPolyRischDENoCancel2`` from Section 7.1 of Bronstein's
     book.
     """
+    b = _in_t(b, DE)
+    for i in range(len(Q)):
+        Q[i] = _in_t(Q[i], DE)
     m = len(Q)
-    H = [Poly(0, DE.t)]*m
+    H = [TowerPoly.zero(DE.t)]*m
 
     for N, i in itertools.product(range(finite(n), 0, -1), range(m)):  # [n, ..., 1]
-        si = Q[i].nth(N + DE.d.degree(DE.t) - 1)/(N*DE.d.LC())
-        sitn = Poly(si*DE.t**N, DE.t)
+        si = Q[i].nth(N + DE.d.degree(DE.t) - 1)/(DE.d.LC()*N)
+        sitn = TowerPoly.monomial(DE.t, N, si)
         H[i] = H[i] + sitn
         Q[i] = Q[i] - derivation(sitn, DE) - b*sitn
 
     if b.degree(DE.t) > 0:
         for i in range(m):
-            si = Poly(Q[i].nth(b.degree(DE.t))/b.LC(), DE.t)
-            H[i] = H[i] + si
-            Q[i] = Q[i] - derivation(si, DE) - b*si
-        if all(qi.is_zero for qi in Q):
-            dc = -1
-        else:
-            dc = max(qi.degree(DE.t) for qi in Q)
-        M = Matrix(dc + 1, m, lambda i, j: Q[j].nth(i), DE.t)
-        A, u = constant_system(M, zeros(dc + 1, 1, DE.t), DE)
-        c = eye(m, DE.t)
-        A = A.row_join(zeros(A.rows, m, DE.t)).col_join(c.row_join(-c))
+            si_p = TowerPoly.ground(Q[i].nth(b.degree(DE.t))/b.LC(), DE.t)
+            H[i] = H[i] + si_p
+            Q[i] = Q[i] - derivation(si_p, DE) - b*si_p
+        A = _constraints(Q, DE)
+        c = eye(m)
+        A = A.row_join(zeros(A.rows, m)).col_join(c.row_join(-c))
         return (H, A)
 
     # else: b is in k, deg(qi) < deg(Dt)
 
     t = DE.t
+    f_polys: list[TowerPoly]
+    B: FieldMatrix
     if DE.case != 'base':
         with DecrementLevel(DE):
             t0 = DE.t  # k = k0(t0)
-            ba, bd = frac_in(b, t0, field=True)
-            Q0 = [frac_in(qi.TC(), t0, field=True) for qi in Q]
+            ba, bd = frac_in(b, t0)
+            Q0 = [frac_in(qi.TC(), t0) for qi in Q]
             f, B = param_rischDE(ba, bd, Q0, DE)
 
             # f = [f1, ..., fr] in k^r and B is a matrix with
@@ -464,18 +548,15 @@ def prde_no_cancel_b_small(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialEx
 
         # Transform fractions (fa, fd) in f into constant
         # polynomials fa/fd in k[t].
-        # (Is there a better way?)
-        f_polys = [Poly(fa.as_expr()/fd.as_expr(), t, field=True)
-             for fa, fd in f]
-        B = Matrix.from_Matrix(B.to_Matrix(), t)
+        f_polys = [TowerPoly.from_element_strict(_el(fa, fd), t) for fa, fd in f]
     else:
         # Base case. Dy == 0 for all y in k and b == 0.
         # Dy + b*y = Sum(ci*qi) is solvable if and only if
         # Sum(ci*qi) == 0 in which case the solutions are
         # y = d1*f1 for f1 = 1 and any d1 in Const(k) = k.
 
-        f_polys = [Poly(1, t, field=True)]  # r = 1
-        B = Matrix([[qi.TC() for qi in Q] + [S.Zero]], DE.t)
+        f_polys = [TowerPoly.one(t)]  # r = 1
+        B = FieldMatrix.row_vector([qi.TC() for qi in Q] + [_ZERO])
         # The condition for solvability is
         # B*Matrix([c1, ..., cm, d1]) == 0
         # There are no constraints on d1.
@@ -483,11 +564,11 @@ def prde_no_cancel_b_small(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialEx
     # Coefficients of t^j (j > 0) in Sum(ci*qi) must be zero.
     d = max(qi.degree(DE.t) for qi in Q)
     if d > 0:
-        M = Matrix(d, m, lambda i, j: Q[j].nth(i + 1), DE.t)
-        A, _ = constant_system(M, zeros(d, 1, DE.t), DE)
+        M = FieldMatrix.from_function(d, m, lambda i, j: Q[j].nth(i + 1))
+        A, _ = constant_system(M, zeros(d, 1), DE)
     else:
         # No constraints on the hj.
-        A = Matrix(0, m, [], DE.t)
+        A = FieldMatrix(0, m, [])
 
     # Solutions of the original equation are
     #    y = Sum(dj*fj, (j, 1, r) + Sum(ei*hi, (i, 1, m)),
@@ -498,15 +579,16 @@ def prde_no_cancel_b_small(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialEx
     # Build combined constraint matrix with m + r + m columns.
 
     r = len(f_polys)
-    I = eye(m, DE.t)
-    A = A.row_join(zeros(A.rows, r + m, DE.t))
-    B = B.row_join(zeros(B.rows, m, DE.t))
-    C = I.row_join(zeros(m, r, DE.t)).row_join(-I)
+    Im = eye(m)
+    A = A.row_join(zeros(A.rows, r + m))
+    B = B.row_join(zeros(B.rows, m))
+    C = Im.row_join(zeros(m, r)).row_join(-Im)
 
     return f_polys + H, A.col_join(B).col_join(C)
 
 
-def prde_no_cancel_b_equal(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
+def prde_no_cancel_b_equal(b: TowerPoly, Q: list[TowerPoly], n: Degree, DE: DifferentialExtension
+                           ) -> tuple[list[TowerPoly], FieldMatrix]:
     """
     Parametric Poly Risch Differential Equation - No cancellation: deg(b) == delta(t) - 1
 
@@ -532,8 +614,9 @@ def prde_no_cancel_b_equal(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialEx
     a ratio above n, which no solution of degree at most n can attain —
     the descent through the degrees decides the equation completely.
     """
+    b = _in_t(b, DE)
     m = len(Q)
-    Q = list(Q)  # updated in place below; do not mutate the caller's list
+    Q = [_in_t(q, DE) for q in Q]  # updated in place below; do not mutate the caller's list
     delta = DE.d.degree(DE.t)
     lam = DE.d.LC()
 
@@ -544,24 +627,24 @@ def prde_no_cancel_b_equal(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialEx
     # generically: e.g. H == [-t**3/(y - 3) - 3*t/(y**2 - 4*y + 3)] is
     # undefined at y == 3 and y == 1.  The correct result would be a
     # Piecewise with one condition per loop iteration where
-    # solve(N*lam + lc(b), y) is nonempty, with the cancellation
-    # algorithms handling those special values.
-    Mc = cancel(-b.LC()/lam)
+    # N*lam + lc(b) == 0 is solvable in the parameters, with the
+    # cancellation algorithms handling those special values.
+    Mc = (-b.LC()/lam).as_int()
     # A cancellation degree above the bound n is unattainable
     # (solutions have degree at most n), so treat it like a
     # noninteger ratio: no cancellation at any reachable degree.
-    if Mc.is_Integer and Mc > 0 and Mc <= n:
-        M = int(Mc)
+    if Mc is not None and Mc > 0 and Mc <= n:
+        M = Mc
     else:
         M = -1
 
-    H = [Poly(0, DE.t)]*m
+    H = [TowerPoly.zero(DE.t)]*m
 
     for N in range(finite(n), M, -1):  # [n, ..., M + 1]
-        u = cancel(N*lam + b.LC())  # nonzero, since N != -lc(b)/lam
+        u = lam*N + b.LC()  # nonzero, since N != -lc(b)/lam
         for i in range(m):
             si = Q[i].nth(N + delta - 1)/u
-            sitn = Poly(si*DE.t**N, DE.t)
+            sitn = TowerPoly.monomial(DE.t, N, si)
             H[i] = H[i] + sitn
             Q[i] = Q[i] - derivation(sitn, DE) - b*sitn
 
@@ -569,34 +652,30 @@ def prde_no_cancel_b_equal(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialEx
         # The loop ran through N == 0, so as in prde_no_cancel_b_large()
         # any solution is q == Sum(ci*hi) and the (updated) right hand
         # sides must satisfy Sum(ci*qi) == 0.
-        if all(qi.is_zero for qi in Q):
-            dc = -1
-        else:
-            dc = max(qi.degree(DE.t) for qi in Q)
-        Mmat = Matrix(dc + 1, m, lambda i, j: Q[j].nth(i), DE.t)
-        A, _ = constant_system(Mmat, zeros(dc + 1, 1, DE.t), DE)
-        c = eye(m, DE.t)
-        A = A.row_join(zeros(A.rows, m, DE.t)).col_join(c.row_join(-c))
+        A = _constraints(Q, DE)
+        c = eye(m)
+        A = A.row_join(zeros(A.rows, m)).col_join(c.row_join(-c))
         return (H, A)
 
     # We reached the possible-cancellation degree M > 0.  Solve the
     # remaining problem, with the updated right hand sides and degree
     # bound M, by the cancellation algorithms.
-    f, B = param_poly_rischDE(Poly(1, DE.t), b, Q, M, DE)
+    f, B = param_poly_rischDE(TowerPoly.one(DE.t), b, Q, M, DE)
     # Any solution is q == Sum(ci*hi) + Sum(dj*fj), where the fj and the
     # matrix B constrain (c1, ..., cm, d1, ..., dr).  Combine into a
     # relation matrix over the columns
     # (c1, ..., cm, d_h1, ..., d_hm, d_f1, ..., d_fr), where the first
     # block of rows enforces d_hi == ci.
     r = len(f)
-    Bc = Matrix(B.rows, m, lambda i, j: B[i, j], DE.t)
-    Bd = Matrix(B.rows, r, lambda i, j: B[i, m + j], DE.t)
-    top = eye(m, DE.t).row_join(-eye(m, DE.t)).row_join(zeros(m, r, DE.t))
-    bottom = Bc.row_join(zeros(B.rows, m, DE.t)).row_join(Bd)
+    Bc = FieldMatrix.from_function(B.rows, m, lambda i, j: B[i, j])
+    Bd = FieldMatrix.from_function(B.rows, r, lambda i, j: B[i, m + j])
+    top = eye(m).row_join(-eye(m)).row_join(zeros(m, r))
+    bottom = Bc.row_join(zeros(B.rows, m)).row_join(Bd)
     return (H + f, top.col_join(bottom))
 
 
-def prde_cancel_liouvillian(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
+def prde_cancel_liouvillian(b: TowerPoly, Q: list[TowerPoly], n: Degree, DE: DifferentialExtension
+                            ) -> tuple[list[TowerPoly], FieldMatrix]:
     """
     Parametric Poly Risch Differential Equation - Cancellation: Liouvillian case.
 
@@ -608,42 +687,42 @@ def prde_cancel_liouvillian(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialE
         raise ValueError("case must be 'primitive' or 'exp', not %s." %
             DE.case)
 
-    H = []
+    b = _in_t(b, DE)
+    Q = [_in_t(q, DE) for q in Q]
+    H: list[TowerPoly] = []
 
+    eta = _ZERO
     if DE.case == 'exp':
         # The coefficient of t**i satisfies the equation
         # D(q_i) + (b + i*eta)*q_i == rhs_i over k, where eta == Dt/t.
         # eta must be computed at the current level, before DecrementLevel
         # is entered below.
-        eta = DE.d.quo(Poly(DE.t, DE.t)).as_expr()
+        eta = DE.d.quo(TowerPoly.monomial(DE.t, 1)).as_element()
 
     # Why use DecrementLevel? Below line answers that:
     # Assuming that we can solve such problems over 'k' (not k[t])
-    if DE.case == 'primitive':
-        with DecrementLevel(DE):
-            ba, bd = frac_in(b, DE.t, field=True)
+    with DecrementLevel(DE):
+        ba, bd = frac_in(b, DE.t)
 
-    M: Matrix = eye(0, DE.t)
+    M: FieldMatrix = eye(0)
     for i in range(finite(n), -1, -1):
-        if DE.case == 'exp': # this re-checking can be avoided
+        if DE.case == 'exp':  # this re-checking can be avoided
             with DecrementLevel(DE):
-                ba, bd = frac_in(b.as_expr() + i*eta, DE.t, field=True)
+                ba, bd = frac_in(b.as_element() + eta*i, DE.t)
         with DecrementLevel(DE):
-            Qy = [frac_in(q.nth(i), DE.t, field=True) for q in Q]
+            Qy = [frac_in(q.nth(i), DE.t) for q in Q]
             fi_fractions, Ai = param_rischDE(ba, bd, Qy, DE)
-        fi = [Poly(fa.as_expr()/fd.as_expr(), DE.t, field=True)
-                for fa, fd in fi_fractions]
-        Ai = Ai.set_gens(DE.t)
+        fi = [TowerPoly.from_element_strict(_el(fa, fd), DE.t) for fa, fd in fi_fractions]
 
         ri = len(fi)
 
         if i == n:
             M = Ai
         else:
-            M = Ai.col_join(M.row_join(zeros(M.rows, ri, DE.t)))
+            M = Ai.col_join(M.row_join(zeros(M.rows, ri)))
 
-        Fi: list[Poly] = []
-        hi: list[Poly] = []
+        Fi: list[TowerPoly] = []
+        hi: list[TowerPoly] = []
 
         # Substituting q == d*h + q_rest into Dq + b*q == Sum(ci*qi)
         # leaves the residual equation
@@ -651,7 +730,7 @@ def prde_cancel_liouvillian(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialE
         # (see the equation following (7.17) in Section 7.1; the sign of
         # the b*h term is misprinted as a minus in the 1st edition).
         for j in range(ri):
-            hji = fi[j] * (DE.t**i).as_poly(fi[j].gens)
+            hji = fi[j] * TowerPoly.monomial(DE.t, i)
             hi.append(hji)
             # building up Sum(dji*(D(fji*t^i) + b*fji*t^i))
             Fi.append(-(derivation(hji, DE) + b*hji))
@@ -664,7 +743,8 @@ def prde_cancel_liouvillian(b: Poly, Q: list[Poly], n: Degree, DE: DifferentialE
     return (H, M)
 
 
-def prde_cancel_tan(b0: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
+def prde_cancel_tan(b0: TowerPoly, Q: list[TowerPoly], n: Degree, DE: DifferentialExtension
+                    ) -> tuple[list[TowerPoly], FieldMatrix]:
     """
     Parametric Poly Risch Differential Equation - Cancellation: Tangent case.
 
@@ -672,7 +752,7 @@ def prde_cancel_tan(b0: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtensio
     ===========
 
     Given a derivation D on k[t], an integer ``n >= 0``, ``b0`` in k
-    (a Poly in DE.t of degree 0), and Q = [q1, ..., qm] in k[t]^m,
+    (a TowerPoly in DE.t of degree 0), and Q = [q1, ..., qm] in k[t]^m,
     with Dt/(t**2 + 1) == eta in k and sqrt(-1) not in k(t), return
     H = [h1, ..., hr] in k[t]^r and a matrix A with m + r columns and
     constant entries such that Dq + (b0 - n*eta*t)*q ==
@@ -702,18 +782,20 @@ def prde_cancel_tan(b0: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtensio
     from .cde import param_coupled_DE_system
 
     m = len(Q)
-    if n == oo:
+    if is_oo(n):
         raise ValueError("n must be a finite integer in "
             "prde_cancel_tan().")
+    b0 = _in_t(b0, DE)
+    Q = [_in_t(q, DE) for q in Q]
 
     if n < 0:
         # Only the trivial zero solution is possible: constrain
         # Sum(ci*qi) == 0.
         if all(qi.is_zero for qi in Q):
-            return ([], zeros(1, m, DE.t))
+            return ([], zeros(1, m))
         N = max(qi.degree(DE.t) for qi in Q)
-        M = Matrix(N + 1, m, lambda i, j: Q[j].nth(i), DE.t)
-        A, _ = constant_system(M, zeros(M.rows, 1, DE.t), DE)
+        M = FieldMatrix.from_function(N + 1, m, lambda i, j: Q[j].nth(i))
+        A, _ = constant_system(M, zeros(M.rows, 1), DE)
         return ([], A)
 
     if n == 0:
@@ -722,23 +804,23 @@ def prde_cancel_tan(b0: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtensio
         # coefficients give a parametric Risch differential equation
         # over k.
         with DecrementLevel(DE):
-            b0a, b0d = frac_in(b0.as_expr(), DE.t, field=True)
-            Qy = [frac_in(qi.nth(0), DE.t, field=True) for qi in Q]
+            b0a, b0d = frac_in(b0.as_element(), DE.t)
+            Qy = [frac_in(qi.nth(0), DE.t) for qi in Q]
             f, A0 = param_rischDE(b0a, b0d, Qy, DE)
-        H = [Poly(fa.as_expr()/fd.as_expr(), DE.t, field=True)
-            for fa, fd in f]
+        H = [TowerPoly.from_element_strict(_el(fa, fd), DE.t) for fa, fd in f]
         r = len(H)
-        A = A0.set_gens(DE.t)
+        A = A0
         N = max(qi.degree(DE.t) for qi in Q)
         if N > 0:
-            M = Matrix(N, m, lambda i, j: Q[j].nth(i + 1), DE.t)
-            Ac, _ = constant_system(M, zeros(M.rows, 1, DE.t), DE)
-            A = A.col_join(Ac.row_join(zeros(Ac.rows, r, DE.t)))
+            M = FieldMatrix.from_function(N, m, lambda i, j: Q[j].nth(i + 1))
+            Ac, _ = constant_system(M, zeros(M.rows, 1), DE)
+            A = A.col_join(Ac.row_join(zeros(Ac.rows, r)))
         return (H, A)
 
-    eta = DE.d.exquo(Poly(DE.t**2 + 1, DE.t)).as_expr()
-    p = Poly(DE.t**2 + 1, DE.t)
-    b = Poly(b0.as_expr() - n*eta*DE.t, DE.t)
+    eta = DE.d.exquo(TowerPoly.from_list([1, 0, 1], DE.t)).as_element()
+    p = TowerPoly.from_list([1, 0, 1], DE.t)
+    tf = RationalFunction.generator(DE.t)
+    b = _poly(b0.as_element() - eta*tf*n, DE)
 
     # Project mod t - sqrt(-1): with c1i*t + c0i the remainder of qi
     # by p, the remainder u + v*t of any solution satisfies the
@@ -748,12 +830,10 @@ def prde_cancel_tan(b0: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtensio
     with DecrementLevel(DE):
         G = [(frac_in(rem.nth(0), DE.t), frac_in(rem.nth(1), DE.t))
             for _, rem in divs]
-        R, An = param_coupled_DE_system(frac_in(b0.as_expr(), DE.t),
-            frac_in(-n*eta, DE.t), G, DE)
-        R = [(ua.as_expr()/ud.as_expr(), va.as_expr()/vd.as_expr())
-            for (ua, ud), (va, vd) in R]
-    An = An.set_gens(DE.t)
-    rp = [Poly(ue + ve*DE.t, DE.t, field=True) for ue, ve in R]
+        R, An = param_coupled_DE_system(frac_in(b0.as_element(), DE.t),
+            frac_in(-eta*n, DE.t), G, DE)
+        Re = [(_el(ua, ud), _el(va, vd)) for (ua, ud), (va, vd) in R]
+    rp = [_poly(ue + ve*tf, DE) for ue, ve in Re]
 
     # h == (q - Sum(ej*rj))/p satisfies the same kind of equation with
     # b0 unchanged (b + Dp/p == b0 - (n - 2)*eta*t) and bound n - 2,
@@ -764,11 +844,12 @@ def prde_cancel_tan(b0: Poly, Q: list[Poly], n: Degree, DE: DifferentialExtensio
         [-((derivation(rj, DE) + b*rj).div(p)[0]) for rj in rp]
     H2, M2 = prde_cancel_tan(b0, Qnew, n - 2, DE)
     H = rp + [p*h for h in H2]
-    M = An.row_join(zeros(An.rows, len(H2), DE.t)).col_join(M2)
+    M = An.row_join(zeros(An.rows, len(H2))).col_join(M2)
     return (H, M)
 
 
-def param_poly_rischDE(a: Poly, b: Poly, q: list[Poly], n: Degree, DE: DifferentialExtension) -> tuple[list[Poly], Matrix]:
+def param_poly_rischDE(a: TowerPoly, b: TowerPoly, q: list[TowerPoly], n: Degree, DE: DifferentialExtension
+                       ) -> tuple[list[TowerPoly], FieldMatrix]:
     """Polynomial solutions of a parametric Risch differential equation.
 
     Explanation
@@ -786,23 +867,25 @@ def param_poly_rischDE(a: Poly, b: Poly, q: list[Poly], n: Degree, DE: Different
     of Bronstein's book; there is no single corresponding pseudocode
     function.
     """
+    a, b = _in_t(a, DE), _in_t(b, DE)
+    q = [_in_t(qi, DE) for qi in q]
     m = len(q)
     if n < 0:
         # Only the trivial zero solution is possible.
         # Find relations between the qi.
         if all(qi.is_zero for qi in q):
-            return [], zeros(1, m, DE.t)  # No constraints.
+            return [], zeros(1, m)  # No constraints.
 
         N = max(qi.degree(DE.t) for qi in q)
-        M = Matrix(N + 1, m, lambda i, j: q[j].nth(i), DE.t)
-        A, _ = constant_system(M, zeros(M.rows, 1, DE.t), DE)
+        M = FieldMatrix.from_function(N + 1, m, lambda i, j: q[j].nth(i))
+        A, _ = constant_system(M, zeros(M.rows, 1), DE)
 
         return [], A
 
     if a.is_ground:
         # Normalization: a = 1.
-        a = a.LC()
-        b, q = b.to_field().exquo_ground(a), [qi.to_field().exquo_ground(a) for qi in q]
+        lc = a.LC()
+        b, q = b.exquo_ground(lc), [qi.exquo_ground(lc) for qi in q]
 
         if not b.is_zero and (DE.case == 'base' or
                 b.degree() > max(0, DE.d.degree() - 1)):
@@ -826,10 +909,10 @@ def param_poly_rischDE(a: Poly, b: Poly, q: list[Poly], n: Degree, DE: Different
                 # b0 in k, where n is the degree bound (Section 6.6);
                 # the pipeline reaches this branch in that shape via
                 # prde_no_cancel_b_equal()'s hand-off.
-                eta = DE.d.exquo(Poly(DE.t**2 + 1, DE.t)).as_expr()
-                if n is not oo and b.degree(DE.t) <= 1 and \
-                        cancel(b.nth(1) + n*eta) == 0:
-                    return prde_cancel_tan(Poly(b.nth(0), DE.t), q, n, DE)
+                eta = DE.d.exquo(TowerPoly.from_list([1, 0, 1], DE.t)).as_element()
+                if not is_oo(n) and b.degree(DE.t) <= 1 and \
+                        (b.nth(1) + eta*n).is_zero:
+                    return prde_cancel_tan(TowerPoly.ground(b.nth(0), DE.t), q, n, DE)
                 raise NotImplementedError("The tangent cancellation case "
                     "requires b == b0 - n*eta*t with b0 in k in "
                     "param_poly_rischDE().")
@@ -841,7 +924,8 @@ def param_poly_rischDE(a: Poly, b: Poly, q: list[Poly], n: Degree, DE: Different
 
     # Iterate SPDE as long as possible cumulating coefficient
     # and terms for the recovery of original solutions.
-    alpha, beta = a.one, [a.zero]*m
+    alpha, beta = TowerPoly.one(DE.t), [TowerPoly.zero(DE.t)]*m
+    d = TowerPoly.one(DE.t)
     while n >= 0:  # and a, b relatively prime
         a, b, q, r, n = prde_spde(a, b, q, n, DE)
         beta = [betai + alpha*ri for betai, ri in zip(beta, r)]
@@ -862,7 +946,7 @@ def param_poly_rischDE(a: Poly, b: Poly, q: list[Poly], n: Degree, DE: Different
     # divisible by d if and only if M*Matrix([f1, ..., fm]) == 0,
     # in which case the quotient is Sum(fi*qqi).
 
-    A, _ = constant_system(M, zeros(M.rows, 1, DE.t), DE)
+    A, _ = constant_system(M, zeros(M.rows, 1), DE)
     # A is a matrix with m columns and entries in Const(k).
     # Sum(ci*qqi) is Sum(ci*qi).quo(d), and the remainder is zero
     # for c1, ..., cm in Const(k) if and only if
@@ -881,18 +965,18 @@ def param_poly_rischDE(a: Poly, b: Poly, q: list[Poly], n: Degree, DE: Different
     # where rj = Sum(aji*qqi).
 
     if not V:  # No non-trivial solution.
-        return [], eye(m, DE.t)  # Could return A, but this has
-                                 # the minimum number of rows.
+        return [], eye(m)  # Could return A, but this has
+                           # the minimum number of rows.
 
-    Mqq = Matrix([qq])  # A single row.
-    r = [(Mqq*vj)[0] for vj in V]  # [r1, ..., ru]
+    Mqq = FieldMatrix.row_vector([qi.as_element() for qi in qq])  # A single row.
+    r = [_poly((Mqq*vj).element(0), DE) for vj in V]  # [r1, ..., ru]
 
     # Solutions of (a/d)*Dp + (b/d)*p = Sum(dj*rj) correspond to
     # solutions alpha*p + Sum(Sum(dj*aji)*betai) of the initial
     # equation. These are equal to alpha*p + Sum(dj*fj) where
     # fj = Sum(aji*betai).
-    Mbeta = Matrix([beta])
-    f = [(Mbeta*vj)[0] for vj in V]  # [f1, ..., fu]
+    Mbeta = FieldMatrix.row_vector([bi.as_element() for bi in beta])
+    f = [_poly((Mbeta*vj).element(0), DE) for vj in V]  # [f1, ..., fu]
 
     #
     # Solve the reduced equation recursively.
@@ -911,17 +995,18 @@ def param_poly_rischDE(a: Poly, b: Poly, q: list[Poly], n: Degree, DE: Different
     h = f + [alpha*gk for gk in g]
 
     # Build combined relation matrix.
-    A = -eye(m, DE.t)
+    A = -eye(m)
     for vj in V:
         A = A.row_join(vj)
-    A = A.row_join(zeros(m, len(g), DE.t))
-    A = A.col_join(zeros(B.rows, m, DE.t).row_join(B))
+    A = A.row_join(zeros(m, len(g)))
+    A = A.col_join(zeros(B.rows, m).row_join(B))
 
     return h, A
 
 
-def _prde_normalized_solve(A: Poly, B: Poly, G: list[tuple[Poly, Poly]], gamma: Poly, DE: DifferentialExtension,
-                           n: Optional[Degree] = None) -> tuple[list[tuple[Poly, Poly]], Matrix]:
+def _prde_normalized_solve(A: TowerPoly, B: TowerPoly, G: list[Fraction2], gamma: TowerPoly,
+                           DE: DifferentialExtension, n: Optional[Degree] = None
+                           ) -> tuple[list[Fraction2], FieldMatrix]:
     """
     Common tail of param_rischDE() and limited_integrate().
 
@@ -939,14 +1024,15 @@ def _prde_normalized_solve(A: Poly, B: Poly, G: list[tuple[Poly, Poly]], gamma: 
     is used as a proven degree bound, avoiding bound_degree() entirely.
     """
     m = len(G)
+    A, B, gamma = _in_t(A, DE), _in_t(B, DE), _in_t(gamma, DE)
     g = A.gcd(B)
-    a, b, g = A.quo(g), B.quo(g), [gia.cancel(gid*g, include=True) for
-        gia, gid in G]
+    a, b = A.quo(g), B.quo(g)
+    gs = [_in_t(gia, DE).cancel(_in_t(gid, DE)*g, include=True) for gia, gid in G]
 
     # a*Dp + b*p = Sum(ci*gi)  may have a polynomial solution
     # only if the sum is in k[t].
 
-    q, M = prde_linear_constraints(a, b, g, DE)
+    q, M = prde_linear_constraints(a, b, gs, DE)
 
     # q = [q1, ..., qm] where qi in k[t] is the polynomial component
     # of the partial fraction expansion of gi.
@@ -955,7 +1041,7 @@ def _prde_normalized_solve(A: Poly, B: Poly, G: list[tuple[Poly, Poly]], gamma: 
     # is a polynomial if and only if M*Matrix([f1, ..., fm]) == 0,
     # in which case the sum is equal to Sum(fi*qi).
 
-    M, _ = constant_system(M, zeros(M.rows, 1, DE.t), DE)
+    M, _ = constant_system(M, zeros(M.rows, 1), DE)
     # M is a matrix with m columns and entries in Const(k).
     # Sum(ci*gi) is in k[t] for c1, ..., cm in Const(k)
     # if and only if M*Matrix([c1, ..., cm]) == 0,
@@ -974,10 +1060,10 @@ def _prde_normalized_solve(A: Poly, B: Poly, G: list[tuple[Poly, Poly]], gamma: 
     # where rj = Sum(aji*qi) (j = 1, ..., u) in k[t].
 
     if not V:  # No non-trivial solution
-        return [], eye(m, DE.t)
+        return [], eye(m)
 
-    Mq = Matrix([q])  # A single row.
-    r = [(Mq*vj)[0] for vj in V]  # [r1, ..., ru]
+    Mq = FieldMatrix.row_vector([qi.as_element() for qi in q])  # A single row.
+    r = [_poly((Mq*vj).element(0), DE) for vj in V]  # [r1, ..., ru]
 
     # Solutions of a*Dp + b*p = Sum(dj*rj) correspond to solutions
     # y = p/gamma of the initial equation with ci = Sum(dj*aji).
@@ -1007,11 +1093,11 @@ def _prde_normalized_solve(A: Poly, B: Poly, G: list[tuple[Poly, Poly]], gamma: 
 
     ## Build combined relation matrix with m + u + v columns.
 
-    relation = -eye(m, DE.t)
+    relation = -eye(m)
     for vj in V:
         relation = relation.row_join(vj)
-    relation = relation.row_join(zeros(m, len(h), DE.t))
-    relation = relation.col_join(zeros(relation_B.rows, m, DE.t).row_join(relation_B))
+    relation = relation.row_join(zeros(m, len(h)))
+    relation = relation.col_join(zeros(relation_B.rows, m).row_join(relation_B))
 
     ## Eliminate d1, ..., du.
 
@@ -1027,24 +1113,26 @@ def _prde_normalized_solve(A: Poly, B: Poly, G: list[tuple[Poly, Poly]], gamma: 
     # y = Sum(blk'*hk, (k, 1, v))/gamma, where k' = k + m + u.
 
     v = len(h)
-    shape = (len(W), m+v)
-    elements = [wl[:m] + wl[-v:] for wl in W] # excise dj's.
-    items = [e for row in elements for e in row]
+    items: list[RationalFunction] = []
+    for wl in W:
+        # excise the dj's
+        entries = wl.flat()
+        items.extend(entries[:m] + (entries[len(entries) - v:] if v else []))
 
-    # Need to set the shape in case W is empty
-    M = Matrix(*shape, items, DE.t)
+    M = FieldMatrix(len(W), m + v, items)
     N = M.nullspace()
 
     # N = [n1, ..., ns] where the ni in Const(k)^(m + v) are column
     # vectors generating the space of linear relations between
     # c1, ..., cm, e1, ..., ev.
 
-    C = Matrix([ni[:] for ni in N], DE.t)  # rows n1, ..., ns.
+    C = FieldMatrix.from_rows([ni.flat() for ni in N])  # rows n1, ..., ns.
 
     return [hk.cancel(gamma, include=True) for hk in h], C
 
 
-def param_rischDE(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension) -> tuple[list[tuple[Poly, Poly]], Matrix]:
+def param_rischDE(fa: TowerPoly, fd: TowerPoly, G: list[Fraction2], DE: DifferentialExtension
+                  ) -> tuple[list[Fraction2], FieldMatrix]:
     """
     Solve a Parametric Risch Differential Equation: Dy + f*y == Sum(ci*Gi, (i, 1, m)).
 
@@ -1065,11 +1153,12 @@ def param_rischDE(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: Differenti
     Bronstein's book; the book does not give it as a single named
     pseudocode function.
     """
+    fa, fd = _in_t(fa, DE), _in_t(fd, DE)
     q, (fa, fd) = weak_normalizer(fa, fd, DE)
     # Solutions of the weakly normalized equation Dz + f*z = q*Sum(ci*Gi)
     # correspond to solutions y = z/q of the original equation.
     gamma = q
-    G = [(q*ga).cancel(gd, include=True) for ga, gd in G]
+    G = [(q*_in_t(ga, DE)).cancel(_in_t(gd, DE), include=True) for ga, gd in G]
 
     a, (ba, bd), G, hn = prde_normal_denom(fa, fd, G, DE)
     # Solutions q in k<t> of  a*Dq + b*q = Sum(ci*Gi) correspond
@@ -1084,8 +1173,8 @@ def param_rischDE(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: Differenti
     return _prde_normalized_solve(A, B, G, gamma, DE)
 
 
-def limited_integrate_reduce(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension
-                             ) -> tuple[Poly, Poly, Poly, Degree, tuple[Poly, Poly], list[tuple[Poly, Poly]]]:
+def limited_integrate_reduce(fa: TowerPoly, fd: TowerPoly, G: list[Fraction2], DE: DifferentialExtension
+                             ) -> tuple[TowerPoly, TowerPoly, TowerPoly, Degree, Fraction2, list[Fraction2]]:
     """
     Simpler version of step 1 & 2 for the limited integration problem.
 
@@ -1109,10 +1198,13 @@ def limited_integrate_reduce(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE:
     This is ``LimitedIntegrateReduce`` from Section 7.2 of Bronstein's
     book.
     """
+    fa, fd = _in_t(fa, DE), _in_t(fd, DE)
+    G = [(_in_t(ga, DE), _in_t(gd, DE)) for ga, gd in G]
     dn, ds = splitfactor(fd, DE)
     E = [splitfactor(gd, DE) for _, gd in G]
-    En, Es = list(zip(*E)) if E else ((), ())
-    c = reduce(lambda i, j: i.lcm(j), (dn,) + En)  # lcm(dn, en1, ..., enm)
+    En = [e for e, _ in E]
+    Es = [s for _, s in E]
+    c = _lcm_polys(En, dn)  # lcm(dn, en1, ..., enm)
     hn = c.gcd(c.diff(DE.t))
     a = hn
     b = -derivation(hn, DE)
@@ -1121,7 +1213,7 @@ def limited_integrate_reduce(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE:
     # These are the cases where we know that S1irr = Sirr, but there could be
     # others, and this algorithm will need to be extended to handle them.
     if DE.case in ('base', 'primitive', 'exp', 'tan'):
-        hs = reduce(lambda i, j: i.lcm(j), (ds,) + Es)  # lcm(ds, es1, ..., esm)
+        hs = _lcm_polys(Es, ds)  # lcm(ds, es1, ..., esm)
         a = hn*hs
         b -= (hn*derivation(hs, DE)).quo(hs)
         mu = min([order_at_oo(fa, fd, DE.t)] + [order_at_oo(ga, gd, DE.t) for
@@ -1145,8 +1237,8 @@ def limited_integrate_reduce(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE:
     return (hn, b, a, N, (a*hn*fa).cancel(fd, include=True), V)
 
 
-def limited_integrate(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: DifferentialExtension
-                      ) -> Optional[tuple[tuple[Poly, Poly], list[Poly]]]:
+def limited_integrate(fa: TowerPoly, fd: TowerPoly, G: list[Fraction2], DE: DifferentialExtension
+                      ) -> Optional[tuple[Fraction2, list[RationalFunction]]]:
     """
     Solves the limited integration problem:  f = Dv + Sum(ci*wi, (i, 1, n))
 
@@ -1154,7 +1246,8 @@ def limited_integrate(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: Differ
     Bronstein's book (there is no single corresponding pseudocode
     function).
     """
-    fa, fd = fa*Poly(1/fd.LC(), DE.t), fd.monic()
+    fa, fd = _in_t(fa, DE), _in_t(fd, DE)
+    fa, fd = fa.mul_ground(fd.LC().invert()), fd.monic()
     # Reduction to a polynomial problem (LimitedIntegrateReduce, Section
     # 7.2): for any solution v in k(t), c1, ..., cm in Const(k) of
     # f == Dv + Sum(ci*wi), p == v*h is in k[t] and satisfies
@@ -1166,8 +1259,7 @@ def limited_integrate(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: Differ
     # so bound_degree() is not needed.
     Q = [g] + V
     hs, C = _prde_normalized_solve(A, b, Q, h, DE, n=N)
-    W = C.nullspace()
-    W = [w for w in W if w[0] != 0]
+    W = [w for w in C.nullspace() if w.element(0)]
     if not W:
         return None
     # we can take any vector from W; take W[0], scaled so that the
@@ -1177,19 +1269,19 @@ def limited_integrate(fa: Poly, fd: Poly, G: list[tuple[Poly, Poly]], DE: Differ
     # a different nullspace vector may serve those special values, and
     # the correct result would be a Piecewise over the corresponding
     # conditions.
-    w = W[0]/W[0][0]
+    w = (W[0]/W[0].element(0)).flat()
     r = len(hs)
     m = len(w) - r - 1
-    constants = list(w[1: m + 1])
-    y = sum((w[m + 1 + i]*hs[i][0].as_expr()/hs[i][1].as_expr()
-            for i in range(r)), S.Zero)
-    y_num, y_den = y.as_numer_denom()
-    Ya, Yd = Poly(y_num, DE.t), Poly(y_den, DE.t)
-    Y = Ya*Poly(1/Yd.LC(), DE.t), Yd.monic()
-    return Y, constants
+    constants = w[1: m + 1]
+    y = _ZERO
+    for i in range(r):
+        y = y + w[m + 1 + i]*_el(hs[i][0], hs[i][1])
+    Ya, Yd = frac_in(y, DE.t)
+    lc = Yd.LC().invert()
+    return (Ya.mul_ground(lc), Yd.mul_ground(lc)), constants
 
 
-def is_deriv_in_field(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[tuple[Poly, Poly]]:
+def is_deriv_in_field(fa: TowerPoly, fd: TowerPoly, DE: DifferentialExtension) -> Optional[Fraction2]:
     """
     Checks if f can be written as the derivative of an element of k(t).
 
@@ -1219,8 +1311,34 @@ def is_deriv_in_field(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional
     return (va, vd)
 
 
-def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: DifferentialExtension,
-                             c1: Optional[Symbol] = None) -> Optional[tuple[Degree, Degree, Union[Poly, Expr]]]:
+def _solve_c1(ps: Sequence[RationalFunction], qs: Sequence[RationalFunction]) -> Optional[RationalFunction]:
+    """The solution ``c1`` of the linear equations ``ps[i] - c1*qs[i] ==
+    0`` when it exists and is unique (SymPy's ``solve(eqs, c1)``)."""
+    c: Optional[RationalFunction] = None
+    for p, q in zip(ps, qs):
+        if q:
+            c = p/q
+            break
+    if c is None:
+        return None
+    for p, q in zip(ps, qs):
+        if not (p - c*q).is_zero:
+            return None
+    return c
+
+
+def _rational_solution(c: Optional[RationalFunction]) -> Optional[tuple[int, int]]:
+    """The numerator and the denominator of a rational ``c1``."""
+    if c is None:
+        return None
+    q = c.as_fraction()
+    if q is None:
+        return None
+    return q.numerator, q.denominator
+
+
+def parametric_log_deriv_heu(fa: TowerPoly, fd: TowerPoly, wa: TowerPoly, wd: TowerPoly, DE: DifferentialExtension,
+                             c1: Optional[Symbol] = None) -> Optional[tuple[int, int, RationalFunction]]:
     """
     Parametric logarithmic derivative heuristic.
 
@@ -1243,23 +1361,24 @@ def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differe
     """
     # Note: ideally the code here should let n = 1 whenever possible, as the
     # check in special_denom() only succeeds in that case.
+    fa, fd, wa, wd = _in_t(fa, DE), _in_t(fd, DE), _in_t(wa, DE), _in_t(wd, DE)
 
     # Special case when f and w are rational numbers (not in the book, but
     # this fails this heuristic and comes up often enough to add here). In
     # this case, we can set z = 0.
-    f = fa.as_expr()/fd.as_expr()
-    w = wa.as_expr()/wd.as_expr()
-    if f.is_Rational and w.is_Rational:
+    f = _el(fa, fd).as_fraction()
+    w = _el(wa, wd).as_fraction()
+    if f is not None and w is not None:
         if f == 0 and w == 0:
             # Any n works: n*0 == Dv/v + m*0 with v == 1, m == 0.
-            return (1, 0, Poly(1, DE.t))
+            return (1, 0, _ONE)
         # solve n*x = m*y in integers, i.e., n=y, m=x (after dividing through
         # by gcd(x, y))
-        x = f.p*w.q
-        y = w.p*f.q
+        x = f.numerator*w.denominator
+        y = w.numerator*f.denominator
         g = igcd(x, y)
-        x //=g
-        y //=g
+        x //= g
+        y //= g
         n = y
         m = x
         if n == 0:
@@ -1267,29 +1386,24 @@ def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differe
         if n < 0:
             n = -n
             m = -m
-        return (n, m, Poly(1, DE.t))
-
-    # TODO: finish writing this and write tests
-    c1 = c1 or Dummy('c1')
+        return (n, m, _ONE)
 
     p, a = fa.div(fd)
     q, b = wa.div(wd)
 
-    B = max(0, derivation(DE.t, DE).degree(DE.t) - 1)
+    B = max(0, DE.d.degree(DE.t) - 1)
     C = max(p.degree(DE.t), q.degree(DE.t))
 
     if q.degree(DE.t) > B:
-        eqs = [p.nth(i) - c1*q.nth(i) for i in range(B + 1, C + 1)]
-        s = solve(eqs, c1)
-        if not s or not s[c1].is_Rational:
+        s = _rational_solution(_solve_c1([p.nth(i) for i in range(B + 1, C + 1)],
+                                         [q.nth(i) for i in range(B + 1, C + 1)]))
+        if s is None:
             # deg(q) > B, no solution for c.
             return None
 
-        M, N = s[c1].as_numer_denom()
-        M_poly = M.as_poly(q.gens)
-        N_poly = N.as_poly(q.gens)
+        M, N = s
 
-        nfmwa = N_poly*fa*wd - M_poly*wa*fd
+        nfmwa = (fa*wd).mul_ground(N) - (wa*fd).mul_ground(M)
         nfmwd = fd*wd
         Qv = is_log_deriv_k_t_radical_in_field(nfmwa, nfmwd, DE, 'auto')
         if Qv is None:
@@ -1306,8 +1420,9 @@ def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differe
     if p.degree(DE.t) > B:
         return None
 
-    c = lcm(fd.as_poly(DE.t).LC(), wd.as_poly(DE.t).LC())
-    l = fd.monic().lcm(wd.monic())*Poly(c, DE.t)
+    # SymPy multiplies l by lcm(lc(fd), lc(wd)), a constant of k, which
+    # scales r1 and r2 below alike and leaves c1 unchanged.
+    l = fd.monic().lcm(wd.monic())
     ln, ls = splitfactor(l, DE)
     z = ls*ln.gcd(ln.diff(DE.t))
 
@@ -1336,14 +1451,14 @@ def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differe
                     "derivative problem (using the structure theorems) is "
                     "not yet implemented.")
             if p.is_zero:
-                cc = S.Zero
+                Mi, Ni = 0, 1
             else:
-                if p*Poly(q.LC(), DE.t) != q*Poly(p.LC(), DE.t):
+                if p.mul_ground(q.LC()) != q.mul_ground(p.LC()):
                     # p is not a constant multiple of q, so n*p == m*q has
                     # no solution with n != 0.
                     return None
-                cc = cancel(p.LC()/q.LC())
-                if not cc.is_Rational:
+                cc = (p.LC()/q.LC()).as_fraction()
+                if cc is None:
                     # If cc contains symbolic constants, it may be
                     # rational only for special values of them (a
                     # condition like "y in QQ" that is not expressible
@@ -1353,9 +1468,9 @@ def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differe
                     # wrong antiderivative, so no Piecewise handling is
                     # needed.
                     return None
-            M, N = cc.as_numer_denom()
+                Mi, Ni = cc.numerator, cc.denominator
 
-            nfmwa = Poly(N, DE.t)*fa*wd - Poly(M, DE.t)*wa*fd
+            nfmwa = (fa*wd).mul_ground(Ni) - (wa*fd).mul_ground(Mi)
             nfmwd = fd*wd
             Qv = is_log_deriv_k_t_radical_in_field(nfmwa, nfmwd, DE)
             if Qv is None:
@@ -1368,7 +1483,7 @@ def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differe
             if Q == 0 or v.is_zero:
                 return None
 
-            return (Q*N, Q*M, v)
+            return (Q*Ni, Q*Mi, v)
 
         raise NotImplementedError("parametric_log_deriv_heu() heuristic "
             "failed: the full parametric logarithmic derivative problem "
@@ -1377,15 +1492,15 @@ def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differe
     u1, r1 = (fa*l.quo(fd)).div(z)  # (l*f).div(z)
     u2, r2 = (wa*l.quo(wd)).div(z)  # (l*w).div(z)
 
-    eqs = [r1.nth(i) - c1*r2.nth(i) for i in range(z.degree(DE.t))]
-    s = solve(eqs, c1)
-    if not s or not s[c1].is_Rational:
+    s = _rational_solution(_solve_c1([r1.nth(i) for i in range(z.degree(DE.t))],
+                                     [r2.nth(i) for i in range(z.degree(DE.t))]))
+    if s is None:
         # deg(q) <= B, no solution for c.
         return None
 
-    M, N = s[c1].as_numer_denom()
+    M, N = s
 
-    nfmwa = N.as_poly(DE.t)*fa*wd - M.as_poly(DE.t)*wa*fd
+    nfmwa = (fa*wd).mul_ground(N) - (wa*fd).mul_ground(M)
     nfmwd = fd*wd
     Qv = is_log_deriv_k_t_radical_in_field(nfmwa, nfmwd, DE)
     if Qv is None:
@@ -1400,8 +1515,38 @@ def parametric_log_deriv_heu(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differe
     return (Q*N, Q*M, v)
 
 
-def parametric_log_deriv_structure(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: DifferentialExtension
-                                   ) -> Optional[tuple[Degree, Degree, Union[Poly, Expr]]]:
+def _term_element(e: Optional[Expr]) -> RationalFunction:
+    """A term of the structure theorems (a generator or the argument of a
+    generator) as an element."""
+    if e is None:
+        raise NotImplementedError("The structure theorems need the "
+            "arguments of the monomials of the tower (DE.extargs).")
+    return RationalFunction.from_expr(e)
+
+
+def _term_expr(e: Optional[Expr]) -> Expr:
+    if e is None:
+        raise NotImplementedError("The structure theorems need the "
+            "arguments of the monomials of the tower (DE.extargs).")
+    return e
+
+
+def _solve_linear(A: FieldMatrix, u: FieldMatrix) -> Optional[list[RationalFunction]]:
+    """A solution of ``A x == u`` with the free unknowns zero (SymPy's
+    ``gauss_jordan_solve`` with its parameters zero), ``None`` when the
+    system is inconsistent."""
+    R, pivots = A.row_join(u).rref()
+    n = A.cols
+    if n in pivots:
+        return None
+    xs = [_ZERO]*n
+    for k, c in enumerate(pivots):
+        xs[c] = R[k, n]
+    return xs
+
+
+def parametric_log_deriv_structure(fa: TowerPoly, fd: TowerPoly, wa: TowerPoly, wd: TowerPoly,
+                                   DE: DifferentialExtension) -> Optional[tuple[int, int, RationalFunction]]:
     """
     Parametric logarithmic derivative problem via the structure theorems.
 
@@ -1434,15 +1579,14 @@ def parametric_log_deriv_structure(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: D
     # is_log_deriv_k_t_radical(), hypertangent and arc-tangent monomials
     # do not contribute (Corollary 9.3.2 (ii)).
     E_indices, L_indices, _, _ = _structure_tower(DE, fa, fd, wa, wd)
-    E_part = [DE.D[i].quo(Poly(DE.T[i], DE.T[i])).as_expr() for i in E_indices]
-    L_part = [DE.D[i].as_expr() for i in L_indices]
+    E_part = [DE.D[i].quo(TowerPoly.monomial(DE.T[i], 1)).as_element() for i in E_indices]
+    L_part = [DE.D[i].as_element() for i in L_indices]
 
-    w = wa.as_expr()/wd.as_expr()
-    f = fa.as_expr()/fd.as_expr()
+    w = _el(wa, wd)
+    f = _el(fa, fd)
 
-    dum = Dummy()
-    lhs = Matrix([[w] + E_part + L_part], dum)
-    rhs = Matrix([f], dum)
+    lhs = FieldMatrix.row_vector([w] + E_part + L_part)
+    rhs = FieldMatrix.column([f])
 
     A, u = constant_system(lhs, rhs, DE)
 
@@ -1451,20 +1595,15 @@ def parametric_log_deriv_structure(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: D
     # reduced right hand side, not a solution: the system may be
     # underdetermined (e.g. when w is a combination of the generators),
     # so solve it explicitly, setting any free parameters to zero.
-    Am = A.to_Matrix()
-    um = u.to_Matrix()
-    if not (all(i.is_Rational for i in Am.flat()) and
-            all(i.is_Rational for i in um.flat())):
-        if not all(derivation(i, DE, basic=True).is_zero for i in Am.vec()) \
-                or not all(derivation(i, DE, basic=True).is_zero for i in um.flat()):
+    if not (all(i.is_rational for i in A) and all(i.is_rational for i in u)):
+        if not all(derivation_element(i, DE).is_zero for i in A) \
+                or not all(derivation_element(i, DE).is_zero for i in u):
             # The system could not be reduced to one over the constants
             return None
         raise NotImplementedError("Cannot work with non-rational "
             "coefficients in this case.")
-    from sympy.matrices import Matrix as _Matrix
-    try:
-        xs, params = _Matrix(Am).gauss_jordan_solve(_Matrix(um))
-    except ValueError:
+    found = _solve_linear(A, u)
+    if found is None:
         # Inconsistent system: f - (m/n)*w is not a combination of the
         # available logarithmic derivatives for any m/n.
         # With symbolic constants, inconsistency is decided only
@@ -1473,27 +1612,38 @@ def parametric_log_deriv_structure(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: D
         # sound (an honest error, never a wrong answer), so no Piecewise
         # handling is needed here.
         return None
-    xs = xs.subs(dict.fromkeys(params, S.Zero))
+    fractions: list[Fraction] = []
+    for xi in found:
+        qi = xi.as_fraction()
+        if qi is None:
+            raise NotImplementedError("Cannot work with non-rational "
+                "coefficients in this case.")
+        fractions.append(qi)
 
-    n = S.One*reduce(ilcm, [i.as_numer_denom()[1] for i in xs], S.One)
-    xs *= n  # now integers: [m, n*r1, ..., n*rk]
+    n = reduce(ilcm, [i.denominator for i in fractions], 1)
+    xs = [int(i*n) for i in fractions]  # now integers: [m, n*r1, ..., n*rk]
     m = xs[0]
-    terms = ([DE.T[i] for i in E_indices] + [DE.extargs[i - 1] for i in L_indices])
-    v = Mul(*[Pow(i, j) for i, j in zip(terms, xs[1:])])
+    terms = [RationalFunction.generator(DE.T[i]) for i in E_indices] + \
+        [_term_element(DE.extargs[i - 1]) for i in L_indices]
+    v = _ONE
+    for term, k in zip(terms, xs[1:]):
+        v = v*term**k
     if n == 0:
         return None
     # Defensive check of n*f == Dv/v + m*w (Dv/v is the same QQ-linear
     # combination of the generator logarithmic derivatives by construction)
-    lhs_check = Add(*[Mul(j, i) for i, j in zip(E_part + L_part, xs[1:])])
-    if cancel(n*f - m*w - lhs_check) != 0:
+    lhs_check = _ZERO
+    for part, k in zip(E_part + L_part, xs[1:]):
+        lhs_check = lhs_check + part*k
+    if not (f*n - w*m - lhs_check).is_zero:
         return None
     if n < 0:
-        n, m, v = -n, -m, 1/v
+        n, m, v = -n, -m, v.invert()
     return (n, m, v)
 
 
-def parametric_log_deriv(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: DifferentialExtension
-                         ) -> Optional[tuple[Degree, Degree, Union[Poly, Expr]]]:
+def parametric_log_deriv(fa: TowerPoly, fd: TowerPoly, wa: TowerPoly, wd: TowerPoly, DE: DifferentialExtension
+                         ) -> Optional[tuple[int, int, RationalFunction]]:
     """
     Solves the parametric logarithmic derivative problem.
 
@@ -1520,7 +1670,8 @@ def parametric_log_deriv(fa: Poly, fd: Poly, wa: Poly, wd: Poly, DE: Differentia
     return A
 
 
-def _structure_system_solve(lhs: Matrix, rhs: Matrix, DE: DifferentialExtension) -> Optional[list[Expr]]:
+def _structure_system_solve(lhs: FieldMatrix, rhs: FieldMatrix, DE: DifferentialExtension
+                            ) -> Optional[list[RationalFunction]]:
     """
     Find a constant solution x of the structure system lhs*x == rhs.
 
@@ -1536,21 +1687,16 @@ def _structure_system_solve(lhs: Matrix, rhs: Matrix, DE: DifferentialExtension)
     explicitly here and the solution is verified against the original
     equation.
 
-    Raises NotImplementedError if the verification fails, which
-    indicates constants not computable by cancel() (see the comment in
-    constant_system()).
+    Raises NotImplementedError if the verification fails.
     """
     A, u = constant_system(lhs, rhs, DE)
-    if not A:
+    if not len(A):
         return None
-    um = u.to_Matrix()
-    if not all(derivation(i, DE, basic=True).is_zero for i in um.flat()):
+    if not all(derivation_element(i, DE).is_zero for i in u):
         # No constant solution
         return None
-    from sympy.matrices import Matrix as EMatrix
-    try:
-        xs, params = EMatrix(A.to_Matrix()).gauss_jordan_solve(EMatrix(um))
-    except ValueError:
+    xs = _solve_linear(A, u)
+    if xs is None:
         # With symbolic constants in the system, inconsistency (and
         # the pivoting above) is decided only generically; at special
         # values of the constants a solution may exist.  Returning None
@@ -1565,30 +1711,28 @@ def _structure_system_solve(lhs: Matrix, rhs: Matrix, DE: DifferentialExtension)
     # rational at tau == 1.  Choosing a rational point of the affine
     # solution space (when one exists) would decide more towers; failing
     # that only causes an honest NotImplementedError downstream.
-    xs = xs.subs(dict.fromkeys(params, S.Zero))
     # Defensive verification against the original system
-    lhs_m = lhs.to_Matrix()
-    rhs_m = rhs.to_Matrix()
-    for i in range(lhs_m.rows):
-        if cancel(Add(*[lhs_m[i, j]*xs[j] for j in range(lhs_m.cols)])
-                - rhs_m[i]) != 0:
+    for i in range(lhs.rows):
+        total = _ZERO
+        for j in range(lhs.cols):
+            total = total + lhs[i, j]*xs[j]
+        if not (total - rhs[i, 0]).is_zero:
             raise NotImplementedError("The candidate solution of the "
-                "structure system failed verification; the constant field "
-                "may not be computable by cancel().")
-    return list(xs)
+                "structure system failed verification.")
+    return xs
 
 
-def _tower_has_I(DE: DifferentialExtension, *exprs: Union[Expr, Poly]) -> bool:
+def _tower_has_I(DE: DifferentialExtension, *polys: TowerPoly) -> bool:
     """
-    Checks if sqrt(-1) appears explicitly in exprs or in the derivations
+    Checks if sqrt(-1) appears explicitly in polys or in the derivations
     of the tower at or below the current level.
     """
     top = len(DE.T) + DE.level
-    return (any(i.has(I) for i in exprs) or
-        any(d.as_expr().has(I) for d in DE.D[:top + 1]))
+    return (any(p.has(I) for p in polys) or
+        any(d.has(I) for d in DE.D[:top + 1]))
 
 
-def _structure_tower(DE: DifferentialExtension, *exprs: Union[Expr, Poly],
+def _structure_tower(DE: DifferentialExtension, *polys: TowerPoly,
                      real: bool = False) -> tuple[list[int], list[int], list[int], list[int]]:
     """
     The index sets E, L, T and A of the tower at the current level.
@@ -1605,7 +1749,7 @@ def _structure_tower(DE: DifferentialExtension, *exprs: Union[Expr, Poly],
     The structure theorems need every monomial of the tower labeled, and
     the real version (Theorem 9.3.2, which is needed as soon as T or A
     is nonempty, or always when real=True) needs sqrt(-1) not in the
-    field, so the tower and the given expressions (the inputs of the
+    field, so the tower and the given polynomials (the inputs of the
     caller) are checked for explicit I.  Raises NotImplementedError
     otherwise.
     """
@@ -1614,9 +1758,11 @@ def _structure_tower(DE: DifferentialExtension, *exprs: Union[Expr, Poly],
             "monomial of the tower labeled as 'exp', 'log', 'tan' or 'atan' "
             "in DE.exts; nonelementary extensions are not supported.")
     top = len(DE.T) + DE.level
-    E, L, T, A = [[i for i in DE.indices(ext) if i <= top]
-        for ext in ('exp', 'log', 'tan', 'atan')]
-    if (real or T or A) and _tower_has_I(DE, *exprs):
+    E = [i for i in DE.indices('exp') if i <= top]
+    L = [i for i in DE.indices('log') if i <= top]
+    T = [i for i in DE.indices('tan') if i <= top]
+    A = [i for i in DE.indices('atan') if i <= top]
+    if (real or T or A) and _tower_has_I(DE, *polys):
         raise NotImplementedError("The real version of the structure "
             "theorems (Section 9.3 of Bronstein's book), needed for towers "
             "with hypertangent or arc-tangent monomials, requires sqrt(-1) "
@@ -1624,7 +1770,13 @@ def _structure_tower(DE: DifferentialExtension, *exprs: Union[Expr, Poly],
     return E, L, T, A
 
 
-def _structure_solve(parts: Sequence[Expr], rhs: Expr, DE: DifferentialExtension) -> Optional[list[Expr]]:
+def _has_symbols(e: RationalFunction) -> bool:
+    """Whether the element has a symbol (a parameter) in it."""
+    return any(g.free_symbols for g in e.gens)
+
+
+def _structure_solve(parts: Sequence[RationalFunction], rhs: RationalFunction, DE: DifferentialExtension
+                     ) -> Optional[list[Fraction]]:
     """
     Solves the structure equation Sum(ri*parts[i]) == rhs for ri in QQ.
 
@@ -1640,30 +1792,68 @@ def _structure_solve(parts: Sequence[Expr], rhs: Expr, DE: DifferentialExtension
     be made rational would need a QQ-basis of the constant field (see
     the discussion following Corollary 9.3.1 of Bronstein's book).
     """
-    if rhs == 0:
-        return [S.Zero]*len(parts)
-    # The expressions might not be polynomial in any of their symbols,
-    # so use a Dummy as the generator for PolyMatrix.
-    dum = Dummy()
-    u = _structure_system_solve(Matrix([parts], dum), Matrix([rhs], dum), DE)
+    if rhs.is_zero:
+        return [Fraction(0)]*len(parts)
+    u = _structure_system_solve(FieldMatrix.row_vector(list(parts)), FieldMatrix.column([rhs]), DE)
     if u is None:
         return None
-    if not all(i.is_Rational for i in u):
-        # A coefficient with a symbol in it (the v of exp(v*log(x)), a
-        # parameter of the integrand) is a constant transcendental over QQ
-        # for a generic value: the equation has no rational solution, and
-        # rhs is not a rational combination of parts (exp(v*log(x)) is a
-        # new monomial). A numeric coefficient such as log(2)/log(3) may
-        # or may not be rational, and deciding it would need a QQ-basis of
-        # the constant field (the discussion after Corollary 9.3.1).
-        if all(i.is_Rational or i.free_symbols for i in u):
-            return None
-        raise NotImplementedError("Cannot work with non-rational "
-            "coefficients in this case.")
-    return u
+    fractions = [i.as_fraction() for i in u]
+    result: list[Fraction] = []
+    for i, q in zip(u, fractions):
+        if q is None:
+            # A coefficient with a symbol in it (the v of exp(v*log(x)), a
+            # parameter of the integrand) is a constant transcendental over QQ
+            # for a generic value: the equation has no rational solution, and
+            # rhs is not a rational combination of parts (exp(v*log(x)) is a
+            # new monomial). A numeric coefficient such as log(2)/log(3) may
+            # or may not be rational, and deciding it would need a QQ-basis of
+            # the constant field (the discussion after Corollary 9.3.1).
+            if all(j.is_rational or _has_symbols(j) for j in u):
+                return None
+            raise NotImplementedError("Cannot work with non-rational "
+                "coefficients in this case.")
+        result.append(q)
+    return result
 
 
-def is_deriv_k(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[tuple[list[tuple[Expr, Expr]], Expr, Expr]]:
+def _df_over_f(fa: TowerPoly, fd: TowerPoly, DE: DifferentialExtension) -> RationalFunction:
+    dfa = fd*derivation(fa, DE) - fa*derivation(fd, DE)
+    return dfa.as_element()/(fd*fa).as_element()
+
+
+def _df(fa: TowerPoly, fd: TowerPoly, DE: DifferentialExtension) -> RationalFunction:
+    dfa = fd*derivation(fa, DE) - fa*derivation(fd, DE)
+    return dfa.as_element()/(fd**2).as_element()
+
+
+def _exprs(u: Sequence[Fraction]) -> list[Expr]:
+    return [_number(i) for i in u]
+
+
+def _powers_of_factors(e: Expr, j: Fraction) -> Expr:
+    """``e**j`` as the powers of the square-free factors of the numerator
+    and the denominator of ``e`` (so that ``sqrt(x**2)`` is ``x``)."""
+    from sympy_extras.polys.polytools import sqf_list
+    jj = _number(j)
+    n, d = e.as_numer_denom()
+    parts: list[Expr] = []
+    for f, sign in ((n, 1), (d, -1)):
+        coeff, terms = sqf_list(f)
+        parts.append(pow(coeff, mul(Integer(sign), jj)))
+        for b, k in terms:
+            parts.append(pow(b, mul(Integer(sign), k, jj)))
+    return mul(*parts)
+
+
+def _cancel_expr(e: Expr) -> Expr:
+    try:
+        return RationalFunction.from_expr(e).as_expr()
+    except UnsupportedConstant:
+        from sympy_extras.polys.polytools import cancel
+        return cancel(e)
+
+
+def is_deriv_k(fa: TowerPoly, fd: TowerPoly, DE: DifferentialExtension) -> Optional[tuple[Terms, Expr, Expr]]:
     r"""
     Checks if Df/f is the derivative of an element of k(t).
 
@@ -1701,22 +1891,12 @@ def is_deriv_k(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[tuple[
     deg(Dt_i) == 0 when t_i is in L_K/C(x), implying in particular that E_K/C(x)
     and L_K/C(x) are disjoint.
 
-    The sets L_K/C(x) and E_K/C(x) must, by their nature, be computed
-    recursively using this same function.  Therefore, it is required to pass
-    them as indices to D (or T).  E_args are the arguments of the
-    hyperexponentials indexed by E_K (i.e., if i is in E_K, then T[i] ==
-    exp(E_args[i])).  This is needed to compute the final answer u such that
-    Df/f == Du.
-
     log(f) will be the same as u up to a additive constant.  This is because
     they will both behave the same as monomials. For example, both log(x) and
     log(2*x) == log(x) + log(2) satisfy Dt == 1/x, because log(2) is constant.
     Therefore, the term const is returned.  const is such that
     log(const) + f == u.  This is calculated by dividing the arguments of one
-    logarithm from the other.  Therefore, it is necessary to pass the arguments
-    of the logarithmic terms in L_args.
-
-    To handle the case where we are given Df/f, not f, use is_deriv_k_in_field().
+    logarithm from the other.
 
     Towers containing hypertangent ('tan') and arc-tangent ('atan')
     monomials are handled by the real version of the structure theorem
@@ -1727,46 +1907,51 @@ def is_deriv_k(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[tuple[
     This is an application of the Risch structure theorems from Section 9.3
     of Bronstein's book (neither edition gives it as named pseudocode).
 
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.risch.risch import DifferentialExtension
+    >>> from sympy_extras.integrals.risch.prde import is_deriv_k
+    >>> from sympy_extras.integrals.risch.tower import TowerPoly
+    >>> x, t1, t2 = symbols('x t1 t2')
+    >>> DE = DifferentialExtension.manual([TowerPoly.from_expr(1, x), TowerPoly.from_expr(1/x, t1),
+    ...     TowerPoly.from_expr(1/(x + 1), t2)], exts=['log', 'log'], extargs=[x, x + 1])
+    >>> is_deriv_k(TowerPoly.from_expr(2*x**2 + 2*x, t2), TowerPoly.from_expr(1, t2), DE)
+    ([(t1, 1), (t2, 1)], t1 + t2, 2)
+
     See also
     ========
     is_log_deriv_k_t_radical_in_field, is_log_deriv_k_t_radical
     """
     # Compute Df/f
-    dfa, dfd = (fd*derivation(fa, DE) - fa*derivation(fd, DE)), fd*fa
-    dfa, dfd = dfa.cancel(dfd, include=True)
+    df = _df_over_f(fa, fd, DE)
 
     # Our assumption here is that each monomial is recursively transcendental
     E, L, _, _ = _structure_tower(DE, fa, fd)
-    E_part = [DE.D[i].quo(Poly(DE.T[i], DE.T[i])).as_expr() for i in E]
-    L_part = [DE.D[i].as_expr() for i in L]
+    E_part = [DE.D[i].quo(TowerPoly.monomial(DE.T[i], 1)).as_element() for i in E]
+    L_part = [DE.D[i].as_element() for i in L]
 
-    u = _structure_solve(E_part + L_part, dfa.as_expr()/dfd.as_expr(), DE)
+    u = _structure_solve(E_part + L_part, df, DE)
     if u is None:
         # No constant solution
         return None
 
-    terms = [DE.extargs[i - 1] for i in E] + [DE.T[i] for i in L]
-    ans = list(zip(terms, u))
-    result = Add(*[Mul(i, j) for i, j in ans])
-    argterms = [DE.T[i] for i in E] + [DE.extargs[i - 1] for i in L]
-    l = []
-    ld = []
+    terms: list[Expr] = [_term_expr(DE.extargs[i - 1]) for i in E] + [DE.T[i] for i in L]
+    ans = list(zip(terms, _exprs(u)))
+    result = add(*[mul(i, j) for i, j in ans])
+    argterms: list[Expr] = [DE.T[i] for i in E] + [_term_expr(DE.extargs[i - 1]) for i in L]
+    l: list[Expr] = []
     for i, j in zip(argterms, u):
         # We need to get around things like sqrt(x**2) != x
         # and also sqrt(x**2 + 2*x + 1) != x + 1
         # Issue 10798: i need not be a polynomial
-        i, d = i.as_numer_denom()
-        icoeff, iterms = sqf_list(i)
-        l.append(Mul(*([Pow(icoeff, j)] + [Pow(b, e*j) for b, e in iterms])))
-        dcoeff, dterms = sqf_list(d)
-        ld.append(Mul(*([Pow(dcoeff, j)] + [Pow(b, e*j) for b, e in dterms])))
-    const = cancel(fa.as_expr()/fd.as_expr()/Mul(*l)*Mul(*ld))
+        l.append(_powers_of_factors(i, j))
+    f = _el(fa, fd).as_expr()
+    const = _cancel_expr(mul(f, pow(mul(*l), Integer(-1))))
 
     return (ans, result, const)
 
 
-def is_log_deriv_k_t_radical(fa: Poly, fd: Poly, DE: DifferentialExtension,
-                             Df: bool = True) -> Optional[tuple[list[tuple[Expr, Expr]], Expr, Degree, Expr]]:
+def is_log_deriv_k_t_radical(fa: TowerPoly, fd: TowerPoly, DE: DifferentialExtension,
+                             Df: bool = True) -> Optional[tuple[Terms, Expr, int, Expr]]:
     r"""
     Checks if Df is the logarithmic derivative of a k(t)-radical.
 
@@ -1798,28 +1983,13 @@ def is_log_deriv_k_t_radical(fa: Poly, fd: Poly, DE: DifferentialExtension,
     monomials of K over C(x)), and E_K/C(x) = { i in {1, ..., n} such that t_i
     is transcendental over C(x)(t_1, ..., t_i-1) and Dt_i/t_i = Da_i, for some
     a_i in C(x)(t_1, ..., t_i-1) } (i.e., the set of all indices of
-    hyperexponential monomials of K over C(x)).  If K is an elementary extension
-    over C(x), then the cardinality of L_K/C(x) U E_K/C(x) is exactly the
-    transcendence degree of K over C(x).  Furthermore, because Const_D(K) ==
-    Const_D(C(x)) == C, deg(Dt_i) == 1 when t_i is in E_K/C(x) and
-    deg(Dt_i) == 0 when t_i is in L_K/C(x), implying in particular that E_K/C(x)
-    and L_K/C(x) are disjoint.
-
-    The sets L_K/C(x) and E_K/C(x) must, by their nature, be computed
-    recursively using this same function.  Therefore, it is required to pass
-    them as indices to D (or T).  L_args are the arguments of the logarithms
-    indexed by L_K (i.e., if i is in L_K, then T[i] == log(L_args[i])).  This is
-    needed to compute the final answer u such that n*f == Du/u.
+    hyperexponential monomials of K over C(x)).
 
     exp(f) will be the same as u up to a multiplicative constant.  This is
     because they will both behave the same as monomials.  For example, both
     exp(x) and exp(x + 1) == E*exp(x) satisfy Dt == t. Therefore, the term const
     is returned.  const is such that exp(const)*f == u.  This is calculated by
-    subtracting the arguments of one exponential from the other.  Therefore, it
-    is necessary to pass the arguments of the exponential terms in E_args.
-
-    To handle the case where we are given Df, not f, use
-    is_log_deriv_k_t_radical_in_field().
+    subtracting the arguments of one exponential from the other.
 
     Towers containing hypertangent ('tan') and arc-tangent ('atan')
     monomials are handled by the real version of the structure theorem
@@ -1835,38 +2005,36 @@ def is_log_deriv_k_t_radical(fa: Poly, fd: Poly, DE: DifferentialExtension,
 
     is_log_deriv_k_t_radical_in_field, is_deriv_k
     """
-    if Df:
-        dfa, dfd = (fd*derivation(fa, DE) - fa*derivation(fd, DE)).cancel(fd**2,
-            include=True)
-    else:
-        dfa, dfd = fa, fd
+    df = _df(fa, fd, DE) if Df else _el(fa, fd)
 
     # Our assumption here is that each monomial is recursively transcendental
     E, L, _, _ = _structure_tower(DE, fa, fd)
-    E_part = [DE.D[i].quo(Poly(DE.T[i], DE.T[i])).as_expr() for i in E]
-    L_part = [DE.D[i].as_expr() for i in L]
+    E_part = [DE.D[i].quo(TowerPoly.monomial(DE.T[i], 1)).as_element() for i in E]
+    L_part = [DE.D[i].as_element() for i in L]
 
-    u = _structure_solve(E_part + L_part, dfa.as_expr()/dfd.as_expr(), DE)
+    u = _structure_solve(E_part + L_part, df, DE)
     if u is None:
         # No constant solution
         return None
 
-    n = S.One*reduce(ilcm, [i.as_numer_denom()[1] for i in u], S.One)
-    u = [n*i for i in u]
-    terms = [DE.T[i] for i in E] + [DE.extargs[i - 1] for i in L]
-    ans = list(zip(terms, u))
-    result = Mul(*[Pow(i, j) for i, j in ans])
+    n = reduce(ilcm, [i.denominator for i in u], 1)
+    un = [i*n for i in u]
+    terms: list[Expr] = [DE.T[i] for i in E] + [_term_expr(DE.extargs[i - 1]) for i in L]
+    ans = list(zip(terms, _exprs(un)))
+    result = mul(*[pow(i, j) for i, j in ans])
 
     # exp(f) will be the same as result up to a multiplicative
     # constant.  We now find the log of that constant.
-    argterms = [DE.extargs[i - 1] for i in E] + [DE.T[i] for i in L]
-    const = cancel(fa.as_expr()/fd.as_expr() -
-        Add(*[Mul(i, j/n) for i, j in zip(argterms, u)]))
+    argterms = [_term_element(DE.extargs[i - 1]) for i in E] + \
+        [RationalFunction.generator(DE.T[i]) for i in L]
+    const = _el(fa, fd)
+    for i, j in zip(argterms, u):
+        const = const - i*RationalFunction.from_fraction(j)
 
-    return (ans, result, n, const)
+    return (ans, result, n, const.as_expr())
 
 
-def is_deriv_k_atan(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[tuple[list[tuple[Expr, Expr]], Expr]]:
+def is_deriv_k_atan(fa: TowerPoly, fd: TowerPoly, DE: DifferentialExtension) -> Optional[tuple[Terms, Expr]]:
     r"""
     Checks if Df/(f**2 + 1) is the derivative of an element of k(t).
 
@@ -1915,22 +2083,21 @@ def is_deriv_k_atan(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[t
     Examples
     ========
 
-    >>> from sympy import Poly, S
-    >>> from sympy.abc import x
-    >>> from .risch import DifferentialExtension
-    >>> from .prde import is_deriv_k_atan
-    >>> DE = DifferentialExtension(extension={'D': [Poly(1, x)],
-    ...     'exts': [], 'extargs': []})
-    >>> is_deriv_k_atan(Poly(x, x), Poly(1, x), DE) is None
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.risch.risch import DifferentialExtension
+    >>> from sympy_extras.integrals.risch.prde import is_deriv_k_atan
+    >>> from sympy_extras.integrals.risch.tower import TowerPoly
+    >>> x, t = symbols('x t')
+    >>> DE = DifferentialExtension.manual([TowerPoly.from_expr(1, x)], exts=[], extargs=[])
+    >>> is_deriv_k_atan(TowerPoly.from_expr(x, x), TowerPoly.from_expr(1, x), DE) is None
     True
 
     so atan(x) is a monomial over QQ(x).  Over QQ(x, atan(x)),
     atan(2*x/(1 - x**2)) is 2*atan(x) up to a constant:
 
-    >>> from sympy.abc import t
-    >>> DE = DifferentialExtension(extension={'D': [Poly(1, x),
-    ...     Poly(1/(x**2 + 1), t)], 'exts': ['atan'], 'extargs': [x]})
-    >>> is_deriv_k_atan(Poly(2*x, t), Poly(1 - x**2, t), DE)
+    >>> DE = DifferentialExtension.manual([TowerPoly.from_expr(1, x),
+    ...     TowerPoly.from_expr(1/(x**2 + 1), t)], exts=['atan'], extargs=[x])
+    >>> is_deriv_k_atan(TowerPoly.from_expr(2*x, t), TowerPoly.from_expr(1 - x**2, t), DE)
     ([(t, 2)], 2*t)
 
     See also
@@ -1939,27 +2106,27 @@ def is_deriv_k_atan(fa: Poly, fd: Poly, DE: DifferentialExtension) -> Optional[t
     is_deriv_k, is_log_deriv_k_t_radical_tan
     """
     # Compute Df/(f**2 + 1)
-    dfa, dfd = (fd*derivation(fa, DE) - fa*derivation(fd, DE)), fa**2 + fd**2
-    dfa, dfd = dfa.cancel(dfd, include=True)
+    dfa = fd*derivation(fa, DE) - fa*derivation(fd, DE)
+    df = dfa.as_element()/(fa**2 + fd**2).as_element()
 
     _, _, T, A = _structure_tower(DE, fa, fd, real=True)
-    T_part = [DE.D[i].quo(Poly(DE.T[i]**2 + 1, DE.T[i])).as_expr() for i in T]
-    A_part = [DE.D[i].as_expr() for i in A]
+    T_part = [DE.D[i].quo(TowerPoly.from_list([1, 0, 1], DE.T[i])).as_element() for i in T]
+    A_part = [DE.D[i].as_element() for i in A]
 
-    u = _structure_solve(T_part + A_part, dfa.as_expr()/dfd.as_expr(), DE)
+    u = _structure_solve(T_part + A_part, df, DE)
     if u is None:
         # No constant solution
         return None
 
-    terms = [DE.extargs[i - 1] for i in T] + [DE.T[i] for i in A]
-    ans = list(zip(terms, u))
-    result = Add(*[Mul(i, j) for i, j in ans])
+    terms: list[Expr] = [_term_expr(DE.extargs[i - 1]) for i in T] + [DE.T[i] for i in A]
+    ans = list(zip(terms, _exprs(u)))
+    result = add(*[mul(i, j) for i, j in ans])
 
     return (ans, result)
 
 
-def is_log_deriv_k_t_radical_tan(fa: Poly, fd: Poly, DE: DifferentialExtension
-                                 ) -> Optional[tuple[list[tuple[Expr, Expr]], Expr, Degree, Expr]]:
+def is_log_deriv_k_t_radical_tan(fa: TowerPoly, fd: TowerPoly, DE: DifferentialExtension
+                                 ) -> Optional[tuple[Terms, Expr, int, Expr]]:
     r"""
     Checks if sqrt(-1)*Df is the logarithmic derivative of a
     k(t)(sqrt(-1))-radical.
@@ -2003,21 +2170,21 @@ def is_log_deriv_k_t_radical_tan(fa: Poly, fd: Poly, DE: DifferentialExtension
     Examples
     ========
 
-    >>> from sympy import Poly, S
-    >>> from sympy.abc import x, t
-    >>> from .risch import DifferentialExtension
-    >>> from .prde import is_log_deriv_k_t_radical_tan
-    >>> DE = DifferentialExtension(extension={'D': [Poly(1, x)],
-    ...     'exts': [], 'extargs': []})
-    >>> is_log_deriv_k_t_radical_tan(Poly(x, x), Poly(1, x), DE) is None
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.risch.risch import DifferentialExtension
+    >>> from sympy_extras.integrals.risch.prde import is_log_deriv_k_t_radical_tan
+    >>> from sympy_extras.integrals.risch.tower import TowerPoly
+    >>> x, t = symbols('x t')
+    >>> DE = DifferentialExtension.manual([TowerPoly.from_expr(1, x)], exts=[], extargs=[])
+    >>> is_log_deriv_k_t_radical_tan(TowerPoly.from_expr(x, x), TowerPoly.from_expr(1, x), DE) is None
     True
 
     so tan(x) is a monomial over QQ(x).  Over QQ(x, atan(x)),
     tan(atan(x)/3) is algebraic of degree 3 (Example 1 of the paper):
 
-    >>> DE = DifferentialExtension(extension={'D': [Poly(1, x),
-    ...     Poly(1/(x**2 + 1), t)], 'exts': ['atan'], 'extargs': [x]})
-    >>> is_log_deriv_k_t_radical_tan(Poly(t, t), Poly(3, t), DE)
+    >>> DE = DifferentialExtension.manual([TowerPoly.from_expr(1, x),
+    ...     TowerPoly.from_expr(1/(x**2 + 1), t)], exts=['atan'], extargs=[x])
+    >>> is_log_deriv_k_t_radical_tan(TowerPoly.from_expr(t, t), TowerPoly.from_expr(3, t), DE)
     ([(t, 1)], t, 3, 0)
 
     See also
@@ -2025,30 +2192,33 @@ def is_log_deriv_k_t_radical_tan(fa: Poly, fd: Poly, DE: DifferentialExtension
 
     is_log_deriv_k_t_radical, is_deriv_k_atan
     """
-    dfa, dfd = (fd*derivation(fa, DE) - fa*derivation(fd, DE)).cancel(fd**2,
-        include=True)
+    df = _df(fa, fd, DE)
 
     _, _, T, A = _structure_tower(DE, fa, fd, real=True)
-    T_part = [DE.D[i].quo(Poly(DE.T[i]**2 + 1, DE.T[i])).as_expr() for i in T]
-    A_part = [DE.D[i].as_expr() for i in A]
+    T_part = [DE.D[i].quo(TowerPoly.from_list([1, 0, 1], DE.T[i])).as_element() for i in T]
+    A_part = [DE.D[i].as_element() for i in A]
 
-    u = _structure_solve(T_part + A_part, dfa.as_expr()/dfd.as_expr(), DE)
+    u = _structure_solve(T_part + A_part, df, DE)
     if u is None:
         # No constant solution
         return None
 
-    n = S.One*reduce(ilcm, [i.as_numer_denom()[1] for i in u], S.One)
-    u = [n*i for i in u]
-    terms = [DE.extargs[i - 1] for i in T] + [DE.T[i] for i in A]
-    ans = list(zip(terms, u))
-    result = Add(*[Mul(i, j) for i, j in ans])
-    const = cancel(fa.as_expr()/fd.as_expr() - result/n)
+    n = reduce(ilcm, [i.denominator for i in u], 1)
+    un = [i*n for i in u]
+    terms: list[Expr] = [_term_expr(DE.extargs[i - 1]) for i in T] + [DE.T[i] for i in A]
+    ans = list(zip(terms, _exprs(un)))
+    result = add(*[mul(i, j) for i, j in ans])
+    elements = [_term_element(DE.extargs[i - 1]) for i in T] + [RationalFunction.generator(DE.T[i]) for i in A]
+    result_el = _ZERO
+    for e, j in zip(elements, un):
+        result_el = result_el + e*RationalFunction.from_fraction(j)
+    const = _el(fa, fd) - result_el/n
 
-    return (ans, result, n, const)
+    return (ans, result, n, const.as_expr())
 
 
-def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtension, case: str = 'auto',
-                                      z: Optional[Symbol] = None) -> Optional[tuple[Degree, Expr]]:
+def is_log_deriv_k_t_radical_in_field(fa: TowerPoly, fd: TowerPoly, DE: DifferentialExtension, case: str = 'auto',
+                                      z: Optional[Symbol] = None) -> Optional[tuple[int, RationalFunction]]:
     """
     Checks if f can be written as the logarithmic derivative of a k(t)-radical.
 
@@ -2078,14 +2248,10 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
     ========
     is_log_deriv_k_t_radical, is_deriv_k
     """
+    fa, fd = _in_t(fa, DE), _in_t(fd, DE)
     fa, fd = fa.cancel(fd, include=True)
 
-    # f must be simple
-    dn, ds = splitfactor(fd, DE)
-    if not ds.is_one:
-        pass
-
-    z = z or Dummy('z')
+    z = z or unique_dummy('z')
     H, b = residue_reduce(fa, fd, DE, z=z)
     if not b:
         # I will have to verify, but I believe that the answer should be
@@ -2096,28 +2262,31 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
         return None
 
     roots = [(i, _rational_roots(i)) for i, _ in H]
-    if not all(j is not None and len(j) == i.degree() and all(k.is_Rational for k in j) for
-               i, j in roots):
+    if not all(len(j) == i.degree() for i, j in roots):
         # If f is the logarithmic derivative of a k(t)-radical, then all the
         # roots of the resultant must be rational numbers.
         return None
 
     # [(a, i), ...], where i*log(a) is a term in the log-part of the integral
     # of f
-    respolys, residues = list(zip(*roots)) or [(), ()]
+    residues = [j for _, j in roots]
     # Note: this might be empty, but everything below should work find in that
     # case (it should be the same as if it were [[1, 1]])
-    residueterms = [(H[j][1].subs(z, i), i) for j in range(len(H)) for
-        i in residues[j]]
+    residueterms: list[tuple[TowerPoly, Fraction]] = []
+    for j in range(len(H)):
+        for i in residues[j]:
+            q = i.as_fraction()
+            if q is None:
+                return None
+            residueterms.append((H[j][1].subs(z, i), q))
 
-    # TODO: finish writing this and write tests
+    pe = _el(fa, fd) - _residue_derivation_element(H, DE, z)
 
-    p = cancel(fa.as_expr()/fd.as_expr() - residue_reduce_derivation(H, DE, z))
-
-    p = p.as_poly(DE.t)
-    if p is None:
+    found_p = TowerPoly.from_element(pe, DE.t)
+    if found_p is None:
         # f - Dg will be in k[t] if f is the logarithmic derivative of a k(t)-radical
         return None
+    p = found_p
 
     if p.degree(DE.t) >= max(1, DE.d.degree(DE.t)):
         return None
@@ -2125,8 +2294,10 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
     if case == 'auto':
         case = DE.case
 
+    n: int
+    u: RationalFunction
     if case == 'exp':
-        wa, wd = derivation(DE.t, DE).cancel(Poly(DE.t, DE.t), include=True)
+        wa, wd = DE.d.cancel(TowerPoly.monomial(DE.t, 1), include=True)
         with DecrementLevel(DE):
             pa, pd = frac_in(p, DE.t, cancel=True)
             wa, wd = frac_in((wa, wd), DE.t)
@@ -2134,8 +2305,7 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
         if found is None:
             return None
         n, e, u_found = found
-        u = u_found.as_expr() if isinstance(u_found, Poly) else u_found
-        u *= DE.t**e
+        u = u_found*RationalFunction.generator(DE.t)**e
 
     elif case == 'primitive':
         with DecrementLevel(DE):
@@ -2147,19 +2317,21 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
 
     elif case == 'base':
         # TODO: we can use more efficient residue reduction from ratint()
-        if not fd.is_sqf or fa.degree() >= fd.degree():
+        if fd.gcd(fd.diff()).degree() > 0 or fa.degree() >= fd.degree():
             # f is the logarithmic derivative in the base case if and only if
             # f = fa/fd, fd is square-free, deg(fa) < deg(fd), and
             # gcd(fa, fd) == 1.  The last condition is handled by cancel() above.
             return None
         # Note: if residueterms = [], returns (1, 1)
         # f had better be 0 in that case.
-        n = S.One*reduce(ilcm, [i.as_numer_denom()[1] for _, i in residueterms], 1)
-        u = Mul(*[Pow(i, j*n) for i, j in residueterms])
+        n = reduce(ilcm, [i.denominator for _, i in residueterms], 1)
+        u = _ONE
+        for poly, mult in residueterms:
+            u = u*poly.as_element()**int(mult*n)
         return (n, u)
 
     elif case == 'tan':
-        if _tower_has_I(DE, fa.as_expr(), fd.as_expr()):
+        if _tower_has_I(DE, fa, fd):
             raise NotImplementedError("The hypertangent case of "
                 "is_log_deriv_k_t_radical_in_field() requires sqrt(-1) not "
                 "in k(t).")
@@ -2167,15 +2339,15 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
         # k* and e in ZZ (the special polynomial is t**2 + 1), so
         # n*p == Du/u is equivalent to n*a == Dv/v and n*b/(2*eta) == e,
         # where eta == Dt/(t**2 + 1) is in k.
-        eta = DE.d.quo(Poly(DE.t**2 + 1, DE.t)).as_expr()
-        a, b = p.nth(0), p.nth(1)
-        ratio = cancel(b/(2*eta))
-        if not ratio.is_Rational:
+        eta = DE.d.quo(TowerPoly.from_list([1, 0, 1], DE.t)).as_element()
+        a, bb = p.nth(0), p.nth(1)
+        ratio = (bb/(eta*2)).as_fraction()
+        if ratio is None:
             return None
-        na: Degree
-        v: Expr
-        if a == 0:
-            na, v = S.One, S.One
+        na: int
+        v: RationalFunction
+        if a.is_zero:
+            na, v = 1, _ONE
         else:
             with DecrementLevel(DE):
                 aa, ad = frac_in(a, DE.t)
@@ -2183,8 +2355,9 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
             if radical is None:
                 return None
             na, v = radical
-        n = S.One*ilcm(na, ratio.q)
-        u = v**(n/na)*(DE.t**2 + 1)**(n*ratio)
+        n = ilcm(na, ratio.denominator)
+        tf = RationalFunction.generator(DE.t)
+        u = v**(n//na)*(tf**2 + 1)**int(n*ratio)
 
     elif case in ('other_linear', 'other_nonlinear'):
         # XXX: If these are supported by the structure theorems, change to NotImplementedError.
@@ -2194,12 +2367,13 @@ def is_log_deriv_k_t_radical_in_field(fa: Poly, fd: Poly, DE: DifferentialExtens
         raise ValueError("case must be one of {'primitive', 'exp', 'tan', "
         "'base', 'auto'}, not %s" % case)
 
-    common_denom = S.One*reduce(ilcm, [i.as_numer_denom()[1] for i in [j for _, j in
-        residueterms]] + [n], 1)
-    residueterms = [(i, j*common_denom) for i, j in residueterms]
+    common_denom = reduce(ilcm, [j.denominator for _, j in residueterms] + [n], 1)
+    scaled = [(i, j*common_denom) for i, j in residueterms]
     m = common_denom//n
     if common_denom != n*m:  # Verify exact division
         raise ValueError("Inexact division")
-    u = cancel(u**m*Mul(*[Pow(i, j) for i, j in residueterms]))
+    result = u**m
+    for poly, mult in scaled:
+        result = result*poly.as_element()**int(mult)
 
-    return (common_denom, u)
+    return (common_denom, result)

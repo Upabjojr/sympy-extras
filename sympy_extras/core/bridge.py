@@ -1,13 +1,33 @@
-"""The operations the core delegates to a foreign computer algebra system
-until they are ported: an interface with the core's own types only.
+"""The operations the core delegates to a foreign computer algebra system:
+an interface with the core's own types only.
 
 The core never imports SymPy. :mod:`sympy_extras.interop` implements this
 interface with SymPy and registers it when imported (``import
 sympy_extras.interop``). Without it the queries of knowledge answer
 "unknown" (``None``, no facts, no rule) and the operations which must
 produce a result raise :class:`ForeignOperationUnavailable`, naming the
-operation. Every method is a debt: the goal is to port each one and
-remove it from here.
+operation.
+
+Every operation is ported: the bridge serves only the **wrapped foreign
+objects** (the SymPy objects which :mod:`sympy_extras.interop` wraps in
+nodes of the core, ``node._is_foreign_node()``, and the applied SymPy
+functions, ``node._has_foreign_class()``), whose rules only the foreign
+system knows. The callers ask it only for an expression containing such
+a node:
+
+- ``is_foreign``, ``from_foreign``, ``parse``: ``sympify`` of a foreign
+  object, or of a string outside the native grammar;
+- ``numeric``: ``numeric_value`` of a foreign number node;
+- ``ask``, ``equals_zero``, ``is_constant``, ``minimal_polynomial``,
+  ``meromorphic``: questions about expressions with foreign nodes;
+- ``nseries``, ``rewrite_node``, ``rewrite_named_node``,
+  ``expand_func_node``: the rules of a foreign node;
+- ``solve_first``, ``simplify``, ``factor_foreign_integrals``,
+  ``integrate``, ``invert``, ``fps``, ``fourier_series``: the operations
+  on expressions with foreign nodes.
+
+A native node is decided natively, also when no native rule applies (SymPy's
+behaviour without a rule: the node unchanged, ``None``, ``NotImplementedError``).
 
 Examples
 ========
@@ -34,8 +54,8 @@ __all__ = ['Bridge', 'ForeignOperationUnavailable', 'bridge', 'register_bridge']
 
 #: a truth value of three states
 Truth = Optional[bool]
-#: the target of a rewrite: a node, a function class or a class
-RewriteTarget = Union[Basic, FunctionClass, type]
+#: the target of a rewrite: a node, a function class, a class or a name
+RewriteTarget = Union[Basic, FunctionClass, type, str]
 
 
 class ForeignOperationUnavailable(NotImplementedError):
@@ -81,15 +101,13 @@ class Bridge:
     def is_constant(self, e: Expr, wrt: Sequence[Symbol]) -> Truth:
         return None
 
-    def is_hypergeometric(self, e: Expr, k: Symbol) -> Truth:
-        return None
-
     def minimal_polynomial(self, e: Expr, x: Symbol) -> Expr:
         raise self._missing('minimal_polynomial')
 
     # -- operations on nodes whose rules are not ported
 
     def nseries(self, node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The series of a wrapped foreign node."""
         raise self._missing('the series of %s' % (type(node).__name__,))
 
     def meromorphic(self, node: Expr, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Truth]:
@@ -97,11 +115,10 @@ class Bridge:
         ``own_only``) and its answer."""
         return (False, None)
 
-    def rewrite(self, e: Basic, targets: Sequence[RewriteTarget], piecewise: bool) -> Basic:
-        raise self._missing('rewrite')
-
-    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: type, piecewise: bool) -> Optional[Basic]:
-        """The node rewritten by the foreign class's rule, ``None`` without one."""
+    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: RewriteTarget, piecewise: bool
+                     ) -> Optional[Basic]:
+        """The wrapped foreign node, rebuilt with ``args``, rewritten by the
+        foreign class's rule, ``None`` without one."""
         return None
 
     def rewrite_named_node(self, e: Basic, args: tuple[Basic, ...], name: str, limitvar: Optional[Symbol]
@@ -109,6 +126,8 @@ class Bridge:
         return None
 
     def expand_func_node(self, e: Basic) -> Optional[Basic]:
+        """The wrapped foreign node expanded by its class's rule, ``None``
+        without one."""
         return None
 
     def solve_first(self, equation: Expr, x: Symbol) -> Optional[Expr]:

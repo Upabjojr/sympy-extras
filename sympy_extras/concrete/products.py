@@ -5,7 +5,9 @@ factors and powers piece by piece (the exponents summed).
 
 Ported from SymPy's ``sympy.concrete.products`` (the Kronecker delta
 products in :mod:`~sympy_extras.concrete.delta`). A polynomial factor
-whose coefficients our Poly does not take goes through SymPy.
+whose coefficients our Poly does not take (SymPy's ``EX``) is taken by
+the closed forms of its roots (the native ``ex_roots``); the module loads
+no SymPy.
 
 Examples
 ========
@@ -22,7 +24,7 @@ Examples
 # (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed.
+# Changes: typed; the polynomials over EX by the native ex_roots.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -42,23 +44,9 @@ __all__ = ['product', 'product_doit', 'eval_product']
 ONE = Integer(1)
 
 
-class _ThroughSymPy(Exception):
-    """A case the native code does not take: the product goes to SymPy."""
-
-
 def _e(b: Basic) -> Expr:
     assert isinstance(b, Expr)
     return b
-
-
-def _through(name: str, f: Expr, limits: Limits) -> Optional[Expr]:
-    import importlib
-    from sympy_extras.interop import expr_from_sympy, to_sympy
-    module, function = name.rsplit('.', 1)
-    fn = getattr(importlib.import_module('sympy.concrete.' + module), function)
-    k, a, n = limits
-    r = fn(to_sympy(f), (to_sympy(k), to_sympy(a), to_sympy(n)))
-    return None if r is None else expr_from_sympy(r)
 
 
 # PORTED FROM SYMPY: sympy/concrete/products.py:Product._eval_product_direct
@@ -103,8 +91,8 @@ def eval_product(term: Expr, limits: Limits) -> Optional[Expr]:
     if term.is_polynomial(k):
         try:
             poly = Poly(term, k)
-        except (CoercionFailed, NotImplementedError) as exc:
-            raise _ThroughSymPy() from exc
+        except (CoercionFailed, NotImplementedError):
+            return _eval_polynomial_ex(term, limits)
         A: Expr = ONE
         B: Expr = ONE
         Q: Expr = ONE
@@ -168,6 +156,53 @@ def eval_product(term: Expr, limits: Limits) -> Optional[Expr]:
     return None
 
 
+# PORTED FROM SYMPY: sympy/concrete/products.py:Product._eval_product (a polynomial over EX)
+def _eval_polynomial_ex(term: Expr, limits: Limits) -> Optional[Expr]:
+    """The product of a polynomial in ``k`` whose coefficients our Poly
+    does not take (``I``, ``sqrt(2)``, floats: SymPy's ``EX`` and the
+    other domains) by its roots (the closed forms of the native
+    ``ex_roots``): ``LC**(n - a + 1)*prod(rf(a - r, n - a + 1)**m)``;
+    ``None`` when they are not found (SymPy's recursion on the cofactor
+    would not end), the remaining cofactor (a constant in ``k``) taken
+    out as SymPy's ``quo`` does."""
+    from sympy_extras.core.add import add
+    from sympy_extras.functions.combinatorial.factorials import rf
+    from sympy_extras.polys.polyroots import ex_roots
+    from sympy_extras.polys.polytools import cancel
+    from .gosper import _UPoly
+    k, a, n = limits
+    try:
+        poly = _UPoly.of(term, k)
+    except ValueError:
+        return None
+    try:
+        found = ex_roots(poly.as_expr(k), k)
+    except NotImplementedError:
+        return None
+    if not found:
+        return None
+    counts: list[tuple[Expr, int]] = []
+    for r in found:
+        for index, (s, m) in enumerate(counts):
+            if s == r:
+                counts[index] = (s, m + 1)
+                break
+        else:
+            counts.append((r, 1))
+    A: Expr = ONE
+    B: Expr = ONE
+    Q: Expr = ONE
+    M = 0
+    for r, m in counts:
+        M += m
+        A = A * rf(a - r, n - a + 1)**m
+        Q = Q * (n - r)**m
+    if M < poly.degree():
+        arg = add(*[cancel(c / Q) * k**j for j, c in enumerate(poly.c)])
+        B = _doit(arg, (k, a, n))
+    return poly.lc()**(n - a + 1) * A * B
+
+
 def _through_delta(term: Expr, limits: Limits) -> Optional[Expr]:
     """SymPy's ``deltaproduct`` when the delta is simple."""
     from .delta import _has_simple_delta, deltaproduct
@@ -192,21 +227,17 @@ def product_doit(p: Product, deep: bool = True) -> Expr:
         replaced = p.xreplace(reps)
         assert isinstance(replaced, Product)
         return _e(product_doit(replaced, deep).xreplace(undo))
-    try:
-        f = p.function
-        for index, limit in enumerate(p.limits):
-            i, a, b = limit
-            dif = b - a
-            if dif.is_integer is True and dif.is_negative is True:
-                a, b = b + 1, a - 1
-                f = 1 / f
-            g = eval_product(f, (i, a, b))
-            if g is None or isinstance(g, NaN):
-                return product_(powsimp(f), *p.limits[index:])
-            f = g
-    except _ThroughSymPy:
-        from sympy_extras.interop import expr_through_sympy
-        return expr_through_sympy(p, lambda s: s.doit(deep=deep))
+    f = p.function
+    for index, limit in enumerate(p.limits):
+        i, a, b = limit
+        dif = b - a
+        if dif.is_integer is True and dif.is_negative is True:
+            a, b = b + 1, a - 1
+            f = 1 / f
+        g = eval_product(f, (i, a, b))
+        if g is None or isinstance(g, NaN):
+            return product_(powsimp(f), *p.limits[index:])
+        f = g
     if deep:
         return f.doit()
     return powsimp(f)

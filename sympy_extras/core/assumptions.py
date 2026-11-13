@@ -399,7 +399,13 @@ def add_facts(args: tuple[Expr, ...]) -> Facts:
     imaginary = [s for s in sub if s.get('imaginary') is True]
     if imaginary and all(s.get('real') is True or s.get('imaginary') is True for s in sub):
         if len(imaginary) == len(sub):
-            facts['imaginary'] = True
+            # imaginary terms may cancel (2**(1/3)*I - (2**(1/3)*(sqrt(3) + I)/2)**3*...):
+            # the sum is imaginary only when the sum of the real numbers
+            # term*I is known not to vanish (SymPy's Add._eval_is_imaginary)
+            from .add import add
+            from .mul import mul
+            if facts_of(add(*[mul(a, ImaginaryUnit()) for a in args])).get('zero') is False:
+                facts['imaginary'] = True
         elif len(imaginary) == 1 and imaginary[0].get('zero') is False:
             facts.update(real=False, zero=False, extended_real=False)
             if all(s.get('finite') is True for s in sub):

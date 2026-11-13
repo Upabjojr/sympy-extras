@@ -5,10 +5,10 @@ from __future__ import annotations
 from sympy import (symbols, exp, sqrt, pi, erf, erfi, Ei, uppergamma, hyper, Piecewise, Rational,
                    diff, simplify, atan, log)
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.assumptions.ask_sympy import Assumptions
-from sympy_extras.integrals.conditions import numerically_equal
-from sympy_extras.integrals.exponential import exponential_antiderivative, power_exponential, exponential_rational
+from sympy_extras.integrals.conditions_sympy import numerically_equal
+from sympy_extras.integrals.exponential_sympy import exponential_antiderivative, power_exponential, exponential_rational
 
 x = symbols('x')
 v = symbols('v', positive=True)
@@ -105,10 +105,8 @@ def test_the_generator_of_the_exponentials_has_a_canonical_sign() -> None:
     # exp(-x) came first the substitution was u = exp(-x), which turned
     # (exp(x) + 1)**(1/3) into (1/u + 1)**(1/3), refused; one run in two
     # returned None depending on SymPy's random generator
+    # (the generator itself is tested on the core in test_exponential_native.py)
     import sympy.core.random as srandom
-    from sympy_extras.integrals.exponential import _exponential_generator
-    assert _exponential_generator(exp(-x) * (exp(x) + 1)**Rational(1, 3), x) == 1
-    assert _exponential_generator(exp(-2 * x) + exp(3 * x), x) == 1
     for seed in range(4):
         srandom.seed(seed)
         F = exponential_rational((exp(x) + 1)**Rational(1, 3) / exp(x), x)
@@ -120,8 +118,8 @@ def test_a_linear_shift_reaches_the_exponential_integrals() -> None:
     # and (a*z + b)**w*exp(c*z + d) go through t = a*z + b to the first
     # form, the exponential integral E_k and the incomplete gamma
     from sympy import Ei, diff, exp, simplify, symbols
-    from sympy_extras.integrals.exponential import exponential_antiderivative
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.exponential_sympy import exponential_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     a, b, c, d, w, z = symbols('a b c d w z')
     F = exponential_antiderivative(exp(2*z)/(z + 1)**2, z)
     assert F is not None and F.has(Ei) and simplify(diff(F, z) - exp(2*z)/(z + 1)**2) == 0
@@ -136,8 +134,8 @@ def test_symbolic_exponents_and_summed_exponents() -> None:
     # with n = r, and a**(b*z**2)*h**(c*z**2) combines into an exponential
     # whose exponent is a sum, one monomial after factoring
     from sympy import exp, log, symbols
-    from sympy_extras.integrals.exponential import power_exponential
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.exponential_sympy import power_exponential
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     A, a, b, c, h, r, v, z = symbols('A a b c h r v z')
     for f in (z**(v - 1)*exp(A*z**r), exp(A*z**r), exp(b*z**2*log(a) + c*z**2*log(h))):
         F = power_exponential(f, z)
@@ -150,8 +148,8 @@ def test_linear_factors_shift_and_the_confluent_form_for_odd_powers() -> None:
     # -a*x**n > 0 only, so for an odd n without x > 0 the confluent form,
     # real on the whole line
     from sympy import exp, hyper, symbols, uppergamma
-    from sympy_extras.integrals.exponential import exponential_antiderivative
-    from sympy_extras.integrals.indefinite import is_antiderivative
+    from sympy_extras.integrals.exponential_sympy import exponential_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import is_antiderivative
     x = symbols('x')
     f = (x + 1) * exp(-x**3 - 3 * x**2 - 3 * x)
     F = exponential_antiderivative(f, x)
@@ -167,7 +165,7 @@ def test_nested_powers_by_the_incomplete_gamma_function() -> None:
     # the positive axis, but the Gamma form with the nested power kept is
     # an antiderivative everywhere (checked by differentiation)
     from sympy import uppergamma, diff, cancel
-    from sympy_extras.integrals.exponential import nested_power_exponential
+    from sympy_extras.integrals.exponential_sympy import nested_power_exponential
     z, a, r, p = symbols('z a r p')
     F = nested_power_exponential(exp(a * (z**r)**p), z)
     assert F == -z * uppergamma(1 / (p * r), -a * (z**r)**p) / (p * r * (-a * (z**r)**p)**(1 / (p * r)))
@@ -183,7 +181,7 @@ def test_nested_powers_by_the_incomplete_gamma_function() -> None:
 def test_rational_functions_times_an_exponential_by_the_exponential_integral() -> None:
     # Maxima's rtest_integrate 125, 126: the roots of the denominator symbolic
     from sympy import diff, simplify
-    from sympy_extras.integrals.exponential import rational_exponential
+    from sympy_extras.integrals.exponential_sympy import rational_exponential
     z, a, b, c = symbols('z a b c')
     F = rational_exponential(exp(c * z) / (a * z**2 + b), z)
     assert F is not None and F.has(Ei) and simplify(diff(F, z) - exp(c * z) / (a * z**2 + b)) == 0
@@ -197,8 +195,8 @@ def test_exponentials_of_a_square_and_its_reciprocal_by_the_error_function() -> 
     # Maxima's rtest_integrate 145, 147: d**(a*z**2 + b/z**2) through the
     # dispatcher's rewriting, exp(-x**2 - 1/x**2) directly
     from sympy import diff, simplify, erf
-    from sympy_extras.integrals.exponential import reciprocal_square_exponential
-    from sympy_extras.integrals.indefinite import indefinite_integral
+    from sympy_extras.integrals.exponential_sympy import reciprocal_square_exponential
+    from sympy_extras.integrals.indefinite_sympy import indefinite_integral
     x, z, a, b, d = symbols('x z a b d')
     F = reciprocal_square_exponential(exp(-x**2 - 1 / x**2), x)
     assert F == sqrt(pi) * (exp(-2) * erf(x - 1 / x) + exp(2) * erf(x + 1 / x)) / 4
@@ -212,7 +210,7 @@ def test_repeated_roots_in_the_exponential_integral_route() -> None:
     # same Ei forms): the Laurent coefficients at a repeated symbolic root
     # and the by-parts reduction of exp(c*x)/(x - r)**k
     from sympy import diff, simplify, E
-    from sympy_extras.integrals.exponential import rational_exponential
+    from sympy_extras.integrals.exponential_sympy import rational_exponential
     z, a, b, c = symbols('z a b c')
     assert rational_exponential(exp(z) / (z - 1)**2, z) == E * Ei(z - 1) - exp(z) / (z - 1)
     F = rational_exponential(exp(c * z) / (a * z**2 + b)**2, z)
@@ -224,7 +222,7 @@ def test_the_error_function_of_a_composite_argument() -> None:
     # erfi(1 + x + log(x)**2), both times sqrt(pi)/2): the square read off
     # the exponent by factoring, with the constant kept in it
     from sympy import erfi, log, diff, simplify
-    from sympy_extras.integrals.exponential import composite_gaussian
+    from sympy_extras.integrals.exponential_sympy import composite_gaussian
     x = symbols('x')
     assert composite_gaussian((1 - 1 / x**2) * exp(-(x + 1 / x)**2), x) == sqrt(pi) * erf((x**2 + 1) / x) / 2
     F = composite_gaussian((x**2 - 1) * exp((x**4 + 2 * x**2 + 1) / x**2) / x**2, x)
@@ -239,7 +237,7 @@ def test_the_error_function_of_a_composite_argument() -> None:
     assert F == -sqrt(pi) * erfi((x**2 + 1) / x) / 4 + sqrt(pi) * exp(4) * erfi(x - 1 / x) / 4
     # a sum with a plain monomial, and the logarithmic substitution with
     # powers of x (FriCAS's integ 200, 127, 128)
-    from sympy_extras.integrals.indefinite import verified_antiderivative
+    from sympy_extras.integrals.indefinite_sympy import verified_antiderivative
     found = verified_antiderivative((1 - exp(-x**2))**2 / x**3, x)
     assert found is not None and found[1] == 'exponential' and found[0].has(Ei)
     found = verified_antiderivative(exp(-log(x)**2 - 1) / x**3, x)

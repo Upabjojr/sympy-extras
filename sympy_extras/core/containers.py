@@ -1,15 +1,12 @@
 """Tuples and dictionaries of expressions."""
 from __future__ import annotations
 
-from typing import Final, Iterator, Mapping, Optional, TYPE_CHECKING, Union, overload
+from typing import Final, Iterator, Mapping, Optional, Union, overload
 
-from .basic import Basic
+from .basic import Basic, NodePrinter
 from .kind import Kind, TupleKind
 from .sorting import ClassKey
 from .sympify import SympifyLike
-
-if TYPE_CHECKING:
-    from .printing import StrPrinter
 
 __all__ = ['Tuple', 'Dict']
 
@@ -74,7 +71,7 @@ class Tuple(Basic):
         """The position of ``value``."""
         return self._args.index(value)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         if len(self._args) == 1:
             return '(%s,)' % printer.doprint(self._args[0])
         return '(%s)' % ', '.join(printer.doprint(a) for a in self._args)
@@ -157,5 +154,5 @@ class Dict(Basic):
     def items(self) -> list[tuple[Basic, Basic]]:
         return list(self._pairs.items())
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '{%s}' % ', '.join('%s: %s' % (printer.doprint(k), printer.doprint(v)) for k, v in self._pairs.items())

@@ -28,7 +28,7 @@ from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 from sympy.logic.boolalg import And, Boolean
 
-from sympy_extras._typing import QuantifierPrefix, as_boolean, as_expr, as_symbol
+from sympy_extras._typing_sympy import QuantifierPrefix, as_boolean, as_expr, as_symbol
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.logic import Boolean as CoreBoolean
 from sympy_extras.core.symbol import Symbol as CoreSymbol

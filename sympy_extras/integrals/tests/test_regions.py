@@ -5,8 +5,8 @@ from sympy import Eq, Integral, Piecewise, Rational, S, exp, oo, pi, sqrt, symbo
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import ExprLike, as_expr
-from sympy_extras.integrals.regions import IntegralByRanges, integrate_by_ranges, _split_roots
+from sympy_extras._typing_sympy import ExprLike, as_expr
+from sympy_extras.integrals.regions_sympy import IntegralByRanges, integrate_by_ranges, _split_roots
 
 x, y, z, r, u = symbols('x y z r u')
 
@@ -118,7 +118,7 @@ def test_bounds_solved_for_the_last_variable() -> None:
     assert integrate_by_ranges(1, (x > 0) & (x < 2) & (y > x) & (y < 1)) == Rational(1, 2)
     # a polynomial region, cross-checked between the two routes:
     # Integral(x (sqrt(x)**2 - x**4)/2, (x, 0, 1)) = (1/3 - 1/6)/2 = 1/12
-    from sympy_extras.integrals.regions import _solved_bounds, _decomposed
+    from sympy_extras.integrals.regions_sympy import _solved_bounds, _decomposed
     from sympy_extras.assumptions.facts_sympy import normalize
     condition = (x > 0) & (x < 1) & (y > x**2) & (y < sqrt(x))
     assert integrate_by_ranges(x*y, condition) == Rational(1, 12)
@@ -135,7 +135,7 @@ def test_bounds_solved_for_the_last_variable() -> None:
 
 def test_bounds_solved_from_relations_not_linear_in_the_last_variable() -> None:
     from sympy import E, log
-    from sympy_extras.integrals.regions import _solved_bound
+    from sympy_extras.integrals.regions_sympy import _solved_bound
     # exp(y) < x is y < log(x): Integral(log(x), (x, 1, 2)) = 2 log 2 - 1
     assert _same(integrate_by_ranges(1, (x > 1) & (x < 2) & (y > 0) & (exp(y) < x)), 2*log(2) - 1)
     # y**2 < x with y > 0 is y < sqrt(x): Integral(sqrt(x), (x, 0, 1)) = 2/3
@@ -271,7 +271,7 @@ def test_cubic_boundaries() -> None:
     # a bound which is a root of a cubic with a parametric coefficient:
     # Cardano's form for one real root, Viete's trigonometric form for three
     from sympy import CRootOf, N, Poly, cos, real_roots
-    from sympy_extras.integrals.regions import _trigonometric_roots
+    from sympy_extras.integrals.regions_sympy import _trigonometric_roots
     a = symbols('a', positive=True)
     area = integrate_by_ranges(1, (x > 0) & (x**3 + a*x < 1), [x])
     assert not isinstance(area, IntegralByRanges)
@@ -303,7 +303,7 @@ def test_polynomials_over_polytopes_agree_with_the_decomposition() -> None:
     # the decomposition and must agree with it
     from sympy import And, Symbol
     from sympy_extras.assumptions.facts_sympy import normalize
-    from sympy_extras.integrals.regions import _polytope, _decomposed
+    from sympy_extras.integrals.regions_sympy import _polytope, _decomposed
     z = Symbol('z')
     pentagon = (x > 0) & (y > 0) & (x + y < 3) & (x < 2) & (y < 2)
     cube = (x > -1) & (x < 1) & (y > -1) & (y < 1) & (z > -1) & (z < 1)
@@ -363,7 +363,7 @@ def test_numeric_root_bounds_are_written_in_radicals() -> None:
     # up to it unevaluated (the area of a cap through its profile died on
     # Integral(2*pi*r/sqrt(1 - r**2), (r, 0, CRootOf(4*r**2 - 3, 1))))
     from sympy import CRootOf, Eq, S, pi
-    from sympy_extras.integrals.regions import _radical_form
+    from sympy_extras.integrals.regions_sympy import _radical_form
     r, z = symbols('r z')
     assert _radical_form(CRootOf(4 * r**2 - 3, 1)) == sqrt(3) / 2
     assert _radical_form(CRootOf(r**2 + r - 1, 1)) == (sqrt(5) - 1) / 2
@@ -379,7 +379,7 @@ def test_non_radial_integrands_are_not_taken_as_radial() -> None:
     # sympy-extras#56: Heaviside(x) agrees with 1 = Heaviside(rho) on the
     # positive orthant, where the numerical comparison sampled
     from sympy import Heaviside, sign, Abs
-    from sympy_extras.integrals.regions import _radial_integrand
+    from sympy_extras.integrals.regions_sympy import _radial_integrand
     disc = x**2 + y**2 < 1
     assert integrate_by_ranges(Heaviside(x), disc) == pi / 2
     assert integrate_by_ranges(sign(x) * (x**2 + y**2), disc) == 0
@@ -415,7 +415,7 @@ def test_solved_bounds_hold_where_they_are_real() -> None:
     # sympy-extras#59: y < log(x) restricts x to x > 0, and the inner
     # integral was taken over -1 < x < 1
     from sympy import log, sin
-    from sympy_extras.integrals.regions import _reality_conditions
+    from sympy_extras.integrals.regions_sympy import _reality_conditions
     box = (x > -1) & (x < 1)
     assert integrate_by_ranges(exp(y), box & (y < log(x))) == S.Half
     assert integrate_by_ranges(exp(2 * y), box & (y < log(x))) == Rational(1, 6)
@@ -473,8 +473,8 @@ def test_measure_zero_relations_are_dropped() -> None:
     # sympy-extras#63: a box cut along the curve of a Ne was decomposed
     # along it and ran out of memory
     from sympy import Ne
-    from sympy_extras._typing import as_boolean
-    from sympy_extras.integrals.regions import _full_measure
+    from sympy_extras._typing_sympy import as_boolean
+    from sympy_extras.integrals.regions_sympy import _full_measure
     box = (x > -1) & (x < 2) & (y > -1) & (y < 2)
     assert integrate_by_ranges(x**2 * y, box & Ne(2 * x**2 + x * y + y - 1, 0)) == Rational(9, 2)
     assert integrate_by_ranges(1, Eq(x, y) & (x > 0) & (x < 1)) == 0

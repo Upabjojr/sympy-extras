@@ -4,8 +4,8 @@ from __future__ import annotations
 from sympy import symbols, sin, cos, exp, besselj, oo, pi, S, I, Dummy
 from sympy.testing.pytest import raises
 
-from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.summability import summable_integral, oscillatory_tail, _cesaro_mean, METHODS
+from sympy_extras.integrals.conditions_sympy import ConditionalValue
+from sympy_extras.integrals.summability_sympy import summable_integral, oscillatory_tail, _cesaro_mean, METHODS
 
 x = symbols('x')
 a = symbols('a', positive=True)

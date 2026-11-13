@@ -5,9 +5,9 @@ from sympy.core.expr import Expr
 from sympy.solvers.solvers import solve
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.second_order import (second_order_rhs, integrating_factor_xy, integrating_factor_p,
+from sympy_extras.solvers.second_order_sympy import (second_order_rhs, integrating_factor_xy, integrating_factor_p,
     is_linearizable, linearize, rectify_symmetries, commuting_pair, dsolve_second_order, FirstIntegral)
-from sympy_extras.solvers.ode import ode_symmetries
+from sympy_extras.solvers.ode_sympy import ode_symmetries
 
 x, y, p = symbols('x y p')
 f = Function('y')(x)
@@ -99,7 +99,12 @@ def test_dsolve_second_order() -> None:
         assert solutions is not None, equation
         for solution in solutions:
             assert isinstance(solution, Eq)
-            assert checkodesol(equation, solution)[0] is True, (equation, solution)
+            # SymPy's checkodesol raises NotImplementedError when its solve
+            # cannot invert an implicit solution (erfi(y/sqrt(2)) = C1 x + C2,
+            # SymPy 1.14) instead of checking the relation by its derivatives:
+            # an implicit solution is checked without solving it
+            implicit = solution.lhs != f or solution.rhs.has(f)
+            assert checkodesol(equation, solution, solve_for_func=not implicit)[0] is True, (equation, solution)
     [solution] = dsolve_second_order(f.diff(x, 2) + 3*f*f.diff(x) + f**3, f) or []
     assert isinstance(solution, Eq) and solution.rhs.subs({Symbol('C1'): 0, Symbol('C2'): 0}) == 2/x
     [solution] = dsolve_second_order(f.diff(x, 2) - f.diff(x)**2, f) or []
@@ -114,7 +119,7 @@ def test_the_unknown_is_not_left_under_an_integral() -> None:
     # integral is the honest reduction when that happens.
     from sympy import Function, Eq, Integral
     from sympy.abc import x
-    from sympy_extras.solvers.second_order import dsolve_second_order
+    from sympy_extras.solvers.second_order_sympy import dsolve_second_order
     y = Function('y')(x)
     results = dsolve_second_order(Eq(y.diff(x, 2) + y.diff(x)/x - y, 0), y)
     assert results is not None

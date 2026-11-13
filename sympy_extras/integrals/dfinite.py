@@ -17,17 +17,17 @@ Every mixed derivative `\\partial_x^i \\partial_t^j F` is then a combination,
 with rational coefficients, of finitely many functions. Two ways to
 that closure are implemented: the *normal forms* modulo the two
 annihilators (`i \\ge r` reduced with `L_x`, `j \\ge s` with `L_t`,
-Leibniz's rule taking the derivatives of the coefficients; the
-annihilators come from :func:`sympy.holonomic.expr_to_holonomic` with
-the other variable in the coefficient field, a scaled argument which
-it refuses, `J_0(t x)`, through the substitution `x = y/t` and back),
-which is exact when the ideal of the two operators is rectangular; and,
-for the algorithm itself, the closure of a *product of D-finite
-factors* `f_i(\\text{argument}_i)` with polynomial arguments: the basis
-is the set of products `\\prod_i f_i^{(m_i)}(\\text{argument}_i)`,
-`m_i < n_i`, and the chain rule with the equation of each factor gives
-the derivatives, so that the rank is right even when a factor depends on
-`x t` (where the two annihilators overcount).
+Leibniz's rule taking the derivatives of the coefficients; each
+annihilator is the first linear dependency among the derivatives of `F`
+in the closure below, with the other variable in the coefficient field,
+so of least order there), which is exact
+when the ideal of the two operators is rectangular; and, for the
+algorithm itself, the closure of a *product of D-finite factors*
+`f_i(\\text{argument}_i)` with polynomial arguments: the basis is the set
+of products `\\prod_i f_i^{(m_i)}(\\text{argument}_i)`, `m_i < n_i`, and the
+chain rule with the equation of each factor gives the derivatives, so
+that the rank is right even when a factor depends on `x t` (where the
+two annihilators overcount).
 
 Chyzak's algorithm [Chyzak]_ looks for a *telescoper*, an operator
 `P = \\sum_{k \\le J} a_k(t)\\, \\partial_t^k` in `t` alone, and a *certificate*
@@ -53,25 +53,38 @@ definite integral `I(t) = \\int_a^b F\\, dx` satisfies
 
     \\sum_k a_k(t)\\, I^{(k)}(t) = \\bigl[G\\bigr]_{x=a}^{x=b},
 
-which ``dsolve`` solves, the constants fixed by the values of the
-integral at a point (:func:`~sympy_extras.integrals.definite_integral`),
-as in :func:`~sympy_extras.integrals.telescoping.holonomic_integral`.
+which is solved as in
+:func:`~sympy_extras.integrals.telescoping.holonomic_integral`, the
+constants fixed by the values of the integral at a point
+(:func:`~sympy_extras.integrals.definite.definite_integral`).
 For a hyperexponential `F` (`r = s = 1`) the certificate is the single
 rational function of the Almkvist–Zeilberger algorithm.
+
+The module works on the expressions of the core and imports no SymPy:
+the equations of the factors ``exp``, ``sin``, ``cos``, ``sinh``,
+``cosh``, ``erf``, ``erfc``, ``erfi``, ``log``, the Bessel and Hankel
+functions and the Airy functions are written down (as SymPy's
+``expr_to_holonomic`` gives them where it has them), the equation of
+another factor `f(u)` whose derivative is in the closure (``Ei``, ``Si``,
+``Ci``, ``atan``, ``asin``) is that of `f'` composed with `d/du`, and for
+:func:`annihilators` the closure also takes sums, rational arguments and
+the powers `b^r` of rational functions with constant exponents (`b^r`
+satisfies `b y' = r b' y`). The linear systems are solved over the field
+of the parameters of the typed polynomial layer. :mod:`.dfinite_sympy`
+is the old interface on SymPy objects.
 
 Examples
 ========
 
->>> from sympy import symbols, exp, besselj, oo, sqrt
->>> from sympy_extras.integrals.dfinite import chyzak, dfinite_ode, dfinite_integral
+>>> from sympy_extras.core import symbols, oo
+>>> from sympy_extras.functions import exp, besselj
+>>> from sympy_extras.integrals.dfinite import chyzak, dfinite_ode
 >>> x = symbols('x')
 >>> t = symbols('t', positive=True)
 >>> chyzak(exp(-t*x)*besselj(0, x), x, t)
 DFiniteTelescoper([t, t**2 + 1], {exp(-t*x)*besselj(0, x): t*x, -exp(-t*x)*besselj(1, x): x})
 >>> dfinite_ode(exp(-t*x)*besselj(0, x), x, 0, oo, t)
 Eq(t*I(t) + (t**2 + 1)*Derivative(I(t), t), 0)
->>> dfinite_integral(exp(-t*x)*besselj(0, x), x, 0, oo, t)
-ConditionalValue(1/sqrt(t**2 + 1))
 
 References
 ==========
@@ -88,46 +101,52 @@ References
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Callable, Optional, Sequence
-
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import Function, AppliedUndef, diff, expand_func
-from sympy.core.mul import Mul
-from sympy.core.power import Pow
-from sympy.core.numbers import Integer, nan, oo, zoo
-from sympy.core.relational import Eq
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.core.sympify import sympify
-from sympy.functions.combinatorial.factorials import binomial
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.holonomic.holonomic import expr_to_holonomic
-from sympy.matrices.dense import Matrix
-from sympy.polys.domains import QQ
-from sympy.polys.matrices import DomainMatrix
-from sympy.polys.polyerrors import PolynomialError, CoercionFailed, GeneratorsError
-from sympy.polys.polytools import Poly, cancel, factor_list
-from sympy.polys.rationaltools import together
-from sympy.simplify.simplify import simplify
-from sympy.solvers.ode import dsolve
-from sympy.solvers.solveset import linsolve
-from sympy.sets.sets import FiniteSet
+from itertools import count
+from math import comb
+from typing import Callable, Final, Optional, Sequence
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_expr, free_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions
+from sympy_extras.assumptions.ask import Assumptions
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import Application, Derivative, Function, diff, expand_func
+from sympy_extras.core.mul import Mul, mul
+from sympy_extras.core.numbers import Integer, nan, oo, zoo
+from sympy_extras.core.power import Pow, pow
+from sympy_extras.core.relational import Eq
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import Exp, Log
+from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh
+from sympy_extras.functions.elementary.piecewise import Piecewise
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin
+from sympy_extras.functions.special.bessel import (AiryAi, AiryAiPrime, AiryBi, AiryBiPrime, BesselI, BesselJ, BesselK,
+                                                    BesselY, Hankel1, Hankel2)
+from sympy_extras.functions.special.error_functions import Erf, Erfc, Erfi
+from sympy_extras.polys.polytools import Poly, cancel, factor_list
+from sympy_extras.polys.rationaltools import together
 from sympy_extras.settings import settings
+from sympy_extras.simplify.simplify import simplify
 from .conditions import ConditionalValue
-from .telescoping import _boundary, _constants, _initial_values, _order
+from .telescoping import _POLYNOMIAL_FAILURES, Element, _Context, _equation, _solve, _verified
 
 __all__ = ['Annihilator', 'DFiniteTelescoper', 'Factor', 'annihilators', 'normal_form', 'closure', 'chyzak',
            'dfinite_ode', 'dfinite_integral']
+
+_ZERO = Integer(0)
+_ONE = Integer(1)
 
 #: a mixed derivative ``d^i/dx^i d^j/dt^j F`` by its orders
 Derivative_ = tuple[int, int]
 #: a combination of the basis derivatives with rational coefficients
 NormalForm = dict[Derivative_, Expr]
+
+#: unique names for the auxiliary symbols (the typed polynomials know
+#: their variables by name)
+_names = count()
+
+
+def _fresh(prefix: str) -> Dummy:
+    return Dummy('_%s%d' % (prefix, next(_names)))
 
 
 class Annihilator:
@@ -137,23 +156,22 @@ class Annihilator:
     Examples
     ========
 
-    >>> from sympy import symbols, exp
-    >>> from sympy_extras.integrals.dfinite import annihilators
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.dfinite import Annihilator
     >>> x, t = symbols('x t')
-    >>> L_x, L_t = annihilators(exp(-t*x**2), x, t)
-    >>> L_x
-    Annihilator(x, [2*t*x, 1])
-    >>> L_x.order
-    1
+    >>> L_x = Annihilator(x, [2*t*x, 1])
+    >>> L_x, L_x.order, L_x.reduction()
+    (Annihilator(x, [2*t*x, 1]), 1, [-2*t*x])
     """
 
     def __init__(self, variable: Symbol, coefficients: Sequence[Expr]) -> None:
-        self.variable = variable
-        self.coefficients = [as_expr(c) for c in coefficients]
-        while self.coefficients and self.coefficients[-1] == 0:
-            self.coefficients.pop()
-        if len(self.coefficients) < 2:
+        stripped = list(coefficients)
+        while stripped and stripped[-1] == _ZERO:
+            stripped.pop()
+        if len(stripped) < 2:
             raise ValueError("an annihilator has order at least one")
+        self.variable: Final[Symbol] = variable
+        self.coefficients: Final[list[Expr]] = stripped
 
     @property
     def order(self) -> int:
@@ -165,11 +183,11 @@ class Annihilator:
 
     def reduction(self) -> list[Expr]:
         """The coefficients ``e_i`` with ``d^r F = sum_{i < r} e_i d^i F``."""
-        return [as_expr(cancel(-c / self.leading)) for c in self.coefficients[:-1]]
+        return [cancel(-c/self.leading) for c in self.coefficients[:-1]]
 
     def apply(self, f: Expr) -> Expr:
         """``sum_i c_i d^i f/dv^i``."""
-        return as_expr(Add(*[c * diff(f, self.variable, i) for i, c in enumerate(self.coefficients)]))
+        return add(*[mul(c, diff(f, (self.variable, i))) for i, c in enumerate(self.coefficients)])
 
     def __repr__(self) -> str:
         return "Annihilator(%s, %s)" % (self.variable, self.coefficients)
@@ -191,15 +209,26 @@ class DFiniteTelescoper:
         the D-finite factors) with their rational coefficients in ``G``.
     term, x, t
         The input.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
+    >>> from sympy_extras.integrals.dfinite import chyzak
+    >>> x, t = symbols('x t')
+    >>> found = chyzak(exp(-x**2)*exp(2*t*x), x, t)
+    >>> found.order, found.operator(), found.function(), found.check()
+    (1, -2*t*I(t) + Derivative(I(t), t), -exp(-x**2)*exp(2*t*x), True)
     """
 
     def __init__(self, term: Expr, x: Symbol, t: Symbol, coefficients: Sequence[Expr],
                  certificate: dict[Expr, Expr]) -> None:
-        self.term = term
-        self.x = x
-        self.t = t
-        self.coefficients = [as_expr(c) for c in coefficients]
-        self.certificate = dict(certificate)
+        self.term: Final[Expr] = term
+        self.x: Final[Symbol] = x
+        self.t: Final[Symbol] = t
+        self.coefficients: Final[list[Expr]] = list(coefficients)
+        self.certificate: Final[dict[Expr, Expr]] = dict(certificate)
 
     @property
     def order(self) -> int:
@@ -208,18 +237,17 @@ class DFiniteTelescoper:
     def operator(self, name: str = 'I') -> Expr:
         """``sum_k a_k(t) I^(k)(t)`` in the function ``I(t)``."""
         f = Function(name)(self.t)
-        return as_expr(Add(*[a * diff(f, self.t, k) for k, a in enumerate(self.coefficients)]))
+        return add(*[mul(a, diff(f, (self.t, k))) for k, a in enumerate(self.coefficients)])
 
     def function(self) -> Expr:
         """The certificate ``G`` as an expression."""
-        return as_expr(Add(*[g * b for b, g in self.certificate.items()]))
+        return add(*[mul(g, b) for b, g in self.certificate.items()])
 
     def check(self) -> bool:
         """Verify ``P F = dG/dx`` by simplification."""
-        lhs = Add(*[a * diff(self.term, self.t, k) for k, a in enumerate(self.coefficients)])
-        difference = as_expr(lhs - diff(self.function(), self.x))
-        difference = as_expr(simplify(difference.doit()))
-        return difference == 0
+        lhs = add(*[mul(a, diff(self.term, (self.t, k))) for k, a in enumerate(self.coefficients)])
+        difference = lhs - diff(self.function(), self.x)
+        return simplify(difference.doit()) == _ZERO
 
     def __repr__(self) -> str:
         return "DFiniteTelescoper(%s, %s)" % (self.coefficients, self.certificate)
@@ -228,69 +256,95 @@ class DFiniteTelescoper:
 # ---------------------------------------------------------------------------
 # Annihilators
 
-def _holonomic(F: Expr, v: Symbol, parameter: Symbol) -> Optional[Annihilator]:
-    """The annihilator of ``F`` in ``v`` from SymPy's ``expr_to_holonomic``
-    with ``parameter`` in the coefficient field, ``None`` when it fails."""
-    domain = QQ.frac_field(parameter) if F.has(parameter) else QQ
-    try:
-        h = attempt(lambda: expr_to_holonomic(F, v, domain=domain), settings.timeout)
-    except (PolynomialError, CoercionFailed, GeneratorsError, AttributeError, KeyError, ZeroDivisionError,
-            AssertionError):
+def _minimal_annihilator(F: Expr, v: Symbol, parameter: Symbol, depth: int = 0) -> Optional[Annihilator]:
+    """The annihilator of least order of ``F`` in ``v`` within the closure
+    of its terms: each term is a rational coefficient times D-finite
+    factors (:func:`_closure_of`, the arguments rational in ``v`` and
+    ``parameter``), its derivatives are vectors in the basis of its
+    factors, and the first linear dependency over the rational functions
+    of ``v`` and the parameters among ``F, F', F'', ...`` (the terms in
+    the direct sum of their spaces) gives the coefficients, cleared of
+    denominators and common factors; ``None`` when a term is not of this
+    kind."""
+    if F == _ZERO:
         return None
-    if h is None:
-        return None
-    operator = h.annihilator
-    ring = operator.parent.base
-    coefficients = [as_expr(ring.to_sympy(p)) for p in operator.listofpoly]
-    if not coefficients or coefficients[-1] == 0:
-        return None
-    try:
-        return Annihilator(v, coefficients)
-    except ValueError:
-        return None
-
-
-def _scales(F: Expr, v: Symbol) -> list[Expr]:
-    """The factors ``c`` of arguments ``c*v`` of the functions of ``F``,
-    ``c`` free of ``v`` and not a number."""
-    found: list[Expr] = []
-    for node in F.atoms(Function):
-        for argument in node.args:
-            argument_ = as_expr(argument)
-            coefficient, rest = argument_.as_independent(v, as_Add=False)
-            if as_expr(rest) == v and not as_expr(coefficient).is_number and as_expr(coefficient) not in found:
-                found.append(as_expr(coefficient))
-    return found
-
-
-def _annihilator(F: Expr, v: Symbol, parameter: Symbol) -> Optional[Annihilator]:
-    """The annihilator in ``v``, with the substitution ``v = y/c`` and back
-    when a scaled argument ``c*v`` stops ``expr_to_holonomic``."""
-    found = _holonomic(F, v, parameter)
-    if found is not None:
-        return found
-    for c in _scales(F, v):
-        y = Dummy('y')
-        scaled = _holonomic(as_expr(F.subs(v, y / c)), y, parameter)
-        if scaled is None:
+    terms = [a for a in F.args if isinstance(a, Expr)] if isinstance(F, Add) else [F]
+    spaces: list[list[Factor]] = []
+    current: list[Vector] = []
+    keys: list[tuple[str, ...]] = []
+    dimension = 0
+    for term in terms:
+        found = _closure_of(term, v, parameter, True, depth)
+        if found is None:
+            return None
+        coefficient, factors_ = found
+        factors = sorted(factors_, key=repr)
+        zero: Basis = tuple(0 for _ in factors)
+        # the terms with the same factors share their space (the rational
+        # terms among them: x**2 + 1 is of order one)
+        key = tuple(repr(f) for f in factors)
+        if key in keys:
+            vector = current[keys.index(key)]
+            vector[zero] = add(vector.get(zero, _ZERO), coefficient)
             continue
-        # d/dy = (1/c) d/dv and p_i(y) = p_i(c v)
-        coefficients = [as_expr(cancel(p.subs(y, c * v) * c**(-i))) for i, p in enumerate(scaled.coefficients)]
-        try:
-            return Annihilator(v, coefficients)
-        except ValueError:
-            continue
+        keys.append(key)
+        spaces.append(factors)
+        current.append({zero: coefficient})
+        size = 1
+        for factor in factors:
+            size *= factor.order
+        dimension += size
+    columns: list[list[Vector]] = [current]
+    for _ in range(dimension):
+        columns.append([_derive(vector, v, factors) for factors, vector in zip(spaces, columns[-1])])
+        relation = _relation(columns, v)
+        if relation is not None:
+            try:
+                return Annihilator(v, relation)
+            except ValueError:
+                return None
     return None
 
 
+def _relation(columns: Sequence[Sequence[Vector]], v: Symbol) -> Optional[list[Expr]]:
+    """The coefficients of a linear dependency of the derivatives (one
+    column per order, each a vector per term), polynomials in ``v``
+    without common factors, the leading one nonzero; ``None`` when the
+    columns are independent."""
+    keys: list[tuple[int, Basis]] = []
+    for column in columns:
+        for s, vector in enumerate(column):
+            for basis in vector:
+                if (s, basis) not in keys:
+                    keys.append((s, basis))
+    entries = [value for column in columns for vector in column for value in vector.values()]
+    width = len(columns)
+    try:
+        K = _Context(entries, _fresh('z'))
+        rows = [[K.element(columns[k][s].get(basis, _ZERO)) for k in range(width)] for s, basis in keys]
+        null = K.field.nullspace(rows, width)
+    except _POLYNOMIAL_FAILURES:
+        return None
+    if not null:
+        return None
+    coefficients, _ = _normalized([K.element_expr(c) for c in null[0]], v)
+    if coefficients[-1] == _ZERO:
+        return None
+    return coefficients
+
+
 def annihilators(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Annihilator, Annihilator]]:
-    """The annihilators ``L_x`` and ``L_t`` of ``F`` (see the module
-    documentation), or ``None`` when SymPy finds none.
+    """The annihilators ``L_x`` and ``L_t`` of ``F`` of least order in the
+    closure of its terms (see the module documentation and
+    :func:`closure`; the arguments of the factors rational in ``x`` and
+    ``t``, sums, products and algebraic powers of rational functions), or
+    ``None`` when a term is not a product of D-finite factors.
 
     Examples
     ========
 
-    >>> from sympy import symbols, exp, besselj
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp, besselj
     >>> from sympy_extras.integrals.dfinite import annihilators
     >>> x, t = symbols('x t')
     >>> L_x, L_t = annihilators(exp(-x**2)*besselj(0, t*x), x, t)
@@ -299,11 +353,11 @@ def annihilators(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Annihilato
     >>> annihilators(exp(exp(x))*t, x, t) is None
     True
     """
-    F_ = as_expr(sympify(F))
-    L_x = _annihilator(F_, x, t)
+    F_ = to_expr(F)
+    L_x = _minimal_annihilator(F_, x, t)
     if L_x is None:
         return None
-    L_t = _annihilator(F_, t, x)
+    L_t = _minimal_annihilator(F_, t, x)
     if L_t is None:
         return None
     return L_x, L_t
@@ -313,7 +367,7 @@ def annihilators(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Annihilato
 # Normal forms modulo the two annihilators
 
 def _add(total: NormalForm, key: Derivative_, value: Expr) -> None:
-    total[key] = as_expr(total.get(key, S.Zero) + value)
+    total[key] = add(total.get(key, _ZERO), value)
 
 
 def _leibniz(coefficient: Expr, i: int, m: int, base: Derivative_, x: Symbol, t: Symbol,
@@ -322,13 +376,14 @@ def _leibniz(coefficient: Expr, i: int, m: int, base: Derivative_, x: Symbol, t:
     result: NormalForm = {}
     for a in range(i + 1):
         for b in range(m + 1):
-            factor = as_expr(binomial(i, a) * binomial(m, b) * diff(coefficient, x, i - a, t, m - b)
-                             if (i - a or m - b) else binomial(i, a) * binomial(m, b) * coefficient)
-            if factor == 0:
+            binomials = Integer(comb(i, a)*comb(m, b))
+            factor = mul(binomials, diff(coefficient, (x, i - a), (t, m - b))) if (i - a or m - b) \
+                else mul(binomials, coefficient)
+            if factor == _ZERO:
                 continue
             inner = reduce(base[0] + a, base[1] + b)
             for key, value in inner.items():
-                _add(result, key, factor * value)
+                _add(result, key, mul(factor, value))
     return result
 
 
@@ -339,10 +394,10 @@ def normal_form(L_x: Annihilator, L_t: Annihilator, x: Symbol, t: Symbol) -> Cal
     Examples
     ========
 
-    >>> from sympy import symbols, exp
-    >>> from sympy_extras.integrals.dfinite import annihilators, normal_form
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.dfinite import Annihilator, normal_form
     >>> x, t = symbols('x t')
-    >>> L_x, L_t = annihilators(exp(-t*x**2), x, t)
+    >>> L_x, L_t = Annihilator(x, [2*t*x, 1]), Annihilator(t, [x**2, 1])
     >>> reduce = normal_form(L_x, L_t, x, t)
     >>> reduce(2, 0)
     {(0, 0): 4*t**2*x**2 - 2*t}
@@ -354,23 +409,24 @@ def normal_form(L_x: Annihilator, L_t: Annihilator, x: Symbol, t: Symbol) -> Cal
     @lru_cache(maxsize=None)
     def reduce(i: int, j: int) -> NormalForm:
         if i < r and j < s:
-            return {(i, j): S.One}
+            return {(i, j): _ONE}
         result: NormalForm = {}
         if j >= s:
             # d^i_x d^j_t F = d^i_x d^(j-s)_t sum_k e_k d^k_t F
             for k, e in enumerate(e_t):
-                if e == 0:
+                if e == _ZERO:
                     continue
                 for key, value in _leibniz(e, i, j - s, (0, k), x, t, reduce).items():
                     _add(result, key, value)
         else:
             # i >= r: d^i_x d^j_t F = d^(i-r)_x d^j_t sum_k e_k d^k_x F
             for k, e in enumerate(e_x):
-                if e == 0:
+                if e == _ZERO:
                     continue
                 for key, value in _leibniz(e, i - r, j, (k, 0), x, t, reduce).items():
                     _add(result, key, value)
-        return {key: as_expr(cancel(value)) for key, value in result.items() if cancel(value) != 0}
+        cancelled = {key: cancel(value) for key, value in result.items()}
+        return {key: value for key, value in cancelled.items() if value != _ZERO}
 
     return reduce
 
@@ -387,13 +443,21 @@ class Factor:
     of products of the ``f_i^(m_i)(argument_i)``, ``m_i < n_i``, with
     coefficients rational in ``x`` and ``t``: the derivative of a product
     is computed by the chain rule and the reductions.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import besselj
+    >>> from sympy_extras.integrals.dfinite import closure
+    >>> x, t = symbols('x t')
+    >>> J = closure(besselj(0, t*x), x, t)[1][0]
+    >>> J, J.order, J.derivative(1)
+    (Factor(besselj(0, t*x), 2), 2, -besselj(1, t*x))
     """
 
     def __init__(self, function: Expr, u: Symbol, argument: Expr, reduction: Sequence[Expr]) -> None:
-        self.function = function
-        self.u = u
-        self.argument = argument
-        self.reduction = [as_expr(e) for e in reduction]
+        self.function: Final[Expr] = function
+        self.u: Final[Symbol] = u
+        self.argument: Final[Expr] = argument
+        self.reduction: Final[list[Expr]] = list(reduction)
 
     @property
     def order(self) -> int:
@@ -401,7 +465,7 @@ class Factor:
 
     def derivative(self, m: int) -> Expr:
         """``f^(m)(argument)`` as an expression."""
-        return as_expr(diff(self.function, self.u, m).subs(self.u, self.argument))
+        return as_expr(diff(self.function, (self.u, m)).subs(self.u, self.argument))
 
     def __repr__(self) -> str:
         return "Factor(%s, %s)" % (self.function.subs(self.u, self.argument), self.order)
@@ -413,30 +477,96 @@ Basis = tuple[int, ...]
 Vector = dict[Basis, Expr]
 
 
-def _dfinite_factor(f: Expr, x: Symbol, t: Symbol) -> Optional[Factor]:
-    """``f`` as a D-finite function of a polynomial argument."""
-    if not isinstance(f, Function) or not f.args:
+def _table(function: Expr, u: Symbol) -> Optional[list[Expr]]:
+    """The coefficients of the annihilator of ``function`` in ``u``
+    (lowest order first), written down for the common factors from their
+    differential equations (the forms of SymPy's ``expr_to_holonomic``
+    for those it has; the second order Bessel and Airy equations, where
+    SymPy's Meijer G route gives a third order one for ``besseli`` and
+    ``bessely`` and none for the Airy functions); ``None`` for the
+    others."""
+    if not isinstance(function, Application) or not function.args or function.args[-1] != u:
         return None
-    argument = as_expr(f.args[-1])
-    if not argument.is_polynomial(x, t) or any(as_expr(a).has(x, t) for a in f.args[:-1]):
+    if isinstance(function, Exp):
+        return [Integer(-1), _ONE]
+    if isinstance(function, (Sin, Cos)):
+        return [_ONE, _ZERO, _ONE]
+    if isinstance(function, (Sinh, Cosh)):
+        return [Integer(-1), _ZERO, _ONE]
+    if isinstance(function, (Erf, Erfc)):
+        return [_ZERO, 2*u, _ONE]
+    if isinstance(function, Erfi):
+        return [_ZERO, -2*u, _ONE]
+    if isinstance(function, Log) and len(function.args) == 1:
+        return [_ZERO, _ONE, u]
+    if isinstance(function, (AiryAi, AiryBi)):
+        return [-u, _ZERO, _ONE]
+    if isinstance(function, (AiryAiPrime, AiryBiPrime)):
+        # w = Ai': w' = u Ai, w'' = Ai + u w = w'/u + u w
+        return [-u**2, Integer(-1), u]
+    if isinstance(function, (BesselJ, BesselY, Hankel1, Hankel2, BesselI, BesselK)):
+        nu = function.args[0]
+        if isinstance(nu, Expr):
+            if isinstance(function, (BesselI, BesselK)):
+                return [-u**2 - nu**2, u, u**2]
+            return [u**2 - nu**2, u, u**2]
+    return None
+
+
+#: the depth of the derivatives through which the annihilator of a factor
+#: outside the table is sought (``Si(u)`` through ``sin(u)/u``)
+_MAX_DEPTH: Final[int] = 3
+
+
+def _derivative_annihilator(function: Expr, u: Symbol, depth: int) -> Optional[list[Expr]]:
+    """The annihilator of ``function`` in ``u`` as ``L o d/du`` with ``L``
+    the annihilator of its derivative, when the derivative is D-finite in
+    the closure (the exponential, sine, cosine and logarithmic integrals,
+    the arctangent; ``asin`` through an algebraic power)."""
+    if depth >= _MAX_DEPTH:
         return None
-    u = Dummy('u')
-    function = as_expr(f.func(*(list(f.args[:-1]) + [u])))
-    parameters = sorted(free_symbols(function) - {u}, key=lambda s: s.name)
-    domain = QQ.frac_field(*parameters) if parameters else QQ
-    try:
-        h = attempt(lambda: expr_to_holonomic(function, u, domain=domain), settings.timeout)
-    except (PolynomialError, CoercionFailed, GeneratorsError, AttributeError, KeyError, ZeroDivisionError,
-            AssertionError, NotImplementedError):
+    derivative = diff(function, u)
+    if derivative.has(Derivative) or function in derivative.atoms(Application):
         return None
-    if h is None:
+    inner = _minimal_annihilator(derivative, u, _fresh('w'), depth + 1)
+    if inner is None:
         return None
-    ring = h.annihilator.parent.base
-    coefficients = [as_expr(ring.to_sympy(p)) for p in h.annihilator.listofpoly]
-    if len(coefficients) < 2 or coefficients[-1] == 0:
+    return [_ZERO] + inner.coefficients
+
+
+def _dfinite_factor(f: Expr, x: Symbol, t: Symbol, rational: bool = False, depth: int = 0) -> Optional[Factor]:
+    """``f`` as a D-finite function of a polynomial argument (rational in
+    ``x`` and ``t`` with ``rational``, which also takes the powers
+    ``b**r`` of rational functions ``b`` with a constant exponent)."""
+    if rational and isinstance(f, Pow) and not f.exp.has(x, t) and f.base.is_rational_function(x, t) is True:
+        w = _fresh('u')
+        return Factor(pow(w, f.exp), w, f.base, [f.exp/w])
+    if not isinstance(f, Application) or not f.args:
+        return None
+    arguments = [a for a in f.args if isinstance(a, Expr)]
+    if len(arguments) != len(f.args):
+        return None
+    argument = arguments[-1]
+    if any(a.has(x, t) for a in arguments[:-1]):
+        return None
+    if rational:
+        if argument.is_rational_function(x, t) is not True:
+            return None
+    elif argument.is_polynomial(x, t) is not True:
+        return None
+    u = _fresh('u')
+    function = as_expr(f._evaluated(tuple(arguments[:-1]) + (u,)))
+    coefficients = _table(function, u)
+    if coefficients is None:
+        coefficients = _derivative_annihilator(function, u, depth)
+    if coefficients is None or len(coefficients) < 2 or coefficients[-1] == _ZERO:
         return None
     leading = coefficients[-1]
-    return Factor(function, u, argument, [as_expr(cancel(-c / leading)) for c in coefficients[:-1]])
+    try:
+        reduction = [cancel(-c/leading) for c in coefficients[:-1]]
+    except _POLYNOMIAL_FAILURES:
+        return None
+    return Factor(function, u, argument, reduction)
 
 
 def closure(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Expr, list[Factor]]]:
@@ -447,38 +577,49 @@ def closure(F: ExprLike, x: Symbol, t: Symbol) -> Optional[tuple[Expr, list[Fact
     Examples
     ========
 
-    >>> from sympy import symbols, exp, besselj
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp, besselj
     >>> from sympy_extras.integrals.dfinite import closure
     >>> x, t = symbols('x t')
     >>> closure(x*exp(-x**2)*besselj(0, t*x), x, t)
     (x, [Factor(besselj(0, t*x), 2), Factor(exp(-x**2), 1)])
     """
-    F_ = as_expr(sympify(F))
-    coefficient: Expr = S.One
+    return _closure_of(to_expr(F), x, t, False, 0)
+
+
+def _closure_of(F: Expr, x: Symbol, t: Symbol, rational: bool, depth: int) -> Optional[tuple[Expr, list[Factor]]]:
+    """:func:`closure`, with the factors of :func:`_dfinite_factor` under
+    ``rational``."""
+    coefficient: Expr = _ONE
     factors: list[Factor] = []
-    parts = list(F_.args) if isinstance(F_, Mul) else [F_]
+    parts = [a for a in F.args if isinstance(a, Expr)] if isinstance(F, Mul) else [F]
     for part in parts:
-        e = as_expr(part)
-        if e.is_rational_function(x, t):
-            coefficient = coefficient * e
+        e = part
+        if e.is_rational_function(x, t) is True:
+            coefficient = mul(coefficient, e)
             continue
-        count = 1
-        if isinstance(e, Pow) and isinstance(e.exp, Integer) and e.exp > 0:
-            count = int(e.exp)
-            e = as_expr(e.base)
-        factor = _dfinite_factor(e, x, t)
+        multiplicity = 1
+        if isinstance(e, Pow) and isinstance(e.exp, Integer) and e.exp.p > 0:
+            multiplicity = e.exp.p
+            e = e.base
+        factor = _dfinite_factor(e, x, t, rational, depth)
         if factor is None:
-            expanded = as_expr(expand_func(e))
+            expanded = expand_func(e)
             if expanded != e:
-                inner = closure(expanded, x, t)
+                inner = _closure_of(expanded, x, t, rational, depth)
                 if inner is None:
                     return None
-                coefficient = coefficient * inner[0]**count
-                factors.extend(inner[1] * count)
+                coefficient = mul(coefficient, pow(inner[0], Integer(multiplicity)))
+                factors.extend(inner[1]*multiplicity)
                 continue
             return None
-        factors.extend([factor] * count)
+        factors.extend([factor]*multiplicity)
     return coefficient, factors
+
+
+def _cancelled(vector: Vector) -> Vector:
+    cancelled = {basis: cancel(value) for basis, value in vector.items()}
+    return {basis: value for basis, value in cancelled.items() if value != _ZERO}
 
 
 def _derive(vector: Vector, var: Symbol, factors: Sequence[Factor]) -> Vector:
@@ -486,28 +627,28 @@ def _derive(vector: Vector, var: Symbol, factors: Sequence[Factor]) -> Vector:
     ``var`` (``x`` or ``t``), in the basis."""
     result: Vector = {}
     for basis, coefficient in vector.items():
-        derived = as_expr(diff(coefficient, var))
-        if derived != 0:
+        derived = diff(coefficient, var)
+        if derived != _ZERO:
             _add_basis(result, basis, derived)
         for k, factor in enumerate(factors):
-            chain = as_expr(diff(factor.argument, var))
-            if chain == 0:
+            chain = diff(factor.argument, var)
+            if chain == _ZERO:
                 continue
             m = basis[k] + 1
             if m < factor.order:
-                _add_basis(result, basis[:k] + (m,) + basis[k + 1:], coefficient * chain)
+                _add_basis(result, basis[:k] + (m,) + basis[k + 1:], mul(coefficient, chain))
             else:
                 # f^(n)(argument) reduced by the differential equation of f
                 for m_, e in enumerate(factor.reduction):
-                    if e == 0:
+                    if e == _ZERO:
                         continue
                     _add_basis(result, basis[:k] + (m_,) + basis[k + 1:],
-                               coefficient * chain * e.subs(factor.u, factor.argument))
-    return {basis: as_expr(cancel(value)) for basis, value in result.items() if cancel(value) != 0}
+                               mul(coefficient, chain, as_expr(e.subs(factor.u, factor.argument))))
+    return _cancelled(result)
 
 
 def _add_basis(total: Vector, key: Basis, value: Expr) -> None:
-    total[key] = as_expr(total.get(key, S.Zero) + value)
+    total[key] = add(total.get(key, _ZERO), value)
 
 
 def _denominators(vectors: Sequence[Vector], x: Symbol) -> Expr:
@@ -516,35 +657,17 @@ def _denominators(vectors: Sequence[Vector], x: Symbol) -> Expr:
     factors: list[Expr] = []
     for vector in vectors:
         for value in vector.values():
-            denominator = as_expr(together(value).as_numer_denom()[1])
+            denominator = together(value).as_numer_denom()[1]
             if not denominator.has(x):
                 continue
             try:
                 _, parts = factor_list(denominator, x)
-            except (PolynomialError, CoercionFailed):
+            except _POLYNOMIAL_FAILURES:
                 continue
             for part, _ in parts:
-                part_ = as_expr(part)
-                if part_.has(x) and part_ not in factors:
-                    factors.append(part_)
-    result: Expr = S.One
-    for f in factors:
-        result = result * f
-    return result
-
-
-def _nullspace(rows: list[list[Expr]], unknowns: int) -> list[list[Expr]]:
-    """The vectors annihilated by the rows (over the rational functions
-    of the parameters)."""
-    if not rows:
-        return [[S.One if k == n else S.Zero for k in range(unknowns)] for n in range(unknowns)]
-    matrix = Matrix(rows)
-    try:
-        domain_matrix = DomainMatrix.from_Matrix(matrix).to_field()
-        vectors = domain_matrix.nullspace().to_Matrix()
-    except (CoercionFailed, GeneratorsError, NotImplementedError, ValueError):
-        vectors = Matrix.hstack(*matrix.nullspace()).T if matrix.nullspace() else Matrix(0, unknowns, [])
-    return [[as_expr(vectors[n, k]) for k in range(vectors.cols)] for n in range(vectors.rows)]
+                if part.has(x) and part not in factors:
+                    factors.append(part)
+    return mul(*factors)
 
 
 class _Closure:
@@ -552,17 +675,18 @@ class _Closure:
     derivatives in ``t``, and the derivatives in ``x`` of the basis."""
 
     def __init__(self, F: Expr, x: Symbol, t: Symbol, coefficient: Expr, factors: Sequence[Factor]) -> None:
-        self.F = F
-        self.x = x
-        self.t = t
-        self.factors = list(factors)
-        self.basis: list[Basis] = [()]
+        self.F: Final[Expr] = F
+        self.x: Final[Symbol] = x
+        self.t: Final[Symbol] = t
+        self.factors: Final[list[Factor]] = list(factors)
+        basis: list[Basis] = [()]
         for factor in factors:
-            self.basis = [b + (m,) for b in self.basis for m in range(factor.order)]
+            basis = [b + (m,) for b in basis for m in range(factor.order)]
+        self.basis: Final[list[Basis]] = basis
         zero: Basis = tuple(0 for _ in factors)
-        self.vector: Vector = {zero: coefficient}
-        self.t_derivatives: list[Vector] = [self.vector]
-        self.x_derivatives: dict[Basis, Vector] = {b: _derive({b: S.One}, x, self.factors) for b in self.basis}
+        self.vector: Final[Vector] = {zero: coefficient}
+        self.t_derivatives: Final[list[Vector]] = [self.vector]
+        self.x_derivatives: Final[dict[Basis, Vector]] = {b: _derive({b: _ONE}, x, self.factors) for b in basis}
 
     def t_derivative(self, k: int) -> Vector:
         while len(self.t_derivatives) <= k:
@@ -571,51 +695,67 @@ class _Closure:
 
     def element(self, basis: Basis) -> Expr:
         """The basis element as an expression."""
-        result: Expr = S.One
-        for factor, m in zip(self.factors, basis):
-            result = result * factor.derivative(m)
-        return result
+        return mul(*[factor.derivative(m) for factor, m in zip(self.factors, basis)])
 
 
 def _telescope(closure_: _Closure, order: int, degree: int, power: int) -> Optional[DFiniteTelescoper]:
+    """The telescoper of the given order with the certificate of the
+    given degree over ``D**power``: the comparison of the coefficients of
+    ``sum_k a_k d^k_t F - d_x(sum_b g_b b)`` on the basis, a linear system
+    over the field of the parameters (one row per basis element and power
+    of ``x`` of the numerators over a common denominator)."""
     x, t = closure_.x, closure_.t
     lhs = [closure_.t_derivative(k) for k in range(order + 1)]
-    D = _denominators(lhs + list(closure_.x_derivatives.values()) + [closure_.vector], x)**power
-    a = [Dummy('a%d' % k) for k in range(order + 1)]
-    u: dict[tuple[Basis, int], Symbol] = {(b, m): Dummy('u%d' % m) for b in closure_.basis for m in range(degree + 1)}
-    keys = sorted(u, key=lambda key: (closure_.basis.index(key[0]), key[1]))
-    unknowns: list[Symbol] = list(a) + [u[key] for key in keys]
-    # sum_k a_k d^k_t F - d_x (sum_b g_b b), collected on the basis
-    total: Vector = {}
+    D = pow(_denominators(lhs + list(closure_.x_derivatives.values()) + [closure_.vector], x), Integer(power))
+    width = order + 1 + len(closure_.basis)*(degree + 1)
+
+    def unknown(b: int, m: int) -> int:
+        return order + 1 + b*(degree + 1) + m
+
+    # sum_k a_k d^k_t F - d_x (sum_b g_b b), collected on the basis: the
+    # coefficient of each unknown at each basis element
+    total: dict[Basis, dict[int, Expr]] = {}
+
+    def contribute(key: Basis, column: int, value: Expr) -> None:
+        entries = total.setdefault(key, {})
+        entries[column] = add(entries.get(column, _ZERO), value)
+
     for k, vector in enumerate(lhs):
         for key, value in vector.items():
-            _add_basis(total, key, a[k] * value)
-    for b in closure_.basis:
-        g = as_expr(Add(*[u[(b, m)] * x**m for m in range(degree + 1)]) / D)
-        _add_basis(total, b, -diff(g, x))
-        for key, value in closure_.x_derivatives[b].items():
-            _add_basis(total, key, -g * value)
-    rows: list[list[Expr]] = []
-    for value in total.values():
-        numerator, _ = together(value).as_numer_denom()
-        try:
-            polynomial = Poly(numerator, x)
-        except (PolynomialError, CoercionFailed, GeneratorsError):
-            return None
-        for coefficient in polynomial.coeffs():
-            coefficient_ = as_expr(coefficient.expand())
-            if coefficient_.subs({w: 0 for w in unknowns}) != 0:
-                return None
-            rows.append([as_expr(cancel(coefficient_.coeff(w))) for w in unknowns])
-    for solution in _nullspace(rows, len(unknowns)):
-        if all(v == 0 for v in solution[:order + 1]):
+            contribute(key, k, value)
+    for i, b in enumerate(closure_.basis):
+        for m in range(degree + 1):
+            g = x**m/D
+            column = unknown(i, m)
+            contribute(b, column, -diff(g, x))
+            for key, value in closure_.x_derivatives[b].items():
+                contribute(key, column, -g*value)
+    entries = [v for row in total.values() for v in row.values()]
+    try:
+        K = _Context(entries, x)
+        rows: list[list[Element]] = []
+        for row in total.values():
+            fractions = {column: K.fraction(value) for column, value in row.items()}
+            common = K.constant(K.field.one)
+            for _, Q in fractions.values():
+                common = common.lcm(Q)
+            numerators = {column: P*common.quo(Q) for column, (P, Q) in fractions.items()}
+            height = max((P.degree for P in numerators.values() if not P.is_zero), default=-1) + 1
+            for power_ in range(height):
+                rows.append([numerators[c].coeff(power_) if c in numerators else K.field.zero
+                             for c in range(width)])
+    except _POLYNOMIAL_FAILURES:
+        return None
+    for null_vector in K.field.nullspace(rows, width):
+        solution = [K.element_expr(v) for v in null_vector]
+        if all(v == _ZERO for v in solution[:order + 1]):
             continue
         coefficients, scale = _normalized(solution[:order + 1], t)
         certificate: dict[Expr, Expr] = {}
-        for b in closure_.basis:
-            g = Add(*[solution[len(a) + keys.index((b, m))] * x**m for m in range(degree + 1)]) / D
-            g_ = as_expr(cancel(g * scale))
-            if g_ != 0:
+        for i, b in enumerate(closure_.basis):
+            g = add(*[mul(solution[unknown(i, m)], x**m) for m in range(degree + 1)])/D
+            g_ = cancel(g*scale)
+            if g_ != _ZERO:
                 certificate[closure_.element(b)] = g_
         return DFiniteTelescoper(closure_.F, x, t, coefficients, certificate)
     return None
@@ -624,35 +764,24 @@ def _telescope(closure_: _Closure, order: int, degree: int, power: int) -> Optio
 def _normalized(values: Sequence[Expr], t: Symbol) -> tuple[list[Expr], Expr]:
     """The coefficients with denominators cleared and common factors
     removed, and the factor they were multiplied by."""
-    combined = as_expr(together(Add(*[v * Dummy() for v in values])))
+    combined = together(add(*[mul(v, _fresh('n')) for v in values]))
     _, denominator = combined.as_numer_denom()
-    scaled = [as_expr(cancel(v * denominator)) for v in values]
-    scale = as_expr(denominator)
+    scaled = [cancel(v*denominator) for v in values]
+    scale = denominator
     try:
         polys = [Poly(v, t) for v in scaled]
         common = polys[0]
         for p in polys[1:]:
             common = common.gcd(p)
-        if common.degree() > 0 or common.LC() != 1:
-            scaled = [as_expr(p.quo(common).as_expr()) for p in polys]
-            scale = as_expr(denominator / common.as_expr())
-    except (PolynomialError, CoercionFailed, GeneratorsError):
+        if common.degree() > 0 or common.LC() != _ONE:
+            scaled = [p.quo(common).as_expr() for p in polys]
+            scale = denominator/common.as_expr()
+    except _POLYNOMIAL_FAILURES:
         pass
     if scaled and scaled[-1].could_extract_minus_sign():
-        scaled = [as_expr(-v) for v in scaled]
-        scale = as_expr(-scale)
+        scaled = [-v for v in scaled]
+        scale = -scale
     return scaled, scale
-
-
-def _with_fresh_parameter(F: Expr, t: Symbol) -> tuple[Expr, Symbol]:
-    """``F`` with the parameter written as a fresh plain symbol: SymPy's
-    ``expr_to_holonomic`` keeps a lookup table built for one coefficient
-    domain, and after a call with another domain over a symbol of the
-    same name it fails on functions it knows (the bug: the telescoper of
-    ``exp(-x**2)*besselj(0, t*x)`` was not found after a Laplace
-    transform over a plain ``t``)."""
-    fresh = Dummy(t.name)
-    return as_expr(F.xreplace({t: fresh})), fresh
 
 
 def chyzak(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 3, max_degree: int = 6) -> Optional[DFiniteTelescoper]:
@@ -665,7 +794,8 @@ def chyzak(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 3, max_degree: in
     Examples
     ========
 
-    >>> from sympy import symbols, exp
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.dfinite import chyzak
     >>> x, t = symbols('x t')
     >>> chyzak(exp(-x**2)*exp(2*t*x), x, t)
@@ -673,29 +803,18 @@ def chyzak(F: ExprLike, x: Symbol, t: Symbol, max_order: int = 3, max_degree: in
     >>> chyzak(exp(-t*x**2), x, t).coefficients
     [1, 2*t]
     """
-    F_ = as_expr(sympify(F))
+    F_ = to_expr(F)
     found = closure(F_, x, t)
-    parameter = t
     if found is None:
-        # SymPy's lookup table may be stale for this symbol: once more
-        # with a fresh one, mapped back below
-        F_, parameter = _with_fresh_parameter(F_, t)
-        found = closure(F_, x, parameter)
-        if found is None:
-            return None
+        return None
     coefficient, factors = found
-    closure_ = _Closure(F_, x, parameter, coefficient, factors)
+    closure_ = _Closure(F_, x, t, coefficient, factors)
     for order in range(max_order + 1):
         for power in (1, 2):
             for degree in range(max_degree + 1):
-                telescoper = attempt(lambda: _telescope(closure_, order, degree, power), settings.timeout)
+                telescoper = attempt(lambda: _telescope(closure_, order, degree, power), settings.timeout,
+                                     native=True)
                 if telescoper is not None:
-                    if parameter is not t:
-                        back = {parameter: t}
-                        return DFiniteTelescoper(as_expr(telescoper.term.xreplace(back)), x, t,
-                                                 [as_expr(c.xreplace(back)) for c in telescoper.coefficients],
-                                                 {as_expr(k.xreplace(back)): as_expr(v.xreplace(back))
-                                                  for k, v in telescoper.certificate.items()})
                     return telescoper
     return None
 
@@ -713,85 +832,61 @@ def dfinite_ode(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,
     Examples
     ========
 
-    >>> from sympy import symbols, exp, sin, oo
+    >>> from sympy_extras.core import symbols, oo
+    >>> from sympy_extras.functions import exp, sin
     >>> from sympy_extras.integrals.dfinite import dfinite_ode
     >>> x = symbols('x')
     >>> t = symbols('t', positive=True)
     >>> dfinite_ode(exp(-t*x)*sin(x)/x, x, 0, oo, t)
     Eq(Derivative(I(t), t), -1/(t**2 + 1))
     """
-    F_ = as_expr(sympify(F))
-    a_, b_ = as_expr(sympify(a)), as_expr(sympify(b))
+    F_ = to_expr(F)
     telescoper = chyzak(F_, x, t)
     if telescoper is None:
         return None
-    G = as_expr(telescoper.function().doit())
-    upper = _boundary(G, x, b_, '-', assumptions)
-    lower = _boundary(G, x, a_, '+', assumptions)
-    if upper is None or lower is None:
-        return None
-    return Eq(telescoper.operator(name), as_expr(simplify(upper - lower)))
+    return _equation(telescoper.coefficients, telescoper.function().doit(), x, to_expr(a), to_expr(b), t,
+                     assumptions, name)
 
 
 def dfinite_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol,
                      assumptions: Assumptions = None) -> Optional[ConditionalValue]:
     """``Integral(F, (x, a, b))`` as a function of the parameter ``t`` by
-    Chyzak's algorithm: the equation of :func:`dfinite_ode` solved by
-    ``dsolve``, its constants fixed by the values of the integral and its
-    derivatives at a point (``1``, ``2``, ``1/2``, ``3``) computed by
-    :func:`~sympy_extras.integrals.definite_integral`; checked
+    Chyzak's algorithm: the equation of :func:`dfinite_ode` solved by the
+    linear ODE solvers (SymPy's ``dsolve`` when they do not solve it), its
+    constants fixed by the values of the integral and its derivatives at
+    a point (``1``, ``2``, ``1/2``, ``3``) computed by
+    :func:`~sympy_extras.integrals.definite.definite_integral`; checked
     numerically when ``settings.numerical_checks`` is on. ``None`` when
     a step fails.
 
     Examples
     ========
 
-    >>> from sympy import symbols, exp, besselj, oo
+    >>> from sympy_extras.core import symbols, oo
+    >>> from sympy_extras.functions import exp, besselj
     >>> from sympy_extras.integrals.dfinite import dfinite_integral
     >>> x = symbols('x')
     >>> t = symbols('t', positive=True)
     >>> dfinite_integral(x*exp(-x**2)*besselj(0, t*x), x, 0, oo, t)
     ConditionalValue(exp(-t**2/4)/2)
     """
-    from .definite import verify_numerically
     from .marichev import tidy
-    F_ = as_expr(sympify(F))
-    a_, b_ = as_expr(sympify(a)), as_expr(sympify(b))
-    equation = dfinite_ode(F_, x, a_, b_, t, assumptions)
+    F_ = to_expr(F)
+    a_, b_ = to_expr(a), to_expr(b)
+    telescoper = chyzak(F_, x, t)
+    if telescoper is None:
+        return None
+    equation = _equation(telescoper.coefficients, telescoper.function().doit(), x, a_, b_, t, assumptions, 'I')
     if equation is None:
         return None
-    unknown = Function('I')(t)
-    if not isinstance(unknown, AppliedUndef):
+    solution = _solve(telescoper.coefficients, equation, F_, x, a_, b_, t, assumptions)
+    if solution is None:
         return None
-    order = _order(equation.lhs, unknown, t)
-    general = attempt(lambda: dsolve(equation, unknown), settings.timeout)
-    if not isinstance(general, Eq) or general.lhs != unknown:
-        return None
-    solution = as_expr(general.rhs)
-    constants = _constants(solution)
-    if len(constants) != order:
-        return None
-    if constants:
-        fixed: Optional[Expr] = None
-        for t0 in (S.One, Integer(2), S.Half, Integer(3)):
-            values = _initial_values(F_, x, a_, b_, t, t0, order, assumptions)
-            if values is None:
-                continue
-            equations = [as_expr(diff(solution, t, j).subs(t, t0)) - v for j, v in enumerate(values)]
-            solved = attempt(lambda: linsolve(equations, constants), settings.timeout)
-            if not isinstance(solved, FiniteSet) or len(solved) != 1:
-                continue
-            assignment = dict(zip(constants, [as_expr(v) for v in list(solved)[0]]))
-            fixed = as_expr(solution.xreplace(assignment))
-            break
-        if fixed is None:
-            return None
-        solution = fixed
-    if free_symbols(solution) - free_symbols(F_) - {x}:
+    if solution.free_symbols - F_.free_symbols - {x}:
         return None
     value = tidy(solution, assumptions)
     if value.has(nan, zoo, oo, -oo, Piecewise):
         return None
-    if settings.numerical_checks and verify_numerically(value, F_, x, a_, b_, assumptions) is False:
+    if not _verified(value, F_, x, a_, b_, assumptions):
         return None
     return ConditionalValue(value)

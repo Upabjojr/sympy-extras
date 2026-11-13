@@ -27,8 +27,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from sympy import Function, symbols, exp, sin, log, Rational
 
-from sympy_extras.solvers.pde import pde_symmetries
-from sympy_extras.solvers.lie import check_symmetry
+from sympy_extras.solvers.pde_sympy import pde_symmetries
+from sympy_extras.solvers.lie_sympy import check_symmetry
 
 x, t, m, a = symbols('x t m a')
 u = Function('u')(x, t)

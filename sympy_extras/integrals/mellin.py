@@ -39,17 +39,25 @@ the gamma-quotient form; :func:`mellin_transform` looks up a product of
 them. The transforms are checked in the tests against numerical
 integration and against :func:`sympy.mellin_transform`.
 
+The module works on the objects of the core (:mod:`sympy_extras.core`, the
+functions of :mod:`sympy_extras.functions`) with the native ``ask`` and
+imports no SymPy: :mod:`sympy_extras.integrals.mellin_sympy` is its face on
+SymPy objects, used by the integrators which are still written on SymPy
+(:mod:`.brackets`, :mod:`.definite`, ...); the native :mod:`.slater` and
+:mod:`.marichev` use it directly.
+
 Examples
 ========
 
->>> from sympy import exp, symbols, sin, besselj
+>>> from sympy_extras.core import Integer, symbols
+>>> from sympy_extras.functions import exp, sin, besselj
 >>> from sympy_extras.integrals.mellin import mellin_transform
 >>> x, s = symbols('x s')
 >>> mellin_transform(exp(-2*x), x, s)
 MellinTransform(gamma(s)/2**s, (0, oo))
 >>> mellin_transform(sin(x)/x, x, s)
 MellinTransform(2**s*sqrt(pi)*gamma(s/2)/(4*gamma(3/2 - s/2)), (0, 2))
->>> mellin_transform(besselj(0, 3*x)/(x**2 + 4), x, s) is None
+>>> mellin_transform(besselj(Integer(0), 3*x)/(x**2 + 4), x, s) is None
 True
 
 References
@@ -69,33 +77,34 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Final, Optional, Sequence
 
-from sympy.core.add import Add
-from sympy.core.exprtools import factor_terms
-from sympy.core.expr import Expr
-from sympy.core.function import Function
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, Rational, oo, pi
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Str, Symbol
-from sympy.functions.elementary.complexes import Abs, arg as arg_
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.hyperbolic import sinh, cosh
-from sympy.functions.elementary.miscellaneous import Max, Min, sqrt
-from sympy.functions.elementary.trigonometric import sin, cos, atan
-from sympy.functions.special.bessel import besselj, bessely, besseli, besselk, airyai
-from sympy.functions.special.error_functions import erf, erfc, Ei, expint, Si, Ci, fresnels, fresnelc
-from sympy.functions.special.gamma_functions import gamma, polygamma
-from sympy.functions.special.hyper import hyper
-from sympy.functions.special.zeta_functions import zeta, dirichlet_eta, lerchphi, polylog
-from sympy.functions.special.delta_functions import Heaviside
-from sympy.logic.boolalg import And, Boolean, true
-
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
-from sympy_extras.assumptions.facts_sympy import element
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.facts import element
+from sympy_extras.core.add import Add
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.exprtools import factor_terms
+from sympy_extras.core.function import DefinedFunction
+from sympy_extras.core.logic import Boolean, BooleanLike, BooleanTrue, and_, to_boolean, true
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer, Rational, oo, pi
+from sympy_extras.core.power import Pow, sqrt
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import abs_ as Abs, arg as arg_
+from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
+from sympy_extras.functions.elementary.hyperbolic import Cosh, Sinh
+from sympy_extras.functions.elementary.miscellaneous import max_ as Max, min_ as Min
+from sympy_extras.functions.elementary.trigonometric import Atan, Cos, Sin
+from sympy_extras.functions.special.bessel import AiryAi, BesselI, BesselJ, BesselK, BesselY
+from sympy_extras.functions.special.delta_functions import Heaviside
+from sympy_extras.functions.special.error_functions import (CiNode, EiNode, Erf, Erfc, Expint, FresnelC, FresnelS,
+                                                            SiNode)
+from sympy_extras.functions.special.gamma_functions import gamma, polygamma
+from sympy_extras.functions.special.hyper import Hyper
+from sympy_extras.functions.special.zeta_functions import PolyLog, dirichlet_eta, lerchphi, zeta
+from sympy_extras.sets.sets import Reals
+from sympy_extras.simplify.signsimp import signsimp
 
 __all__ = ['GammaFactor', 'GammaQuotient', 'MellinTransform', 'Kernel', 'mellin_kernel',
            'mellin_transform', 'monomial', 'KERNELS', 'Match', 'Product', 'decompose_integrand', 'poles_separated']
@@ -112,6 +121,15 @@ def _gamma_product(factors: Sequence[GammaFactor], s: Expr) -> Expr:
     for shift, scale in factors:
         result = result * gamma(shift + scale * s)
     return result
+
+
+def _replaced(e: Expr, old: Symbol, new: Expr) -> Expr:
+    """``e`` with ``old`` replaced by ``new``, evaluated (SymPy's ``xreplace``)."""
+    return as_expr(e._xreplace_evaluated({old: new}))
+
+
+def _replaced_boolean(b: Boolean, old: Symbol, new: Expr) -> Boolean:
+    return to_boolean(b._xreplace_evaluated({old: new}))
 
 
 class GammaQuotient:
@@ -132,7 +150,7 @@ class GammaQuotient:
     Examples
     ========
 
-    >>> from sympy import S, symbols
+    >>> from sympy_extras.core import S, symbols
     >>> from sympy_extras.integrals.mellin import GammaQuotient
     >>> s = symbols('s')
     >>> q = GammaQuotient(1, [(2, -1)], [(0, S.One)], [], 0)
@@ -144,20 +162,22 @@ class GammaQuotient:
     (-oo, 1/2)
     """
 
+    __slots__ = ('constant', 'bases', 'numerator', 'denominator', 'lower', 'upper', 'condition', 'extra')
+
     def __init__(self, constant: ExprLike, bases: Sequence[tuple[ExprLike, ExprLike]],
                  numerator: Sequence[tuple[ExprLike, ExprLike]],
                  denominator: Sequence[tuple[ExprLike, ExprLike]],
-                 lower: ExprLike = -oo, upper: ExprLike = oo, condition: object = True,
+                 lower: ExprLike = -oo, upper: ExprLike = oo, condition: BooleanLike = True,
                  extra: ExprLike = 1) -> None:
-        self.constant: Expr = as_expr(constant)
-        self.bases: tuple[tuple[Expr, Expr], ...] = tuple(
-            (as_expr(b), as_expr(c)) for b, c in bases if as_expr(c) != 0)
-        self.numerator: tuple[GammaFactor, ...] = tuple(_factor(a, b) for a, b in numerator)
-        self.denominator: tuple[GammaFactor, ...] = tuple(_factor(a, b) for a, b in denominator)
-        self.lower: Expr = as_expr(lower)
-        self.upper: Expr = as_expr(upper)
-        self.condition: Boolean = as_boolean(condition)
-        self.extra: Expr = as_expr(extra)
+        self.constant: Final[Expr] = to_expr(constant)
+        self.bases: Final[tuple[tuple[Expr, Expr], ...]] = tuple(
+            (to_expr(b), to_expr(c)) for b, c in bases if to_expr(c) != 0)
+        self.numerator: Final[tuple[GammaFactor, ...]] = tuple(_factor(a, b) for a, b in numerator)
+        self.denominator: Final[tuple[GammaFactor, ...]] = tuple(_factor(a, b) for a, b in denominator)
+        self.lower: Final[Expr] = to_expr(lower)
+        self.upper: Final[Expr] = to_expr(upper)
+        self.condition: Final[Boolean] = to_boolean(condition)
+        self.extra: Final[Expr] = to_expr(extra)
 
     @property
     def strip(self) -> tuple[Expr, Expr]:
@@ -168,17 +188,16 @@ class GammaQuotient:
         return "GammaQuotient(%s, %s)" % (self.as_expr(Symbol('s')), self.strip)
 
     def as_expr(self, s: ExprLike) -> Expr:
-        """The value at ``s`` as a SymPy expression."""
-        s_ = as_expr(s)
-        result = self.constant * self.extra.subs(_S, s_)
+        """The value at ``s`` as an expression."""
+        s_ = to_expr(s)
+        result = self.constant * _replaced(self.extra, _S, s_)
         for base, coefficient in self.bases:
             result = result * base**(coefficient * s_)
-        return as_expr(result * _gamma_product(self.numerator, s_)
-                       / _gamma_product(self.denominator, s_))
+        return result * _gamma_product(self.numerator, s_) / _gamma_product(self.denominator, s_)
 
     def scaled(self, factor: ExprLike) -> GammaQuotient:
         """The quotient multiplied by a constant."""
-        return GammaQuotient(self.constant * as_expr(factor), self.bases, self.numerator,
+        return GammaQuotient(self.constant * to_expr(factor), self.bases, self.numerator,
                              self.denominator, self.lower, self.upper, self.condition, self.extra)
 
     def times(self, other: GammaQuotient) -> GammaQuotient:
@@ -187,11 +206,11 @@ class GammaQuotient:
                              self.numerator + other.numerator,
                              self.denominator + other.denominator,
                              _max(self.lower, other.lower), _min(self.upper, other.upper),
-                             And(self.condition, other.condition), self.extra * other.extra)
+                             and_(self.condition, other.condition), self.extra * other.extra)
 
     def compose(self, p: ExprLike, q: ExprLike) -> GammaQuotient:
         """The quotient at ``p + q*s`` (``q`` a nonzero rational number)."""
-        p_, q_ = as_expr(p), as_expr(q)
+        p_, q_ = to_expr(p), to_expr(q)
         if not isinstance(q_, Rational) or q_ == 0:
             raise ValueError("the scale must be a nonzero rational number, got %s" % (q_,))
         constant = self.constant
@@ -201,12 +220,12 @@ class GammaQuotient:
             bases.append((base, coefficient * q_))
         numerator = [(a + b * p_, b * q_) for a, b in self.numerator]
         denominator = [(a + b * p_, b * q_) for a, b in self.denominator]
-        if q_ > 0:
+        if q_.p > 0:
             lower, upper = (self.lower - p_) / q_, (self.upper - p_) / q_
         else:
             lower, upper = (self.upper - p_) / q_, (self.lower - p_) / q_
         return GammaQuotient(constant, bases, numerator, denominator, lower, upper,
-                             self.condition, self.extra.subs(_S, p_ + q_ * _S))
+                             self.condition, _replaced(self.extra, _S, p_ + q_ * _S))
 
     def cancelled(self) -> GammaQuotient:
         """The quotient with the gamma factors common to the numerator and
@@ -223,13 +242,13 @@ class GammaQuotient:
 
     def strip_condition(self, s: ExprLike) -> Boolean:
         """The condition for ``s`` (a real number) to lie in the strip."""
-        s_ = as_expr(s)
+        s_ = to_expr(s)
         parts: list[Boolean] = []
         if self.lower != -oo:
-            parts.append(as_boolean(s_ > self.lower))
+            parts.append(s_ > self.lower)
         if self.upper != oo:
-            parts.append(as_boolean(s_ < self.upper))
-        return as_boolean(And(*parts))
+            parts.append(s_ < self.upper)
+        return and_(*parts)
 
     def is_gamma_quotient(self) -> bool:
         """Whether there is no ``extra`` factor."""
@@ -245,7 +264,6 @@ def poles_separated(quotient: GammaQuotient) -> Optional[bool]:
     ``1/s`` is ``Gamma(s)/Gamma(1 + s)`` when the strip lies right of 0
     and ``-Gamma(-s)/Gamma(1 - s)`` when it lies left of it.
 
-    >>> from sympy import S
     >>> from sympy_extras.integrals.mellin import GammaQuotient, poles_separated
     >>> poles_separated(GammaQuotient(1, [], [(0, 1)], [(1, 1)], 0, 1))
     True
@@ -257,8 +275,8 @@ def poles_separated(quotient: GammaQuotient) -> Optional[bool]:
         if scale == 0:
             continue
         # the rightmost pole of Gamma(shift + scale s) is at s = -shift/scale
-        pole = as_expr(-shift / scale)
-        if scale > 0:
+        pole = -shift / scale
+        if scale.p > 0:
             ok = _compare(pole, quotient.lower)
         else:
             ok = _compare(quotient.upper, pole)
@@ -275,7 +293,7 @@ def _compare(a: Expr, b: Expr) -> Optional[bool]:
         return True
     if b == -oo or a == oo:
         return False
-    d = as_expr(b - a)
+    d = b - a
     if d.is_nonnegative:
         return True
     if d.is_negative:
@@ -284,10 +302,10 @@ def _compare(a: Expr, b: Expr) -> Optional[bool]:
 
 
 def _factor(shift: ExprLike, scale: ExprLike) -> GammaFactor:
-    scale_ = as_expr(scale)
+    scale_ = to_expr(scale)
     if not isinstance(scale_, Rational):
         raise ValueError("the coefficient of s in a gamma factor must be rational, got %s" % (scale_,))
-    return (as_expr(shift), scale_)
+    return (to_expr(shift), scale_)
 
 
 def _max(a: Expr, b: Expr) -> Expr:
@@ -295,7 +313,7 @@ def _max(a: Expr, b: Expr) -> Expr:
         return b
     if b == -oo:
         return a
-    return as_expr(Max(a, b))
+    return Max(a, b)
 
 
 def _min(a: Expr, b: Expr) -> Expr:
@@ -303,20 +321,22 @@ def _min(a: Expr, b: Expr) -> Expr:
         return b
     if b == oo:
         return a
-    return as_expr(Min(a, b))
+    return Min(a, b)
 
 
 class MellinTransform:
     """A Mellin transform: the transform as an expression in ``s``, its
     strip of convergence and the conditions on the parameters."""
 
+    __slots__ = ('transform', 'strip', 'condition')
+
     def __init__(self, transform: Expr, strip: tuple[Expr, Expr], condition: Boolean = true) -> None:
-        self.transform = transform
-        self.strip = strip
-        self.condition = condition
+        self.transform: Final[Expr] = transform
+        self.strip: Final[tuple[Expr, Expr]] = strip
+        self.condition: Final[Boolean] = condition
 
     def __repr__(self) -> str:
-        if self.condition is true:
+        if isinstance(self.condition, BooleanTrue):
             return "MellinTransform(%s, (%s, %s))" % (self.transform, self.strip[0], self.strip[1])
         return "MellinTransform(%s, (%s, %s), %s)" % (self.transform, self.strip[0], self.strip[1],
                                                        self.condition)
@@ -341,18 +361,21 @@ class Kernel:
         ``exp(-beta*x)``) under which the transform of ``f(beta*x)`` is
         ``beta**(-s)`` times the transform of ``f(x)``; written with the
         symbol :data:`BETA`.
+    parity : int
+        ``1`` for an even function, ``-1`` for an odd one, ``0`` otherwise:
+        ``f(beta x) = f(|beta| x)`` or ``sign(beta) f(|beta| x)`` for a real
+        ``beta``, so that a real scale of unknown sign is allowed.
     """
 
+    __slots__ = ('name', 'quotient', 'parameters', 'scale_condition', 'parity')
+
     def __init__(self, name: str, quotient: GammaQuotient, parameters: Sequence[Expr] = (),
-                 scale_condition: object = True, parity: int = 0) -> None:
-        self.name = name
-        self.quotient = quotient
-        self.parameters = tuple(parameters)
-        self.scale_condition: Boolean = as_boolean(scale_condition)
-        #: ``1`` for an even function, ``-1`` for an odd one, ``0`` otherwise:
-        #: ``f(beta x) = f(|beta| x)`` or ``sign(beta) f(|beta| x)`` for a real
-        #: ``beta``, so that a real scale of unknown sign is allowed
-        self.parity = parity
+                 scale_condition: BooleanLike = True, parity: int = 0) -> None:
+        self.name: Final[str] = name
+        self.quotient: Final[GammaQuotient] = quotient
+        self.parameters: Final[tuple[Expr, ...]] = tuple(parameters)
+        self.scale_condition: Final[Boolean] = to_boolean(scale_condition)
+        self.parity: Final[int] = parity
 
     def __repr__(self) -> str:
         return "Kernel(%s)" % self.name
@@ -366,18 +389,18 @@ _ONE = S.One
 
 
 def _positive_real(b: Expr) -> Boolean:
-    return as_boolean(b > 0)
+    return b > 0
 
 
 def _right_half_plane(b: Expr) -> Boolean:
     """``Re b > 0`` written as the argument condition (the condition an
     inequality on a real parameter reduces to)."""
-    return as_boolean(Abs(arg_(b)) < pi / 2)
+    return Abs(arg_(b)) < pi / 2
 
 
 def _cut_plane(b: Expr) -> Boolean:
     """``b`` off the negative real axis."""
-    return as_boolean(Abs(arg_(b)) < pi)
+    return Abs(arg_(b)) < pi
 
 
 def _exp_kernel() -> Kernel:
@@ -524,18 +547,20 @@ def _exp_besseli_kernel(nu: Expr) -> Kernel:
 def _airyai_kernel() -> Kernel:
     # Ai(x): 3^{(2s - 7)/6} Gamma(s/3) Gamma((s + 1)/3) / (2 pi), Re s > 0 (Mathematica; DLMF 9.10.17
     # after the multiplication formula)
-    return Kernel('airyai', GammaQuotient(3**Rational(-7, 6) / (2 * pi), [(3, Rational(2, 3))],
+    return Kernel('airyai', GammaQuotient(Integer(3)**Rational(-7, 6) / (2 * pi), [(3, Rational(2, 3))],
                                           [(0, Rational(1, 3)), (Rational(1, 3), Rational(1, 3))], [], 0, oo),
                   (), _positive_real(BETA))
 
 
-def _polylog_kernel(n: Expr) -> Kernel:
+def _polylog_kernel(n: Integer) -> Kernel:
     # Li_n(-x): (-1)^n pi / (s^n sin(pi s)) = -Gamma(1 + s) Gamma(-s)^(n + 1) / Gamma(1 - s)^n, -1 < Re s < 0
     # (n = 1 is -log(1 + x); the poles at 0, 1, ... to the right, at -1, -2, ... to the left; the transform
     # is negative on the strip for every n, checked against quadrature for n = 1, 2, 3)
-    count = int(n)
-    return Kernel('polylog(n, -x)', GammaQuotient(S.NegativeOne, [], [(1, 1)] + [(0, -1)] * (count + 1),
-                                                  [(1, -1)] * count, -1, 0),
+    count = n.p
+    numerator: list[tuple[ExprLike, ExprLike]] = [(1, 1)]
+    numerator.extend([(0, -1)] * (count + 1))
+    denominator: list[tuple[ExprLike, ExprLike]] = [(1, -1)] * count
+    return Kernel('polylog(n, -x)', GammaQuotient(S.NegativeOne, [], numerator, denominator, -1, 0),
                   (n,), _cut_plane(BETA))
 
 
@@ -661,7 +686,7 @@ def _fermi_kernel() -> Kernel:
 
 def _csch_kernel() -> Kernel:
     # 1/sinh x: 2 (1 - 2^{-s}) Gamma(s) zeta(s), Re s > 1
-    return Kernel('1/sinh(x)', GammaQuotient(2, [], [(0, 1)], [], 1, oo, True, (1 - 2**(-_S)) * zeta(_S)), (),
+    return Kernel('1/sinh(x)', GammaQuotient(2, [], [(0, 1)], [], 1, oo, True, (1 - Integer(2)**(-_S)) * zeta(_S)), (),
                   _positive_real(BETA), -1)
 
 
@@ -669,7 +694,7 @@ def _sech_kernel() -> Kernel:
     # 1/cosh x: 2 Gamma(s) beta(s) with Dirichlet's beta(s) = 2^{-s} Phi(-1, s, 1/2) (Lerch's transcendent,
     # entire in s), Re s > 0
     return Kernel('1/cosh(x)', GammaQuotient(2, [], [(0, 1)], [], 0, oo, True,
-                                             2**(-_S) * lerchphi(-1, _S, S.Half)), (),
+                                             Integer(2)**(-_S) * lerchphi(-1, _S, S.Half)), (),
                   _positive_real(BETA), 1)
 
 
@@ -687,16 +712,26 @@ KERNELS: dict[str, Kernel] = {k.name: k for k in [
 
 class Match:
     """A factor of an integrand recognised as ``constant * f(beta * x**gamma)``
-    for a kernel ``f``."""
+    for a kernel ``f``.
+
+    Attributes
+    ==========
+
+    kernel : Kernel
+    beta, gamma, constant : Expr
+    cutoff : bool
+        Whether the kernel includes the cutoff at 1 of a finite range.
+    """
+
+    __slots__ = ('kernel', 'beta', 'gamma', 'constant', 'cutoff')
 
     def __init__(self, kernel: Kernel, beta: Expr, gamma_: Expr, constant: Expr = S.One,
                  cutoff: bool = False) -> None:
-        self.kernel = kernel
-        self.beta = beta
-        self.gamma = gamma_
-        self.constant = constant
-        #: whether the kernel includes the cutoff at 1 of a finite range
-        self.cutoff = cutoff
+        self.kernel: Final[Kernel] = kernel
+        self.beta: Final[Expr] = beta
+        self.gamma: Final[Expr] = gamma_
+        self.constant: Final[Expr] = constant
+        self.cutoff: Final[bool] = cutoff
 
     def __repr__(self) -> str:
         return "Match(%s, beta=%s, gamma=%s, constant=%s)" % (self.kernel.name, self.beta, self.gamma, self.constant)
@@ -713,17 +748,17 @@ class Match:
         if not isinstance(g, Rational) or g == 0:
             raise ValueError("the power of x must be a nonzero rational number, got %s" % (g,))
         beta, constant = self.beta, self.constant
-        condition = self.kernel.scale_condition.xreplace({BETA: beta})
+        condition = _replaced_boolean(self.kernel.scale_condition, BETA, beta)
         if self.kernel.parity != 0 and ask(beta > 0, assumptions) is not True \
-                and (beta.is_extended_real or ask(element(beta, S.Reals), assumptions) is True):
+                and (beta.is_extended_real or ask(element(beta, Reals), assumptions) is True):
             if self.kernel.parity < 0:
                 constant = constant * beta / Abs(beta)
-            beta = as_expr(Abs(beta))
+            beta = Abs(beta)
             condition = true
         q = self.kernel.quotient.compose(0, 1 / g)
         q = GammaQuotient(q.constant * constant / Abs(g), q.bases + ((beta, -1 / g),),
                           q.numerator, q.denominator, q.lower, q.upper,
-                          And(q.condition, condition), q.extra)
+                          and_(q.condition, condition), q.extra)
         return q
 
 
@@ -731,7 +766,7 @@ def monomial(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     """``(beta, gamma)`` when ``e == beta * x**gamma`` with ``beta`` free of
     ``x`` and ``gamma`` a nonzero rational number, ``None`` otherwise.
 
-    >>> from sympy import sqrt, symbols
+    >>> from sympy_extras.core import sqrt, symbols
     >>> from sympy_extras.integrals.mellin import monomial
     >>> x, a = symbols('x a')
     >>> monomial(3*a*sqrt(x), x)
@@ -741,17 +776,16 @@ def monomial(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     """
     if isinstance(e, Add):
         # -a*x - I*b*x is x*(-a - I*b)
-        e = as_expr(factor_terms(e))
+        e = factor_terms(e)
         if isinstance(e, Add):
             return None
     coefficient, rest = e.as_independent(x, as_Add=False)
-    coefficient_, rest_ = as_expr(coefficient), as_expr(rest)
-    if rest_ == x:
-        return (coefficient_, S.One)
-    if isinstance(rest_, Pow) and rest_.base == x:
-        exponent = as_expr(rest_.exp)
+    if rest == x:
+        return (coefficient, S.One)
+    if isinstance(rest, Pow) and rest.base == x:
+        exponent = rest.exp
         if isinstance(exponent, Rational) and exponent != 0:
-            return (coefficient_, exponent)
+            return (coefficient, exponent)
     return None
 
 
@@ -778,95 +812,94 @@ def _negated_monomial(e: Expr, x: Symbol) -> Optional[tuple[Expr, Expr]]:
     return (beta, g)
 
 
+#: the kernels of one argument, by the class of the function
+_ONE_ARGUMENT: dict[type[DefinedFunction], str] = {
+    Sin: 'sin', Cos: 'cos', Atan: 'atan', Erf: 'erf', Erfc: 'erfc', SiNode: 'Si', CiNode: 'Ci',
+    AiryAi: 'airyai', FresnelS: 'fresnels', FresnelC: 'fresnelc'}
+
+
 def _match_function(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Optional[Match]:
     """A function application recognised as a kernel."""
-    if not isinstance(f, Function):
+    if isinstance(f, Hyper):
+        if len(f.ap) == 1 and len(f.bq) == 1:
+            # Kummer's function of a negative argument, 1F1(a; b; -beta x**gamma):
+            # the Laguerre polynomials of symbolic degree come as
+            # exp(t)*1F1(n + 1; 1; -t) (Kummer's transformation)
+            found = _negated_monomial(f.argument, x)
+            a, b = f.ap[0], f.bq[0]
+            if found is not None and not a.has(x) and not b.has(x):
+                return Match(_hyper1f1_kernel(a, b), found[0], found[1])
         return None
-    # before the arguments are read as expressions: those of hyper are tuples
-    if isinstance(f, hyper) and len(f.ap) == 1 and len(f.bq) == 1:
-        # Kummer's function of a negative argument, 1F1(a; b; -beta x**gamma):
-        # the Laguerre polynomials of symbolic degree come as
-        # exp(t)*1F1(n + 1; 1; -t) (Kummer's transformation)
-        found = _negated_monomial(as_expr(f.argument), x)
-        a, b = as_expr(f.ap[0]), as_expr(f.bq[0])
-        if found is not None and not a.has(x) and not b.has(x):
-            return Match(_hyper1f1_kernel(a, b), found[0], found[1])
+    if not isinstance(f, DefinedFunction):
         return None
     args = [as_expr(a) for a in f.args]
-    if isinstance(f, exp) and len(args) == 1:
+    if isinstance(f, Exp) and len(args) == 1:
         found = _negated_monomial(args[0], x)
         if found is not None:
             return Match(KERNELS['exp'], found[0], found[1])
         return None
-    one_argument: dict[type[Function], str] = {
-        sin: 'sin', cos: 'cos', atan: 'atan', erf: 'erf', erfc: 'erfc', Si: 'Si', Ci: 'Ci',
-        airyai: 'airyai', fresnels: 'fresnels', fresnelc: 'fresnelc'}
-    for cls, name in one_argument.items():
+    for cls, name in _ONE_ARGUMENT.items():
         if isinstance(f, cls) and len(args) == 1:
             found = _positive_monomial(args[0], x)
             if found is not None:
                 return Match(KERNELS[name], found[0], found[1])
             return None
-    if isinstance(f, log) and len(args) == 1:
+    if isinstance(f, Log) and len(args) == 1:
         # log(1 + beta x^gamma), possibly written log(c + d x^gamma) = log c + log(1 + (d/c) x^gamma)
         inner = args[0]
         if isinstance(inner, Add):
             constant, rest = inner.as_independent(x, as_Add=True)
-            constant_, rest_ = as_expr(constant), as_expr(rest)
-            if constant_ == 1:
-                found = _positive_monomial(rest_, x)
+            if constant == 1:
+                found = _positive_monomial(rest, x)
                 if found is not None:
                     return Match(KERNELS['log(1 + x)'], found[0], found[1])
-                found = _negated_monomial(rest_, x)
+                found = _negated_monomial(rest, x)
                 if found is not None and cutoff == 'lower' and found[0] == 1 and found[1].is_positive:
                     # log(1 - x^gamma) on (0, 1)
                     return Match(_log_one_minus_kernel(), S.One, found[1], S.One, True)
         return None
-    if isinstance(f, Ei) and len(args) == 1:
+    if isinstance(f, EiNode) and len(args) == 1:
         found = _negated_monomial(args[0], x)
         if found is not None:
             return Match(KERNELS['E1'], found[0], found[1], S.NegativeOne)
         return None
-    if isinstance(f, expint) and len(args) == 2:
+    if isinstance(f, Expint) and len(args) == 2:
         found = _positive_monomial(args[1], x)
         if found is not None and not args[0].has(x):
             return Match(_expint_kernel(args[0]), found[0], found[1])
         return None
-    if isinstance(f, polylog) and len(args) == 2:
+    if isinstance(f, PolyLog) and len(args) == 2:
         n = args[0]
         found = _negated_monomial(args[1], x)
-        if found is not None and isinstance(n, Integer) and n > 0:
+        if found is not None and isinstance(n, Integer) and n.p > 0:
             return Match(_polylog_kernel(n), found[0], found[1])
         return None
-    two_arguments: dict[type[Function], str] = {besselj: 'J', bessely: 'Y', besselk: 'K'}
-    for cls, name in two_arguments.items():
-        if isinstance(f, cls) and len(args) == 2 and not args[0].has(x):
-            found = _positive_monomial(args[1], x)
-            if found is None:
-                return None
-            nu = args[0]
-            if name == 'J':
-                return Match(_besselj_kernel(nu), found[0], found[1])
-            if name == 'Y':
-                return Match(_bessely_kernel(nu), found[0], found[1])
-            return Match(_besselk_kernel(nu), found[0], found[1])
+    if isinstance(f, (BesselJ, BesselY, BesselK)) and len(args) == 2 and not args[0].has(x):
+        found = _positive_monomial(args[1], x)
+        if found is None:
+            return None
+        nu = args[0]
+        if isinstance(f, BesselJ):
+            return Match(_besselj_kernel(nu), found[0], found[1])
+        if isinstance(f, BesselY):
+            return Match(_bessely_kernel(nu), found[0], found[1])
+        return Match(_besselk_kernel(nu), found[0], found[1])
     if isinstance(f, Heaviside) and len(args) >= 1:
         inner = args[0]
         # theta(c - beta x^gamma) = theta(1 - (beta/c) x^gamma) for c > 0
         if isinstance(inner, Add):
             constant, rest = inner.as_independent(x, as_Add=True)
-            constant_, rest_ = as_expr(constant), as_expr(rest)
-            if constant_.is_positive:
-                found = _negated_monomial(rest_, x)
+            if constant.is_positive:
+                found = _negated_monomial(rest, x)
                 if found is not None:
-                    return Match(KERNELS['theta(1 - x)'], found[0] / constant_, found[1])
-                found = _positive_monomial(rest_, x)
-                if found is not None and constant_.is_negative:
-                    return Match(KERNELS['theta(x - 1)'], found[0] / (-constant_), found[1])
-            if constant_.is_negative:
-                found = _positive_monomial(rest_, x)
+                    return Match(KERNELS['theta(1 - x)'], found[0] / constant, found[1])
+                found = _positive_monomial(rest, x)
+                if found is not None and constant.is_negative:
+                    return Match(KERNELS['theta(x - 1)'], found[0] / (-constant), found[1])
+            if constant.is_negative:
+                found = _positive_monomial(rest, x)
                 if found is not None:
-                    return Match(KERNELS['theta(x - 1)'], found[0] / (-constant_), found[1])
+                    return Match(KERNELS['theta(x - 1)'], found[0] / (-constant), found[1])
         return None
     return None
 
@@ -877,10 +910,10 @@ def _match_power(f: Pow, x: Symbol, cutoff: Optional[str]) -> Optional[Match]:
     ``(-log(x))**e``, and on ``(1, oo)`` (``cutoff='upper'``)
     ``(x^gamma - 1)**e``; the reciprocals ``1/(exp(x) - 1)``,
     ``1/(exp(x) + 1)``, ``1/sinh(x)`` and ``1/cosh(x)``."""
-    base, exponent = as_expr(f.base), as_expr(f.exp)
+    base, exponent = f.base, f.exp
     if exponent.has(x):
         return None
-    if isinstance(base, exp) and len(base.args) == 1:
+    if isinstance(base, Exp) and len(base.args) == 1:
         found = _negated_monomial(as_expr(base.args[0]) * exponent, x)
         if found is not None:
             return Match(KERNELS['exp'], found[0], found[1])
@@ -889,18 +922,18 @@ def _match_power(f: Pow, x: Symbol, cutoff: Optional[str]) -> Optional[Match]:
         if isinstance(base, Add) and len(base.args) == 2:
             terms = [as_expr(t) for t in base.args]
             for constant_term, other in ((terms[0], terms[1]), (terms[1], terms[0])):
-                if not constant_term.has(x) and isinstance(other, exp):
+                if not constant_term.has(x) and isinstance(other, Exp):
                     found = _positive_monomial(as_expr(other.args[0]), x)
                     if found is not None:
                         if constant_term == -1:
                             return Match(KERNELS['1/(exp(x) - 1)'], found[0], found[1])
                         if constant_term == 1:
                             return Match(KERNELS['1/(exp(x) + 1)'], found[0], found[1])
-        if isinstance(base, sinh):
+        if isinstance(base, Sinh):
             found = _positive_monomial(as_expr(base.args[0]), x)
             if found is not None:
                 return Match(KERNELS['1/sinh(x)'], found[0], found[1])
-        if isinstance(base, cosh):
+        if isinstance(base, Cosh):
             found = _positive_monomial(as_expr(base.args[0]), x)
             if found is not None:
                 return Match(KERNELS['1/cosh(x)'], found[0], found[1])
@@ -908,27 +941,33 @@ def _match_power(f: Pow, x: Symbol, cutoff: Optional[str]) -> Optional[Match]:
         return Match(_log_power_lower_kernel(exponent), S.One, S.One, S.One, True)
     if isinstance(base, Add):
         constant, rest = base.as_independent(x, as_Add=True)
-        constant_, rest_ = as_expr(constant), as_expr(rest)
-        if constant_ == 0:
+        if constant == 0:
             return None
-        found = monomial(rest_, x)
+        found = monomial(rest, x)
         if found is None:
             return None
-        beta, g = as_expr(found[0] / constant_), found[1]
+        beta, g = found[0] / constant, found[1]
         if beta == 0:
             return None
         if beta.is_negative:
             if beta != -1 or not (g.is_positive):
                 return None
-            if cutoff == 'lower' and constant_.is_positive:
+            if cutoff == 'lower' and constant.is_positive:
                 # c^e (1 - x^gamma)^e on (0, 1)
-                return Match(_beta_kernel(exponent + 1), S.One, g, as_expr(constant_**exponent), True)
-            if cutoff == 'upper' and constant_.is_negative:
+                return Match(_beta_kernel(exponent + 1), S.One, g, constant**exponent, True)
+            if cutoff == 'upper' and constant.is_negative:
                 # (-c)^e (x^gamma - 1)^e on (1, oo)
-                return Match(_beta_upper_kernel(exponent + 1), S.One, g, as_expr((-constant_)**exponent), True)
+                return Match(_beta_upper_kernel(exponent + 1), S.One, g, (-constant)**exponent, True)
             return None
-        return Match(_power_kernel(-exponent), beta, g, as_expr(constant_**exponent))
+        return Match(_power_kernel(-exponent), beta, g, constant**exponent)
     return None
+
+
+#: the kernels which are differences, by the kernel of their function:
+#: the kernel of the difference and the constant subtracted
+_SHIFTED: dict[str, tuple[str, Expr]] = {
+    'exp': ('exp - 1', S.NegativeOne), 'cos': ('cos - 1', S.NegativeOne),
+    'atan': ('atan - pi/2', -pi / 2), 'Si': ('Si - pi/2', -pi / 2)}
 
 
 def _match_add(f: Add, x: Symbol) -> Optional[Match]:
@@ -938,18 +977,15 @@ def _match_add(f: Add, x: Symbol) -> Optional[Match]:
     if len(f.args) != 2:
         return None
     for sign_ in (S.One, S.NegativeOne):
-        terms = [as_expr(sign_ * t) for t in f.args]
+        terms = [sign_ * as_expr(t) for t in f.args]
         for constant, function in ((terms[0], terms[1]), (terms[1], terms[0])):
             if function.has(x) and not constant.has(x):
                 found = _match_function(function, x)
                 if found is None:
                     continue
-                shifted: dict[str, tuple[str, Expr]] = {
-                    'exp': ('exp - 1', S.NegativeOne), 'cos': ('cos - 1', S.NegativeOne),
-                    'atan': ('atan - pi/2', -pi / 2), 'Si': ('Si - pi/2', -pi / 2)}
                 name = found.kernel.name
-                if name in shifted and found.constant == 1 and constant == shifted[name][1]:
-                    return Match(KERNELS[shifted[name][0]], found.beta, found.gamma, sign_)
+                if name in _SHIFTED and found.constant == 1 and constant == _SHIFTED[name][1]:
+                    return Match(KERNELS[_SHIFTED[name][0]], found.beta, found.gamma, sign_)
             elif function.has(x) and constant.has(x):
                 # sin(b x^g) - b x^g
                 found = _match_function(function, x)
@@ -969,14 +1005,15 @@ def mellin_kernel(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Optional[
     Examples
     ========
 
-    >>> from sympy import exp, symbols, besselj, sqrt
+    >>> from sympy_extras.core import Integer, sqrt, symbols
+    >>> from sympy_extras.functions import exp, besselj
     >>> from sympy_extras.integrals.mellin import mellin_kernel
     >>> x, a = symbols('x a')
     >>> mellin_kernel(exp(-3*x**2), x)
     Match(exp, beta=3, gamma=2, constant=1)
     >>> mellin_kernel(1/(x + 2)**a, x)
     Match((1 + x)**(-a), beta=1/2, gamma=1, constant=2**(-a))
-    >>> mellin_kernel(besselj(0, sqrt(x)), x)
+    >>> mellin_kernel(besselj(Integer(0), sqrt(x)), x)
     Match(besselj, beta=1, gamma=1/2, constant=1)
     >>> mellin_kernel(exp(x), x) is None
     True
@@ -997,7 +1034,8 @@ def mellin_transform(f: ExprLike, x: Symbol, s: Symbol) -> Optional[MellinTransf
     Examples
     ========
 
-    >>> from sympy import exp, symbols, sqrt
+    >>> from sympy_extras.core import sqrt, symbols
+    >>> from sympy_extras.functions import exp, log
     >>> from sympy_extras.integrals.mellin import mellin_transform
     >>> x, s, a = symbols('x s a')
     >>> mellin_transform(exp(-x**2)/sqrt(x), x, s)
@@ -1007,7 +1045,7 @@ def mellin_transform(f: ExprLike, x: Symbol, s: Symbol) -> Optional[MellinTransf
     >>> mellin_transform(exp(-x)*log(x), x, s)
     MellinTransform(gamma(s)*polygamma(0, s), (0, oo))
     """
-    product = decompose_integrand(as_expr(f), x)
+    product = decompose_integrand(to_expr(f), x)
     if product is None or product.one_minus_power:
         return None
     quotient = product.quotient()
@@ -1016,7 +1054,11 @@ def mellin_transform(f: ExprLike, x: Symbol, s: Symbol) -> Optional[MellinTransf
     transform = quotient.as_expr(s)
     if product.log_power:
         # log(x)**n * g(x): the n-th derivative of the transform of g
-        transform = as_expr(transform.diff(s, product.log_power))
+        transform = transform.diff((s, product.log_power))
+        if product.log_power > 1:
+            # SymPy's Derivative writes a derivative of order 2 or more as
+            # factor_terms(signsimp(...)); the core's does not
+            transform = factor_terms(signsimp(transform))
     return MellinTransform(transform, quotient.strip, quotient.condition)
 
 
@@ -1025,13 +1067,15 @@ class Product:
     on ``(0, 1)`` with a factor ``log(1 - x)**m`` as well (``one_minus_power``),
     the m-th derivative of the Beta kernel ``(1 - x)**(b - 1)`` in ``b``."""
 
+    __slots__ = ('constant', 'alpha', 'log_power', 'matches', 'one_minus_power')
+
     def __init__(self, constant: Expr, alpha: Expr, log_power: int, matches: Sequence[Match],
                  one_minus_power: int = 0) -> None:
-        self.constant = constant
-        self.alpha = alpha
-        self.log_power = log_power
-        self.matches = tuple(matches)
-        self.one_minus_power = one_minus_power
+        self.constant: Final[Expr] = constant
+        self.alpha: Final[Expr] = alpha
+        self.log_power: Final[int] = log_power
+        self.matches: Final[tuple[Match, ...]] = tuple(matches)
+        self.one_minus_power: Final[int] = one_minus_power
 
     def __repr__(self) -> str:
         return "Product(%s, x**%s, log**%s, %s)" % (self.constant, self.alpha, self.log_power,
@@ -1049,150 +1093,85 @@ class Product:
         return None
 
 
-def _exp_besseli(factors: list[Expr], x: Symbol) -> list[Expr]:
+def _exp_besseli(factors: list[Expr], x: Symbol) -> tuple[list[Expr], Optional[Match]]:
     """``exp(-a x^g) besseli(nu, b x^g)`` rewritten as
     ``exp(-(a - b) x^g) * [exp(-b x^g) besseli(nu, b x^g)]``, the bracket
-    being the kernel of the table (a symbol standing for it)."""
+    being the kernel of the table: the factors left and the match of the
+    bracket (``None`` when there is none)."""
     for i, factor in enumerate(factors):
-        if isinstance(factor, besseli) and len(factor.args) == 2 and not as_expr(factor.args[0]).has(x):
+        if isinstance(factor, BesselI) and len(factor.args) == 2 and not factor.args[0].has(x):
             inner = _positive_monomial(as_expr(factor.args[1]), x)
             if inner is None:
                 continue
             for j, other in enumerate(factors):
-                if isinstance(other, exp) and len(other.args) == 1:
+                if isinstance(other, Exp) and len(other.args) == 1:
                     outer = _negated_monomial(as_expr(other.args[0]), x)
                     if outer is None or outer[1] != inner[1]:
                         continue
-                    difference = as_expr(outer[0] - inner[0])
+                    difference = outer[0] - inner[0]
                     rest = [f for k, f in enumerate(factors) if k not in (i, j)]
-                    combined = _CombinedBesseli(as_expr(factor.args[0]), inner[0], inner[1])
                     if difference != 0:
                         rest.append(exp(-difference * x**inner[1]))
-                    return rest + [combined]
-    return factors
+                    return rest, Match(_exp_besseli_kernel(as_expr(factor.args[0])), inner[0], inner[1])
+    return factors, None
 
 
-_BESSEL_PAIRS: dict[tuple[type[Function], type[Function]], str] = {
-    (besselj, besselj): 'JJ', (besselk, besselk): 'KK', (besseli, besselk): 'IK',
-    (besselj, bessely): 'JY', (besselj, besselk): 'JK'}
+_BESSEL_PAIRS: dict[tuple[type[DefinedFunction], type[DefinedFunction]], str] = {
+    (BesselJ, BesselJ): 'JJ', (BesselK, BesselK): 'KK', (BesselI, BesselK): 'IK',
+    (BesselJ, BesselY): 'JY', (BesselJ, BesselK): 'JK'}
+
+_BESSEL = (BesselJ, BesselY, BesselI, BesselK)
 
 
-def _bessel_products(factors: list[Expr], x: Symbol) -> list[Expr]:
+def _bessel_products(factors: list[Expr], x: Symbol) -> tuple[list[Expr], Optional[Match]]:
     """Two Bessel functions of the same argument ``b x^g`` (``J_mu J_nu``,
-    ``K_mu K_nu``, ``I_mu K_nu``, ``J_nu Y_nu``, ``J_nu K_nu``) replaced by
-    the placeholder of their product, a kernel of the table."""
+    ``K_mu K_nu``, ``I_mu K_nu``, ``J_nu Y_nu``, ``J_nu K_nu``) taken out of
+    the factors: the factors left and the match of their product, a
+    kernel of the table (``None`` when there is none)."""
     for i, first in enumerate(factors):
-        if not isinstance(first, (besselj, bessely, besseli, besselk)) or len(first.args) != 2:
+        if not isinstance(first, _BESSEL) or len(first.args) != 2:
             continue
         inner = _positive_monomial(as_expr(first.args[1]), x)
-        if inner is None or as_expr(first.args[0]).has(x):
+        if inner is None or first.args[0].has(x):
             continue
         for j, second in enumerate(factors):
-            if j == i or not isinstance(second, (besselj, bessely, besseli, besselk)) or len(second.args) != 2:
+            if j == i or not isinstance(second, _BESSEL) or len(second.args) != 2:
                 continue
-            if as_expr(second.args[0]).has(x) or as_expr(second.args[1]) != as_expr(first.args[1]):
+            if second.args[0].has(x) or second.args[1] != first.args[1]:
                 continue
-            pair = (type(first), type(second))
-            kind = _BESSEL_PAIRS.get(pair)
+            kind = _BESSEL_PAIRS.get((type(first), type(second)))
             if kind is None:
                 continue
             mu, nu = as_expr(first.args[0]), as_expr(second.args[0])
             if kind in ('JY', 'JK') and mu != nu:
                 continue
             rest = [f for k, f in enumerate(factors) if k not in (i, j)]
-            return rest + [_CombinedBessel(kind, mu, nu, inner[0], inner[1])]
-    return factors
+            return rest, Match(_bessel_product_kernel(kind, mu, nu), inner[0], inner[1])
+    return factors, None
 
 
-class _CombinedBessel(Expr):
-    """A placeholder for a product of two Bessel functions of the argument
-    ``b x^g`` in a list of factors (never part of a returned expression)."""
-
-    def __new__(cls, kind: str, mu: Expr, nu: Expr, beta: Expr, gamma_: Expr) -> _CombinedBessel:
-        obj = Expr.__new__(cls, Str(kind), mu, nu, beta, gamma_)
-        return obj
-
-    @property
-    def pair(self) -> str:
-        """``'JJ'``, ``'KK'``, ``'IK'``, ``'JY'`` or ``'JK'``."""
-        return str(self.args[0])
-
-    @property
-    def mu(self) -> Expr:
-        return as_expr(self.args[1])
-
-    @property
-    def nu(self) -> Expr:
-        return as_expr(self.args[2])
-
-    @property
-    def beta(self) -> Expr:
-        return as_expr(self.args[3])
-
-    @property
-    def power(self) -> Expr:
-        return as_expr(self.args[4])
-
-
-def _erfc_exp(factors: list[Expr], x: Symbol) -> list[Expr]:
-    """``erfc(b x^g) exp(c x^(2g))`` with ``c = b**2`` rewritten as the
-    kernel ``erfc(u) exp(u**2)`` of the table at ``u = b x^g`` (a symbol
-    standing for it); with ``c != b**2`` the exponential
-    ``exp((c - b**2) x^(2g))`` stays as a factor."""
+def _erfc_exp(factors: list[Expr], x: Symbol) -> tuple[list[Expr], Optional[Match]]:
+    """``erfc(b x^g) exp(c x^(2g))`` with ``c = b**2`` taken out of the
+    factors as the kernel ``erfc(u) exp(u**2)`` of the table at
+    ``u = b x^g``; with ``c != b**2`` the exponential
+    ``exp((c - b**2) x^(2g))`` stays as a factor. The factors left and the
+    match (``None`` when there is none)."""
     for i, factor in enumerate(factors):
-        if isinstance(factor, erfc) and len(factor.args) == 1:
+        if isinstance(factor, Erfc) and len(factor.args) == 1:
             inner = _positive_monomial(as_expr(factor.args[0]), x)
             if inner is None:
                 continue
             for j, other in enumerate(factors):
-                if isinstance(other, exp) and len(other.args) == 1:
+                if isinstance(other, Exp) and len(other.args) == 1:
                     outer = _positive_monomial(as_expr(other.args[0]), x)
                     if outer is None or outer[1] != 2 * inner[1]:
                         continue
-                    difference = as_expr(outer[0] - inner[0]**2)
+                    difference = outer[0] - inner[0]**2
                     rest = [f for k, f in enumerate(factors) if k not in (i, j)]
                     if difference != 0:
                         rest.append(exp(difference * x**outer[1]))
-                    return rest + [_CombinedErfc(inner[0], inner[1])]
-    return factors
-
-
-class _CombinedErfc(Expr):
-    """A placeholder for ``erfc(b x^g) exp(b^2 x^(2g))`` in a list of
-    factors (never part of a returned expression)."""
-
-    def __new__(cls, beta: Expr, gamma_: Expr) -> _CombinedErfc:
-        obj = Expr.__new__(cls, beta, gamma_)
-        return obj
-
-    @property
-    def beta(self) -> Expr:
-        return as_expr(self.args[0])
-
-    @property
-    def power(self) -> Expr:
-        return as_expr(self.args[1])
-
-
-class _CombinedBesseli(Expr):
-    """A placeholder for ``exp(-b x^g) besseli(nu, b x^g)`` in a list of
-    factors (never part of a returned expression)."""
-
-    def __new__(cls, nu: Expr, beta: Expr, gamma_: Expr) -> _CombinedBesseli:
-        obj = Expr.__new__(cls, nu, beta, gamma_)
-        return obj
-
-    @property
-    def nu(self) -> Expr:
-        return as_expr(self.args[0])
-
-    @property
-    def beta(self) -> Expr:
-        return as_expr(self.args[1])
-
-    @property
-    def power(self) -> Expr:
-        return as_expr(self.args[2])
+                    return rest, Match(KERNELS['erfc(x)*exp(x**2)'], inner[0], inner[1])
+    return factors, None
 
 
 def decompose_integrand(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Optional[Product]:
@@ -1201,64 +1180,75 @@ def decompose_integrand(f: Expr, x: Symbol, cutoff: Optional[str] = None) -> Opt
     are more than two kernels. With ``cutoff='lower'`` the integrand lives
     on ``(0, 1)``: the step function ``theta(1 - x)`` is added as a kernel
     unless a factor ``(1 - x**gamma)**e`` already carries the cutoff;
-    ``cutoff='upper'`` likewise for ``(1, oo)``."""
+    ``cutoff='upper'`` likewise for ``(1, oo)``.
+
+    The products of two functions which are one kernel of the table (two
+    Bessel functions, ``exp(-x) besseli(nu, x)``, ``erfc(x) exp(x**2)``)
+    come after the other kernels.
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp, log
+    >>> from sympy_extras.integrals.mellin import decompose_integrand
+    >>> x = symbols('x')
+    >>> decompose_integrand(3*x**2*log(x)*exp(-x), x)
+    Product(3, x**2, log**1, [Match(exp, beta=1, gamma=1, constant=1)])
+    """
     constant: Expr = S.One
     alpha: Expr = S.Zero
     log_power = 0
     one_minus_power = 0
     matches: list[Match] = []
     factors: list[Expr] = []
-    for factor in (f.args if isinstance(f, Mul) else [f]):
+    for factor in (f.args if isinstance(f, Mul) else (f,)):
         e = as_expr(factor)
         # an integer power of a function is that many factors
-        if isinstance(e, Pow) and isinstance(e.exp, Integer) and e.exp > 1 and isinstance(e.base, Function) \
+        if isinstance(e, Pow) and isinstance(e.exp, Integer) and e.exp.p > 1 and e.base.is_Function \
                 and e.has(x):
-            factors.extend([as_expr(e.base)] * int(e.exp))
+            factors.extend([e.base] * e.exp.p)
         else:
             factors.append(e)
-    if sum(isinstance(e, (besselj, bessely, besseli, besselk)) for e in factors) >= 2:
-        factors = _bessel_products(factors, x)
-    if any(isinstance(e, besseli) for e in factors):
-        factors = _exp_besseli(factors, x)
-    if any(isinstance(e, erfc) for e in factors):
-        factors = _erfc_exp(factors, x)
+    combined: list[Match] = []
+    if sum(isinstance(e, _BESSEL) for e in factors) >= 2:
+        factors, found_pair = _bessel_products(factors, x)
+        if found_pair is not None:
+            combined.append(found_pair)
+    if any(isinstance(e, BesselI) for e in factors):
+        factors, found_besseli = _exp_besseli(factors, x)
+        if found_besseli is not None:
+            combined.append(found_besseli)
+    if any(isinstance(e, Erfc) for e in factors):
+        factors, found_erfc = _erfc_exp(factors, x)
+        if found_erfc is not None:
+            combined.append(found_erfc)
     for e in factors:
-        if isinstance(e, _CombinedBessel):
-            matches.append(Match(_bessel_product_kernel(e.pair, e.mu, e.nu), e.beta, e.power))
-            continue
-        if isinstance(e, _CombinedBesseli):
-            matches.append(Match(_exp_besseli_kernel(e.nu), e.beta, e.power))
-            continue
-        if isinstance(e, _CombinedErfc):
-            matches.append(Match(KERNELS['erfc(x)*exp(x**2)'], e.beta, e.power))
-            continue
         if not e.has(x):
             constant = constant * e
             continue
         if e == x:
             alpha = alpha + 1
             continue
-        if isinstance(e, Pow) and e.base == x and not as_expr(e.exp).has(x):
-            alpha = alpha + as_expr(e.exp)
+        if isinstance(e, Pow) and e.base == x and not e.exp.has(x):
+            alpha = alpha + e.exp
             continue
-        if isinstance(e, log) and e.args[0] == x:
+        if isinstance(e, Log) and e.args[0] == x:
             log_power += 1
             continue
-        if isinstance(e, Pow) and isinstance(e.base, log) and e.base.args[0] == x \
-                and isinstance(e.exp, Integer) and e.exp > 0:
-            log_power += int(e.exp)
+        if isinstance(e, Pow) and isinstance(e.base, Log) and e.base.args[0] == x \
+                and isinstance(e.exp, Integer) and e.exp.p > 0:
+            log_power += e.exp.p
             continue
-        if cutoff == 'lower' and isinstance(e, log) and e.args[0] == 1 - x:
+        if cutoff == 'lower' and isinstance(e, Log) and e.args[0] == 1 - x:
             one_minus_power += 1
             continue
-        if cutoff == 'lower' and isinstance(e, Pow) and isinstance(e.base, log) and e.base.args[0] == 1 - x \
-                and isinstance(e.exp, Integer) and e.exp > 0:
-            one_minus_power += int(e.exp)
+        if cutoff == 'lower' and isinstance(e, Pow) and isinstance(e.base, Log) and e.base.args[0] == 1 - x \
+                and isinstance(e.exp, Integer) and e.exp.p > 0:
+            one_minus_power += e.exp.p
             continue
         found = mellin_kernel(e, x, cutoff)
         if found is None:
             return None
         matches.append(found)
+    matches.extend(combined)
     if one_minus_power and cutoff == 'lower' and not any(m.cutoff for m in matches):
         # log(1 - x)**m alone: the step function theta(1 - x) is the Beta
         # kernel (1 - x)**(b - 1) at b = 1, which the derivatives in b need

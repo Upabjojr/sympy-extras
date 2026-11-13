@@ -32,7 +32,9 @@ to elementary and special functions.
 
 The package implements the four pieces:
 
-- `sympy_extras.integrals.mellin`: the representation (`GammaQuotient`,
+- `sympy_extras.integrals.mellin` (native, on the objects of the core;
+  `sympy_extras.integrals.mellin_sympy` is its face on SymPy objects, which
+  the other integrators use): the representation (`GammaQuotient`,
   with the strip and the conditions on the parameters), the table of
   transforms of the elementary and special functions (`exp`, powers of
   `1 + x`, `(1 - x)**b` on `(0, 1)`, `sin`, `cos`, `atan`, `log(1 + x)`,
@@ -48,12 +50,14 @@ The package implements the four pieces:
   `cos(x) - 1`, `sin(x) - x`, `atan(x) - pi/2` whose transforms continue
   the strips), and the matching of an integrand against it
   (`mellin_transform`, `mellin_kernel`);
-- `sympy_extras.integrals.slater`: the Mellin–Barnes integral of a quotient
+- `sympy_extras.integrals.slater` (native; `slater_sympy` is its face on
+  SymPy objects): the Mellin–Barnes integral of a quotient
   as a G-function (`mellin_barnes`, through Gauss's multiplication formula
   when the coefficients of `s` are not `±1`) and Slater's theorem
   (`slater_expansion`, `expand_meijerg`), with the case distinction
   `|z| < 1` or `|z| > 1` for `p = q` decided by the assumptions;
-- `sympy_extras.integrals.marichev`: the integrals over `(0, oo)`,
+- `sympy_extras.integrals.marichev` (native; `marichev_sympy` is its face
+  on SymPy objects): the integrals over `(0, oo)`,
   `(0, 1)` and `(1, oo)` (`mellin_integrate`): one factor is the transform
   at `s = alpha + 1`, two factors go through Parseval's formula and the
   G-function, and logarithms are derivatives with respect to the exponent;
@@ -69,7 +73,8 @@ The strips of the transforms are the convergence conditions:
 
 ```python
 >>> from sympy import symbols, exp, sin, log, sqrt, Abs, oo, pi, cos, S
->>> from sympy_extras.integrals import definite_integral, mellin_transform
+>>> from sympy_extras.integrals.definite_sympy import definite_integral
+>>> from sympy_extras.integrals.mellin_sympy import mellin_transform
 >>> x, k, s = symbols('x k s')
 >>> a, b = symbols('a b', positive=True)
 >>> mellin_transform(1/(1 + x), x, s)
@@ -112,7 +117,7 @@ regularisation).
 >>> definite_integral(exp(-a*x)*sin(b*x)*besselj(0, x), (x, 0, oo))
 I/(2*sqrt((a + I*b)**2 + 1)) - I/(2*sqrt((a - I*b)**2 + 1))
 >>> definite_integral(exp(-2*x)*cos(x)*besselj(0, x), (x, 0, oo))
-2**(3/4)*sqrt(sqrt(2) + 2)/8
+2**(3/4)*sqrt(5)*(sin(atan(1/7)/2) + 2*cos(atan(1/7)/2))/20
 >>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo))          # divergent
 oo
 >>> definite_integral(x**(-S(3)/2)*exp(-x), (x, 0, oo), regularize=True)
@@ -242,31 +247,42 @@ The driver tries, after the Mellin method and the residues:
   and a rational certificate `R` with `sum(a_j * d^j F/dt^j) = d(R F)/dx`,
   so that the integral `I(t)` satisfies the linear ODE
   `sum(a_j I^(j)) = [R F]` between the bounds. `holonomic_ode` returns the
-  equation, `holonomic_integral` solves it with `dsolve` and fixes the
-  constants at a value of the parameter where the integral is computed
-  directly. This is the continuous analogue of Zeilberger's algorithm of
+  equation, `holonomic_integral` solves it with the linear ODE solvers of
+  `sympy_extras.solvers.linear_ode` (SymPy's `dsolve` when they leave it
+  unsolved) and fixes the constants at a value of the parameter where the
+  integral is computed directly. This is the continuous analogue of Zeilberger's algorithm of
   `sympy_extras.concrete.zeilberger`. `sympy_extras.integrals.reduction`
   finds the same telescopers by Hermite reduction (Bostan, Chen, Chyzak, Li
   and Xin): the reduced forms are canonical, so the order is minimal and no
   bound on the certificate is needed; it is tried first, the ansatz second.
+  The three modules (and `dfinite` below) work on the objects of the core
+  and import no SymPy; `telescoping_sympy`, `reduction_sympy` and
+  `dfinite_sympy` are their interfaces on SymPy objects.
 - **The rules of the Laplace transform** (`sympy_extras.integrals.laplace`):
   for `g(t)*exp(-s*t)` over `(0, oo)`, division by `t` (the transform
   integrated from `s` to `oo`), multiplication by `t**n` (derivatives of the
   transform), the shifts `Heaviside(t - a)` and `exp(c*t)`, periodic
   integrands (`Abs(sin(t))` gives `coth(pi*s/2)/(s**2 + 1)`) and
   convolutions `Integral(p(u)*q(t - u), (u, 0, t))` (the product of the
-  transforms), each piece transformed by the other methods.
+  transforms), each piece transformed by the other methods. The module
+  is native, on the core; `sympy_extras.integrals.laplace_sympy` is its
+  face on SymPy objects.
 - **More contours** (`sympy_extras.integrals.contours`): the rectangle of
   height `2*pi/c` for `x**n*exp(k*x)*R(exp(c*x))` over the real line
   (`x**2/cosh(x)` is `pi**3/4`, `exp(a*x)/(1 + exp(x))` is `pi/sin(pi*a)`),
   the sector of angle `2*pi/n` for `x**a/(b + c*x**n)` over `(0, oo)` with
   symbolic `a` and `n`, and the indented contour for `R(x)*sin(k*x)` with
-  simple real poles cancelled by the sine.
+  simple real poles cancelled by the sine. The module and the residue
+  theorem integrators it builds on (`sympy_extras.integrals.residues`)
+  are native, on the core; `contours_sympy` and `residues_sympy` are
+  their faces on SymPy objects.
 - **Frullani's theorem and Glasser's master theorem**
   (`sympy_extras.integrals.transformations`): `(f(a x) - f(b x))/x` over
   `(0, oo)` is `(f(0) - f(oo)) log(b/a)`, and `F(x - sum(a_i/(x - b_i)))`
   over the real line (or over `(0, oo)` for an even `F`, the
-  Cauchy–Schlömilch transformation) integrates like `F` itself.
+  Cauchy–Schlömilch transformation) integrates like `F` itself. The
+  module is native, on the core; `sympy_extras.integrals.transformations_sympy`
+  is its face on SymPy objects.
 - **Trigonometric sums over powers of `x`** (`sympy_extras.integrals.dirichlet`):
   `g(x)/x**n` over `(0, oo)` or the real line for a trigonometric sum `g`
   (a product of sines and cosines is written as one by the product
@@ -297,7 +313,9 @@ The driver tries, after the Mellin method and the residues:
   Laurent coefficient of `f` written in `z = exp(I*x)`, read off or summed
   from the Taylor coefficients of the factors (`exp(cos(x))*cos(sin(x))`
   gives `2*pi`, `exp(a*cos(x))*cos(n*x)` gives `2*pi*besseli(n, a)`);
-  rational functions of `sin` and `cos` go to the residues instead.
+  rational functions of `sin` and `cos` go to the residues instead. The
+  module is native, on the core; `sympy_extras.integrals.periodic_sympy`
+  is its face on SymPy objects.
 - **A table** (`sympy_extras.integrals.tables`): seventy-six entries of
   Gradshteyn and Ryzhik, of Abramowitz and Stegun's Laplace transforms
   and of the literature which no algorithm here reproduces (the Poisson
@@ -306,7 +324,9 @@ The driver tries, after the Mellin method and the residues:
   Bessel functions of `sqrt(t**2 - k**2)`, Fresnel's integrals, Ahmed's
   integral, ...), matched with their conditions on the parameters and
   checked numerically at sample values in the tests; tried first because
-  it is cheap, term by term for a sum.
+  it is cheap, term by term for a sum. The table is native, on the core;
+  `sympy_extras.integrals.tables_sympy` is its face on SymPy objects
+  (the entries converted, `TableEntry.from_core`).
 - **Elliptic integrals** (`sympy_extras.integrals.elliptic`): square roots
   of cubics and quartics with real roots, `R(x)/sqrt(P(x))` and
   `R(x)*sqrt(P(x))` over a cell between the roots, reduced by the
@@ -325,7 +345,9 @@ The driver tries, after the Mellin method and the residues:
   `Integral(1/sqrt((x**2 + 1)*(x**2 + 4)), (x, -oo, oo))` is
   `elliptic_k(3/4)`; the irrational quadratic factors of a numeric
   quartic (`x**4 + x - 1`) are built from its `CRootOf` roots, the
-  algebraic numbers travelling as dummies decided numerically.
+  algebraic numbers travelling as dummies decided numerically. The
+  module is native, on the core; `sympy_extras.integrals.elliptic_sympy`
+  is its face on SymPy objects, which `definite` uses.
 - **Substitutions of the definite driver**: `u = q(x)**(1/n)` for the
   radical `q(x)**(k/n)` of the integrand, `q` a polynomial of degree at
   most two, nonnegative and monotone on the range (`z*sqrt(sqrt(z**2 - 1) +
@@ -360,11 +382,16 @@ The driver tries, after the Mellin method and the residues:
   antiderivative a `Piecewise`; a nested radical has its innermost root
   substituted first and the substitutions of the result composed with
   it). Trager's algorithm handles the general case of one square root.
+  Both modules are native, on the core; `sympy_extras.integrals.algebraic_sympy`
+  and `sympy_extras.integrals.rewriting_sympy` are their faces on SymPy
+  objects (the rational integral of `algebraic` still comes from
+  `definite`, through the face).
 - **Series expansion and termwise integration**
-  (`sympy_extras.integrals.series`): one factor expanded in its formal
+  (`sympy_extras.integrals.series`, native on the core; the SymPy face
+  `series_sympy`): one factor expanded in its formal
   power series (or a geometric series of exponentials), the moments of the
   rest integrated in closed form in the index, and the series summed by
-  `summation`, the Zeilberger and polygamma-series algorithms of
+  the native `summation`, the Zeilberger and polygamma-series algorithms of
   `sympy_extras.concrete`, or a hypergeometric closed form; the interchange
   is justified by absolute convergence or checked numerically.
   `Integral(log(x)*log(1 - x), (x, 0, 1))` gives `2 - pi**2/6`.
@@ -379,7 +406,10 @@ The driver tries, after the Mellin method and the residues:
   (a factor `1/x` disappears against `exp(-p x)`, a logarithm against
   `x**p`), integrated by the other methods, integrated back in `p`, with
   the constant fixed at `p = 0`, `1` or at infinity; the interchange is
-  checked numerically when `settings.numerical_checks` is on.
+  checked numerically when `settings.numerical_checks` is on. The
+  module is native, on the core (its integrals are asked of a
+  `ParametricIntegrator`, by default the integrator of `definite`);
+  `sympy_extras.integrals.parametric_sympy` is its face on SymPy objects.
 - **An antiderivative evaluated by one-sided limits**
   (`sympy_extras.integrals.antiderivative`): the range is cut at the
   singularities of the integrand *and* at the discontinuities of the
@@ -389,6 +419,13 @@ The driver tries, after the Mellin method and the residues:
   limits under the assumptions; an infinite limit of one sign exposes a
   divergence, reported as `oo` or `-oo` (`1/x` over `(0, 1)`), while
   infinities of both signs and oscillations leave the integral unevaluated.
+  The module is native, on the core (the antiderivative is a step of its
+  own, by default the native radical table, the polynomials in
+  elementary functions by the native `manualintegrate` and heuristics
+  (`elementary_antiderivative`), and the verified methods of the native
+  `indefinite`, whose last methods load SymPy);
+  `sympy_extras.integrals.antiderivative_sympy` is its face on SymPy
+  objects.
   The same verdict is read off the leading term of the integrand at an
   end of the range before any method runs (`c*(x - end)**p` with `p <= -1`
   and a real `c` of known sign: `-sin(x)*tan(x)*csc(x - 1)` over `(0, 1)`
@@ -412,7 +449,8 @@ The driver tries, after the Mellin method and the residues:
   is summed. The theorem is checked against the table on the kernels both
   know; the method of brackets is a heuristic and is used only where its
   series converge.
-- **Asymptotic expansions** (`sympy_extras.integrals.asymptotic`,
+- **Asymptotic expansions** (`sympy_extras.integrals.asymptotic` on the
+  core, its SymPy face `sympy_extras.integrals.asymptotic_sympy`,
   `asymptotic_integral`): for a parametric integral without a closed form,
   the first terms as the parameter grows, by Watson's lemma
   (`exp(-t*x)*phi(x)`), Laplace's method (`phi*exp(t*h)` with the maxima
@@ -446,8 +484,11 @@ The driver tries, after the Mellin method and the residues:
   integral under `eps > 0` and the limit under the assumptions; a value
   is kept only when the limit is finite and free of the regulator, so
   `sin(x)**2` over `(0, oo)` has none, and a convergent integral keeps its
-  value (Hardy, *Divergent series*, ch. 4-5).
-- **Radicals of quadratics** (`sympy_extras.integrals.radicals`): the
+  value (Hardy, *Divergent series*, ch. 4-5). The module is native, on
+  the core; `sympy_extras.integrals.summability_sympy` is its face on
+  SymPy objects.
+- **Radicals of quadratics** (`sympy_extras.integrals.radicals`, native on
+  the core; its SymPy face `sympy_extras.integrals.radicals_sympy`): the
   real antiderivatives of `x**n * Q**(m/2)`, `Q` a quadratic and `m` odd,
   by the reduction formulas of Gradshteyn–Ryzhik 2.26, in arcsines and
   hyperbolic arcsines where SymPy writes complex logarithms (whose limits
@@ -464,6 +505,7 @@ The driver tries, after the Mellin method and the residues:
   antiderivative is a complex `Piecewise`, gives `sqrt(3)/4 - pi/12`, and
   with it the union of two overlapping discs in `IntegralByRanges`.
 - **Symbolic-numeric recognition** (`sympy_extras.integrals.recognize`,
+  native, with its SymPy face `recognize_sympy`;
   `definite_integral(..., recognize=True)`): a high-precision quadrature
   and an integer relation (PSLQ) with a basis of constants propose a
   closed form, re-checked at forty-five digits. A conjecture, not a proof:
@@ -471,7 +513,9 @@ The driver tries, after the Mellin method and the residues:
 
 ```python
 >>> from sympy import symbols, exp, sin, log, atan, cos, oo, pi
->>> from sympy_extras.integrals import definite_integral, holonomic_ode, parametric_integral
+>>> from sympy_extras.integrals.definite_sympy import definite_integral
+>>> from sympy_extras.integrals.telescoping_sympy import holonomic_ode
+>>> from sympy_extras.integrals.parametric_sympy import parametric_integral
 >>> x = symbols('x')
 >>> p, t = symbols('p t', positive=True)
 >>> holonomic_ode(exp(-x**2)*cos(2*t*x), x, 0, oo, t)
@@ -508,13 +552,14 @@ pi**3/4
 >>> n = symbols('n', positive=True)
 >>> definite_integral(1/(1 + x**n), (x, 0, oo), n > 1)
 pi/(n*sin(pi/n))
->>> from sympy_extras.integrals import ramanujan_master_theorem, recognize_integral
+>>> from sympy_extras.integrals.brackets_sympy import ramanujan_master_theorem
+>>> from sympy_extras.integrals.recognize_sympy import recognize_integral
 >>> s = symbols('s')
 >>> ramanujan_master_theorem(exp(-x**2), x, s)
 MellinTransform(gamma(s/2)/2, (0, oo))
 >>> recognize_integral(1/(x**3 + 1), (x, 0, 1))
 log(2)/3 + sqrt(3)*pi/9
->>> from sympy_extras.integrals import asymptotic_integral
+>>> from sympy_extras.integrals.asymptotic_sympy import asymptotic_integral
 >>> asymptotic_integral(exp(-t*x)/(1 + x), x, 0, oo, t)
 2/t**3 - 1/t**2 + 1/t + O(t**(-4), (t, oo))
 >>> definite_integral(x**x, (x, 0, 1), numeric=True, digits=6)
@@ -539,13 +584,18 @@ unimplemented); `is_nonelementary` is the decision. Parameters may
 appear in the constant field: a symbolic coefficient in the solution of
 a structure equation means a new monomial (`x**v` for a symbolic `v`),
 and the rational roots of a polynomial with parameters in its
-coefficients are found by `roots`. The ported modules are strictly
-typed like the rest of the package, with the annotations of Aaron
-Meurer's branch `risch-typing` (sympy/sympy#30282) as the starting point.
+coefficients are found by `roots`. The modules are native on the typed core: the polynomials of the tower
+are `TowerPoly` (`risch/tower.py`) over the field of `RationalFunction`
+elements (exact canonical fractions over `ZZ` in the generators, with
+`I` and the square roots of integers reduced and taken out of the
+denominators), the matrices of the parametric problems `FieldMatrix`;
+`risch/risch_sympy.py` is the face on SymPy objects
+(`risch_integrate`, `risch_antiderivative`, `is_nonelementary`,
+`rational_risch_de`).
 
 ```python
 >>> from sympy import symbols, tan, exp, log
->>> from sympy_extras.integrals import risch_antiderivative, is_nonelementary
+>>> from sympy_extras.integrals.risch.risch_sympy import risch_antiderivative, is_nonelementary
 >>> x = symbols('x')
 >>> risch_antiderivative(tan(x)**5, x)
 log(tan(x)**2 + 1)/2 + tan(x)**4/4 - tan(x)**2/2
@@ -565,20 +615,27 @@ of the package in turn, rational functions by Hermite reduction and the
 Lazard–Rioboo–Trager logarithmic part, radicals of a quadratic by the
 reduction formulas (negative powers of `x` too, the signs of the cases
 decided under the assumptions), the transcendental Risch algorithm, the heuristic
-Risch integrator, Trager's algorithm, and SymPy's rule-based and
-Meijer G routes as the last resort; a candidate is returned only when it
+Risch integrator, Trager's algorithm, and the rule-based
+`manualintegrate` (native, `sympy_extras.integrals.manualintegrate`) and
+SymPy's Meijer G route as the last resort; a candidate is returned only when it
 checks as an antiderivative (`is_antiderivative`: `F' - f` cancels or
 simplifies to zero, or vanishes at random points under the assumptions),
 after a rewriting to a real form when it carries `I` for a real
 integrand, and the `Integral` is returned unevaluated otherwise.
 `verified_antiderivative` returns the antiderivative with the name of the
-method which found it. Powers times exponentials of powers,
+method which found it. The module is native, on the core (an integral
+left undone is the node `sympy_extras.integrals.integral.Integral`), and
+its native methods, checks and special values load no SymPy; SymPy's
+heuristic Risch integrator, Meijer G route and `integrate` are the last
+methods, reached through the face
+`sympy_extras.integrals.indefinite_sympy` (the functions on SymPy objects,
+used below), so that SymPy loads only when every native method failed. Powers times exponentials of powers,
 `x**(v - 1)*exp(a*x**n + b)` with a symbolic `v`, go through the
-incomplete gamma function (`sympy_extras.integrals.exponential`), in the
-real form `-(-a)**(-s)*uppergamma(s, -a*x**n)/n` for `a < 0` and the
-confluent series `x**v*hyper((s,), (s + 1,), a*x**n)/v` otherwise, with
-the elementary, `Ei` and error-function cases reduced to; polynomials
-times `exp(a*x**2 + b*x + c)` by the completed square; `(a*x + b)**w*exp(c*x + d)`
+incomplete gamma function (`sympy_extras.integrals.exponential`, native,
+with its SymPy face `exponential_sympy`), in the real form
+`-(-a)**(-s)*uppergamma(s, -a*x**n)/n` for `a < 0` and the confluent
+series `x**v*hyper((s,), (s + 1,), a*x**n)/v` otherwise, with the
+elementary, `Ei` and error-function cases reduced to; polynomials times `exp(a*x**2 + b*x + c)` by the completed square; `(a*x + b)**w*exp(c*x + d)`
 by the shift `t = a*x + b` (`exp(c*x)/(a*x + b)**k` is the exponential
 integral `E_k`); rational functions and binomials of an exponential by
 `u = exp(c*x)`; a nested power `(x**r)**p` in the exponent or the
@@ -601,7 +658,8 @@ functions of an exponential, `x = exp(t)` for rational functions of a
 logarithm; the heuristic Risch integrator comes to the forms only
 after it failed on the integrand itself, except to the exponentials of
 hyperbolic functions, which it tries after the substitutions. The trigonometric integrator
-(`sympy_extras.integrals.trigonometric`, `trigonometric_antiderivative`)
+(`sympy_extras.integrals.trigonometric`, `trigonometric_antiderivative`, native
+on the core; its SymPy face `sympy_extras.integrals.trigonometric_sympy`)
 covers the products of powers of trigonometric and hyperbolic functions
 by the raising and lowering formulas, rational functions of `sin` and
 `cos` by `t = tan(x/2)` and of `sinh` and `cosh` by `u = exp(x)`
@@ -630,7 +688,14 @@ differentiation, refuses floating-point coefficients, and writes the
 logarithms of conjugates as arctangents; `heurisch_cases`
 splits the parameters as SymPy's wrapper does. Sixty-six integrands of
 Gradshteyn–Ryzhik's chapter 2 families, rational to Lambert W, integrate
-in twelve seconds together.
+in twelve seconds together. The integrator is native: it works on the
+core with the typed polynomials (the constants which the typed `Poly`
+does not take as coefficients, `pi`, `exp(y)`, `sqrt(2)`, are
+placeholder symbols, as SymPy's `ZZ(pi)` makes them generators) and
+solves its linear systems over `QQ`, over the number field of the
+algebraic constants (`I`, `sqrt(2)`: the arctangents of `1/(x**4 + 1)`
+need `sqrt(2)**2 = 2`) and over the fractions of the parameters;
+`sympy_extras.integrals.heurisch_sympy` is its face on SymPy objects.
 
 A binomial differential `x**m*(a + b*x**n)**p` with rational exponents
 whose integral Chebyshev's criterion proves non-elementary (none of
@@ -658,7 +723,7 @@ and mapped (which hide the binomial), cut where `z = 1`:
 
 ```python
 >>> from sympy import symbols, sqrt, log, tan
->>> from sympy_extras.integrals import indefinite_integral, verified_antiderivative
+>>> from sympy_extras.integrals.indefinite_sympy import indefinite_integral, verified_antiderivative
 >>> x = symbols('x')
 >>> indefinite_integral(sqrt(1 - x**2), x)
 x*sqrt(1 - x**2)/2 + asin(x)/2
@@ -696,6 +761,33 @@ Piecewise((exp(k*x)/k, Ne(k, 0)), (x, True))
 Ei(b*x*log(a))
 >>> indefinite_integral(sin(a*x)*sin(b*x), x)
 Piecewise((0, Eq(a, 0) & Eq(b, 0)), (-(b*x - sin(b*x)*cos(b*x))/(2*b), Eq(a, -b)), ((b*x - sin(b*x)*cos(b*x))/(2*b), Eq(a, b)), ((-sin(x*(a + b))/(a + b) + sin(x*(a - b))/(a - b))/2, True))
+
+```
+
+## Integration by hand, with the steps (`sympy_extras.integrals.manualintegrate`)
+
+A native port of SymPy's `manualintegrate` (SymPy 1.14): the integrand is
+matched against the table of a calculus course (powers, exponentials, the
+trigonometric and hyperbolic functions, the special functions with
+elementary derivatives) and transformed by substitution, integration by
+parts (cyclic when the integral comes back), the trigonometric identities
+and substitutions, completed squares and partial fractions.
+`integral_steps(f, x)` is the tree of the rules applied, frozen
+dataclasses whose `eval()` is the antiderivative, and `manualintegrate`
+evaluates it; a part it cannot do stays an unevaluated `Integral`. The
+rules are generators which yield the integrals they need to an
+`IntegralSolver`, as in SymPy's development branch. It is the method
+`'manual'` of the indefinite integration, and the first step of
+`antiderivative.elementary_antiderivative`.
+
+```python
+>>> import sympy_extras.core as core, sympy_extras.functions as fn
+>>> from sympy_extras.integrals.manualintegrate import integral_steps, manualintegrate
+>>> tc = core.Symbol('t')
+>>> manualintegrate(tc**2*fn.cos(3*tc - 1), tc)
+t**2*sin(3*t - 1)/3 + 2*t*cos(3*t - 1)/9 - 2*sin(3*t - 1)/27
+>>> type(integral_steps(fn.exp(tc)*fn.sin(tc), tc)).__name__
+CyclicPartsRule
 
 ```
 
@@ -751,11 +843,18 @@ the logarithmic derivatives found must vanish exactly on the curve, and
 the antiderivative is verified by differentiation; a component with a
 pole of order two or more at infinity after the reduction, a
 differential of the first kind, or a divisor not found torsion within
-the bound is left undecided, never answered.
+the bound is left undecided, never answered. The module is native
+(objects of the core, no SymPy imported: dense polynomials over `QQ`,
+over the number field of a primitive element of the constants, over the
+fields of rational functions of the parameters, or `EX`);
+`sympy_extras.integrals.trager_sympy` is its face on SymPy objects, used
+below, which reaches the general curve through `curves_sympy` (the
+residues of a field without radicals written with `CRootOf`).
 
 ```python
 >>> from sympy import symbols, sqrt, log, Rational
->>> from sympy_extras.integrals import trager_antiderivative, is_nonelementary_algebraic, definite_integral
+>>> from sympy_extras.integrals.trager_sympy import trager_antiderivative, is_nonelementary_algebraic
+>>> from sympy_extras.integrals.definite_sympy import definite_integral
 >>> x = symbols('x')
 >>> trager_antiderivative(x/sqrt(x**4 + 1), x)
 log(x**2 + sqrt(x**4 + 1))/2
@@ -788,9 +887,10 @@ in any number of radicals of rational functions of `x`, nested or not,
 of any index: `1/(sqrt(x + 1) + sqrt(x - 1))`, `cbrt(x**2*(x + 1))`
 together with its powers, `sqrt(x + sqrt(x))`. The radicals `g_i` are
 replaced by a primitive element `y = sum k_i g_i` (small integer weights,
-the minimal polynomial `F` of `y` over `Q(x)` by SymPy's
-`minimal_polynomial`, its degree the product of the indices when the
-radicals are independent, which is checked), and the integrand becomes
+the minimal polynomial `F` of `y` over `Q(x)` read off the powers of `y`
+in the monomial basis of the radicals, its degree the product of the
+indices when the radicals are independent, which is checked by its
+irreducibility), and the integrand becomes
 an element of the function field `Q(x)[y]/(F)` of
 `sympy_extras.polys.functionfields` (`AlgebraicIntegrand`). Trager's
 change of variable `x = N + 1/z`, with `N` an integer which is neither a
@@ -820,11 +920,14 @@ question open). The answer is written back in `x` and the original
 radicals through the monomial basis of the radicals, and
 `indefinite_integral` checks it by differentiation as every candidate.
 `trager_antiderivative`, `trager_reduce` and `is_nonelementary_algebraic`
-fall back to this route for the integrands beyond one radical.
+fall back to this route for the integrands beyond one radical. The
+module is native (objects of the core, no SymPy imported);
+`sympy_extras.integrals.curves_sympy` is its face on SymPy objects,
+used below.
 
 ```python
 >>> from sympy import symbols, sqrt, cbrt
->>> from sympy_extras.integrals.curves import curve_antiderivative, is_nonelementary_on_curve
+>>> from sympy_extras.integrals.curves_sympy import curve_antiderivative, is_nonelementary_on_curve
 >>> x = symbols('x')
 >>> curve_antiderivative(1/(sqrt(x + 1) + sqrt(x - 1)), x)
 -x*sqrt(x - 1)/3 + x*sqrt(x + 1)/3 + sqrt(x - 1)/3 + sqrt(x + 1)/3
@@ -868,9 +971,15 @@ condition whose relations are linear in the last variable (`y < exp(x)`,
 theorem with the bounds solved for that variable, the crossings of the
 bounds found by `solve`, and unbounded outer variables allowed.
 
+The module `sympy_extras.integrals.regions` is native (core objects, no
+SymPy); the one-dimensional integrals are a typed `Integrator` given as
+`integrator=`, by default `definite_integral` on SymPy's side. The
+functions on SymPy objects, used below, are in
+`sympy_extras.integrals.regions_sympy`.
+
 ```python
 >>> from sympy import symbols, exp
->>> from sympy_extras.integrals import IntegralByRanges, integrate_by_ranges
+>>> from sympy_extras.integrals.regions_sympy import IntegralByRanges, integrate_by_ranges
 >>> x, y, z, r = symbols('x y z r')
 >>> IntegralByRanges(1, x**2 + y**2 < 1).doit()
 pi
@@ -918,7 +1027,8 @@ pi*(-1 + 5*sqrt(5))/6
 A region with a rotational symmetry, one whose relations and integrand
 see a group of two or more variables only through the sum of their
 squares, is reduced to its profile in the half-plane of the radius
-(`sympy_extras.integrals.axisymmetric`): the group becomes one variable
+(`sympy_extras.integrals.axisymmetric`, native on the core; the SymPy
+face `axisymmetric_sympy`): the group becomes one variable
 `rho > 0` with the weight `2*pi**(k/2)/gamma(k/2)*rho**(k - 1)`, the area
 of the unit sphere `S**(k-1)`, and the profile, one dimension smaller and
 bounded by conics, goes back to the decomposition. Invariance is decided
@@ -1007,7 +1117,7 @@ interchange for two square-integrable factors):
 -pi**2*log(2)/8 + 7*zeta(3)/16
 >>> definite_integral(log(sin(x))*log(cos(x)), (x, 0, pi/2))
 pi*(-pi**2 + 24*log(2)**2)/48
->>> from sympy_extras.integrals.series import fourier_integral
+>>> from sympy_extras.integrals.series_sympy import fourier_integral
 >>> a = symbols('a', positive=True)
 >>> fourier_integral(x**2/(1 - 2*a*cos(x) + a**2), x, 0, pi, [a < 1]).value
 pi*(-12*polylog(2, -a) - pi**2)/(3*(a**2 - 1))

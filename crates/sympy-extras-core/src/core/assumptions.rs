@@ -629,8 +629,18 @@ pub fn constant_facts(e: &Basic) -> FactList {
 
 /// Whether `e` is built from numbers and constants only.
 pub fn is_number(e: &Basic) -> bool {
-    if e.is_symbol() {
+    // an undefined function, a derivative, and a node with a Tuple argument
+    // (not an expression: Subs) are not numbers
+    if e.is_symbol()
+        || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple)
+        || crate::sets::sets::is_set(e)
+        || matches!(e.head(), Head::AccumBounds | Head::Piecewise | Head::ExprCondPair)
+    {
         return false;
+    }
+    if matches!(e.head(), Head::IndexedRoot) {
+        // _is_number_node: no free symbols (the variable is bound)
+        return e.free_symbols().is_empty();
     }
     e.args().iter().all(is_number)
 }
@@ -1138,7 +1148,9 @@ pub fn pow_facts(base: &Basic, exp: &Basic) -> FactList {
     }
     // SymPy's Pow._eval_is_extended_negative
     let mut negative_value: Option<bool> = None;
-    if exp_rational == Some(&crate::numbers::rat(1, 2)) {
+    if exp_rational == Some(&crate::numbers::rat(1, 2)) && (yes(b, complex) || yes(b, extended_real)) {
+        // only for a base known to be a number: sqrt(a) of a plain symbol is
+        // not known to be non-negative (SymPy's is_extended_negative is None)
         negative_value = Some(false);
     } else if yes(b, extended_negative) {
         if yes(e, odd) && yes(b, finite) {
@@ -1236,8 +1248,186 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::Add => add_facts(e.args()),
         Head::Mul => mul_facts(e.args()),
         Head::Pow => pow_facts(&e.args()[0], &e.args()[1]),
+        Head::Function(f) => function_facts(e, *f),
+        Head::Undefined(u) => {
+            // AppliedUndef._eval_facts: the given assumptions, commutative
+            // from the arguments; then facts_of's rule of the functions
+            let mut facts: FactList = FactList(u.assumptions.clone());
+            let args: Vec<Option<bool>> = e
+                .args()
+                .iter()
+                .map(|a| facts_of(a).get(&commutative).copied())
+                .collect();
+            if args.iter().all(|v| *v == Some(true)) {
+                facts.set_default(commutative, true);
+            } else if args.contains(&Some(false)) {
+                facts.set_default(commutative, false);
+            }
+            if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {
+                facts.set(commutative, false);
+            }
+            facts
+        }
+        Head::Derivative | Head::Subs => {
+            let mut facts: FactList = FactList::new();
+            if let Some(v) = facts_of(&e.args()[0]).get(&commutative) {
+                facts.set(commutative, *v);
+            }
+            facts
+        }
+        Head::Tuple => FactList::new(),
+        Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
+        // a boolean is not an expression: no facts
+        Head::AccumBounds => super::accumbounds::bounds_facts(e),
+        Head::Piecewise => crate::functions::elementary::piecewise::piecewise_facts(e),
+        Head::ExprCondPair => FactList::new(),
+        _ if super::logic::is_boolean(e) || crate::sets::sets::is_set(e) => FactList::new(),
         _ => constant_facts(e),
     }
+}
+
+/// The facts of an applied function: its class's, then (as Python's
+/// `facts_of`) not commutative with a noncommutative argument, and the sign
+/// of a real numerical value found by evaluating it.
+fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
+    use crate::functions::elementary::exponential::{exp_facts, log_facts};
+    let mut facts: FactList = match f {
+        super::basic::Function::Exp => exp_facts(&e.args()[0]),
+        super::basic::Function::Log => log_facts(&e.args()[0]),
+        super::basic::Function::Sin
+        | super::basic::Function::Cos
+        | super::basic::Function::Tan
+        | super::basic::Function::Cot
+        | super::basic::Function::Sec
+        | super::basic::Function::Csc => {
+            crate::functions::elementary::trigonometric::trigonometric_facts(f, &e.args()[0])
+        }
+        super::basic::Function::Sinh
+        | super::basic::Function::Cosh
+        | super::basic::Function::Tanh
+        | super::basic::Function::Coth
+        | super::basic::Function::Sech
+        | super::basic::Function::Csch => crate::functions::elementary::hyperbolic::hyperbolic_facts(f, &e.args()[0]),
+        f if crate::functions::elementary::inverse::is_inverse(f) => {
+            crate::functions::elementary::inverse::inverse_facts(f, &e.args()[0])
+        }
+        g @ (super::basic::Function::Floor | super::basic::Function::Ceiling | super::basic::Function::Frac) => {
+            crate::functions::elementary::integers::rounding_facts(g, &e.args()[0])
+        }
+        g @ (super::basic::Function::Factorial
+        | super::basic::Function::Binomial
+        | super::basic::Function::RisingFactorial
+        | super::basic::Function::FallingFactorial
+        | super::basic::Function::Subfactorial
+        | super::basic::Function::Factorial2) => {
+            crate::functions::combinatorial::factorials::combinatorial_facts(g, e.args())
+        }
+        g @ (super::basic::Function::Gamma
+        | super::basic::Function::LogGamma
+        | super::basic::Function::PolyGamma
+        | super::basic::Function::DiGamma
+        | super::basic::Function::TriGamma) => crate::functions::special::gamma_functions::gamma_facts(g, e.args()),
+        g @ (super::basic::Function::Catalan
+        | super::basic::Function::Fibonacci
+        | super::basic::Function::Lucas
+        | super::basic::Function::Harmonic
+        | super::basic::Function::Bernoulli
+        | super::basic::Function::Euler
+        | super::basic::Function::Bell
+        | super::basic::Function::Genocchi
+        | super::basic::Function::Partition) => crate::functions::combinatorial::numbers::number_facts(g, e.args()),
+        g @ (super::basic::Function::Totient
+        | super::basic::Function::ReducedTotient
+        | super::basic::Function::DivisorSigma
+        | super::basic::Function::UDivisorSigma
+        | super::basic::Function::PrimeNu
+        | super::basic::Function::PrimeOmega
+        | super::basic::Function::Mobius
+        | super::basic::Function::PrimePi
+        | super::basic::Function::LegendreSymbol
+        | super::basic::Function::JacobiSymbol
+        | super::basic::Function::KroneckerSymbol
+        | super::basic::Function::Tribonacci
+        | super::basic::Function::Motzkin
+        | super::basic::Function::Andre) => {
+            crate::functions::combinatorial::numbertheory::number_theoretic_facts(g, e.args())
+        }
+        g @ (super::basic::Function::Beta
+        | super::basic::Function::BetaInc
+        | super::basic::Function::BetaIncRegularized) => {
+            crate::functions::special::beta_functions::beta_facts(g, e.args())
+        }
+        g @ (super::basic::Function::Erf
+        | super::basic::Function::Erfc
+        | super::basic::Function::Erfi
+        | super::basic::Function::Erfinv
+        | super::basic::Function::Erfcinv
+        | super::basic::Function::Erf2
+        | super::basic::Function::Erf2inv) => crate::functions::special::error_functions::error_facts(g, e.args()),
+        g @ (super::basic::Function::Expint
+        | super::basic::Function::Ei
+        | super::basic::Function::Si
+        | super::basic::Function::Ci
+        | super::basic::Function::Shi
+        | super::basic::Function::Chi
+        | super::basic::Function::LogIntegral
+        | super::basic::Function::OffsetLogIntegral
+        | super::basic::Function::FresnelS
+        | super::basic::Function::FresnelC) => crate::functions::special::error_functions::integral_facts(g, e.args()),
+        g @ (super::basic::Function::LowerGamma
+        | super::basic::Function::UpperGamma
+        | super::basic::Function::MultiGamma) => {
+            crate::functions::special::gamma_functions::incomplete_facts(g, e.args())
+        }
+        super::basic::Function::MathieuS
+        | super::basic::Function::MathieuC
+        | super::basic::Function::MathieuSPrime
+        | super::basic::Function::MathieuCPrime => crate::functions::special::mathieu_functions::mathieu_facts(),
+        g @ (super::basic::Function::EllipticK
+        | super::basic::Function::EllipticF
+        | super::basic::Function::EllipticE
+        | super::basic::Function::EllipticPi) => {
+            crate::functions::special::elliptic_integrals::elliptic_facts(g, e.args())
+        }
+        super::basic::Function::Ynm | super::basic::Function::Znm => {
+            crate::functions::special::spherical_harmonics::spherical_facts()
+        }
+        super::basic::Function::SingularityFunction => {
+            crate::functions::special::singularity_functions::singularity_facts()
+        }
+        super::basic::Function::KroneckerDelta | super::basic::Function::LeviCivita => {
+            crate::functions::special::tensor_functions::tensor_facts()
+        }
+        super::basic::Function::Mod => super::modulo::modulo_facts(e.args()),
+        g @ (super::basic::Function::Zeta
+        | super::basic::Function::DirichletEta
+        | super::basic::Function::PolyLog
+        | super::basic::Function::LerchPhi
+        | super::basic::Function::RiemannXi
+        | super::basic::Function::Stieltjes) => crate::functions::special::zeta_functions::zeta_facts(g, e.args()),
+        super::basic::Function::DiracDelta | super::basic::Function::Heaviside => {
+            crate::functions::special::delta_functions::delta_facts()
+        }
+        g @ (super::basic::Function::Max | super::basic::Function::Min) => {
+            crate::functions::elementary::miscellaneous::minmax_facts(g, e.args())
+        }
+        g @ (super::basic::Function::Arg | super::basic::Function::Atan2) => {
+            crate::functions::elementary::argument::argument_facts(g, e.args())
+        }
+        other => crate::functions::elementary::complexes::complexes_facts(other, &e.args()[0]),
+    };
+    if facts.get(commutative) == Some(true) && e.args().iter().any(|a| no(facts_of(a), commutative)) {
+        facts.set(commutative, false);
+    }
+    if ![positive, negative, zero].iter().any(|p| facts.contains(*p)) && is_number(e) {
+        let found: FactList = numeric_facts(e);
+        if found.get(real) == Some(true) {
+            for (name, known) in found.0.iter() {
+                facts.set_default(*name, *known);
+            }
+        }
+    }
+    facts
 }
 
 /// The closed facts of `e`, computed once and cached on the node.
@@ -1304,6 +1494,12 @@ mod structural_tests {
             Some(true)
         );
         assert_eq!(ask_structural(&pow(Basic::int(4), Basic::half()), irrational), None);
+        // sqrt(x) of a plain symbol is not known to be non-negative, sqrt(2) is
+        assert_eq!(ask_structural(&pow(x.clone(), Basic::half()), extended_negative), None);
+        assert_eq!(
+            ask_structural(&pow(Basic::int(2), Basic::half()), extended_negative),
+            Some(false)
+        );
         // n*(n + 1) is even
         let consecutive = mul(vec![n.clone(), add(vec![Basic::one(), n.clone()])]);
         assert_eq!(ask_structural(&consecutive, even), Some(true));

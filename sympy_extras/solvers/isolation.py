@@ -43,13 +43,12 @@ The module works on objects of the core (:mod:`sympy_extras.core`,
 :mod:`sympy_extras.solvers.isolation_sympy` is its face on SymPy objects.
 The signs, the zeros of the rational functions and the limits are native
 (:mod:`sympy_extras.assumptions.analysis`,
-:mod:`sympy_extras.assumptions.intervals`). Two steps go through SymPy at
-run time (the face holds them, the functions ending in ``_of_core``): the
-real roots of a polynomial which are not in radicals (SymPy's
-``real_roots``, whose ``CRootOf`` is not ported) and the continuity of a
-function which is not rational (SymPy's ``continuous_domain``); the zeros
-of such a function listed by SymPy's ``solveset`` come through
-:mod:`sympy_extras.assumptions.analysis`. The real roots in radicals
+:mod:`sympy_extras.assumptions.intervals`), and so are the real roots of
+the polynomials (in radicals, or as the canonical
+:class:`~sympy_extras.polys.cad.indexedroot.IndexedRoot`, SymPy's
+``CRootOf``), the continuity of a function which is not rational and its
+zeros listed exactly (the native continuity and transcendental solver of
+:mod:`sympy_extras.assumptions.analysis`). The real roots in radicals
 follow SymPy's ``ComplexRootOf._get_roots_qq``
 (``sympy/polys/rootoftools.py``), ported.
 
@@ -76,22 +75,20 @@ from typing import Final, Optional, Union
 
 import mpmath
 
-from sympy_extras.core.basic import Basic, preorder_traversal
+from sympy_extras.core.basic import Basic, NodePrinter
 from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import Float, Infinity, Integer, NegativeInfinity, Rational, number_from_fraction
-from sympy_extras.core.power import Pow
-from sympy_extras.core.printing import StrPrinter
 from sympy_extras.core.symbol import Symbol
+from sympy_extras.polys.numberfields.qqbar import Algebraic
 from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polyroots import preprocess_roots
 from sympy_extras.polys.polytools import Poly
-from sympy_extras.polys.rootisolation import dup_count_real_roots
 from sympy_extras.polys.roots import _trivial_roots
 from sympy_extras.sets.sets import Interval, Reals, Set, finite_set, interval
 from sympy_extras.settings import settings
-from sympy_extras.assumptions.analysis import (_between, _endpoint_value, _finite_zeros, _has_discrete_zeros,
-    _is_rational_in, _pieces, _real_zeros_in, _sorted_constants, certified_compare, certified_sign, sign_on)
+from sympy_extras.assumptions.analysis import (_between, _continuous_on, _endpoint_value, _finite_zeros,
+    _has_discrete_zeros, _pieces, _sorted_constants, certified_compare, certified_sign, sign_on)
 from sympy_extras.assumptions.intervals import Sign, evaluate, interval_sign
 
 __all__ = ['TranscendentalRoot', 'isolate_real_roots', 'real_roots_of', 'point_between', 'compare_points', 'Point']
@@ -262,7 +259,7 @@ class TranscendentalRoot(Expr):
         with mpmath.workprec(prec):
             return mpmath.mpc(mpmath.mpf(middle.numerator)/middle.denominator)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return "TranscendentalRoot(%s, %s, %s, %s)" % tuple(printer.doprint(a) for a in self.args)
 
 
@@ -481,37 +478,38 @@ def _dyadic_bracket(f: Expr, x: Symbol, lo: Fraction, hi: Fraction, p: Point, q:
 
 
 # PORTED FROM SYMPY: sympy/polys/rootoftools.py:ComplexRootOf._get_roots_qq
-def _real_roots(poly: Poly) -> Optional[list[Expr]]:
+def _real_roots(poly: Poly, name: str) -> list[Expr]:
     """The real roots of a polynomial over the rationals with their
     multiplicities, in increasing order, as SymPy's ``Poly.real_roots``
-    writes them when it needs no ``CRootOf`` (every irreducible factor
-    linear, quadratic or a binomial): the preprocessing, the real roots of
-    the factors in increasing order with their indices, the trivial roots
-    of each factor; ``None`` otherwise."""
+    writes them: the preprocessing, the real roots of the irreducible
+    factors in increasing order with their indices, the trivial roots of
+    each factor (linear, quadratic or a binomial) in radicals, the others
+    as the canonical :class:`~sympy_extras.polys.cad.indexedroot.IndexedRoot`
+    of their minimal polynomial (SymPy's ``CRootOf``). The roots are
+    ordered exactly, as real algebraic numbers."""
+    from sympy_extras.polys.cad.indexedroot import real_root
+    from sympy_extras.polys.cad.samplepoints import rational_real_roots
     coefficient, reduced = preprocess_roots(poly)
     _, factors = reduced.factor_list()
-    found: list[tuple[Expr, int]] = []
+    found: list[tuple[Algebraic, Expr, int]] = []
     for factor, multiplicity in factors:
         if factor.degree() < 1:
             continue
         trivial = _trivial_roots(factor)
-        if trivial is None:
-            return None
-        dense = [_fraction(_rational(c)) for c in factor.all_coeffs()]
-        for index in range(dup_count_real_roots(dense)):
-            found.append((trivial[index], multiplicity))
-    ordered: list[tuple[Expr, int]] = []
-    for root, multiplicity in found:
-        position = len(ordered)
-        for i, (other, _) in enumerate(ordered):
-            c = certified_compare(root, other)
-            if c is None:
-                return None
-            if c < 0:
-                position = i
-                break
-        ordered.insert(position, (root, multiplicity))
-    return [mul(coefficient, root) for root, multiplicity in ordered for _ in range(multiplicity)]
+        for index, (a, _) in enumerate(rational_real_roots(factor)):
+            found.append((a, real_root(a, name) if trivial is None else trivial[index], multiplicity))
+    found.sort(key=lambda entry: _AlgebraicKey(entry[0]))
+    return [mul(coefficient, root) for _, root, multiplicity in found for _ in range(multiplicity)]
+
+
+class _AlgebraicKey:
+    """Sorting key: the order of the real algebraic numbers."""
+
+    def __init__(self, value: Algebraic) -> None:
+        self.value: Final[Algebraic] = value
+
+    def __lt__(self, other: _AlgebraicKey) -> bool:
+        return self.value < other.value
 
 
 def _rational(c: Expr) -> Rational:
@@ -529,11 +527,7 @@ def _polynomial_roots(f: Expr, x: Symbol, a: Point, b: Point) -> Optional[list[E
         return None
     if poly.degree() <= 0:
         return [] if not poly.is_zero else None
-    roots = _real_roots(poly)
-    if roots is None:
-        from .isolation_sympy import real_roots_of_core
-        roots = real_roots_of_core(f, x)
-    return [r for r in roots if _strictly_inside(r, a, b)]
+    return [r for r in _real_roots(poly, x.name) if _strictly_inside(r, a, b)]
 
 
 def _strictly_inside(r: Expr, a: Point, b: Point) -> bool:
@@ -566,8 +560,8 @@ def _bounds(p: Point) -> tuple[Expr, Expr]:
 
 
 def _exact_zeros(f: Expr, x: Symbol, a: Point, b: Point) -> Optional[list[Expr]]:
-    """The zeros in ``(a, b)`` when they are listed exactly (natively for
-    a rational function, by SymPy's ``solveset`` otherwise)."""
+    """The zeros in ``(a, b)`` when they are listed exactly (by the
+    native solvers of :mod:`sympy_extras.assumptions.analysis`)."""
     outer = interval(_bounds(a)[0], _bounds(b)[1], True, True)
     zeros = _finite_zeros(f, x, outer)
     if zeros is None:
@@ -632,27 +626,6 @@ def _roots_between(f: Expr, x: Symbol, a: Point, b: Point, depth: int) -> Option
                 return None
             result.append(root)
     return result
-
-
-def _continuous_on(f: Expr, x: Symbol, piece: Interval) -> bool:
-    """Whether ``f`` is continuous on the piece: a rational function
-    natively, when no zero of a denominator is in the piece, another
-    function by SymPy's ``continuous_domain`` (through the face)."""
-    if _is_rational_in(f, x):
-        known = True
-        for node in preorder_traversal(f):
-            if isinstance(node, Pow) and isinstance(node.exp, Integer) and node.exp.p < 0 \
-                    and x in node.base.free_symbols:
-                found, poles = _real_zeros_in(node.base, x, piece)
-                if not found:
-                    known = False
-                    break
-                if poles:
-                    return False
-        if known:
-            return True
-    from .isolation_sympy import continuous_on_of_core
-    return continuous_on_of_core(f, x, piece)
 
 
 def isolate_real_roots(f: Expr, x: Symbol, domain: Set = Reals, depth: int = 4) -> Optional[list[Expr]]:

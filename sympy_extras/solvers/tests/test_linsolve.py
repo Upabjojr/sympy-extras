@@ -111,3 +111,18 @@ def test_solve_one_free_of_the_unknown_matches_sympy() -> None:
     for e in [sympy.Integer(0), sympy.Integer(3), 2*k + 1, i*x + x, 1 + i**-2, sympy.sin(i)]:
         assert sympy.solve(e, m) == []
         assert solve_one(expr_from_sympy(e), native_m) == [], e
+
+
+def test_solve_one_drops_roots_contradicting_the_unknown() -> None:
+    import sympy
+    from sympy_extras.core import Symbol, Rational
+    from sympy_extras.solvers.linsolve import solve_one
+    j, p, i = Symbol('j', integer=True), Symbol('p', positive=True), Symbol('i')
+    # 2*j - 1 with an integer j gave [1/2], where SymPy's solve gives []
+    assert solve_one(2*j - 1, j) == []
+    assert sympy.solve(2*sympy.Symbol('j', integer=True) - 1, sympy.Symbol('j', integer=True)) == []
+    assert solve_one(p + 1, p) == []
+    # kept when the assumptions hold, or cannot be decided
+    assert solve_one(2*j - 4, j) == [2]
+    assert solve_one(2*p - 1, p) == [Rational(1, 2)]
+    assert solve_one(2*j - i, j) == [i/2]

@@ -1,32 +1,28 @@
 """The SymPy face of solving under assumptions
-(:mod:`sympy_extras.assumptions.solve`), and the steps of ``solve``
-which are not ported.
+(:mod:`sympy_extras.assumptions.solve`).
 
 :func:`solve` takes and returns SymPy objects (the assumptions as
 statements, SymPy's sets), converted by :mod:`sympy_extras.interop`
 around the native function: the result is the native set rebuilt by
 SymPy's constructors.
 
-The steps of the native ``solve`` which stay written on SymPy are called
-from it at run time (the functions ending in ``_of_core``, which take and
-return objects of the core): SymPy's ``solveset`` for the equations which
-are not rational and for the inequalities, ``nonlinsolve``,
-``periodicity`` and the intersections of sets which the core does not
-evaluate (with ``Range``, ``ImageSet``, ...); the transcendental equations
-(:func:`sympy_extras.solvers.transcendental.solve_transcendental`), on
-SymPy's ``solveset``; and :func:`sympy_extras._numeric.reliable_value`.
-The cylindrical algebraic decomposition (:mod:`sympy_extras.polys.cad`),
+The native ``solve`` loads no SymPy: the equations in one unknown which
+are not rational and the inequalities (the native port of SymPy's
+``solveset``, :mod:`sympy_extras.solvers.solveset`), the systems which
+the regular chains do not solve (:mod:`sympy_extras.solvers.solvers`),
+the transcendental equations (:mod:`sympy_extras.solvers.transcendental`),
+:func:`sympy_extras._numeric.reliable_value`, the cylindrical
+algebraic decomposition (:mod:`sympy_extras.polys.cad`),
 the radical forms of the roots (:mod:`sympy_extras.polys.roots`), the
 isolation of real roots (:mod:`sympy_extras.solvers.isolation`) and the
 linear Diophantine systems (:mod:`sympy_extras.solvers.integers`), the
-triangular decompositions (:mod:`sympy_extras.polys.regularchains`, whose
-exact points go through :mod:`sympy_extras.polys.regularchains_sympy`) and
+triangular decompositions (:mod:`sympy_extras.polys.regularchains`) and
 the cases of the parameters (:mod:`sympy_extras.solvers.parametric`) are
 native.
 """
 from __future__ import annotations
 
-from typing import Callable, Optional, Sequence, Union
+from typing import Optional, Sequence, Union
 
 from sympy.core.basic import Basic
 from sympy.core.expr import Expr
@@ -35,20 +31,17 @@ from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
 from sympy.sets.sets import FiniteSet, Set
 
-from sympy_extras._typing import Truth, as_set
-from sympy_extras.core.expr import Expr as CoreExpr
-from sympy_extras.core.logic import Boolean as CoreBoolean
+from sympy_extras._typing_sympy import as_set
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
 from sympy_extras.sets.sets import PointSet as CorePointSet
 from sympy_extras.sets.sets import Set as CoreSet
 
 from . import solve as native
-from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolean, core_domain, sympy_boolean
-from .intervals_sympy import core_expr, core_symbol, sympy_expr, sympy_set
+from .ask_sympy import Assumptions, _sympy_symbol, core_assumptions, core_boolean, core_domain
+from .intervals_sympy import core_expr, core_symbol
 
-__all__ = ['solve', 'Statement', 'evaluated_set_of_core', 'solveset_of_core', 'reliable_value_of_core',
-    'solve_transcendental_of_core', 'periodicity_of_core', 'nonlinsolve_of_core']
+__all__ = ['solve', 'Statement']
 
 #: an equation or inequality to solve: an expression (equated to zero), a
 #: relation or a Boolean combination of relations
@@ -69,68 +62,6 @@ def _core_set(s: Basic) -> CoreSet:
 
 def _core_symbols(symbols: Sequence[CoreSymbol]) -> list[Symbol]:
     return [_sympy_symbol(s) for s in symbols]
-
-
-# ---------------------------------------------------------------------------
-# the steps of the native solve which stay on SymPy
-
-def evaluated_set_of_core(s: CoreSet) -> CoreSet:
-    """The set rebuilt by SymPy's constructors, which evaluate the
-    intersections the core leaves alone (``Interval`` and ``Integers``,
-    ``ImageSet`` and ``Reals``, ...)."""
-    return _core_set(to_sympy(s))
-
-
-def solveset_of_core(relation: CoreBoolean, x: CoreSymbol, domain: CoreSet) -> CoreSet:
-    """:func:`sympy.solveset` of one relation (its exceptions go on)."""
-    from sympy.solvers.solveset import solveset
-    return _core_set(solveset(sympy_boolean(relation), _sympy_symbol(x), sympy_set(domain)))
-
-
-def reliable_value_of_core(e: CoreExpr, digits: int) -> Optional[CoreExpr]:
-    """:func:`sympy_extras._numeric.reliable_value` of a constant."""
-    from sympy_extras._numeric import reliable_value
-    value = reliable_value(sympy_expr(e), digits)
-    return None if value is None else core_expr(value)
-
-
-def solve_transcendental_of_core(formula: CoreBoolean, x: CoreSymbol,
-                                 solver: Callable[[CoreBoolean, CoreSymbol], CoreSet],
-                                 decide: Callable[[CoreBoolean], Truth]) -> Optional[CoreSet]:
-    """:func:`sympy_extras.solvers.transcendental.solve_transcendental`,
-    with the polynomial formulas solved and the conditions decided by the
-    native functions given."""
-    from sympy_extras.solvers.transcendental import solve_transcendental
-
-    def sympy_solver(f: Boolean, v: Symbol) -> Optional[Set]:
-        return sympy_set(solver(core_boolean(f), core_symbol(v)))
-
-    def sympy_decide(c: Boolean) -> Truth:
-        return decide(core_boolean(c))
-
-    found = solve_transcendental(sympy_boolean(formula), _sympy_symbol(x), solver=sympy_solver, decide=sympy_decide)
-    return None if found is None else _core_set(found)
-
-
-def periodicity_of_core(f: CoreExpr, x: CoreSymbol) -> Optional[CoreExpr]:
-    """SymPy's ``periodicity`` (``None`` when ``f`` is not periodic)."""
-    from sympy.calculus.util import periodicity
-    value = periodicity(sympy_expr(f), _sympy_symbol(x))
-    return core_expr(value) if isinstance(value, Expr) else None
-
-
-def nonlinsolve_of_core(equations: list[CoreExpr], symbols: list[CoreSymbol]) -> Optional[CoreSet]:
-    """SymPy's ``nonlinsolve`` (its exceptions go on); ``None`` for a
-    finite set of points with sets among their coordinates (which no
-    substitution checks)."""
-    from sympy.solvers.solveset import nonlinsolve
-    found = as_set(nonlinsolve([sympy_expr(e) for e in equations], _core_symbols(symbols)))
-    if isinstance(found, FiniteSet) and any(not isinstance(value, Expr) for point in found.args
-                                            for value in point.args):
-        # nonlinsolve puts sets among the coordinates: (-sqrt(...), -sqrt(3*z/2
-        # - 5/4), Interval.open(-oo, 5/6)) for two equations in x, y, z
-        return None
-    return _core_set(found)
 
 
 # ---------------------------------------------------------------------------

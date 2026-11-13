@@ -5,11 +5,11 @@ from sympy import symbols, exp, sin, cos, log, atan, erf, sqrt, oo, gamma, pi, S
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import ExprLike, as_expr
-from sympy_extras.integrals.brackets import (taylor_coefficient, ramanujan_master_theorem, method_of_brackets,
+from sympy_extras._typing_sympy import ExprLike, as_expr
+from sympy_extras.integrals.brackets_sympy import (taylor_coefficient, ramanujan_master_theorem, method_of_brackets,
                                              mellin_transform_series)
-from sympy_extras.integrals.marichev import mellin_integrate
-from sympy_extras.integrals.mellin import mellin_transform
+from sympy_extras.integrals.marichev_sympy import mellin_integrate
+from sympy_extras.integrals.mellin_sympy import mellin_transform
 
 x, s = symbols('x s')
 
@@ -30,8 +30,13 @@ def test_taylor_coefficient() -> None:
     # phi(j) = (-1)^j j! c(j) of the master theorem
     phi = c.phi()
     assert phi is not None and phi.subs(c.index, 3) == -2
+    # the series of besselj(0, x) (SymPy's fps did not find it: None)
+    c = taylor_coefficient(besselj(0, x), x)
+    assert c is not None and (c.period, c.offset) == (2, 0)
+    assert [c.coefficient.subs(c.index, k) for k in range(3)] == [1, -Rational(1, 4), Rational(1, 64)]
     # no single closed form (two residue classes), and no series at all
-    assert taylor_coefficient(besselj(0, x), x) is None
+    assert taylor_coefficient(exp(x) + sin(x), x) is None
+    assert taylor_coefficient(log(x), x) is None
     c = taylor_coefficient(exp(x), x)
     assert c is not None and c.phi() is None
 
@@ -111,7 +116,7 @@ def test_formulas_which_fail_below_their_start_are_refused() -> None:
     # the bug: the formula of fps for (exp(4 x) - exp(-4 x))**2 holds from
     # k = 3 and gives 2 at k = 0, where the series has no term; the
     # integral over (0, 1) came out 2 too much
-    from sympy_extras.integrals.series import series_integral
+    from sympy_extras.integrals.series_sympy import series_integral
     f = (exp(4 * x) - exp(-4 * x))**2
     assert taylor_coefficient(f, x) is None
     assert series_integral(f, x, 0, 1) is None
@@ -121,4 +126,15 @@ def test_formulas_which_fail_below_their_start_are_refused() -> None:
     # the bug: fps gives (-1)**k for 1/(x**2 + x + 1), the series of
     # 1/(x + 1); the coefficients are checked against the Taylor expansion
     assert taylor_coefficient(1 / (x**2 + x + 1), x) is None
-    assert series_integral((1 - x) / (x**2 + x + 1), x, 0, 1) is None
+    # the series of the whole integrand is right; SymPy's summation did not
+    # close it, the native one does (log(4) - 1 was the wrong value)
+    found = series_integral((1 - x) / (x**2 + x + 1), x, 0, 1)
+    assert found is None or abs(float(found.value) - 0.357593537783054) < 1e-12
+
+
+def test_divergent_bracket_series_give_no_transform() -> None:
+    # the bug: SymPy's Sum.doit summed the series left by the bracket of
+    # exp(-x)/(1 + x) and the method returned E*pi/sin(pi*s); the transform
+    # is E*gamma(s)*uppergamma(1 - s, 1), 1.3433 at s = 1/2 and not 8.5397
+    found = method_of_brackets(exp(-x) / (1 + x), x, s)
+    assert found is None or abs(complex(found.transform.subs(s, S.Half).evalf(20)) - 1.34329342097686) < 1e-10

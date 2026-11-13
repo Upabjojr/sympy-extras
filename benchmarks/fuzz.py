@@ -38,18 +38,18 @@ from sympy.logic.boolalg import Boolean, BooleanTrue, BooleanFalse, And, true
 from sympy.polys.polytools import Poly, cancel
 
 from sympy_extras._timeout import attempt, time_limit, TimeLimitExceeded
-from sympy_extras._typing import as_boolean, as_expr
+from sympy_extras._typing_sympy import as_boolean, as_expr
 from sympy_extras.assumptions.ask_sympy import ask
 from sympy_extras.assumptions.facts_sympy import element
 from sympy_extras.assumptions.solve_sympy import solve
 from sympy_extras.assumptions.limits_sympy import limit
-from sympy_extras.concrete.convergence import sum_convergence
+from sympy_extras.concrete.convergence_sympy import sum_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series
 from sympy_extras.concrete.karr_sympy import karr_sum
 from sympy_extras.concrete.rational import rational_sum
-from sympy_extras.integrals.series import _polygamma_series_sympy
+from sympy_extras.integrals.series_sympy import _polygamma_series_sympy
 from sympy_extras.solvers.isolation_sympy import isolate_real_roots
-from sympy_extras.solvers.thue_equation import thue
+from sympy_extras.solvers.thue_equation_sympy import thue
 from sympy_extras.solvers.isolation_sympy import TranscendentalRoot
 
 #: the time limit of one case
@@ -602,7 +602,7 @@ def ode_case(rng: random.Random) -> tuple[str, Check]:
 
     def check() -> Optional[str]:
         from sympy import checkodesol
-        from sympy_extras.solvers.ode import solve_ode
+        from sympy_extras.solvers.ode_sympy import solve_ode
         solutions = attempt(lambda: solve_ode(equation, y), TIMEOUT)
         if not solutions:
             return None
@@ -687,7 +687,7 @@ def darboux_case(rng: random.Random) -> tuple[str, Check]:
     label = 'darboux_first_integral(%s, %s) for the level curves of %s' % (P, Q, integral)
 
     def check() -> Optional[str]:
-        from sympy_extras.solvers.darboux import darboux_first_integral
+        from sympy_extras.solvers.darboux_sympy import darboux_first_integral
         found = attempt(lambda: darboux_first_integral(P, Q, x, y), TIMEOUT)
         if found is None:
             return 'no first integral found'

@@ -34,18 +34,14 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import gcd
-from typing import Final, Iterable, Optional, TYPE_CHECKING, Union
+from typing import Final, Iterable, Optional, Union
 
 import mpmath
 
-from .basic import Basic
-from .expr import AtomicExpr, Expr, ExprLike, to_expr
+from .basic import Basic, NodePrinter, register_singleton
+from .expr import AtomicExpr, Expr, ExprLike, PolyLike, to_expr
 from .sorting import ClassKey, CompareItem, SortKey
-
-if TYPE_CHECKING:
-    from sympy_extras.polys.polytools import Poly
-    from .printing import StrPrinter
-    from .symbol import Symbol
+from .symbol import Symbol
 
 __all__ = ['Number', 'Rational', 'Integer', 'Float', 'RealNumber', 'Infinity', 'NegativeInfinity',
     'ComplexInfinity', 'NaN', 'NumberSymbol', 'Pi', 'Exp1', 'EulerGammaType', 'CatalanType',
@@ -201,7 +197,7 @@ class Rational(Number):
             return str(self.p)
         return '%d/%d' % (self.p, self.q)
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return str(self)
 
     def sort_value(self) -> Fraction:
@@ -229,7 +225,9 @@ class Rational(Number):
     def as_content_primitive(self, radical: bool = False, clear: bool = True) -> tuple[Number, Expr]:
         if self.p == 0:
             return (Integer(1), self)
-        return (Rational(abs(self.p), self.q), Integer(-1 if self.p < 0 else 1))
+        # an integer content is an Integer (Rational(2, 1) was returned, and
+        # factor_terms(a*x**2) then had the exponent Rational(2, 1))
+        return (number_from_fraction(Fraction(abs(self.p), self.q)), Integer(-1 if self.p < 0 else 1))
 
     def __int__(self) -> int:
         return int(Fraction(self.p, self.q))
@@ -401,22 +399,22 @@ class Float(Number):
 
     def __str__(self) -> str:
         with mpmath.workprec(self._prec):
-            v = mpmath.mpf(self._value.numerator) / self._value.denominator
+            v = fraction_to_mpf(self._value)
             return str(mpmath.nstr(v, self.dps, strip_zeros=False))
 
     def repr_str(self) -> str:
         """The digits SymPy's ``srepr`` shows (``'0.10000000000000001'`` at 53 bits)."""
         from mpmath.libmp import repr_dps
         with mpmath.workprec(self._prec):
-            return mpmath.nstr(mpmath.mpf(self._value.numerator) / self._value.denominator, repr_dps(self._prec))
+            return mpmath.nstr(fraction_to_mpf(self._value), repr_dps(self._prec))
 
     def short_str(self) -> str:
         """The value without trailing zeros, as printed inside an expression."""
         with mpmath.workprec(self._prec):
-            v = mpmath.mpf(self._value.numerator) / self._value.denominator
+            v = fraction_to_mpf(self._value)
             return str(mpmath.nstr(v, self.dps))
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return str(self)
 
     def __float__(self) -> float:
@@ -427,6 +425,20 @@ class Float(Number):
 
     def as_numer_denom(self) -> tuple[Expr, Expr]:
         return (self, Integer(1))
+
+
+def fraction_to_mpf(value: Fraction) -> mpmath.mpf:
+    """``value`` as an mpmath float at the working precision. A dyadic
+    value (the value of a :class:`Float`) is built from its mantissa and
+    exponent: mpmath converts an integer of millions of bits (the
+    denominator of ``1e-1000000``) in about a minute."""
+    numerator, denominator = value.numerator, value.denominator
+    if numerator == 0:
+        return mpmath.mpf(0)
+    if denominator & (denominator - 1) == 0:
+        zeros = (numerator & -numerator).bit_length() - 1
+        return mpmath.ldexp(mpmath.mpf(numerator >> zeros), zeros - (denominator.bit_length() - 1))
+    return mpmath.mpf(numerator) / denominator
 
 
 def _mpf_to_fraction(x: mpmath.mpf) -> Fraction:
@@ -459,7 +471,7 @@ class Infinity(Number):
     def __str__(self) -> str:
         return 'oo'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'oo'
 
     def _sign(self) -> int:
@@ -483,7 +495,7 @@ class NegativeInfinity(Number):
     def __str__(self) -> str:
         return '-oo'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return '-oo'
 
     def _sign(self) -> int:
@@ -510,7 +522,7 @@ class ComplexInfinity(Number):
     def __str__(self) -> str:
         return 'zoo'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'zoo'
 
 
@@ -528,7 +540,7 @@ class NaN(Number):
     def __str__(self) -> str:
         return 'nan'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'nan'
 
     def __float__(self) -> float:
@@ -555,7 +567,7 @@ class NumberSymbol(AtomicExpr):
     def __str__(self) -> str:
         return self.name
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return self.name
 
     def __float__(self) -> float:
@@ -652,7 +664,7 @@ class ImaginaryUnit(AtomicExpr):
     def __str__(self) -> str:
         return 'I'
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return 'I'
 
     def as_base_exp(self) -> tuple[Expr, Expr]:
@@ -671,6 +683,8 @@ RealNumber = Float
 oo = Infinity()
 zoo = ComplexInfinity()
 nan = NaN()
+for _constant in (pi, E, EulerGamma, Catalan, GoldenRatio, TribonacciConstant, I, oo, zoo, nan):
+    register_singleton(_constant)
 
 
 def number_add(a: Number, b: Number) -> Number:
@@ -828,7 +842,7 @@ class AlgebraicNumber(Expr):
         return self.as_expr()
 
     @property
-    def minpoly(self) -> 'Poly':
+    def minpoly(self) -> PolyLike:
         """The minimal polynomial over the rationals, in a dummy
         (:mod:`sympy_extras.polys.numberfields.minpoly`)."""
         from sympy_extras.polys.numberfields.minpoly import minimal_polynomial
@@ -837,7 +851,7 @@ class AlgebraicNumber(Expr):
         x = Dummy('x')
         return Poly(minimal_polynomial(self.as_expr(), x), x)
 
-    def as_poly(self, *gens: 'Symbol') -> Optional['Poly']:
+    def as_poly(self, *gens: Symbol) -> Optional[PolyLike]:
         """The polynomial with the coefficients (highest degree first) in
         the first of ``gens`` (or in a dummy)."""
         from sympy_extras.polys.polytools import Poly
@@ -859,7 +873,7 @@ class AlgebraicNumber(Expr):
         facts['algebraic'] = True
         return facts
 
-    def _sympystr(self, printer: StrPrinter) -> str:
+    def _sympystr(self, printer: NodePrinter) -> str:
         return printer.doprint(self.as_expr())
 
 

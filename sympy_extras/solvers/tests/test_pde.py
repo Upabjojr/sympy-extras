@@ -4,8 +4,8 @@ from sympy import Function, symbols, exp, sqrt, erf, simplify
 from sympy.solvers.pde import checkpdesol
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.pde import pde_symmetries, similarity_reduction, pdsolve_lie
-from sympy_extras.solvers.lie import check_symmetry, JetSpace, Symmetry
+from sympy_extras.solvers.pde_sympy import pde_symmetries, similarity_reduction, pdsolve_lie
+from sympy_extras.solvers.lie_sympy import check_symmetry, JetSpace, Symmetry
 
 x, t = symbols('x t')
 u = Function('u')(x, t)

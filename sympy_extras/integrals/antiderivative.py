@@ -23,23 +23,35 @@ repair which needs neither: cut the range at every point where ``F`` or
 with `a = c_0 < c_1 < \\ldots < c_n = b` the singular points. A jump of
 ``F`` at an interior point is subtracted by the two limits which meet
 there, and an infinite limit at a singularity of ``f`` exposes the
-divergence instead of hiding it. This module implements that repair
-around SymPy's indefinite ``integrate`` (and the Risch port of
-:mod:`sympy_extras.integrals.risch` when it applies), with the limits
-taken by :func:`sympy_extras.assumptions.limit` under the assumptions on
-the parameters.
+divergence instead of hiding it. The limits are taken by
+:func:`sympy_extras.assumptions.limits.limit` under the assumptions on
+the parameters, the points are found by the native
+:func:`sympy_extras.assumptions.solve.solve` and placed by the native
+:func:`~sympy_extras.assumptions.ask.ask`.
+
+The module works on the objects of :mod:`sympy_extras.core` and imports
+no SymPy. The antiderivative itself is a step of its own, an
+:data:`AntiderivativeStep` which every function takes: by default
+:func:`antiderivative`, which tries the native table of quadratic
+radicals (:mod:`.radicals`), the polynomials in elementary functions by
+the native rules of :mod:`.manualintegrate` and the native heuristics
+(:func:`elementary_antiderivative`), and the verified methods of the
+native :mod:`.indefinite`, whose last methods (SymPy's) load SymPy on
+their paths only. A native antiderivative (the native ``ratint`` of
+:mod:`.risch.rationaltools`, say) runs the whole method without SymPy. The singularities of the integrand are those of SymPy's
+``singularities`` (a port, :func:`singularities`). The functions on SymPy
+objects are in :mod:`.antiderivative_sympy`.
 
 Examples
 ========
 
->>> from sympy import symbols, integrate, cos, pi
+>>> from sympy_extras.core import Symbol, S, oo, pi
+>>> from sympy_extras.functions import cos
 >>> from sympy_extras.integrals.antiderivative import antiderivative_integral
->>> x = symbols('x')
->>> antiderivative_integral(1/(2 + cos(x)), x, 0, 2*pi)
+>>> x = Symbol('x')
+>>> antiderivative_integral(1/(2 + cos(x)), x, S.Zero, 2*pi)
 ConditionalValue(2*sqrt(3)*pi/3)
->>> integrate(1/(2 + cos(x)), (x, 0, 2*pi))
-2*sqrt(3)*pi/3
->>> antiderivative_integral(1/x**2, x, -1, 1)
+>>> antiderivative_integral(1/x**2, x, -S.One, S.One)
 ConditionalValue(oo)
 
 References
@@ -53,67 +65,97 @@ References
    integrals avoiding spurious discontinuities*, ACM Transactions on
    Mathematical Software 20 (1994) 124–135.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/calculus/singularities.py (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: strict typing, the points as a list (None when a set is not
+# finite) solved by the native solve under the assumptions on the range.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
+import itertools
 import random
-from typing import Optional
-
-from sympy.calculus.accumulationbounds import AccumBounds
-from sympy.calculus.singularities import singularities
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.function import Function, expand
-from sympy.core.numbers import Integer, Rational, nan, oo, pi, zoo
-from sympy.core.relational import Relational
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.functions.special.error_functions import erf
-from sympy.simplify.powsimp import powsimp
-from sympy.functions.elementary.hyperbolic import sinh, cosh
-from sympy.functions.elementary.trigonometric import atan, acot, sin, cos
-from sympy.polys.polytools import cancel, degree
-from sympy.functions.elementary.complexes import Abs, im, sign
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.special.delta_functions import Heaviside
-from sympy.integrals.integrals import Integral, integrate
-from sympy.logic.boolalg import Boolean
-from sympy.sets.conditionset import ConditionSet
-from sympy.sets.fancysets import ImageSet
-from sympy.sets.sets import FiniteSet, Intersection, Interval, Set
-from sympy.series.limits import Limit
-from sympy.series.series import series
-from sympy.core.add import Add
+from typing import Callable, Final, Optional
 
 from sympy_extras._numeric import reliable_value
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
-from sympy_extras.assumptions.facts_sympy import element
-from sympy_extras.assumptions.limits_sympy import limit
-from sympy_extras.assumptions.solve_sympy import solve
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.facts import element
+from sympy_extras.assumptions.limits import limit
+from sympy_extras.assumptions.solve import solve
+from sympy_extras.core.accumbounds import AccumBounds
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import Application, expand
+from sympy_extras.core.limits import Limit
+from sympy_extras.core.logic import And, Boolean, Or, to_boolean, true
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer, Rational, nan, oo, pi, zoo
+from sympy_extras.core.power import Pow, sqrt
+from sympy_extras.core.relational import Eq, Relational
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import Abs, Im, Sign, abs_, im
+from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
+from sympy_extras.functions.elementary.hyperbolic import (Acoth, Acsch, Asech, Atanh, Cosh, Coth, Csch, Sech, Sinh,
+                                                          Tanh, cosh, sinh)
+from sympy_extras.functions.elementary.piecewise import ExprCondPair, Piecewise
+from sympy_extras.functions.elementary.trigonometric import Acot, Atan, Cos, Cot, Csc, Sec, Sin, Tan, cos, sin
+from sympy_extras.functions.special.delta_functions import Heaviside
+from sympy_extras.functions.special.error_functions import Erf, erf
+from sympy_extras.polys.polytools import cancel
+from sympy_extras.sets import EmptySet, FiniteSet, Reals
 from sympy_extras.settings import settings
+from sympy_extras.simplify.powsimp import powsimp
+
 from .conditions import ConditionalValue, sample_values
 
-__all__ = ['antiderivative', 'quick_shape', 'by_parts_shape', 'discontinuities', 'antiderivative_integral', 'one_sided_limit',
-           'select_branch',
-           'principal_value_integral', 'finite_part_integral']
+__all__ = ['AntiderivativeStep', 'antiderivative', 'elementary_antiderivative', 'elementary_polynomial', 'quick_shape', 'by_parts_shape',
+           'singularities', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch',
+           'generic_antiderivative',
+           'real_logarithms', 'principal_value_integral', 'finite_part_integral']
+
+
+#: an antiderivative of ``f`` in ``x`` under the assumptions, by the exact
+#: methods or (with the last argument ``True``) by the heuristic ones;
+#: ``None`` when none is found. :func:`antiderivative` is the default
+AntiderivativeStep = Callable[[Expr, Symbol, Assumptions, bool], Optional[Expr]]
 
 
 #: the methods of the indefinite dispatcher tried for a definite integral:
 #: the exact ones, which fail fast; the heuristics (the Risch–Norman
 #: method, the substitutions, SymPy's manual and Meijer routes) spend
 #: their whole budget on every piece of every mapped range
-_METHODS = ['rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'trager', 'binomial', 'sympy']
+_METHODS: Final[tuple[str, ...]] = ('rational', 'radicals', 'exponential', 'trigonometric', 'risch', 'trager',
+                                    'binomial', 'manual', 'meijer')
 
 
 #: the heuristic methods, tried late and under a larger budget
-_LATE_METHODS = ['heurisch', 'rewriting', 'rewritten heurisch', 'manual', 'meijer', 'sympy']
+_LATE_METHODS: Final[tuple[str, ...]] = ('heurisch', 'rewriting', 'rewritten heurisch', 'manual', 'meijer')
+
+#: the classes of the elementary functions of linear arguments which
+#: integrate takes at once, with their evaluating functions
+_ELEMENTARY: Final[dict[type[Basic], Callable[[ExprLike], Expr]]] = {
+    Sin: sin, Cos: cos, Exp: exp, Sinh: sinh, Cosh: cosh}
+
+_COUNTER: Final = itertools.count()
+
+
+def _fresh(name: str, **assumptions: bool) -> Dummy:
+    """A dummy with a name of its own: the typed polynomials map their
+    symbols by name, so a dummy ``x`` beside the variable ``x`` would be
+    taken for it."""
+    return Dummy('%s_%d' % (name, next(_COUNTER)), **assumptions)
+
+
+def _budget(share: int) -> Optional[float]:
+    return None if settings.timeout is None else settings.timeout / share
 
 
 def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bool = False) -> Optional[Expr]:
-    """An antiderivative of ``f`` by the radical table, by ``integrate``
+    """An antiderivative of ``f`` by the radical table, by :func:`elementary_antiderivative`
     for a polynomial in elementary functions, and by the verified methods
     of :mod:`.indefinite` otherwise, under an eighth of the time limit;
     ``None`` when none is found (an unevaluated ``Integral`` in the result
@@ -121,24 +163,39 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
     (``1/(cosh(n*t)**2 + 1)`` has an antiderivative for ``n > 0``, none
     that checks for a general ``n``). With ``late`` the heuristic methods
     are tried instead, under a quarter of the time limit (the second pass
-    of the definite driver, after its slow methods)."""
+    of the definite driver, after its slow methods).
+
+    The radical table, :func:`elementary_antiderivative` and
+    :mod:`.indefinite` are native; the last methods of :mod:`.indefinite`
+    are reached through :mod:`.indefinite_sympy`, which loads SymPy.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol, sqrt
+    >>> from sympy_extras.integrals.antiderivative import antiderivative
+    >>> x = Symbol('x')
+    >>> antiderivative(1/sqrt(2*x - x**2), x)
+    asin(x - 1)
+    """
     from .radicals import quadratic_radical_antiderivative
     found = quadratic_radical_antiderivative(f, x)
     if found is not None:
         # a real form (SymPy writes the arcsine of sqrt(1 - x**2) as a
         # complex logarithm, whose limits at algebraic bounds fail)
         return found
-    if _elementary_polynomial(f, x):
+    if elementary_polynomial(f, x):
         # a polynomial in x and in exponentials and trigonometric functions
-        # of linear arguments: integrate does it at once, where the Risch
-        # port spends seconds on gcds over the constants of the arguments
-        # (sin(pi*t/4 + pi/4)**3 took 7 s, on every quarter period); the
-        # arguments expanded, since sin(pi*(t/4 + 1/4)) takes integrate
-        # 8 s where sin(pi*t/4 + pi/4) takes a tenth of one
-        g = as_expr(f.replace(lambda n: isinstance(n, (sin, cos, exp, sinh, cosh)),
-                              lambda n: n.func(expand(as_expr(n.args[0])))))
-        found = attempt(lambda: as_expr(integrate(g, x, risch=False)), settings.timeout)
-        if found is not None and not found.has(Integral):
+        # of linear arguments: the rules of manualintegrate and the
+        # heuristic Risch method do it at once (SymPy's integrate answered
+        # them so), where the Risch port spends seconds on gcds over the
+        # constants of the arguments (sin(pi*t/4 + pi/4)**3 took 7 s, on
+        # every quarter period, t**2*cos(3*t - 1) 10 s in a tan(1/2) form);
+        # the arguments expanded (sin(pi*(t/4 + 1/4)) is
+        # sin(pi*t/4 + pi/4))
+        g = as_expr(f.replace(lambda n: type(n) in _ELEMENTARY, _expanded_argument))
+        found = elementary_antiderivative(g, x, settings.timeout)
+        if found is not None:
             return found
     found = _logarithm_by_parts(f, x)
     if found is not None:
@@ -151,62 +208,156 @@ def antiderivative(f: Expr, x: Symbol, assumptions: Assumptions = None, late: bo
     # algorithm, SymPy's integrate last), every candidate checked by
     # differentiation:
     # 1/(cosh(n*t)**2 + 1) has a real logarithmic form there where the
-    # Risch port gives up and integrate answers a Piecewise in tanh
-    from .indefinite import verified_antiderivative
+    # Risch port gives up and integrate answers a Piecewise in tanh;
     # an eighth of the time limit: the methods may spend it all, the
     # route is tried on every piece of every mapped range, and the other
     # methods of the driver need their share (log(sin(x)/x) over
     # (0, pi/2) lost its budget to the failures on its pieces)
-    share = 4 if late else 8
-    budget = None if settings.timeout is None else settings.timeout / share
-    try:
-        verified = attempt(lambda: verified_antiderivative(f, x, assumptions, _LATE_METHODS if late else _METHODS),
-                           budget)
-    except (AttributeError, ZeroDivisionError, AssertionError):
-        # SymPy 1.14: the cache wrapper of meijerint fails on a lazy
-        # exception message ('LazyExceptionMessage' has no 'startswith')
-        return None
-    if verified is None or verified[0].has(Integral):
-        return None
-    return verified[0]
+    from .indefinite import verified_antiderivative
+    methods = list(_LATE_METHODS if late else _METHODS)
+    verified = attempt(lambda: verified_antiderivative(f, x, assumptions, methods), _budget(4 if late else 8),
+                       native=True)
+    return None if verified is None else verified[0]
 
 
-def _elementary_polynomial(f: Expr, x: Symbol) -> bool:
+#: the methods of the indefinite dispatcher tried on the terms of a
+#: polynomial in elementary functions which the rules do not integrate
+#: (not the trigonometric one: t*cos(t)*sinh(t) took it 14 s, in a complex
+#: form, where the heuristic gives the real one in 1 s)
+_ELEMENTARY_METHODS: Final[list[str]] = ['exponential', 'heurisch']
+
+
+def elementary_antiderivative(f: Expr, x: Symbol, seconds: Optional[float]) -> Optional[Expr]:
+    """An antiderivative of ``f``, a polynomial in ``x`` and in elementary
+    functions of linear arguments (or a part of the integrations by parts
+    of :func:`antiderivative`: an exponential integral, a polynomial times
+    a Gaussian), within ``seconds``: the rules of the native
+    :func:`~.manualintegrate.manualintegrate`, checked by
+    differentiation, and failing them the native exponential and
+    heuristic Risch methods of :mod:`.indefinite` on
+    the whole and then on each term (the routes by which SymPy's
+    ``integrate`` answered these integrands); ``None`` when no
+    antiderivative checks in time.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import cos, sinh
+    >>> from sympy_extras.integrals.antiderivative import elementary_antiderivative
+    >>> t = Symbol('t')
+    >>> elementary_antiderivative(t**2*cos(3*t - 1), t, None)
+    t**2*sin(3*t - 1)/3 + 2*t*cos(3*t - 1)/9 - 2*sin(3*t - 1)/27
+    >>> elementary_antiderivative(t*cos(t)*sinh(t), t, None)
+    t*sin(t)*sinh(t)/2 + t*cos(t)*cosh(t)/2 - sin(t)*cosh(t)/2
+    """
+    from .indefinite import is_antiderivative, verified_antiderivative
+    from .integral import Integral
+    from .manualintegrate import manualintegrate
+
+    def run() -> Optional[Expr]:
+        found = manualintegrate(f, x)
+        if not found.has(Integral) and is_antiderivative(found, f, x) is True:
+            return found
+        verified = verified_antiderivative(f, x, None, _ELEMENTARY_METHODS)
+        if verified is not None:
+            return verified[0]
+        terms = Add.make_args(expand(f))
+        if len(terms) < 2:
+            return None
+        total: Expr = S.Zero
+        for term in terms:
+            piece = manualintegrate(term, x)
+            if piece.has(Integral) or is_antiderivative(piece, term, x) is not True:
+                verified = verified_antiderivative(term, x, None, _ELEMENTARY_METHODS)
+                if verified is None:
+                    return None
+                piece = verified[0]
+            total = total + piece
+        return total
+    return attempt(run, seconds, native=True)
+
+
+def _expanded_argument(node: Basic) -> Basic:
+    """An elementary function of :data:`_ELEMENTARY` with its argument
+    expanded."""
+    function = _ELEMENTARY[type(node)]
+    return function(expand(as_expr(node.args[0])))
+
+
+def elementary_polynomial(f: Expr, x: Symbol) -> bool:
     """Whether ``f`` is a polynomial in ``x`` and in sines, cosines,
-    exponentials and hyperbolic functions of arguments linear in ``x``."""
-    replacement: dict[Expr, Expr] = {}
-    for node in f.atoms(Function):
+    exponentials and hyperbolic functions of arguments linear in ``x``.
+
+    >>> from sympy_extras.core import Symbol, pi
+    >>> from sympy_extras.functions import sin, exp, log
+    >>> from sympy_extras.integrals.antiderivative import elementary_polynomial
+    >>> t = Symbol('t')
+    >>> elementary_polynomial(sin(pi*t/4 + pi/4)**3*exp(2*t), t), elementary_polynomial(log(t)*sin(t), t)
+    (True, False)
+    """
+    replacement: dict[Basic, Basic] = {}
+    for node in f.atoms(Application):
         if not node.has(x):
             continue
-        if not isinstance(node, (sin, cos, exp, sinh, cosh)) or len(node.args) != 1:
+        if type(node) not in _ELEMENTARY or len(node.args) != 1:
             return False
         argument = as_expr(node.args[0])
-        if not argument.is_polynomial(x) or degree(argument, x) != 1:
+        if not _linear(argument, x):
             return False
-        replacement[node] = Dummy()
-    substituted = as_expr(f.xreplace(replacement))
-    return bool(substituted.is_polynomial(x, *replacement.values()))
+        replacement[node] = _fresh('e')
+    substituted = as_expr(f._xreplace_evaluated(replacement))
+    variables = [x] + [s for s in replacement.values() if isinstance(s, Symbol)]
+    return substituted.is_polynomial(*variables) is True
+
+
+def _linear(argument: Expr, x: Symbol) -> bool:
+    """Whether ``argument`` is a polynomial of degree one in ``x`` (its
+    derivative a nonzero constant: the native ``degree`` takes no
+    coefficients outside the ported domains, ``pi/4``)."""
+    if argument.is_polynomial(x) is not True:
+        return False
+    slope = argument.diff(x)
+    return not slope.has(x) and slope.is_zero is not True
 
 
 def quick_shape(f: Expr, x: Symbol) -> bool:
     """Whether ``f`` is of a shape the antiderivative comes at once for: a
     polynomial in ``x`` and in elementary functions of linear arguments,
-    or such a polynomial with exponentials times ``log(x)``."""
-    return _elementary_polynomial(f, x) or by_parts_shape(f, x) or _error_function_shape(f, x)
+    or such a polynomial with exponentials times ``log(x)`` or times one
+    error function.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import exp, log, sin
+    >>> from sympy_extras.integrals.antiderivative import quick_shape
+    >>> x = Symbol('x')
+    >>> quick_shape(x**3*exp(-x)*log(x), x), quick_shape(sin(x)/x, x)
+    (True, False)
+    """
+    return elementary_polynomial(f, x) or by_parts_shape(f, x) or _error_function_shape(f, x)
+
+
+def _error_functions(f: Expr) -> list[Expr]:
+    return [factor for factor in Mul.make_args(f) if isinstance(factor, Erf)]
 
 
 def _error_function_shape(f: Expr, x: Symbol) -> bool:
-    errors = [as_expr(factor) for factor in Mul.make_args(f) if isinstance(factor, erf)]
-    return len(errors) == 1 and _elementary_polynomial(as_expr(f / errors[0]), x)
+    errors = _error_functions(f)
+    return len(errors) == 1 and elementary_polynomial(f / errors[0], x)
 
 
 def by_parts_shape(f: Expr, x: Symbol) -> bool:
-    """Whether ``f`` is a polynomial in ``x`` and exponentials times ``log(x)``."""
-    logarithms = [as_expr(factor) for factor in Mul.make_args(f) if isinstance(factor, log)]
+    """Whether ``f`` is a polynomial in ``x`` and exponentials times ``log(x)``.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import exp, log
+    >>> from sympy_extras.integrals.antiderivative import by_parts_shape
+    >>> x = Symbol('x')
+    >>> by_parts_shape(x**3*exp(-x)*log(x), x), by_parts_shape(x*log(x), x)
+    (True, False)
+    """
+    logarithms = [factor for factor in Mul.make_args(f) if isinstance(factor, Log)]
     if len(logarithms) != 1 or logarithms[0] != log(x):
         return False
-    g = as_expr(f / log(x))
-    return not g.has(log) and _elementary_polynomial(g, x) and bool(g.has(exp))
+    g = f / log(x)
+    return not g.has(Log) and elementary_polynomial(g, x) and g.has(Exp)
 
 
 def _error_function_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:
@@ -217,31 +368,30 @@ def _error_function_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:
     its square at once, where ``integrate`` spent a minute on
     ``cosh(u - w)*exp(-w**2)``): ``sinh(u - w)*erf(w)`` over ``(0, u)``
     (Maxima's ``laplace`` 57). ``None`` for another shape."""
-    errors = [as_expr(factor) for factor in Mul.make_args(f) if isinstance(factor, erf)]
+    errors = _error_functions(f)
     if len(errors) != 1:
         return None
     argument = as_expr(errors[0].args[0])
     k, variable = argument.as_independent(x, as_Add=False)
-    if as_expr(variable) != x or as_expr(k).has(x):
+    if variable != x or k.has(x):
         return None
-    g = as_expr(f / errors[0])
-    if g.has(erf) or not _elementary_polynomial(g, x):
+    g = f / errors[0]
+    if g.has(Erf) or not elementary_polynomial(g, x):
         return None
-    plain = Dummy(x.name)
-    g = as_expr(g.subs(x, plain))
-    budget = None if settings.timeout is None else settings.timeout / 8
-    G = attempt(lambda: as_expr(integrate(g, plain, risch=False)), budget)
-    if G is None or G.has(Integral):
+    plain = _fresh(x.name)
+    g = g.subs(x, plain)
+    budget = _budget(8)
+    G = elementary_antiderivative(g, plain, budget)
+    if G is None:
         return None
-    remainder = as_expr(expand(G.rewrite(exp) * exp(-as_expr(k)**2 * plain**2)))
+    remainder = expand(G.rewrite(Exp) * exp(-k**2 * plain**2))
     H: Expr = S.Zero
     for term in Add.make_args(remainder):
-        combined = as_expr(powsimp(as_expr(term), combine='exp'))
-        piece = attempt(lambda: as_expr(integrate(combined, plain, risch=False)), budget)
-        if piece is None or piece.has(Integral):
+        piece = elementary_antiderivative(powsimp(term, combine='exp'), plain, budget)
+        if piece is None:
             return None
         H = H + piece
-    return as_expr((G * erf(as_expr(k) * plain) - 2 * as_expr(k) / sqrt(pi) * H).subs(plain, x))
+    return (G * erf(k * plain) - 2 * k / sqrt(pi) * H).subs(plain, x)
 
 
 def _logarithm_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:
@@ -252,19 +402,18 @@ def _logarithm_by_parts(f: Expr, x: Symbol) -> Optional[Expr]:
     six). ``None`` for another shape."""
     if not by_parts_shape(f, x):
         return None
-    g = as_expr(f / log(x))
-    # on a plain dummy: integrate is four times slower on a symbol
-    # declared positive (the assumptions are consulted at every step)
-    plain = Dummy(x.name)
-    g = as_expr(g.subs(x, plain))
-    budget = None if settings.timeout is None else settings.timeout / 8
-    G = attempt(lambda: as_expr(integrate(g, plain, risch=False)), budget)
-    if G is None or G.has(Integral):
+    # on a plain dummy: the rules are slower on a symbol declared
+    # positive (the assumptions are consulted at every step)
+    plain = _fresh(x.name)
+    g = (f / log(x)).subs(x, plain)
+    budget = _budget(8)
+    G = elementary_antiderivative(g, plain, budget)
+    if G is None:
         return None
-    H = attempt(lambda: as_expr(integrate(cancel(G / plain), plain, risch=False)), budget)
-    if H is None or H.has(Integral):
+    H = elementary_antiderivative(cancel(G / plain), plain, budget)
+    if H is None:
         return None
-    return as_expr((G * log(plain) - H).subs(plain, x))
+    return (G * log(plain) - H).subs(plain, x)
 
 
 def _not_real(p: Expr, assumptions: Assumptions) -> bool:
@@ -273,44 +422,117 @@ def _not_real(p: Expr, assumptions: Assumptions) -> bool:
     ``n > 0`` (a singularity of an antiderivative in ``exp(2*n*t)`` which
     lies off the real line, where SymPy's ``singularities`` leaves it
     intersected with the range)."""
-    replacement: dict[Expr, Expr] = {}
+    replacement: dict[Basic, Basic] = {}
     for q in p.free_symbols:
         if not isinstance(q, Symbol):
             continue
-        if ask(as_boolean(q > 0), assumptions) is True:
-            replacement[q] = Dummy(q.name, positive=True)
-        elif ask(as_boolean(q < 0), assumptions) is True:
-            replacement[q] = Dummy(q.name, negative=True)
-        elif q.is_extended_real or ask(element(q, S.Reals), assumptions):
-            replacement[q] = Dummy(q.name, real=True)
+        if ask(q > 0, assumptions) is True:
+            replacement[q] = _fresh(q.name, positive=True)
+        elif ask(q < 0, assumptions) is True:
+            replacement[q] = _fresh(q.name, negative=True)
+        elif q.is_extended_real or ask(element(q, Reals), assumptions):
+            replacement[q] = _fresh(q.name, real=True)
     if not replacement:
         return False
-    substituted = as_expr(p.xreplace(replacement))
+    substituted = as_expr(p._xreplace_evaluated(replacement))
     if substituted.is_extended_real is False:
         return True
-    imaginary = as_expr(im(substituted))
-    return not imaginary.has(im) and imaginary.is_zero is False
+    imaginary = im(substituted)
+    return not imaginary.has(Im) and imaginary.is_zero is False
 
 
-def _points_in(points: list[Expr], x: Symbol, a: Expr, b: Expr,
-               assumptions: Assumptions) -> Optional[list[Expr]]:
+def _points_in(points: list[Expr], a: Expr, b: Expr, assumptions: Assumptions) -> Optional[list[Expr]]:
     """The points strictly inside ``(a, b)``, sorted; ``None`` when a
     position is undecided."""
     inside: list[Expr] = []
     for p in points:
         if p.is_extended_real is False or _not_real(p, assumptions):
             continue
-        below = True if a == -oo else ask(as_boolean(p > a), assumptions)
-        above = True if b == oo else ask(as_boolean(p < b), assumptions)
+        below = True if a == -oo else ask(p > a, assumptions)
+        above = True if b == oo else ask(p < b, assumptions)
         if below is None or above is None:
             return None
         if below and above and p not in inside:
             inside.append(p)
     for i in range(len(inside)):
         for j in range(i + 1, len(inside)):
-            if ask(as_boolean(inside[i] < inside[j]), assumptions) is None:
+            if ask(inside[i] < inside[j], assumptions) is None:
                 return None
-    return sorted(inside, key=lambda p: sum(1 for q in inside if ask(as_boolean(q < p), assumptions)))
+    return sorted(inside, key=lambda p: sum(1 for q in inside if ask(q < p, assumptions)))
+
+
+def _real_zeros(u: Expr, x: Symbol, facts: list[Boolean]) -> Optional[list[Expr]]:
+    """The real zeros of ``u`` in ``x`` under the facts by the native
+    solve, none when ``u`` has a sign under them; ``None`` when they are
+    not a finite set or the time is up."""
+    while isinstance(u, Abs):
+        # the zeros of the absolute value are those of its argument (the
+        # rational argument stays with the native analysis)
+        u = as_expr(u.args[0])
+    if ask(u > 0, facts) is True or ask(u < 0, facts) is True:
+        # no zero on the range (exp(2*n*t) - 2*sqrt(2) + 3 for n > 0,
+        # where the solver answers a ConditionSet; the absolute value of
+        # sin(x)/tan(1) - cos(x) on (0, 1), an unsimplified intersection
+        # of image sets)
+        return []
+    zeros = attempt(lambda: solve(u, x, facts, domain=Reals), settings.timeout, native=True)
+    if zeros is None:
+        return None
+    if zeros is EmptySet:
+        return []
+    if not isinstance(zeros, FiniteSet):
+        return None
+    return [as_expr(p) for p in zeros.args]
+
+
+# PORTED FROM SYMPY: sympy/calculus/singularities.py:singularities
+def singularities(f: Expr, x: Symbol, assumptions: Assumptions = None,
+                  zeros: Optional[Callable[[Expr], Optional[list[Expr]]]] = None) -> Optional[list[Expr]]:
+    """The real isolated singularities of ``f`` in ``x`` as SymPy's
+    ``singularities`` finds them, under the assumptions (``x > a`` and ``x
+    < b`` for a range): the zeros of the bases of the negative powers
+    once the trigonometric and hyperbolic functions are written in
+    cosines, of the arguments of ``log``, ``asech``, ``acsch``, and the
+    points ``1`` and ``-1`` of the arguments of ``atanh`` and ``acoth``;
+    ``None`` when a set of zeros is not finite or not found. ``zeros``,
+    when given, finds the real zeros of a target first (a cheaper rule for
+    the caller's range, ``None`` when it does not apply).
+
+    >>> from sympy_extras.core import Symbol, pi
+    >>> from sympy_extras.functions import log, tan
+    >>> from sympy_extras.integrals.antiderivative import singularities
+    >>> x = Symbol('x')
+    >>> singularities(1/(x**2 - 1) + log(x + 2), x)
+    [-1, 1, -2]
+    """
+    e = f.rewrite(Sec, Csc, Cot, Tan, Cos)
+    e = e.rewrite(Sech, Csch, Coth, Tanh, Cosh)
+    targets: list[Expr] = []
+    for node in e.atoms(Pow):
+        if not isinstance(node, Pow):
+            continue
+        if node.exp.is_infinite:
+            return None
+        if node.exp.is_negative:
+            # XXX (SymPy): an exponent of varying sign is not handled
+            targets.append(node.base)
+    for node in f.atoms(Log, Asech, Acsch):
+        targets.append(as_expr(node.args[0]))
+    for node in f.atoms(Atanh, Acoth):
+        targets.append(as_expr(node.args[0]) - 1)
+        targets.append(as_expr(node.args[0]) + 1)
+    facts = _facts(assumptions)
+    points: list[Expr] = []
+    for u in targets:
+        if not u.has(x):
+            continue
+        found = None if zeros is None else zeros(u)
+        if found is None:
+            found = _real_zeros(u, x, facts)
+        if found is None:
+            return None
+        points.extend(p for p in found if p not in points)
+    return points
 
 
 def discontinuities(F: Expr, x: Symbol, a: Expr, b: Expr,
@@ -320,70 +542,63 @@ def discontinuities(F: Expr, x: Symbol, a: Expr, b: Expr,
     logarithms) and the poles of the arguments of ``atan`` and ``acot``
     (where ``atan`` jumps by ``pi``), together with the kinks of
     ``Abs``, ``sign``, ``Heaviside`` and ``Piecewise``; ``None`` when
-    they cannot be located."""
-    candidates: list[Expr] = []
-    found = attempt(lambda: singularities(F, x, Interval.open(a, b)), settings.timeout)
-    if found is None:
+    they cannot be located.
+
+    >>> from sympy_extras.core import Symbol, Integer, S
+    >>> from sympy_extras.functions import log
+    >>> from sympy_extras.integrals.antiderivative import discontinuities
+    >>> x = Symbol('x')
+    >>> discontinuities(log(x - 1) + 1/(x - 2), x, S.Zero, Integer(3))
+    [1, 2]
+    """
+    bounded = _bounded(assumptions, x, a, b)
+    candidates = singularities(F, x, bounded)
+    if candidates is None:
         return None
-    found_set = as_set(found)
-    if isinstance(found_set, FiniteSet):
-        candidates.extend(as_expr(p) for p in found_set)
-    elif found_set.has(ConditionSet, ImageSet):
-        return None
-    elif found_set is not S.EmptySet:
-        # a union of points intersected with the range, which SymPy
-        # cannot place for symbolic parameters: placed below
-        for finite in found_set.atoms(FiniteSet):
-            candidates.extend(as_expr(p) for p in finite)
     arguments: list[Expr] = []
-    for node in F.atoms(atan, acot):
+    for node in F.atoms(Atan, Acot):
         if node.has(x):
-            u = as_expr(node.args[0])
-            _, denominator = u.as_numer_denom()
-            if as_expr(denominator).has(x):
-                arguments.append(as_expr(denominator))
-    for node in F.atoms(log):
+            _, denominator = as_expr(node.args[0]).as_numer_denom()
+            if denominator.has(x):
+                arguments.append(denominator)
+    for node in F.atoms(Log):
         if node.has(x):
             arguments.append(as_expr(node.args[0]))
-    for node in F.atoms(Abs, sign, Heaviside):
+    for node in F.atoms(Abs, Sign, Heaviside):
         if node.has(x):
             arguments.append(as_expr(node.args[0]))
     for node in F.atoms(Piecewise):
         for pair in node.args:
-            for relation in as_boolean(pair.args[1]).atoms(Boolean):
-                lhs = as_expr(relation.args[0]) if len(relation.args) == 2 else None
-                rhs = as_expr(relation.args[1]) if len(relation.args) == 2 else None
-                if lhs is not None and rhs is not None and (lhs - rhs).has(x):
-                    arguments.append(lhs - rhs)
-    bounded = _bounded(assumptions, x, a, b)
+            if not isinstance(pair, ExprCondPair):
+                continue
+            for relation in pair.cond.atoms(Relational):
+                if isinstance(relation, Relational):
+                    difference = relation.lhs - relation.rhs
+                    if difference.has(x):
+                        arguments.append(difference)
     for u in arguments:
-        if ask(as_boolean(u > 0), bounded) is True or ask(as_boolean(u < 0), bounded) is True:
-            # no zero on the range (exp(2*n*t) - 2*sqrt(2) + 3 for n > 0,
-            # where the solver answers a ConditionSet)
-            continue
-        zeros = attempt(lambda: solve(u, x, bounded, domain=S.Reals), settings.timeout)
+        zeros = _real_zeros(u, x, bounded)
         if zeros is None:
             return None
-        if zeros is S.EmptySet:
-            continue
-        zero_set = as_set(zeros)
-        if not isinstance(zero_set, FiniteSet):
-            return None
-        candidates.extend(as_expr(p) for p in zero_set)
-    return _points_in(candidates, x, a, b, assumptions)
+        candidates.extend(zeros)
+    return _points_in(candidates, a, b, assumptions)
+
+
+def _facts(assumptions: Assumptions) -> list[Boolean]:
+    if assumptions is None:
+        return []
+    if isinstance(assumptions, (Basic, bool)):
+        return [to_boolean(assumptions)]
+    return [to_boolean(s) for s in assumptions]
 
 
 def _bounded(assumptions: Assumptions, x: Symbol, a: Expr, b: Expr) -> list[Boolean]:
     facts: list[Boolean] = []
     if a != -oo:
-        facts.append(as_boolean(x > a))
+        facts.append(x > a)
     if b != oo:
-        facts.append(as_boolean(x < b))
-    if isinstance(assumptions, (Boolean, bool)):
-        facts.append(as_boolean(assumptions))
-    elif assumptions is not None:
-        facts.extend(as_boolean(s) for s in assumptions)
-    return facts
+        facts.append(x < b)
+    return facts + _facts(assumptions)
 
 
 def select_branch(F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions = None) -> Optional[Expr]:
@@ -393,7 +608,16 @@ def select_branch(F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions
     variable, ``x > 1``); ``None`` when a condition cannot be decided or
     the branches change inside the range (the bug: ``limit`` of a
     ``Piecewise`` with an infinite value on the branch of the range gave
-    0, and the area of a disc came out as 0)."""
+    0, and the area of a disc came out as 0).
+
+    >>> from sympy_extras.core import Symbol, Integer, S
+    >>> from sympy_extras.functions import Piecewise
+    >>> from sympy_extras.integrals.antiderivative import select_branch
+    >>> t = Symbol('t')
+    >>> F = Piecewise((t**2, t > 1), (t**3, True))
+    >>> select_branch(F, t, Integer(2), Integer(3)), select_branch(F, t, S.Zero, Integer(2))
+    (t**2, None)
+    """
     if a == -oo and b == oo:
         sample: Expr = S.Zero
     elif a == -oo:
@@ -406,18 +630,22 @@ def select_branch(F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions
     for node in result.atoms(Piecewise):
         chosen: Optional[Expr] = None
         for pair in node.args:
-            value, condition = as_expr(pair.args[0]), as_boolean(pair.args[1])
-            if condition is S.true:
+            if not isinstance(pair, ExprCondPair):
+                return None
+            value, condition = pair.expr, pair.cond
+            if condition is true:
                 chosen = value
                 break
             # the same branch must hold on the whole range: no condition
             # met on the way may change inside it
             for atom in condition.atoms(Relational):
-                zeros = attempt(lambda: solve(as_expr(atom.lhs) - as_expr(atom.rhs), x,
-                                              _bounded(assumptions, x, a, b), domain=S.Reals), settings.timeout)
-                if zeros is None or zeros is not S.EmptySet:
+                if not isinstance(atom, Relational):
+                    continue
+                zeros = attempt(lambda: solve(atom.lhs - atom.rhs, x, _bounded(assumptions, x, a, b), domain=Reals),
+                                settings.timeout, native=True)
+                if zeros is None or zeros is not EmptySet:
                     return None
-            holds = ask(as_boolean(condition.subs(x, sample)), assumptions)
+            holds = ask(to_boolean(condition.subs(x, sample)), assumptions)
             if holds is None:
                 return None
             if holds:
@@ -425,8 +653,49 @@ def select_branch(F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions
                 break
         if chosen is None:
             return None
-        result = as_expr(result.xreplace({node: chosen}))
+        result = as_expr(result._xreplace_evaluated({node: chosen}))
     return result
+
+
+def _equalities_of_parameters(condition: Boolean, x: Symbol) -> bool:
+    """Whether ``condition`` is built of equations (``Eq(b, 0)``,
+    ``Eq(a, b) & Eq(b, 0)``) free of ``x``: it holds on a set of measure
+    zero of the parameters."""
+    if condition.has(x):
+        return False
+    if isinstance(condition, Eq):
+        return True
+    if isinstance(condition, (And, Or)):
+        return all(isinstance(c, Boolean) and _equalities_of_parameters(c, x) for c in condition.args)
+    return False
+
+
+def generic_antiderivative(F: Expr, x: Symbol) -> Expr:
+    """``F`` with each ``Piecewise`` whose cases before the last are
+    isolated values of the parameters (``Eq(b, 0)``) replaced by its
+    last, generic branch: the antiderivative for the generic values of
+    the parameters, whose isolated values the definite driver gives cases
+    of their own (:mod:`sympy_extras._special_values`).
+
+    >>> from sympy_extras.core import symbols, Eq
+    >>> from sympy_extras.functions import Piecewise, sin
+    >>> from sympy_extras.integrals.antiderivative import generic_antiderivative
+    >>> x, b = symbols('x b')
+    >>> generic_antiderivative(x/2 - Piecewise((x, Eq(b, 0)), (sin(2*b*x)/(2*b), True))/2, x)
+    x/2 - sin(2*b*x)/(4*b)
+    """
+    replacement: dict[Basic, Basic] = {}
+    for node in F.atoms(Piecewise):
+        pairs = [pair for pair in node.args if isinstance(pair, ExprCondPair)]
+        if len(pairs) != len(node.args) or len(pairs) < 2 or pairs[-1].cond is not true:
+            continue
+        if all(_equalities_of_parameters(pair.cond, x) for pair in pairs[:-1]):
+            replacement[node] = pairs[-1].expr
+    if not replacement:
+        return F
+    generic = as_expr(F._xreplace_evaluated(replacement))
+    # a nested Piecewise of the same kind inside a generic branch
+    return generic if generic == F else generic_antiderivative(generic, x)
 
 
 def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
@@ -435,19 +704,30 @@ def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
     ``'-'`` (``F(point)`` when ``F`` is continuous there); ``oo`` or
     ``-oo`` for a signed infinity, and ``None`` when the limit does not
     exist (an oscillation, ``AccumBounds``), is complex infinite, or
-    cannot be found."""
-    if point in (oo, -oo):
-        value = attempt(lambda: limit(F, x, point, assumptions=assumptions), settings.timeout)
+    cannot be found.
+
+    >>> from sympy_extras.core import Symbol, S, oo
+    >>> from sympy_extras.functions import atan, sin
+    >>> from sympy_extras.integrals.antiderivative import one_sided_limit
+    >>> x = Symbol('x')
+    >>> one_sided_limit(atan(x), x, oo, '-'), one_sided_limit(-1/x, x, S.Zero, '+')
+    (pi/2, -oo)
+    >>> one_sided_limit(sin(x), x, oo, '-') is None
+    True
+    """
+    if point == oo or point == -oo:
+        value = attempt(lambda: limit(F, x, point, assumptions=assumptions), settings.timeout, native=True)
     else:
-        value = attempt(lambda: limit(F, x, point, direction, assumptions=assumptions), settings.timeout)
+        value = attempt(lambda: limit(F, x, point, direction, assumptions=assumptions), settings.timeout,
+                        native=True)
         if (value is None or value.has(Limit)) and not point.is_number:
             # a symbolic point, where limit gives up: the value of F there
             # when it is finite (the bug: the arcsine of a real antiderivative
             # had no limit at the algebraic bound -sqrt(1 - x**2) of a cell)
-            value = as_expr(F.subs(x, point))
+            value = F.subs(x, point)
     if value is None:
         return None
-    if value in (oo, -oo):
+    if value == oo or value == -oo:
         return value
     if value.has(oo, -oo, zoo, nan, Limit, Piecewise, AccumBounds):
         return None
@@ -459,9 +739,37 @@ def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
     return value
 
 
+def _prepared(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions, late: bool,
+              known: Optional[Expr], step: Optional[AntiderivativeStep]) -> Optional[Expr]:
+    """The antiderivative (``known``, or by the ``step``) on its branch of
+    the range; ``None`` when there is none or the branch is undecided."""
+    if known is not None:
+        F: Optional[Expr] = known
+    elif step is not None:
+        F = step(f, x, assumptions, late)
+    else:
+        F = antiderivative(f, x, assumptions, late)
+    if F is None:
+        return None
+    if F.has(Piecewise):
+        return select_branch(F, x, a, b, assumptions)
+    return F
+
+
+def _cut_points(f: Expr, F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[list[Expr]]:
+    points = discontinuities(F, x, a, b, assumptions)
+    if points is None:
+        return None
+    singular = singularities(f, x, _bounded(assumptions, x, a, b))
+    if singular is None:
+        return None
+    return _points_in(singular + points, a, b, assumptions)
+
+
 def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
                             assumptions: Assumptions = None, late: bool = False,
-                            known: Optional[Expr] = None) -> Optional[ConditionalValue]:
+                            known: Optional[Expr] = None,
+                            step: Optional[AntiderivativeStep] = None) -> Optional[ConditionalValue]:
     """``Integral(f, (x, a, b))`` from an antiderivative ``F``, cut at the
     discontinuities of ``F`` and the singularities of ``f`` inside the
     range and evaluated by one-sided limits; ``oo`` or ``-oo`` when
@@ -471,48 +779,39 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     infinities cancel (``1/x`` over ``(-1, 1)``, where the principal
     value is another question). An antiderivative already ``known`` is
     used instead of computing one (the cases of the parameters of the
-    definite driver share it).
+    definite driver share it); otherwise the ``step`` computes it
+    (:func:`antiderivative` by default).
 
     Examples
     ========
 
-    >>> from sympy import symbols, pi, cos, tan, oo
+    >>> from sympy_extras.core import Symbol, S, oo, pi
+    >>> from sympy_extras.functions import cos
     >>> from sympy_extras.integrals.antiderivative import antiderivative_integral
-    >>> x = symbols('x')
-    >>> antiderivative_integral(1/(5 - 4*cos(x)), x, 0, 2*pi)
+    >>> x = Symbol('x')
+    >>> antiderivative_integral(1/(5 - 4*cos(x)), x, S.Zero, 2*pi)
     ConditionalValue(2*pi/3)
     >>> antiderivative_integral(1/(1 + x**2), x, -oo, oo)
     ConditionalValue(pi)
-    >>> antiderivative_integral(1/x, x, 0, 1)
+    >>> antiderivative_integral(1/x, x, S.Zero, S.One)
     ConditionalValue(oo)
+
+    A native antiderivative keeps SymPy out (the rational integrator of
+    :mod:`.risch.rationaltools`):
+
+    >>> from sympy_extras.integrals.risch.rationaltools import ratint
+    >>> antiderivative_integral(1/(x**2 - 4), x, S.Zero, S.One, step=lambda f, x, _, __: ratint(f, x))
+    ConditionalValue(-log(3)/4)
     """
-    a, b = as_expr(a), as_expr(b)
-    F = antiderivative(f, x, assumptions, late) if known is None else known
-    if F is None:
+    a_, b_ = to_expr(a), to_expr(b)
+    prepared = _prepared(f, x, a_, b_, assumptions, late, known, step)
+    if prepared is None:
         return None
-    if F.has(Piecewise):
-        F = select_branch(F, x, a, b, assumptions)
-        if F is None:
-            return None
-    F = _real_logarithms(F, x)
-    points = discontinuities(F, x, a, b, assumptions)
-    if points is None:
-        return None
-    singular = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
-    if singular is None and not (a.is_number and b.is_number):
-        # SymPy cannot form an interval with symbolic ends (the algebraic
-        # bounds -sqrt(1 - x**2) < y < x of a cell): the singularities on
-        # the line, placed against the bounds by _points_in below
-        singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
-    if singular is None:
-        return None
-    singular_points = _singular_points(as_set(singular))
-    if singular_points is None:
-        return None
-    more = _points_in(singular_points + points, x, a, b, assumptions)
+    F = real_logarithms(prepared, x)
+    more = _cut_points(f, F, x, a_, b_, assumptions)
     if more is None:
         return None
-    bounds = [a] + more + [b]
+    bounds = [a_] + more + [b_]
     total: Expr = S.Zero
     for lower, upper in zip(bounds[:-1], bounds[1:]):
         right = one_sided_limit(F, x, upper, '-', assumptions)
@@ -522,46 +821,78 @@ def antiderivative_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
         # an infinite limit is checked against the sign of the integrand
         # near the point (SymPy's limit of x**2*Shi(x)/2 - x*cosh(x)/2 +
         # sinh(x)/2 at oo is -oo; the function grows like x*exp(x)/4)
-        if right in (oo, -oo) and not _integrand_has_sign(f, x, upper, '-', right, assumptions):
+        if (right == oo or right == -oo) and not _integrand_has_sign(f, x, upper, '-', right, assumptions):
             return None
-        if left in (oo, -oo) and not _integrand_has_sign(f, x, lower, '+', -left, assumptions):
+        if (left == oo or left == -oo) and not _integrand_has_sign(f, x, lower, '+', -left, assumptions):
             return None
         total = total + (right - left)
     if total.has(nan, zoo):
         # oo - oo: infinities of both signs, nothing is claimed
         return None
-    return ConditionalValue(_absorbed(as_expr(total)))
+    if _not_real_number(total) and _real_on_range(f, x, bounds):
+        # a real integrand has a real integral: a complex limit is wrong
+        # (SymPy's and the core's limit of a real antiderivative of
+        # u*log(1 - u**2)*atanh(u) at 1 from below is log(2)/2 - I*pi)
+        return None
+    return ConditionalValue(_absorbed(total))
 
 
-def _real_logarithms(F: Expr, x: Symbol) -> Expr:
+def _real_on_range(f: Expr, x: Symbol, bounds: list[Expr]) -> bool:
+    """Whether ``f`` without parameters is real at a point inside every
+    piece between the ``bounds`` (numbers, or infinities at the ends)."""
+    if f.free_symbols - {x}:
+        return False
+    for lower, upper in zip(bounds[:-1], bounds[1:]):
+        if not (lower.is_number and upper.is_number):
+            return False
+        if lower == -oo and upper == oo:
+            sample: Expr = S.Zero
+        elif lower == -oo:
+            sample = upper - 1
+        elif upper == oo:
+            sample = lower + 1
+        else:
+            sample = (lower + upper) / 2
+        try:
+            value = reliable_value(f.subs(x, sample), 15)
+        except ZeroDivisionError:
+            return False
+        if value is None or value.is_extended_real is not True:
+            return False
+    return True
+
+
+def _not_real_number(total: Expr) -> bool:
+    """Whether ``total`` has an imaginary part known to be nonzero."""
+    imaginary = im(total)
+    return not imaginary.has(Im) and imaginary.is_zero is False
+
+
+def real_logarithms(F: Expr, x: Symbol) -> Expr:
     """``log(u)`` written ``log(Abs(u))`` for the real arguments ``u``
     depending on ``x``: the same antiderivative where ``u`` keeps its
     sign, real where ``u`` is negative (``log(sin(x)/tan(1) - cos(x))``
     on ``(0, 1)`` is ``log(-u) + I*pi``, whose infinite limit at 1 the
-    complex values make ``zoo``)."""
-    real = Dummy(x.name, real=True)
-    return as_expr(F.replace(
-        lambda node: isinstance(node, log) and node.has(x) and not isinstance(node.args[0], Abs)
-        and as_expr(node.args[0]).subs(x, real).is_extended_real is True,
-        lambda node: log(Abs(as_expr(node.args[0])))))
+    complex values make ``zoo``).
 
+    >>> from sympy_extras.core import Symbol, I
+    >>> from sympy_extras.functions import log
+    >>> from sympy_extras.integrals.antiderivative import real_logarithms
+    >>> x = Symbol('x')
+    >>> real_logarithms(log(x - 1) + log(x + I), x)
+    log(x + I) + log(Abs(x - 1))
+    """
+    real = _fresh(x.name, real=True)
 
-def _singular_points(singular_set: Set) -> Optional[list[Expr]]:
-    """The points of a set of singularities: those of a finite set, none
-    of the empty set, and those of the finite part of ``Intersection({0},
-    Interval.open(sqrt(x), oo))`` (SymPy's answer for a parameter ``x`` not
-    declared positive), which the placement against the bounds decides
-    under the assumptions; ``None`` for another kind of set."""
-    if isinstance(singular_set, Intersection) and len(singular_set.args) == 2:
-        finite = [arg for arg in singular_set.args if isinstance(arg, FiniteSet)]
-        intervals = [arg for arg in singular_set.args if isinstance(arg, Interval)]
-        if len(finite) == 1 and len(intervals) == 1:
-            singular_set = finite[0]
-    if isinstance(singular_set, FiniteSet):
-        return [as_expr(p) for p in singular_set]
-    if singular_set is S.EmptySet:
-        return []
-    return None
+    def query(node: Basic) -> bool:
+        if not isinstance(node, Log) or not node.has(x) or isinstance(node.args[0], Abs):
+            return False
+        return as_expr(node.args[0]).subs(x, real).is_extended_real is True
+
+    def value(node: Basic) -> Basic:
+        return log(abs_(as_expr(node.args[0])))
+
+    return as_expr(F.replace(query, value))
 
 
 def _absorbed(total: Expr) -> Expr:
@@ -569,7 +900,7 @@ def _absorbed(total: Expr) -> Expr:
     infinity: SymPy keeps ``-Si(1)/2 + oo`` as a sum (the finiteness of
     ``Si(1)`` is not known to it), which is ``oo`` (``sin(x)/x**3`` over
     ``(0, 1)``)."""
-    if total in (oo, -oo) or not total.has(oo, -oo):
+    if total == oo or total == -oo or not total.has(oo, -oo):
         return total
     infinite = [term for term in Add.make_args(total) if term.has(oo, -oo)]
     finite = [term for term in Add.make_args(total) if not term.has(oo, -oo)]
@@ -590,36 +921,70 @@ def _integrand_has_sign(f: Expr, x: Symbol, point: Expr, side: str, infinity: Ex
     point where its integral is claimed to diverge to that infinity.
     ``True`` when nothing can be checked (no sample of the parameters, a
     complex value)."""
-    parameters = sorted_symbols((free_symbols(f) | free_symbols(point)) - {x})
-    values = sample_values(parameters, assumptions, random.Random(str((f, point)))) if parameters else {}
+    parameters = sorted((f.free_symbols | point.free_symbols) - {x}, key=lambda s: s.name)
+    symbols = [s for s in parameters if isinstance(s, Symbol)]
+    values = sample_values(symbols, assumptions, random.Random(str((f, point)))) if symbols else {}
     if values is None:
         return True
-    g, p = as_expr(f.xreplace(values)), as_expr(point.xreplace(values))
-    if p is oo:
+    rule: dict[Basic, Basic] = dict(values.items())
+    g, p = as_expr(f._xreplace_evaluated(rule)), as_expr(point._xreplace_evaluated(rule))
+    if p == oo:
         samples: list[Expr] = [Integer(10), Integer(100), Integer(1000)]
-    elif p is -oo:
+    elif p == -oo:
         samples = [Integer(-10), Integer(-100), Integer(-1000)]
     else:
         step = 1 if side == '+' else -1
         samples = [p + step * Rational(1, 10**k) for k in (2, 4, 6)]
-    sign = 1 if infinity is oo else -1
+    positive = infinity == oo
     for sample in samples:
         try:
-            value = reliable_value(as_expr(g.subs(x, sample)), 15)
+            value = reliable_value(g.subs(x, sample), 15)
         except ZeroDivisionError:
             return True
         if value is None or value.is_extended_real is not True:
             return True
-        if value * sign < 0:
+        if (value.is_extended_negative if positive else value.is_extended_positive) is True:
             return False
     return True
 
 
+def _regularized(f: Expr, x: Symbol, a: ExprLike, b: ExprLike, assumptions: Assumptions,
+                 step: Optional[AntiderivativeStep],
+                 jump: Callable[[Expr, Symbol, Expr, Symbol], Optional[Expr]]) -> Optional[ConditionalValue]:
+    """The limits at the ends of the range minus the ``jump`` of the
+    antiderivative across every point inside, for the principal value and
+    the finite part."""
+    a_, b_ = to_expr(a), to_expr(b)
+    F = _prepared(f, x, a_, b_, assumptions, False, None, step)
+    if F is None:
+        return None
+    inside = _cut_points(f, F, x, a_, b_, assumptions)
+    if inside is None:
+        return None
+    right = one_sided_limit(F, x, b_, '-', assumptions)
+    left = one_sided_limit(F, x, a_, '+', assumptions)
+    if right is None or left is None or right in (oo, -oo) or left in (oo, -oo):
+        # the principal value and the finite part take finite limits at
+        # the endpoints only
+        return None
+    total: Expr = right - left
+    epsilon = _fresh('epsilon', positive=True)
+    for c in inside:
+        excised = F.subs(x, c + epsilon) - F.subs(x, c - epsilon)
+        value = jump(excised, epsilon, F, x)
+        if value is None or value.free_symbols - F.free_symbols:
+            return None
+        total = total - value
+    return ConditionalValue(total)
+
+
 def principal_value_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
-                             assumptions: Assumptions = None) -> Optional[ConditionalValue]:
+                             assumptions: Assumptions = None,
+                             step: Optional[AntiderivativeStep] = None) -> Optional[ConditionalValue]:
     """Cauchy's principal value of ``Integral(f, (x, a, b))`` from an
-    antiderivative ``F``: with `c_1, \\ldots, c_n` the singularities of
-    ``f`` and the discontinuities of ``F`` inside the range,
+    antiderivative ``F`` (by the ``step``, :func:`antiderivative` by
+    default): with `c_1, \\ldots, c_n` the singularities of ``f`` and the
+    discontinuities of ``F`` inside the range,
 
     .. math::
 
@@ -635,75 +1000,43 @@ def principal_value_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     Examples
     ========
 
-    >>> from sympy import symbols, log
+    >>> from sympy_extras.core import Symbol, Integer, S
     >>> from sympy_extras.integrals.antiderivative import principal_value_integral
-    >>> x = symbols('x')
-    >>> principal_value_integral(1/x, x, -1, 2)
+    >>> x = Symbol('x')
+    >>> principal_value_integral(1/x, x, -S.One, Integer(2))
     ConditionalValue(log(2))
-    >>> principal_value_integral(1/x**2, x, -1, 1) is None
+    >>> principal_value_integral(1/x**2, x, -S.One, S.One) is None
     True
     """
-    a, b = as_expr(a), as_expr(b)
-    F = antiderivative(f, x, assumptions)
-    if F is None:
-        return None
-    if F.has(Piecewise):
-        F = select_branch(F, x, a, b, assumptions)
-        if F is None:
+    def jump(excised: Expr, epsilon: Symbol, F: Expr, _: Symbol) -> Optional[Expr]:
+        value = attempt(lambda: limit(excised, epsilon, 0, assumptions=assumptions), settings.timeout,
+                        native=True)
+        if value is None or value.has(oo, -oo, zoo, nan, Limit):
             return None
-    points = discontinuities(F, x, a, b, assumptions)
-    if points is None:
-        return None
-    singular = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
-    if singular is None and not (a.is_number and b.is_number):
-        # SymPy cannot form an interval with symbolic ends (the algebraic
-        # bounds -sqrt(1 - x**2) < y < x of a cell): the singularities on
-        # the line, placed against the bounds by _points_in below
-        singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
-    if singular is None:
-        return None
-    singular_points = _singular_points(as_set(singular))
-    if singular_points is None:
-        return None
-    inside = _points_in(singular_points + points, x, a, b, assumptions)
-    if inside is None:
-        return None
-    right = one_sided_limit(F, x, b, '-', assumptions)
-    left = one_sided_limit(F, x, a, '+', assumptions)
-    if right is None or left is None or right in (oo, -oo) or left in (oo, -oo):
-        # the principal value and the finite part take finite limits at
-        # the endpoints only
-        return None
-    total: Expr = right - left
-    epsilon = Dummy('epsilon', positive=True)
-    for c in inside:
-        jump = attempt(lambda: limit(F.subs(x, c + epsilon) - F.subs(x, c - epsilon), epsilon, 0,
-                                     assumptions=assumptions), settings.timeout)
-        if jump is None or jump.has(oo, -oo, zoo, nan, Limit) or jump.free_symbols - F.free_symbols:
-            return None
-        total = total - jump
-    return ConditionalValue(as_expr(total))
+        return value
+
+    return _regularized(f, x, a, b, assumptions, step, jump)
 
 
 def _finite_part(jump: Expr, epsilon: Symbol) -> Optional[Expr]:
     """The constant term of the expansion of ``jump`` at ``epsilon = 0``,
     the terms in negative powers of ``epsilon`` and in ``log(epsilon)``
     dropped (Hadamard's finite part)."""
-    expansion = attempt(lambda: as_expr(series(jump, epsilon, 0, 1).removeO()), settings.timeout)
+    expansion = attempt(lambda: jump.series(epsilon, 0, 1).removeO(), settings.timeout, native=True)
     if expansion is None:
         return None
     constant: Expr = S.Zero
-    for term in Add.make_args(as_expr(expansion.expand())):
-        term_ = as_expr(term)
-        if not term_.has(epsilon):
-            constant = constant + term_
+    for term in Add.make_args(expansion.expand()):
+        if not term.has(epsilon):
+            constant = constant + term
     if constant.has(nan, zoo, oo, -oo):
         return None
     return constant
 
 
 def finite_part_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
-                         assumptions: Assumptions = None) -> Optional[ConditionalValue]:
+                         assumptions: Assumptions = None,
+                         step: Optional[AntiderivativeStep] = None) -> Optional[ConditionalValue]:
     """Hadamard's finite part of ``Integral(f, (x, a, b))``: as in
     :func:`principal_value_integral`, but the divergent terms of the
     symmetric excision at each singularity (``1/epsilon``,
@@ -714,12 +1047,12 @@ def finite_part_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     Examples
     ========
 
-    >>> from sympy import symbols, log
+    >>> from sympy_extras.core import Symbol, Integer, S
     >>> from sympy_extras.integrals.antiderivative import finite_part_integral
-    >>> x = symbols('x')
-    >>> finite_part_integral(1/x**2, x, -1, 1)
+    >>> x = Symbol('x')
+    >>> finite_part_integral(1/x**2, x, -S.One, S.One)
     ConditionalValue(-2)
-    >>> finite_part_integral(1/x, x, -1, 2)
+    >>> finite_part_integral(1/x, x, -S.One, Integer(2))
     ConditionalValue(log(2))
 
     References
@@ -730,42 +1063,7 @@ def finite_part_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
        chapter on the "partie finie"; the modern account in Estrada and
        Kanwal, *Singular Integral Equations*, Birkhäuser, 2000, chapter 2.
     """
-    a, b = as_expr(a), as_expr(b)
-    F = antiderivative(f, x, assumptions)
-    if F is None:
-        return None
-    if F.has(Piecewise):
-        F = select_branch(F, x, a, b, assumptions)
-        if F is None:
-            return None
-    points = discontinuities(F, x, a, b, assumptions)
-    if points is None:
-        return None
-    singular = attempt(lambda: singularities(f, x, Interval.open(a, b)), settings.timeout)
-    if singular is None and not (a.is_number and b.is_number):
-        # SymPy cannot form an interval with symbolic ends (the algebraic
-        # bounds -sqrt(1 - x**2) < y < x of a cell): the singularities on
-        # the line, placed against the bounds by _points_in below
-        singular = attempt(lambda: singularities(f, x, S.Reals), settings.timeout)
-    if singular is None:
-        return None
-    singular_points = _singular_points(as_set(singular))
-    if singular_points is None:
-        return None
-    inside = _points_in(singular_points + points, x, a, b, assumptions)
-    if inside is None:
-        return None
-    right = one_sided_limit(F, x, b, '-', assumptions)
-    left = one_sided_limit(F, x, a, '+', assumptions)
-    if right is None or left is None or right in (oo, -oo) or left in (oo, -oo):
-        # the principal value and the finite part take finite limits at
-        # the endpoints only
-        return None
-    total: Expr = right - left
-    epsilon = Dummy('epsilon', positive=True)
-    for c in inside:
-        jump = _finite_part(as_expr(F.subs(x, c + epsilon) - F.subs(x, c - epsilon)), epsilon)
-        if jump is None or jump.free_symbols - F.free_symbols:
-            return None
-        total = total - jump
-    return ConditionalValue(as_expr(total))
+    def jump(excised: Expr, epsilon: Symbol, F: Expr, _: Symbol) -> Optional[Expr]:
+        return _finite_part(excised, epsilon)
+
+    return _regularized(f, x, a, b, assumptions, step, jump)

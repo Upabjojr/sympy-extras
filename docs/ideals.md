@@ -1,10 +1,12 @@
 # Polynomial ideals and Gröbner bases
 
 Modules: `sympy_extras.polys.ideals` (native) and its SymPy face
-`sympy_extras.polys.ideals_sympy`, `sympy_extras.polys.groebnerwalk`,
+`sympy_extras.polys.ideals_sympy`, `sympy_extras.polys.groebnerwalk` (native) and its SymPy face
+`sympy_extras.polys.groebnerwalk_sympy`,
 `sympy_extras.polys.modulargroebner` (native) and its SymPy face
 `sympy_extras.polys.modulargroebner_sympy`, `sympy_extras.polys.buchberger`
-(native), `sympy_extras.polys.orderings`,
+(native), `sympy_extras.polys.orderings` (native) and its SymPy face `sympy_extras.polys.orderings_sympy`,
+`sympy_extras.polys.hilbert` (native) and its SymPy face `sympy_extras.polys.hilbert_sympy`,
 `sympy_extras.polys.hermite` (native) and its SymPy face `sympy_extras.polys.hermite_sympy`
 
 ## What SymPy has and what is added here
@@ -361,7 +363,7 @@ Orders with SymPy's own `groebner`:
 
 ```python
 >>> from sympy import groebner
->>> from sympy_extras.polys.orderings import BlockOrder, WeightOrder
+>>> from sympy_extras.polys.orderings_sympy import BlockOrder, WeightOrder
 >>> list(groebner([t - x**2, t - y], t, x, y, order=BlockOrder([('grevlex', 1), ('grevlex', 2)])))
 [t - y, x**2 - y]
 >>> list(groebner([x**2 - y, x*y - 1], x, y, order=WeightOrder((1, 3), 'lex')))
@@ -407,9 +409,8 @@ dispatcher `groebner`, also for the orders which have no SymPy
 counterpart such as weight orders), the decompositions through regular
 chains (`sympy_extras.polys.idealdecomposition`) and the rational
 univariate representation (`sympy_extras.polys.rur`, the method
-`Ideal.rur`). Only the exact solutions of a representation, SymPy's
-`CRootOf` objects, are computed on SymPy (`solutions_of_core` of
-`sympy_extras.polys.rur_sympy`).
+`Ideal.rur`), with its exact solutions (the native `CRootOf` of
+`sympy_extras.polys.complexrootof` and the `IndexedRoot` of the CAD).
 
 The face `sympy_extras.polys.ideals_sympy.Ideal` has the API the module
 had before: SymPy expressions, `Poly` generators, the domain inferred with
@@ -422,17 +423,21 @@ converted, what the face returned.
 ## The Gröbner walk
 
 `groebner_walk(G, ring, target)` of `sympy_extras.polys.groebnerwalk`
-converts the reduced Gröbner basis `G` of a SymPy `PolyRing` (whose order
-is the source order) to the target order; `Ideal.change_order` uses the
-native walk of `sympy_extras.polys.ideals`, the same algorithm on the
-typed rings with F4 for the initial forms and the lifting by normal forms.
+converts the reduced Gröbner basis `G` of a typed `PolyRing` (whose order
+is the source order) to the target order, with F4 for the initial forms
+and the lifting by normal forms (or, with `lift='cofactors'`, through the
+representations of `extended_groebner`); `Ideal.change_order` uses it. Its
+SymPy face `sympy_extras.polys.groebnerwalk_sympy` takes a SymPy
+`PolyRing` and its elements (over a ring which is not a field, such as
+`ZZ`, the walk runs over the field of fractions and the denominators are
+cleared, as SymPy's `groebner` does).
 The source and target orders are represented by weight vectors; along the
 segment between them, at every point where the ordering of the monomials
 of the basis changes, the initial forms of the basis elements are computed,
-a Gröbner basis of the ideal they generate is computed by a Buchberger
-algorithm which keeps the representations (`extended_groebner`), and those
-representations lift it to a Gröbner basis of the ideal for the new weight
-order. The initial forms are small, so every step is cheap compared to a
+a Gröbner basis of the ideal they generate is computed, and its elements
+are lifted to a Gröbner basis of the ideal for the new weight order (by
+their normal forms modulo the previous basis, or through their
+representations in terms of the initial forms). The initial forms are small, so every step is cheap compared to a
 direct computation for the target order.
 
 ## F4
@@ -547,12 +552,12 @@ formula: generators in disjoint sets of variables multiply the numerators
 take 0.07 s and 0.04 s; 800 generators in 15 variables 0.7 s.
 `hilbert_numerator`, `hilbert_series` (reduced, with the Krull dimension as
 the exponent of `1 - t`) and `minimal_generators` are in
-`sympy_extras.polys.hilbert`; `Ideal.hilbert_series`, `dimension`,
+`sympy_extras.polys.hilbert` (and its face `hilbert_sympy`); `Ideal.hilbert_series`, `dimension`,
 `degree` and `hilbert_polynomial` use them.
 
 ```python
 >>> from sympy.abc import t
->>> from sympy_extras.polys.hilbert import hilbert_numerator, hilbert_series
+>>> from sympy_extras.polys.hilbert_sympy import hilbert_numerator, hilbert_series
 >>> hilbert_numerator([(2, 0, 0), (0, 3, 0), (0, 0, 5)], t)
 Poly(-t**10 + t**8 + t**7 - t**3 - t**2 + 1, t, domain='ZZ')
 >>> hilbert_series([(1, 0, 1, 0), (0, 1, 0, 1)], 4, t)
@@ -856,10 +861,18 @@ expressions, `DensePoly` polynomials over `QQ`) and in its SymPy face
 `sympy_extras.polys.rur_sympy` (SymPy expressions, `Poly` objects);
 `Ideal.rur(t)` calls them.
 `hilbert_numerator(monomials, t)`, `hilbert_series(monomials, variables,
-t)` and `minimal_generators(monomials)` in `sympy_extras.polys.hilbert`
-compute the Hilbert series of a monomial ideal by Bigatti's algorithm. `groebner_walk`, `extended_groebner` and
-`initial_form` are in `sympy_extras.polys.groebnerwalk`; `WeightOrder`,
-`BlockOrder` and `elimination_order` in `sympy_extras.polys.orderings`.
+t)`, `reduced_hilbert_series(monomials, variables)` and
+`minimal_generators(monomials)` in `sympy_extras.polys.hilbert` (native: a
+`DensePoly` over `ZZ`, a core expression) compute the Hilbert series of a
+monomial ideal by Bigatti's algorithm; `sympy_extras.polys.hilbert_sympy`
+has the first two with a SymPy `Poly` and a SymPy expression.
+`groebner_walk`, `extended_groebner`, `is_groebner`, `normal_form` and
+`initial_form` are in `sympy_extras.polys.groebnerwalk` (native, on the
+typed rings) and the first three of them in its SymPy face
+`sympy_extras.polys.groebnerwalk_sympy` (SymPy's rings); `WeightOrder`,
+`BlockOrder` and `elimination_order` in `sympy_extras.polys.orderings`
+(native, the orders of the typed rings) and, as SymPy monomial orders, in
+`sympy_extras.polys.orderings_sympy`.
 
 ## References
 

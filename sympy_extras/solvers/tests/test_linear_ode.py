@@ -4,14 +4,14 @@ from sympy import Function, exp, sqrt, simplify, Eq, Rational, cancel, S, bessel
 from sympy.abc import x
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.linear_ode import (LinearOperator, polynomial_solutions, rational_solutions,
+from sympy_extras.solvers.linear_ode_sympy import (LinearOperator, polynomial_solutions, rational_solutions,
     hyperexponential_solutions, reduce_order_linear, dsolve_linear)
 
 y = Function('y')(x)
 
 
 def _solves(L: LinearOperator, solution: object) -> bool:
-    from sympy_extras._typing import as_expr
+    from sympy_extras._typing_sympy import as_expr
     return simplify(L(as_expr(solution))) == 0
 
 
@@ -105,7 +105,7 @@ def test_a_truncated_series_is_not_accepted_as_a_solution() -> None:
     # exact solutions, neither of which satisfies the equation.
     from sympy import Function, Eq, Order, expand
     from sympy.abc import x
-    from sympy_extras.solvers.linear_ode import dsolve_linear
+    from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
     y = Function('y')(x)
     ode = Eq(y.diff(x, 2) + (-2*x**2 - x + 1)*y.diff(x) + 3*y, 0)
     for s in dsolve_linear(ode, y) or []:
@@ -116,7 +116,7 @@ def test_a_truncated_series_is_not_accepted_as_a_solution() -> None:
 def test_second_order_reduction_before_kovacic() -> None:
     import time
     from sympy import log
-    from sympy_extras.solvers.linear_ode import _solve_operator
+    from sympy_extras.solvers.linear_ode_sympy import _solve_operator
     # the rational solution (x - 1)/x gives the second one, with a log, by
     # a reduction of order; Kovacic's algorithm used to run first and to
     # take the whole time limit (30 s) on this operator (the scalar

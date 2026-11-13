@@ -13,15 +13,17 @@ which decompose into such factors.
 The module works on objects of the core and imports no SymPy
 (:mod:`sympy_extras.polys.roots_sympy` is its face on SymPy objects):
 the roots in radicals are those of the native
-:mod:`~sympy_extras.polys.polyroots`. The root objects are SymPy's
-``CRootOf``, which is not ported: they reach the core as wrapped foreign
-nodes (``ComplexRootOf(polynomial, index)``), recognised here by their
-name, and their numerical values come from SymPy through the bridge of
-the core (:mod:`sympy_extras.core.bridge`) when one is registered. One
-step goes through SymPy at run time (the face holds it,
-:func:`~sympy_extras.polys.roots_sympy.roots_of_core`): SymPy's ``roots``
-of a polynomial whose components need its algebraic domain ``EX``, which
-the native :func:`~sympy_extras.polys.polyroots.roots` does not port.
+:mod:`~sympy_extras.polys.polyroots`. The root objects are the native
+:class:`~sympy_extras.polys.complexrootof.ComplexRootOf` (SymPy's
+``CRootOf``, which :mod:`sympy_extras.interop` converts to it), the real
+roots of the CAD (:class:`~sympy_extras.polys.cad.indexedroot.IndexedRoot`)
+and, for the objects built elsewhere, SymPy's ``CRootOf`` wrapped as a
+foreign node (recognised by its name, its numerical value from SymPy
+through the bridge of the core, :mod:`sympy_extras.core.bridge`). The
+components of a decomposition which need SymPy's domain ``EX`` are solved
+by the formulas over ``EX`` of :mod:`~sympy_extras.polys.polyroots`
+(linear and quadratic; a cubic or a quartic over ``EX`` gives no radical
+form).
 The trivial roots of a root object follow SymPy's
 ``ComplexRootOf._roots_trivial`` (``sympy/polys/rootoftools.py``), ported.
 """
@@ -56,8 +58,9 @@ _ROOT_CLASS = 'ComplexRootOf'
 
 
 def polynomial_root(e: Basic) -> Optional[tuple[Poly, int]]:
-    """The polynomial and the index of a root object (SymPy's ``CRootOf``
-    wrapped in the core), ``None`` for any other node.
+    """The polynomial and the index of a root object (the native
+    ``ComplexRootOf``, or SymPy's ``CRootOf`` wrapped in the core),
+    ``None`` for any other node.
 
     Examples
     ========
@@ -78,6 +81,9 @@ def polynomial_root(e: Basic) -> Optional[tuple[Poly, int]]:
     """
     from sympy_extras.polys.cad.indexedroot import IndexedRoot
     if isinstance(e, IndexedRoot):
+        return e.polynomial_root()
+    from sympy_extras.polys.complexrootof import ComplexRootOf
+    if isinstance(e, ComplexRootOf):
         return e.polynomial_root()
     if not (e._is_foreign_node() and e._compare_name() == _ROOT_CLASS and len(e.args) == 2):
         return None
@@ -142,10 +148,9 @@ def radical_form(root: Expr) -> Optional[Expr]:
     try:
         listed = roots(poly)
     except NotImplementedError:
-        # the roots over SymPy's algebraic domain EX (after a
-        # decomposition) are not ported: SymPy's roots, through the face
-        from .roots_sympy import roots_of_core
-        listed = roots_of_core(poly.as_expr(), poly.gen)
+        # a cubic or a quartic component over EX (after a decomposition):
+        # its formulas are not ported, no radical form is given
+        return None
     if not isinstance(listed, dict):
         return None
     candidates = [r for r, m in listed.items() for _ in range(m)]

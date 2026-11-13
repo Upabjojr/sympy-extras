@@ -6,9 +6,9 @@ import mpmath
 from sympy import symbols, Eq, And, Or, Not, sqrt, pi, S, Rational, N, asin
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import ExprLike, as_expr
-from sympy_extras.integrals.axisymmetric import axisymmetric_integral, rotation_group
-from sympy_extras.integrals.regions import integrate_by_ranges
+from sympy_extras._typing_sympy import ExprLike, as_expr
+from sympy_extras.integrals.axisymmetric_sympy import axisymmetric_integral, rotation_group
+from sympy_extras.integrals.regions_sympy import integrate_by_ranges
 
 x, y, z, w = symbols('x y z w')
 #: rho**2 at the intersection of the unit sphere and the paraboloid z = rho**2
@@ -102,7 +102,7 @@ def test_tilted_planes_through_the_aligned_frame() -> None:
     # dimension d by |a|**(-d) (the bug: an orthonormal frame with the
     # offsets as parameters made the decomposition parametric, and a
     # scaled but non-orthonormal frame kept the volumes but not the areas)
-    from sympy_extras.integrals.axisymmetric import aligned_frame
+    from sympy_extras.integrals.axisymmetric_sympy import aligned_frame
     ball = x**2 + y**2 + z**2 < 1
     sphere = Eq(x**2 + y**2 + z**2, 1)
     h = 1 - 1 / sqrt(3)                                     # the height of the cap x + y + z > 1
@@ -130,7 +130,7 @@ def test_tilted_planes_through_the_aligned_frame() -> None:
 def test_finite_rotations_refuse_piecewise_constant_integrands() -> None:
     # sympy-extras#57: the derivative test alone accepted them
     from sympy import Heaviside, Piecewise, exp
-    from sympy_extras.integrals.axisymmetric import rotation_invariant, _invariant
+    from sympy_extras.integrals.axisymmetric_sympy import rotation_invariant, _invariant
     assert rotation_invariant(x**2 + y**2, [x, y])
     assert rotation_invariant(exp(-(x**2 + y**2)) * z, [x, y])
     assert not rotation_invariant(Heaviside(x), [x, y])

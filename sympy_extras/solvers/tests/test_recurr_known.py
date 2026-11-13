@@ -14,7 +14,7 @@ from sympy import (Eq, Expr, Function, Integer, Rational, S, Sum, Symbol, binomi
     harmonic, lucas, simplify, sqrt, symbols, sympify)
 from sympy.core.function import AppliedUndef
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.function import AppliedUndef as CoreAppliedUndef
 from sympy_extras.core.relational import Eq as CoreEq

@@ -15,13 +15,13 @@ negative) compatible with the assumptions and returned as a
 
 The module works on the objects of the core and imports no SymPy:
 :mod:`sympy_extras.assumptions.limits_sympy` is its face on SymPy objects.
-Two steps are not ported and go through SymPy at run time (the face holds
-them, the functions ending in ``_of_core``): SymPy's ``limit_seq``
-(:func:`sympy.series.limitseq.limit_seq`, the limits of sequences by the
-Stolz--Cesaro theorem and the dominant terms), and the reliable
-numerical values of :func:`sympy_extras._numeric.reliable_value`, with
-which an infinite limit of a function taking complex values on the
-approach is recognised as ``zoo``.
+The limits of sequences are those of the port of SymPy's ``limit_seq``
+(:func:`sympy_extras.series.limitseq.limit_seq`, the Stolz--Cesaro
+theorem and the dominant terms).
+The reliable numerical values of
+:func:`sympy_extras._numeric.reliable_value`, with which an infinite limit
+of a function taking complex values on the approach is recognised as
+``zoo``, are native.
 """
 from __future__ import annotations
 
@@ -233,11 +233,18 @@ def _continuous(x0: Expr, direction: str) -> Engine:
     return engine
 
 
+def _limit_seq_native(e: Expr, n: Symbol) -> Optional[Expr]:
+    """The limit of the sequence by the port of SymPy's ``limit_seq``
+    (:func:`sympy_extras.series.limitseq.limit_seq`), ``None`` when it
+    gives up."""
+    from sympy_extras.series.limitseq import limit_seq as _limit_seq
+    return _limit_seq(e, n)
+
+
 def _sequence(e: Expr, n: Symbol) -> Expr:
-    """SymPy's ``limit_seq`` as an engine (an unevaluated ``Limit`` when
+    """The limit of a sequence as an engine (an unevaluated ``Limit`` when
     it gives up)."""
-    from .limits_sympy import limit_seq_of_core
-    value = limit_seq_of_core(e, n)
+    value = _limit_seq_native(e, n)
     if value is None:
         # the limit of the function of a real variable, when it exists,
         # is the limit of the sequence (an oscillation in the real
@@ -344,7 +351,7 @@ def _engine_value(engine: Engine, instance: Expr, x: Symbol) -> Optional[Expr]:
     """The engine's limit of an instance within the time limit; ``None``
     when it fails, gives up or returns bounds."""
     try:
-        value = attempt(lambda: engine(instance, x), settings.timeout)
+        value = attempt(lambda: engine(instance, x), settings.timeout, native=True)
     except (NotImplementedError, ValueError, TypeError, PoleError):
         return None
     if value is None or isinstance(value, Limit) or value.has(AccumBounds):
@@ -376,7 +383,7 @@ def _same_limit(first: Expr, second: Expr) -> Optional[bool]:
         return True
     if first.is_infinite or second.is_infinite:
         return first == second
-    difference = attempt(lambda: simplify(first - second), settings.timeout)
+    difference = attempt(lambda: simplify(first - second), settings.timeout, native=True)
     if difference is None:
         return None
     if difference == 0:
@@ -397,9 +404,9 @@ def _undirected(result: Expr, expr: Expr, x: Symbol, x0: Expr, direction: str) -
         return result
     if expr.free_symbols != {x}:
         return result                           # parameters: not sampled
-    from .limits_sympy import reliable_value_of_core
+    from sympy_extras._numeric import reliable_value
     for sample in _approach_samples(x0, direction):
-        number = reliable_value_of_core(expr, 30, {x: sample})
+        number = reliable_value(expr, 30, {x: sample})
         if number is None:
             return result
         try:
@@ -567,7 +574,7 @@ def _condition(formula: Boolean) -> Boolean:
     """A condition on the parameters simplified over the reals when it is
     polynomial (``(a > 0) & (a > 1)`` is ``a > 1``)."""
     from .resolve import resolve
-    simplified = attempt(lambda: resolve(formula), settings.timeout)
+    simplified = attempt(lambda: resolve(formula), settings.timeout, native=True)
     return simplified if isinstance(simplified, Boolean) else formula
 
 

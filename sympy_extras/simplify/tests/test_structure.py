@@ -9,7 +9,7 @@ from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
 from sympy_extras._testing import untyped
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.simplify.structure_sympy import ElementaryTower, NotElementary, canonical_form, equal, is_zero
 
 x, y = symbols('x y')
@@ -226,7 +226,7 @@ def test_a_sample_point_on_a_branch_cut_is_no_witness() -> None:
     # came out as 1.87*I and is_zero answered False. Found by evaluating the
     # verdicts of a fuzz with Mathematica; the real part of the difference
     # of the logarithms is proved zero now, or the point is skipped
-    from sympy_extras._numeric import reliable_value
+    from sympy_extras._numeric_sympy import reliable_value
     third = Rational(1, 3)
     logarithmic = 2**Rational(2, 3) * (I * (log(1 - I * x) - log(1 + I * x)))**third / 2
     assert is_zero(atan(x)**third - logarithmic) is not False

@@ -27,8 +27,10 @@ and Boolean combinations of polynomial relations between real variables
 This module imports no SymPy: it takes and returns the expressions and
 Booleans of :mod:`sympy_extras.core`. Code on SymPy objects uses
 :mod:`sympy_extras.assumptions.facts_sympy`, which also keeps
-``predicates_consistent`` (a question to the SAT solver of SymPy's
-assumptions with its known facts about the predicates, not ported).
+``predicates_consistent`` on SymPy's predicates (a question to the SAT
+solver of SymPy's assumptions with its known facts about the
+predicates); its native counterpart, on the core's predicates, is
+:func:`sympy_extras.assumptions.satask.predicates_consistent`.
 
 Examples
 ========

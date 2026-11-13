@@ -97,6 +97,59 @@ def test_residue_sums_match_sympy() -> None:
         assert str(to_sympy(summation(expr_from_sympy(f), limits), evaluate=False)) == str(sympy.summation(f, (v, lo, hi)))
 
 
+def test_residue_sums_at_crootof_poles() -> None:
+    # the poles which are CRootOf are taken natively by the residue of a
+    # pole at an algebraic point (they went to SymPy's eval_sum_residue,
+    # which returns None here: the is_integer of its real CRootOf is None)
+    import mpmath
+    import pathlib
+    from sympy_extras.concrete.summations import eval_sum_residue
+    import sympy_extras.concrete as concrete
+    i = sympy.Symbol('i')
+    f = 1/(i**3 + i + 1)
+    var = from_sympy(i)
+    assert isinstance(var, Symbol)
+    limits = (var, expr_from_sympy(-oo), expr_from_sympy(oo))
+    ours = eval_sum_residue(expr_from_sympy(f), limits)
+    assert ours is not None and ours.has(expr_from_sympy(sympy.CRootOf(i**3 + i + 1, 0)))
+    with mpmath.workdps(30):
+        # the tail beyond |k| = N is about 1/N**2: odd terms cancel
+        partial = sum(mpmath.mpf(1)/(k**3 + k + 1) for k in range(-20000, 20001))
+    assert abs(complex(ours.evalf(25)) - complex(partial)) < 1e-8
+    # the poles of a double factor and the alternating sums
+    f2 = 1/(i**3 + i + 1)**2
+    ours2 = eval_sum_residue(expr_from_sympy(f2), limits)
+    assert ours2 is not None
+    with mpmath.workdps(30):
+        partial2 = sum(mpmath.mpf(1)/(k**3 + k + 1)**2 for k in range(-2000, 2001))
+    assert abs(complex(ours2.evalf(25)) - complex(partial2)) < 1e-12
+    # SymPy's sum of 1/(i**4 + i + 1) over the integers is 0 (its series at a
+    # CRootOf): the sum is positive, about 2.4920
+    f3 = 1/(i**4 + i + 1)
+    ours3 = eval_sum_residue(expr_from_sympy(f3), limits)
+    assert ours3 is not None
+    with mpmath.workdps(30):
+        partial3 = sum(mpmath.mpf(1)/(k**4 + k + 1) for k in range(-2000, 2001))
+    assert abs(complex(ours3.evalf(25)) - complex(partial3)) < 1e-9
+    for path in pathlib.Path(concrete.__file__).parent.glob('*.py'):
+        source = path.read_text()
+        assert 'getattr(' not in source and 'import_module(' not in source, path
+
+
+def test_residue_sums_over_ex() -> None:
+    # coefficients our Poly does not take: the closed forms of ex_roots
+    # (SymPy raises NotImplementedError: sorted roots not supported over EX)
+    from sympy_extras.concrete.summations import eval_sum_residue
+    i = sympy.Symbol('i', integer=True)
+    var = from_sympy(i)
+    assert isinstance(var, Symbol)
+    for f, exact in ((1/(i**2 + sympy.pi), sympy.sqrt(sympy.pi)*sympy.coth(sympy.pi**R(3, 2))),
+                     (1/(i**2 + sympy.sqrt(2)), sympy.pi/2**R(1, 4)*sympy.coth(sympy.pi*2**R(1, 4)))):
+        ours = eval_sum_residue(expr_from_sympy(f), (var, expr_from_sympy(-oo), expr_from_sympy(oo)))
+        assert ours is not None
+        assert abs(sympy.N(to_sympy(ours) - exact, 30)) < 1e-25
+
+
 def test_geometric_sum_with_ratio_one() -> None:
     # the bug: the sum of (-1)**(2*k) was nan, the geometric formula
     # (q**a - q**(b + 1))/(1 - q) at q = (-1)**2 = 1: the case Eq(q, 1) was

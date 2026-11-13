@@ -25,15 +25,22 @@ is a bijection of each interval between consecutive poles onto the real
 line with Jacobians summing to one (Boros and Moll, chapter 13).
 
 The functions here recognise the shapes and hand the transformed integral
-to :func:`sympy_extras.integrals.definite_integral`.
+to :func:`sympy_extras.integrals.definite.definite_integral`.
+
+The module works on the objects of :mod:`sympy_extras.core` and imports
+no SymPy: the native limits under assumptions, ask and partial
+fractions. The transformed integral is computed by the native
+:func:`~sympy_extras.integrals.definite.conditional_integral`. The
+functions on SymPy objects are in :mod:`.transformations_sympy`.
 
 Examples
 ========
 
->>> from sympy import symbols, exp, cos, atan, oo
+>>> from sympy_extras.core import Symbol, oo
+>>> from sympy_extras.functions import exp
 >>> from sympy_extras.integrals.transformations import frullani, glasser
->>> x = symbols('x')
->>> a, b = symbols('a b', positive=True)
+>>> x = Symbol('x')
+>>> a, b = Symbol('a', positive=True), Symbol('b', positive=True)
 >>> frullani((exp(-a*x) - exp(-b*x))/x, x, a > 0)
 ConditionalValue(log(b/a))
 >>> glasser(exp(-(x - 1/x)**2), x, 0, oo)
@@ -54,35 +61,51 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.function import Function
-from sympy.core.mul import Mul
-from sympy.core.numbers import nan, oo, zoo
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.exponential import log
-from sympy.polys.partfrac import apart
-from sympy.polys.polyerrors import PolynomialError
-from sympy.series.limits import Limit
-from sympy.calculus.accumulationbounds import AccumBounds
+import itertools
+from typing import Final, Optional
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
-from sympy_extras.assumptions.limits_sympy import limit
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.limits import limit
+from sympy_extras.core.accumbounds import AccumBounds
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.function import Application
+from sympy_extras.core.limits import Limit
+from sympy_extras.core.logic import and_
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer, nan, oo, zoo
+from sympy_extras.core.power import Pow
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import log
+from sympy_extras.polys.partfrac import apart
 from sympy_extras.settings import settings
+
 from .conditions import ConditionalValue
 from .mellin import monomial
 
 __all__ = ['frullani', 'glasser', 'transformation_integral']
 
+_COUNTER: Final = itertools.count()
+
+
+def _fresh(name: str, **assumptions: bool) -> Dummy:
+    """A dummy with a name of its own: the typed polynomials map their
+    symbols by name, so a dummy ``y`` beside a parameter ``y`` would be
+    taken for it."""
+    return Dummy('%s%d' % (name, next(_COUNTER)), **assumptions)
+
+
+def _expr(e: Basic) -> Expr:
+    if not isinstance(e, Expr):
+        raise TypeError("expected an expression, got %s" % (e,))
+    return e
+
 
 def _limit(f: Expr, x: Symbol, point: Expr, assumptions: Assumptions) -> Optional[Expr]:
-    value = attempt(lambda: limit(f, x, point, assumptions=assumptions), settings.timeout)
+    value = attempt(lambda: limit(f, x, point, assumptions=assumptions), settings.timeout, native=True)
     if value is None or value.has(oo, -oo, zoo, nan, Limit, AccumBounds) or value.free_symbols - f.free_symbols:
         return None
     return value
@@ -92,91 +115,104 @@ def frullani(f: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[Co
     """``Integral(f, (x, 0, oo))`` by Frullani's theorem for
     ``f = c*(g(a*x) - g(b*x))/x``; ``None`` when ``f`` is not of this shape
     or the limits of ``g`` at ``0`` and ``oo`` are not finite. The
-    condition ``a > 0`` and ``b > 0`` is reported."""
-    terms = [as_expr(t) for t in Add.make_args(as_expr(f.expand()))]
+    condition ``a > 0`` and ``b > 0`` is reported.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import atan
+    >>> from sympy_extras.integrals.transformations import frullani
+    >>> x, a, b = Symbol('x'), Symbol('a', positive=True), Symbol('b', positive=True)
+    >>> frullani((atan(a*x) - atan(b*x))/x, x)
+    ConditionalValue(-pi*log(b/a)/2)
+    """
+    terms = Add.make_args(f.expand())
     if len(terms) != 2:
         return None
+    reciprocal = x**-1
     parts: list[tuple[Expr, Expr, Expr]] = []
     for term in terms:
         coefficient, rest = term.as_independent(x, as_Add=False)
-        rest_ = as_expr(rest)
-        if not isinstance(rest_, Mul):
+        if not isinstance(rest, Mul):
             return None
-        factors = [as_expr(u) for u in rest_.args]
-        if len(factors) != 2 or Pow(x, -1) not in factors:
+        factors = rest.args
+        if len(factors) != 2 or reciprocal not in factors:
             return None
-        function = factors[0] if factors[1] == Pow(x, -1) else factors[1]
-        if not isinstance(function, Function) or len(function.args) != 1:
+        function = factors[0] if factors[1] == reciprocal else factors[1]
+        if not isinstance(function, Application) or len(function.args) != 1:
             return None
-        found = monomial(as_expr(function.args[0]), x)
+        found = monomial(_expr(function.args[0]), x)
         if found is None or found[1] != 1:
             return None
-        parts.append((as_expr(coefficient), found[0], as_expr(function.func(x))))
+        parts.append((coefficient, found[0], _expr(function._evaluated((x,)))))
     (c1, a, g1), (c2, b, g2) = parts
-    if g1 != g2 or as_expr(c1 + c2) != 0:
+    if g1 != g2 or c1 + c2 != 0:
         return None
     if a.is_negative and b.is_negative:
         # g(a x) = h(|a| x) with h(x) = g(-x)
-        a, b, g1 = -a, -b, as_expr(g1.subs(x, -x))
-    if ask(as_boolean(a > 0), assumptions) is False or ask(as_boolean(b > 0), assumptions) is False:
+        a, b, g1 = -a, -b, g1.subs(x, -x)
+    if ask(a > 0, assumptions) is False or ask(b > 0, assumptions) is False:
         return None
     at_zero = _limit(g1, x, S.Zero, assumptions)
     at_infinity = _limit(g1, x, oo, assumptions)
     if at_zero is None or at_infinity is None:
         return None
-    condition = as_boolean((a > 0) & (b > 0))
-    return ConditionalValue(c1 * (at_zero - at_infinity) * log(b / a), condition)
+    return ConditionalValue(c1 * (at_zero - at_infinity) * log(b / a), and_(a > 0, b > 0))
 
 
 def _glasser_map(u: Expr, x: Symbol, assumptions: Assumptions) -> Optional[list[tuple[Expr, Expr]]]:
     """``[(a_i, b_i)]`` when ``u == x - sum(a_i/(x - b_i))`` with ``a_i > 0``."""
-    try:
-        decomposed = attempt(lambda: as_expr(apart(u, x)), settings.timeout)
-    except PolynomialError:
-        # not a rational function of x (exp(x) among the generators)
-        return None
+    # (not a rational function of x, exp(x) among the generators: apart
+    # raises PolynomialError, and attempt gives None)
+    decomposed = attempt(lambda: apart(u, x), settings.timeout, native=True)
     if decomposed is None:
         return None
     poles: list[tuple[Expr, Expr]] = []
     linear: Expr = S.Zero
     for term in Add.make_args(decomposed):
-        term_ = as_expr(term)
-        if term_ == x or not term_.has(x):
-            linear = linear + term_
+        if term == x or not term.has(x):
+            linear = linear + term
             continue
-        coefficient, rest = term_.as_independent(x, as_Add=False)
-        rest_ = as_expr(rest)
-        if not (isinstance(rest_, Pow) and rest_.exp == -1):
+        coefficient, rest = term.as_independent(x, as_Add=False)
+        if not (isinstance(rest, Pow) and rest.exp == -1):
             return None
-        base = as_expr(rest_.base)
-        found = base.as_poly(x)
-        if found is None or found.degree() != 1:
+        base = rest.base
+        # the base linear in x: a slope free of x
+        slope = base.diff(x)
+        if slope == 0 or slope.has(x):
             return None
-        slope, intercept = as_expr(found.coeff_monomial(x)), as_expr(found.coeff_monomial(1))
-        a_i = as_expr(-coefficient / slope)
-        b_i = as_expr(-intercept / slope)
-        if ask(as_boolean(a_i > 0), assumptions) is not True:
+        intercept = (base - slope * x).expand()
+        if intercept.has(x):
+            return None
+        a_i = -coefficient / slope
+        b_i = -intercept / slope
+        if ask(a_i > 0, assumptions) is not True:
             return None
         poles.append((a_i, b_i))
-    if as_expr(linear - x) != 0 or not poles:
+    if linear - x != 0 or not poles:
         return None
     return poles
 
 
+def _operations(e: Expr) -> int:
+    count = e.count_ops()
+    return int(count) if isinstance(count, Integer) else 0
+
+
 def _inner_arguments(f: Expr, x: Symbol) -> list[Expr]:
     """The subexpressions of ``f`` depending on ``x`` which are arguments
-    of functions, or bases of powers, largest first."""
+    of functions, or bases of powers, largest first (ties in the order
+    of their printed forms)."""
     found: set[Expr] = set()
-    for node in f.atoms(Function):
+    for node in f.atoms(Application):
         for argument in node.args:
-            argument_ = as_expr(argument)
-            if argument_.has(x) and argument_ != x:
-                found.add(argument_)
+            if isinstance(argument, Expr) and argument.has(x) and argument != x:
+                found.add(argument)
     for node in f.atoms(Pow):
-        base = as_expr(node.base)
+        if not isinstance(node, Pow):
+            continue
+        base = node.base
         if base.has(x) and base != x:
             found.add(base)
-    return sorted(found, key=lambda e: -e.count_ops())
+    return sorted(found, key=lambda e: (-_operations(e), str(e)))
 
 
 def glasser(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
@@ -186,26 +222,34 @@ def glasser(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
     real line, or over ``(0, oo)`` when ``F`` is even (the
     Cauchy–Schlömilch transformation, ``f = G(u**2)``); the transformed
     integral ``Integral(F, (x, -oo, oo))`` is computed by
-    :func:`~sympy_extras.integrals.definite_integral`. ``None`` when the
-    shape is not recognised."""
-    from .definite import conditional_integral
-    a_, b_ = as_expr(a), as_expr(b)
+    :func:`~sympy_extras.integrals.definite.conditional_integral`.
+    ``None`` when the shape is not recognised.
+
+    >>> from sympy_extras.core import Symbol, oo
+    >>> from sympy_extras.functions import exp
+    >>> from sympy_extras.integrals.transformations import glasser
+    >>> x = Symbol('x')
+    >>> glasser(exp(-(x + 1/x)**2), x, -oo, oo) is None
+    True
+    """
+    a_, b_ = to_expr(a), to_expr(b)
     whole_line = (a_, b_) == (-oo, oo)
     half_line = (a_, b_) == (S.Zero, oo)
     if not whole_line and not half_line:
         return None
-    y = Dummy('y', real=True)
+    y = _fresh('y', real=True)
     for v in _inner_arguments(f, x):
         poles = _glasser_map(v, x, assumptions)
         if poles is None:
             continue
-        replaced = as_expr(f.xreplace({v: y}))
+        replaced = _expr(f._xreplace_evaluated({v: y}))
         if replaced.has(x):
             continue
-        if half_line and as_expr(replaced.xreplace({y: -y})) != replaced:
+        if half_line and _expr(replaced._xreplace_evaluated({y: -y})) != replaced:
             # over the half line F must be even
             continue
         lower = -oo if whole_line else S.Zero
+        from .definite import conditional_integral
         value = conditional_integral(replaced, y, lower, oo, assumptions)
         if value is not None:
             return value
@@ -214,8 +258,16 @@ def glasser(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
 
 def transformation_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
                             assumptions: Assumptions = None) -> Optional[ConditionalValue]:
-    """The first of the identities of this module which applies."""
-    a_, b_ = as_expr(a), as_expr(b)
+    """The first of the identities of this module which applies.
+
+    >>> from sympy_extras.core import Symbol, S
+    >>> from sympy_extras.functions import exp
+    >>> from sympy_extras.integrals.transformations import transformation_integral
+    >>> x = Symbol('x')
+    >>> transformation_integral(exp(-x), x, S.Zero, S.One) is None
+    True
+    """
+    a_, b_ = to_expr(a), to_expr(b)
     if (a_, b_) == (S.Zero, oo):
         found = frullani(f, x, assumptions)
         if found is not None:

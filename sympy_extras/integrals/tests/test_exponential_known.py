@@ -7,8 +7,8 @@ from __future__ import annotations
 from sympy import symbols, exp, sqrt, pi, erf, erfi, uppergamma, atanh, Rational, N
 from sympy.core.expr import Expr
 
-from sympy_extras._typing import as_expr
-from sympy_extras.integrals.exponential import exponential_antiderivative
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.integrals.exponential_sympy import exponential_antiderivative
 
 x = symbols('x')
 v = symbols('v', positive=True)

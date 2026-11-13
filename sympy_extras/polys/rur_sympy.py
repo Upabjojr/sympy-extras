@@ -1,6 +1,6 @@
 r"""The SymPy face of :mod:`sympy_extras.polys.rur`: the rational
 univariate representation of a zero-dimensional ideal (Rouillier) on SymPy
-objects, and the step which stays on SymPy.
+objects.
 
 :func:`rur` takes an ideal of :mod:`sympy_extras.polys.ideals_sympy` (over
 ``QQ``) or a list of SymPy expressions or ``Poly`` objects, converts it to
@@ -9,12 +9,6 @@ computes the representation natively and returns a
 :class:`RationalUnivariateRepresentation` of SymPy objects, as before the
 native port: the form a SymPy expression, the polynomials ``Poly`` objects
 in ``t`` over ``QQ``, the solutions ``CRootOf`` objects or radicals.
-
-What stays here, on SymPy: the exact solutions, whose coordinates are
-SymPy's root objects ``CRootOf`` (not ported); the native
-:meth:`RationalUnivariateRepresentation.solutions
-<sympy_extras.polys.rur.RationalUnivariateRepresentation.solutions>` calls
-:func:`solutions_of_core` at run time.
 
 Examples
 ========
@@ -39,7 +33,7 @@ from sympy.core.symbol import Symbol
 from sympy.polys.domains import QQ
 from sympy.polys.polytools import Poly, invert
 
-from sympy_extras._typing import as_expr, as_symbol
+from sympy_extras._typing_sympy import as_expr, as_symbol
 from sympy_extras.core.expr import Expr as CoreExpr
 from sympy_extras.core.symbol import Symbol as CoreSymbol
 from sympy_extras.interop import from_sympy, to_sympy
@@ -49,7 +43,7 @@ from .domains.rationalfield import QQ as CoreQQ
 from .ideals_sympy import Ideal, native_ideal
 from .polyclasses import DensePoly
 
-__all__ = ['rur', 'RationalUnivariateRepresentation', 'System', 'solutions_of_core']
+__all__ = ['rur', 'RationalUnivariateRepresentation', 'System']
 
 #: a system: an ideal, or the polynomials which generate it
 System = Union[Ideal, Sequence[Union[Expr, Poly]]]
@@ -279,33 +273,7 @@ def _sympy_expr(e: CoreExpr) -> Expr:
     return as_expr(to_sympy(e))
 
 
-def _core_expr(e: Expr) -> CoreExpr:
-    converted = from_sympy(e)
-    if not isinstance(converted, CoreExpr):
-        raise TypeError("%s is not an expression" % (e,))
-    return converted
-
-
 def _poly(p: DensePoly[Fraction], t: Symbol) -> Poly:
     """A native polynomial over ``QQ`` as a SymPy ``Poly`` in ``t``."""
     poly: Poly = Poly.from_list([QQ(c.numerator, c.denominator) for c in p.rep], t, domain=QQ)
     return poly
-
-
-def solutions_of_core(polynomial: DensePoly[Fraction], polys: Sequence[DensePoly[Fraction]],
-                      symbols: Sequence[CoreSymbol], real: bool) -> list[native.Point]:
-    """The exact zeros of a native representation: the roots of
-    ``polynomial`` (SymPy's ``CRootOf``, radicals when SymPy finds them;
-    the real ones only with ``real``) substituted in the coordinate
-    polynomials ``polys``, as core expressions (the root objects wrapped
-    by :mod:`sympy_extras.interop`)."""
-    t = as_symbol(to_sympy(polynomial.gen))
-    sympy_polys = [_poly(g, t) for g in polys]
-    f = _poly(polynomial, t)
-    roots = f.real_roots() if real else f.all_roots()
-    result: list[native.Point] = []
-    for r in roots:
-        root = as_expr(r)
-        result.append({s: _core_expr(as_expr(as_expr(g.as_expr().subs(t, root)).expand()))
-                       for s, g in zip(symbols, sympy_polys)})
-    return result

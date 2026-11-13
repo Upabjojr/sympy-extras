@@ -50,21 +50,28 @@ of a linear function, `c = 0`) with `t^n = (a x + b)/(c x + d)`, so that
 `x = (d t^n - b)/(a - c t^n)`.
 
 The value of the rational integral is computed by
-:func:`sympy_extras.integrals.definite_integral` and confirmed numerically
+:func:`~sympy_extras.integrals.definite.conditional_integral` and confirmed
+numerically by :func:`~sympy_extras.integrals.definite.verify_numerically`
 when ``settings.numerical_checks`` is on.
+
+The module works on the objects of :mod:`sympy_extras.core` and imports
+no SymPy: the native ask, limits under assumptions, ``cancel``, roots of
+quadratics, ``tidy`` and conditional values. The rational integral and
+its numerical check are computed by the native :mod:`.definite`. The
+functions on SymPy objects are in :mod:`.algebraic_sympy`.
 
 Examples
 ========
 
->>> from sympy import symbols, sqrt, oo
->>> from sympy_extras.integrals.algebraic import algebraic_integral
->>> x = symbols('x')
->>> algebraic_integral(1/(x*sqrt(x**2 - 1)), x, 1, 2)
-ConditionalValue(pi/3)
->>> algebraic_integral(sqrt(x)/(1 + x)**2, x, 0, oo)
-ConditionalValue(pi/2)
->>> algebraic_integral(sqrt((1 - x)/(1 + x)), x, 0, 1)
-ConditionalValue(-1 + pi/2)
+>>> from sympy_extras.core import Symbol, sqrt, Rational
+>>> from sympy_extras.integrals.algebraic import binomial_exponents, chebyshev_elementary, moebius_root
+>>> x = Symbol('x')
+>>> binomial_exponents(sqrt(x**7/(1 - 5*x**2)), x)
+BinomialDifferential(x**(7/2)*(1 + -5*x**(2))**(-1/2))
+>>> chebyshev_elementary(binomial_exponents(x**3*sqrt(x**2 + 1), x))
+True
+>>> moebius_root((x + 1)**Rational(1, 3)/x, x).t_of_x
+(x + 1)**(1/3)
 
 References
 ==========
@@ -85,31 +92,32 @@ References
 """
 from __future__ import annotations
 
+import itertools
+from fractions import Fraction
 from math import lcm
-from typing import Optional
-
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, Rational, nan, zoo
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.elementary.complexes import Abs
-from sympy.functions.elementary.integers import ceiling
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.functions.elementary.piecewise import Piecewise
-from sympy.functions.special.gamma_functions import gamma
-from sympy.functions.special.hyper import hyper
-from sympy.logic.boolalg import And, Boolean, false, true
-from sympy.polys.polyerrors import PolynomialError
-from sympy.polys.polytools import Poly, cancel
-from sympy.series.limits import Limit
+from typing import Final, Optional
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, free_symbols, sorted_symbols
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
-from sympy_extras.assumptions.limits_sympy import limit
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.limits import limit
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.function import expand
+from sympy_extras.core.limits import Limit
+from sympy_extras.core.logic import Boolean, and_, false, true
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer, Rational, nan, number_from_fraction, zoo
+from sympy_extras.core.power import Pow, sqrt
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import abs_
+from sympy_extras.functions.elementary.integers import ceiling
+from sympy_extras.functions.elementary.piecewise import piecewise
+from sympy_extras.functions.special.gamma_functions import gamma
+from sympy_extras.functions.special.hyper import hyper
+from sympy_extras.polys.polyroots import roots_quadratic
+from sympy_extras.polys.polytools import Poly, cancel
 from sympy_extras.settings import settings
 from .conditions import ConditionalValue
 from .marichev import tidy
@@ -117,6 +125,41 @@ from .marichev import tidy
 __all__ = ['algebraic_integral', 'euler_substitution', 'euler_substitutions', 'binomial_differential', 'moebius_root',
            'rationalised_integral', 'Rationalisation', 'BinomialDifferential', 'binomial_exponents',
            'chebyshev_elementary', 'binomial_hypergeometric_antiderivative']
+
+_COUNTER: Final = itertools.count()
+
+
+def _fresh(name: str, **assumptions: bool) -> Dummy:
+    """A dummy with a name of its own: the typed polynomials map their
+    symbols by name, so a dummy ``t`` beside a parameter ``t`` would be
+    taken for it."""
+    return Dummy('%s%d' % (name, next(_COUNTER)), **assumptions)
+
+
+def _expr(e: Basic) -> Expr:
+    if not isinstance(e, Expr):
+        raise TypeError("expected an expression, got %s" % (e,))
+    return e
+
+
+def _rational(e: Expr) -> Rational:
+    """``e`` as a rational number (``TypeError`` when it is none)."""
+    if not isinstance(e, Rational):
+        raise TypeError("expected a rational number, got %s" % (e,))
+    return e
+
+
+def _fraction(r: Rational) -> Fraction:
+    return Fraction(r.p, r.q)
+
+
+def _number(f: Fraction) -> Rational:
+    return _rational(number_from_fraction(f))
+
+
+def _operations(e: Expr) -> int:
+    count = e.count_ops()
+    return int(count) if isinstance(count, Integer) else 0
 
 
 class Rationalisation:
@@ -126,10 +169,10 @@ class Rationalisation:
     ``t``."""
 
     def __init__(self, t: Symbol, x_of_t: Expr, t_of_x: Expr, radicals: dict[Expr, Expr]) -> None:
-        self.t = t
-        self.x_of_t = x_of_t
-        self.t_of_x = t_of_x
-        self.radicals = radicals
+        self.t: Final[Symbol] = t
+        self.x_of_t: Final[Expr] = x_of_t
+        self.t_of_x: Final[Expr] = t_of_x
+        self.radicals: Final[dict[Expr, Expr]] = dict(radicals)
 
     def __repr__(self) -> str:
         return "Rationalisation(x = %s, t = %s)" % (self.x_of_t, self.t_of_x)
@@ -137,19 +180,48 @@ class Rationalisation:
 
 def _is_rational_in(g: Expr, t: Symbol) -> bool:
     for node in g.atoms(Pow):
-        if node.has(t) and not isinstance(node.exp, Integer):
+        if isinstance(node, Pow) and node.has(t) and not isinstance(node.exp, Integer):
             return False
-    return g.is_rational_function(t)
+    return g.is_rational_function(t) is True
 
 
-def _polynomial(e: Expr, x: Symbol) -> Optional[Poly]:
-    try:
-        p = Poly(e, x)
-    except PolynomialError:
+def _coefficients(e: Expr, x: Symbol) -> Optional[dict[int, Expr]]:
+    """The nonzero coefficients of the powers of ``x`` in the polynomial
+    ``e``, whatever its coefficients (SymPy's ``Poly`` over ``EX``, which
+    the native ``Poly`` does not have); ``None`` when ``e`` is not a
+    polynomial in ``x``."""
+    if e.is_polynomial(x) is not True:
         return None
-    if p.degree() < 0:
+    found: dict[int, Expr] = {}
+    for term in Add.make_args(expand(e)):
+        coefficient, rest = term.as_independent(x, as_Add=False)
+        if rest == 1:
+            n = 0
+        elif rest == x:
+            n = 1
+        elif isinstance(rest, Pow) and rest.base == x and isinstance(rest.exp, Integer) and rest.exp.p > 0:
+            n = rest.exp.p
+        else:
+            return None
+        found[n] = found[n] + coefficient if n in found else coefficient
+    return {n: c for n, c in found.items() if c != 0}
+
+
+def _polynomial(e: Expr, x: Symbol) -> Optional[dict[int, Expr]]:
+    """The coefficients of a nonzero polynomial ``e`` in ``x``, ``None``
+    otherwise."""
+    found = _coefficients(e, x)
+    if not found:
         return None
-    return p
+    return found
+
+
+def _degree(coefficients: dict[int, Expr]) -> int:
+    return max(coefficients) if coefficients else -1
+
+
+def _coefficient(coefficients: dict[int, Expr], n: int) -> Expr:
+    return coefficients.get(n, S.Zero)
 
 
 def _radical_atoms(f: Expr, x: Symbol) -> list[Pow]:
@@ -157,15 +229,38 @@ def _radical_atoms(f: Expr, x: Symbol) -> list[Pow]:
     depends on ``x``."""
     found: list[Pow] = []
     for node in f.atoms(Pow):
-        if node.has(x) and isinstance(node.exp, Rational) and not isinstance(node.exp, Integer):
+        if isinstance(node, Pow) and node.has(x) and isinstance(node.exp, Rational) \
+                and not isinstance(node.exp, Integer):
             found.append(node)
     return found
+
+
+def _exponent(atom: Pow) -> Rational:
+    return _rational(atom.exp)
 
 
 # ---------------------------------------------------------------------------
 # Euler's substitutions
 
-def euler_substitutions(f: Expr, x: Symbol, a: Expr, b: Expr,
+def _real_roots(a2: Expr, b2: Expr, c2: Expr) -> Optional[tuple[Expr, Expr]]:
+    """The two distinct real roots of ``a2*x**2 + b2*x + c2`` with rational
+    coefficients, the smaller first (SymPy's ``all_roots``); ``None``
+    when they are not real and distinct."""
+    A, B, C = _rational(a2), _rational(b2), _rational(c2)
+    discriminant = _fraction(B)**2 - 4 * _fraction(A) * _fraction(C)
+    if discriminant <= 0:
+        return None
+    y = _fresh('y')
+    found = roots_quadratic(Poly(a2 * y**2 + b2 * y + c2, y))
+    if len(found) != 2:
+        return None
+    r1, r2 = found
+    if (r1 - r2).is_extended_positive is True:
+        r1, r2 = r2, r1
+    return (r1, r2)
+
+
+def euler_substitutions(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
                         assumptions: Assumptions = None) -> list[Rationalisation]:
     """Euler's substitutions applicable to an integrand whose radicals are
     half-integer powers of one polynomial ``Q`` of degree one or two
@@ -173,64 +268,72 @@ def euler_substitutions(f: Expr, x: Symbol, a: Expr, b: Expr,
     the order ``a > 0``, ``c > 0``, real roots; empty when the shape does
     not allow any.
 
-    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.core import Symbol, sqrt
     >>> from sympy_extras.integrals.algebraic import euler_substitutions
-    >>> x = symbols('x')
-    >>> euler_substitutions(1/sqrt(x**2 + 1), x, 0, 1)
-    [Rationalisation(x = (1 - _u**2)/(2*_u), t = -x + sqrt(x**2 + 1)), Rationalisation(x = -2*_u/(_u**2 - 1), t = (sqrt(x**2 + 1) - 1)/x)]
+    >>> x = Symbol('x')
+    >>> [s.t_of_x for s in euler_substitutions(1/sqrt(x**2 + 1), x, 0, 1)]
+    [-x + sqrt(x**2 + 1), (sqrt(x**2 + 1) - 1)/x]
     """
     atoms = _radical_atoms(f, x)
-    if not atoms or any(not isinstance(atom.exp, Rational) or atom.exp.q != 2 for atom in atoms):
+    if not atoms or any(_exponent(atom).q != 2 for atom in atoms):
         return []
-    bases: list[Poly] = []
+    bases: list[dict[int, Expr]] = []
     for atom in atoms:
-        p = _polynomial(as_expr(atom.base), x)
-        if p is None or p.degree() > 2:
+        p = _polynomial(atom.base, x)
+        if p is None or _degree(p) > 2:
             return []
         bases.append(p)
-    Q = bases[0]
+    Q = atoms[0].base
     ratios: list[Expr] = []
-    for p in bases:
-        ratio = as_expr(cancel(p.as_expr() / Q.as_expr()))
-        if ratio.has(x) or ask(as_boolean(ratio > 0), assumptions) is not True:
+    for atom in atoms:
+        ratio = cancel(atom.base / Q)
+        if ratio.has(x) or ask(ratio > 0, assumptions) is not True:
             return []
         ratios.append(ratio)
-    u = Dummy('u')
-    coefficients = [as_expr(c) for c in Q.all_coeffs()]
+    Q = expand(Q)
+    u = _fresh('u')
+    coefficients = bases[0]
     # (x(u), u(x), y(u)) for each applicable substitution, y = sqrt(Q)
     maps: list[tuple[Expr, Expr, Expr]] = []
-    if Q.degree() == 1:
-        b1, c1 = coefficients
-        maps.append((as_expr((u**2 - c1) / b1), as_expr(sqrt(Q.as_expr())), as_expr(u)))
+    if _degree(coefficients) == 1:
+        b1, c1 = _coefficient(coefficients, 1), _coefficient(coefficients, 0)
+        maps.append(((u**2 - c1) / b1, sqrt(Q), u))
     else:
-        a2, b2, c2 = coefficients
-        if ask(as_boolean(a2 > 0), assumptions) is True:
-            x_of_u = as_expr((u**2 - c2) / (b2 - 2 * sqrt(a2) * u))
-            maps.append((x_of_u, as_expr(sqrt(Q.as_expr()) - sqrt(a2) * x), as_expr(sqrt(a2) * x_of_u + u)))
-        if ask(as_boolean(c2 > 0), assumptions) is True:
-            x_of_u = as_expr((2 * sqrt(c2) * u - b2) / (a2 - u**2))
-            maps.append((x_of_u, as_expr((sqrt(Q.as_expr()) - sqrt(c2)) / x), as_expr(x_of_u * u + sqrt(c2))))
-        if all(isinstance(c, Rational) for c in coefficients):
-            roots = [as_expr(r) for r in Q.all_roots()]
-            if len(roots) == 2 and all(r.is_extended_real is True for r in roots) and roots[0] != roots[1]:
-                r1, r2 = roots
-                x_of_u = as_expr((a2 * r2 - r1 * u**2) / (a2 - u**2))
-                maps.append((x_of_u, as_expr(sqrt(Q.as_expr()) / (x - r1)), as_expr((x_of_u - r1) * u)))
-    found: list[Rationalisation] = []
+        a2, b2, c2 = (_coefficient(coefficients, k) for k in (2, 1, 0))
+        if ask(a2 > 0, assumptions) is True:
+            x_of_u = (u**2 - c2) / (b2 - 2 * sqrt(a2) * u)
+            maps.append((x_of_u, sqrt(Q) - sqrt(a2) * x, sqrt(a2) * x_of_u + u))
+        if ask(c2 > 0, assumptions) is True:
+            x_of_u = (2 * sqrt(c2) * u - b2) / (a2 - u**2)
+            maps.append((x_of_u, (sqrt(Q) - sqrt(c2)) / x, x_of_u * u + sqrt(c2)))
+        if all(isinstance(c, Rational) for c in (a2, b2, c2)):
+            found = _real_roots(a2, b2, c2)
+            if found is not None:
+                r1, r2 = found
+                x_of_u = (a2 * r2 - r1 * u**2) / (a2 - u**2)
+                maps.append((x_of_u, sqrt(Q) / (x - r1), (x_of_u - r1) * u))
+    substitutions: list[Rationalisation] = []
     for x_of_u, u_of_x, y in maps:
-        y_ = as_expr(cancel(y))
+        y_ = cancel(y)
         radicals: dict[Expr, Expr] = {}
         for atom, ratio in zip(atoms, ratios):
             # (ratio Q)^(k/2) = ratio^(k/2) y^k
-            k = int(as_expr(atom.exp) * 2)
-            radicals[as_expr(atom)] = as_expr(ratio**as_expr(atom.exp) * y_**k)
-        found.append(Rationalisation(u, as_expr(cancel(x_of_u)), u_of_x, radicals))
-    return found
+            exponent = _exponent(atom)
+            radicals[atom] = ratio**exponent * y_**exponent.p
+        substitutions.append(Rationalisation(u, cancel(x_of_u), u_of_x, radicals))
+    return substitutions
 
 
-def euler_substitution(f: Expr, x: Symbol, a: Expr, b: Expr,
+def euler_substitution(f: Expr, x: Symbol, a: ExprLike, b: ExprLike,
                        assumptions: Assumptions = None) -> Optional[Rationalisation]:
-    """The first of :func:`euler_substitutions`, or ``None``."""
+    """The first of :func:`euler_substitutions`, or ``None``.
+
+    >>> from sympy_extras.core import Symbol, sqrt
+    >>> from sympy_extras.integrals.algebraic import euler_substitution
+    >>> x = Symbol('x')
+    >>> euler_substitution(1/sqrt(x**2 + 1), x, 0, 1).t_of_x
+    -x + sqrt(x**2 + 1)
+    """
     found = euler_substitutions(f, x, a, b, assumptions)
     return found[0] if found else None
 
@@ -243,80 +346,86 @@ def moebius_root(f: Expr, x: Symbol) -> Optional[Rationalisation]:
     are rational powers of one Möbius (or linear) function ``M`` of ``x``
     (or of its reciprocal); ``None`` otherwise.
 
-    >>> from sympy import symbols, cbrt
+    >>> from sympy_extras.core import Symbol, Rational
     >>> from sympy_extras.integrals.algebraic import moebius_root
-    >>> x = symbols('x')
-    >>> moebius_root(cbrt(x + 1)/x, x)
-    Rationalisation(x = _t**3 - 1, t = (x + 1)**(1/3))
+    >>> x = Symbol('x')
+    >>> s = moebius_root((x + 1)**Rational(1, 3)/x, x)
+    >>> s.x_of_t.subs(s.t, Symbol('t')), s.t_of_x
+    (t**3 - 1, (x + 1)**(1/3))
     """
     atoms = _radical_atoms(f, x)
     if not atoms:
         return None
-    base0 = as_expr(atoms[0].base)
-    numerator, denominator = [as_expr(e) for e in cancel(base0).as_numer_denom()]
+    base0 = atoms[0].base
+    numerator, denominator = cancel(base0).as_numer_denom()
     pn, pd = _polynomial(numerator, x), _polynomial(denominator, x)
-    if pn is None or pd is None or pn.degree() > 1 or pd.degree() > 1:
+    if pn is None or pd is None or _degree(pn) > 1 or _degree(pd) > 1:
         return None
     n = 1
-    powers: list[tuple[Pow, Rational]] = []
+    powers: list[tuple[Pow, Fraction]] = []
     for atom in atoms:
-        base = as_expr(atom.base)
-        ratio = as_expr(cancel(base / base0))
-        sign: Expr
-        if ratio == 1:
-            sign = S.One
-        elif as_expr(cancel(base * base0)) == 1:
-            sign = S.NegativeOne
+        base = atom.base
+        sign: int
+        if cancel(base / base0) == 1:
+            sign = 1
+        elif cancel(base * base0) == 1:
+            sign = -1
         else:
             return None
-        exponent = as_expr(atom.exp)
-        if not isinstance(exponent, Rational):
-            return None
-        powers.append((atom, Rational(sign * exponent)))
+        exponent = _exponent(atom)
+        powers.append((atom, sign * _fraction(exponent)))
         n = lcm(n, exponent.q)
-    t = Dummy('t', positive=True)
-    a1, b1 = (as_expr(pn.coeff_monomial(x)), as_expr(pn.coeff_monomial(1)))
-    c1, d1 = (as_expr(pd.coeff_monomial(x)), as_expr(pd.coeff_monomial(1)))
-    if as_expr(a1 - c1 * t**n) == 0:
+    t = _fresh('t', positive=True)
+    a1, b1 = _coefficient(pn, 1), _coefficient(pn, 0)
+    c1, d1 = _coefficient(pd, 1), _coefficient(pd, 0)
+    if a1 - c1 * t**n == 0:
         return None
-    x_of_t = as_expr(cancel((d1 * t**n - b1) / (a1 - c1 * t**n)))
+    x_of_t = cancel((d1 * t**n - b1) / (a1 - c1 * t**n))
     if not x_of_t.has(t):
         return None
     radicals: dict[Expr, Expr] = {}
-    for atom, exponent in powers:
-        radicals[as_expr(atom)] = as_expr(t**int(exponent * n))
-    return Rationalisation(t, x_of_t, as_expr(base0**Rational(1, n)), radicals)
+    for atom, k in powers:
+        radicals[atom] = t**int(k * n)
+    return Rationalisation(t, x_of_t, base0**Rational(1, n), radicals)
 
 
 # ---------------------------------------------------------------------------
 # Binomial differentials
+
+def _monomial_exponent(monomial: Expr, x: Symbol) -> Optional[Rational]:
+    """``k`` for ``monomial == x**k`` with a rational ``k`` (``x`` itself
+    is ``k = 1``), ``None`` otherwise."""
+    if monomial == x:
+        return Integer(1)
+    if isinstance(monomial, Pow) and monomial.base == x and isinstance(monomial.exp, Rational):
+        return monomial.exp
+    return None
+
 
 def binomial_differential(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, Expr, Expr, Expr, Expr]]:
     """``(C, m, a, b, n, p)`` with ``f == C * x**m * (a + b*x**n)**p``,
     ``m``, ``n``, ``p`` rational and the binomial power not an integer
     power of a polynomial ``f`` could be expanded to; ``None`` otherwise.
 
-    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.core import Symbol, sqrt
     >>> from sympy_extras.integrals.algebraic import binomial_differential
-    >>> x = symbols('x')
+    >>> x = Symbol('x')
     >>> binomial_differential(3*x**3*sqrt(x**2 + 1), x)
     (3, 3, 1, 1, 2, 1/2)
     """
-    constant, rest = f.as_independent(x, as_Add=False)
-    C = as_expr(constant)
+    C, rest = f.as_independent(x, as_Add=False)
     m: Expr = S.Zero
     binomial: Optional[tuple[Expr, Expr, Expr, Expr]] = None
-    for factor in Mul.make_args(as_expr(rest)):
-        factor_ = as_expr(factor)
+    for factor_ in Mul.make_args(rest):
         if factor_ == x:
             m = m + 1
             continue
         if isinstance(factor_, Pow) and factor_.base == x and isinstance(factor_.exp, Rational):
-            m = m + as_expr(factor_.exp)
+            m = m + factor_.exp
             continue
         if isinstance(factor_, Pow) and isinstance(factor_.exp, Rational) and isinstance(factor_.base, Add) \
                 and binomial is None:
-            terms = [as_expr(term) for term in factor_.base.args]
+            terms = [_expr(term) for term in factor_.base.args]
             if len(terms) != 2:
                 return None
             constant_terms = [term for term in terms if not term.has(x)]
@@ -325,22 +434,18 @@ def binomial_differential(f: Expr, x: Symbol) -> Optional[tuple[Expr, Expr, Expr
             a_ = constant_terms[0]
             other = terms[0] if terms[1] is a_ else terms[1]
             coefficient, monomial = other.as_independent(x, as_Add=False)
-            monomial_ = as_expr(monomial)
-            if monomial_ == x:
-                n_: Expr = S.One
-            elif isinstance(monomial_, Pow) and monomial_.base == x and isinstance(monomial_.exp, Rational):
-                n_ = as_expr(monomial_.exp)
-            else:
+            power = _monomial_exponent(monomial, x)
+            if power is None:
                 return None
-            binomial = (a_, as_expr(coefficient), n_, as_expr(factor_.exp))
+            binomial = (a_, coefficient, power, factor_.exp)
             continue
         return None
     if binomial is None:
         return None
-    a_, b_, n_, p_ = binomial
-    if isinstance(p_, Integer) and isinstance(m, Integer) and isinstance(n_, Integer):
+    a0, b0, n0, p0 = binomial
+    if isinstance(p0, Integer) and isinstance(m, Integer) and isinstance(n0, Integer):
         return None
-    return (C, m, a_, b_, n_, p_)
+    return (C, m, a0, b0, n0, p0)
 
 
 def _binomial_integral(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[ConditionalValue]:
@@ -349,31 +454,32 @@ def _binomial_integral(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assump
     if found is None:
         return None
     C, m, a_, b_, n, p = found
-    if not all(isinstance(e, Rational) for e in (m, n, p)) or n == 0:
+    if not (isinstance(m, Rational) and isinstance(n, Rational) and isinstance(p, Rational)) or n == 0:
         return None
-    m_, n_, p_ = Rational(m), Rational(n), Rational(p)
-    t = Dummy('t', positive=True)
+    m_, n_, p_ = _fraction(m), _fraction(n), _fraction(p)
+    t = _fresh('t', positive=True)
     q = (m_ + 1) / n_
-    if isinstance(p_, Integer) or p_ == 0:
+    g: Expr
+    if p_.denominator == 1:
         # x = t**k rationalises the powers of x
-        k = lcm(m_.q, n_.q)
-        g = as_expr(C * t**(m_ * k) * (a_ + b_ * t**(n_ * k))**p_ * k * t**(k - 1))
-        t_of_x = as_expr(x**Rational(1, k))
-    elif q.is_integer:
+        k = lcm(m_.denominator, n_.denominator)
+        g = C * t**_number(m_ * k) * (a_ + b_ * t**_number(n_ * k))**p * k * t**(k - 1)
+        t_of_x = x**Rational(1, k)
+    elif q.denominator == 1:
         # t**s = a + b x**n
-        s = p_.q
-        g = as_expr(C * Rational(s, 1) / (n_ * b_) * t**(s - 1) * t**(s * p_) * ((t**s - a_) / b_)**int(q - 1))
-        t_of_x = as_expr((a_ + b_ * x**n_)**Rational(1, s))
-    elif (q + p_).is_integer:
+        s = p_.denominator
+        g = C * Integer(s) / (n * b_) * t**(s - 1) * t**_number(s * p_) * ((t**s - a_) / b_)**int(q - 1)
+        t_of_x = (a_ + b_ * x**n)**Rational(1, s)
+    elif (q + p_).denominator == 1:
         # t**s = a x**(-n) + b
-        s = p_.q
+        s = p_.denominator
         exponent = -int(q + p_) - 1
-        g = as_expr(-C * Rational(s, 1) / (n_ * a_) * t**(s - 1 + s * p_) * ((t**s - b_) / a_)**exponent)
-        t_of_x = as_expr((a_ * x**(-n_) + b_)**Rational(1, s))
+        g = -C * Integer(s) / (n * a_) * t**_number(s - 1 + s * p_) * ((t**s - b_) / a_)**exponent
+        t_of_x = (a_ * x**(-n) + b_)**Rational(1, s)
     else:
         # Chebyshev: not elementary
         return None
-    return _transformed(f, x, a, b, Rationalisation(t, S.Zero, as_expr(t_of_x), {}), assumptions, g)
+    return _transformed(f, x, a, b, Rationalisation(t, S.Zero, t_of_x, {}), assumptions, g)
 
 
 class BinomialDifferential:
@@ -383,66 +489,61 @@ class BinomialDifferential:
     them (``5*x**2 - 1`` gives ``a = -1``, ``b = 5``)."""
 
     def __init__(self, m: Rational, a: Expr, b: Expr, n: Rational, p: Rational) -> None:
-        self.m = m
-        self.a = a
-        self.b = b
-        self.n = n
-        self.p = p
+        self.m: Final[Rational] = m
+        self.a: Final[Expr] = a
+        self.b: Final[Expr] = b
+        self.n: Final[Rational] = n
+        self.p: Final[Rational] = p
 
     def __repr__(self) -> str:
         return "BinomialDifferential(x**(%s)*(%s + %s*x**(%s))**(%s))" % (self.m, self.a, self.b, self.n, self.p)
 
 
 #: a binomial ``a + b*x**n`` raised to ``e``, as ``(a, b, n, e)``
-_BinomialPower = tuple[Expr, Expr, Rational, Rational]
+_BinomialPower = tuple[Expr, Expr, Fraction, Fraction]
 
 
-def _binomial_powers(e: Expr, x: Symbol) -> Optional[tuple[Rational, list[_BinomialPower]]]:
+def _binomial_powers(e: Expr, x: Symbol) -> Optional[tuple[Fraction, list[_BinomialPower]]]:
     """``(m, [(a, b, n, e), ...])`` with the logarithmic derivative of ``e``
     that of ``x**m*prod((a + b*x**n)**e)``, ``n > 0``; ``None`` when ``e``
     is not a product of rational powers of ``x`` and of binomials."""
     if not e.has(x):
-        return (Rational(0), [])
+        return (Fraction(0), [])
     if e == x:
-        return (Rational(1), [])
+        return (Fraction(1), [])
     if isinstance(e, Pow):
-        exponent = as_expr(e.exp)
-        if not isinstance(exponent, Rational):
+        if not isinstance(e.exp, Rational):
             return None
-        inner = _binomial_powers(as_expr(e.base), x)
+        exponent = _fraction(e.exp)
+        inner = _binomial_powers(e.base, x)
         if inner is None:
             return None
         # (u**r)'/u**r = r*u'/u for the principal power, wherever u is off its cut
         m, powers = inner
-        return (Rational(m * exponent), [(a, b, n, Rational(k * exponent)) for a, b, n, k in powers])
+        return (m * exponent, [(a, b, n, k * exponent) for a, b, n, k in powers])
     if isinstance(e, Mul):
-        total = Rational(0)
+        total = Fraction(0)
         collected: list[_BinomialPower] = []
-        for factor in e.args:
-            found = _binomial_powers(as_expr(factor), x)
+        for factor_ in e.args:
+            found = _binomial_powers(_expr(factor_), x)
             if found is None:
                 return None
-            total = Rational(total + found[0])
+            total = total + found[0]
             collected.extend(found[1])
         return (total, collected)
     if isinstance(e, Add):
         # the terms c*x**k, grouped by k
-        terms: dict[Rational, Expr] = {}
+        terms: dict[Fraction, Expr] = {}
         for term in e.args:
-            coefficient, monomial = as_expr(term).as_independent(x, as_Add=False)
-            c, monomial_ = as_expr(coefficient), as_expr(monomial)
-            k: Expr
-            if monomial_ == 1:
-                k = S.Zero
-            elif monomial_ == x:
-                k = S.One
-            elif isinstance(monomial_, Pow) and monomial_.base == x and isinstance(monomial_.exp, Rational):
-                k = as_expr(monomial_.exp)
+            c, monomial = _expr(term).as_independent(x, as_Add=False)
+            if monomial == 1:
+                k = Fraction(0)
             else:
-                return None
-            if not isinstance(k, Rational):
-                return None
-            terms[k] = as_expr(terms.get(k, S.Zero) + c)
+                power = _monomial_exponent(monomial, x)
+                if power is None:
+                    return None
+                k = _fraction(power)
+            terms[k] = terms[k] + c if k in terms else c
         present = sorted(k for k, c in terms.items() if c != 0)
         if len(present) == 1:
             return (present[0], [])
@@ -450,7 +551,7 @@ def _binomial_powers(e: Expr, x: Symbol) -> Optional[tuple[Rational, list[_Binom
             return None
         # c1*x**k1 + c2*x**k2 = x**k1*(c1 + c2*x**(k2 - k1)), k1 < k2
         k1, k2 = present
-        return (k1, [(terms[k1], terms[k2], Rational(k2 - k1), Rational(1))])
+        return (k1, [(terms[k1], terms[k2], k2 - k1, Fraction(1))])
     return None
 
 
@@ -478,9 +579,9 @@ def binomial_exponents(f: ExprLike, x: Symbol) -> Optional[BinomialDifferential]
     Examples
     ========
 
-    >>> from sympy import symbols, sqrt, cbrt
+    >>> from sympy_extras.core import Symbol, sqrt, cbrt
     >>> from sympy_extras.integrals.algebraic import binomial_exponents
-    >>> x = symbols('x')
+    >>> x = Symbol('x')
     >>> binomial_exponents(sqrt(x**7/(1 - 5*x**2)), x)
     BinomialDifferential(x**(7/2)*(1 + -5*x**(2))**(-1/2))
     >>> binomial_exponents(cbrt(x**2*(x**3 + 1))/x, x)
@@ -489,12 +590,11 @@ def binomial_exponents(f: ExprLike, x: Symbol) -> Optional[BinomialDifferential]
     BinomialDifferential(x**(-1)*(1 + 1*x**(2))**(1/2))
     >>> binomial_exponents(sqrt(1 + x**2)*sqrt(1 - x**2), x) is None
     True
-    >>> a, b = symbols('a b')
+    >>> a, b = Symbol('a'), Symbol('b')
     >>> binomial_exponents(sqrt(x**7/(a - b*x**2)), x)
     BinomialDifferential(x**(7/2)*(a + -b*x**(2))**(-1/2))
     """
-    f_ = as_expr(f)
-    found = _binomial_powers(f_, x)
+    found = _binomial_powers(to_expr(f), x)
     if found is None:
         return None
     m, powers = found
@@ -502,8 +602,8 @@ def binomial_exponents(f: ExprLike, x: Symbol) -> Optional[BinomialDifferential]
     merged: list[_BinomialPower] = []
     for a, b, n, e in powers:
         for i, (a0, b0, n0, e0) in enumerate(merged):
-            if n0 == n and as_expr(cancel(a * b0 - a0 * b)) == 0:
-                merged[i] = (a0, b0, n0, Rational(e0 + e))
+            if n0 == n and cancel(a * b0 - a0 * b) == 0:
+                merged[i] = (a0, b0, n0, e0 + e)
                 break
         else:
             merged.append((a, b, n, e))
@@ -513,7 +613,7 @@ def binomial_exponents(f: ExprLike, x: Symbol) -> Optional[BinomialDifferential]
     a, b, n, p = remaining[0]
     if not all(_nonzero_coefficient(c) for c in (a, b)):
         return None
-    return BinomialDifferential(m, a, b, n, p)
+    return BinomialDifferential(_number(m), a, b, _number(n), _number(p))
 
 
 def _nonzero_coefficient(c: Expr) -> bool:
@@ -531,16 +631,17 @@ def chebyshev_elementary(binomial: BinomialDifferential) -> bool:
     (``m``, ``n``, ``p`` rational, ``a``, ``b`` nonzero) is elementary if
     and only if ``p``, ``(m + 1)/n`` or ``(m + 1)/n + p`` is an integer.
 
-    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.core import Symbol, sqrt
     >>> from sympy_extras.integrals.algebraic import binomial_exponents, chebyshev_elementary
-    >>> x = symbols('x')
+    >>> x = Symbol('x')
     >>> chebyshev_elementary(binomial_exponents(x**3*sqrt(x**2 + 1), x))
     True
     >>> chebyshev_elementary(binomial_exponents(sqrt(x**3 + 1), x))
     False
     """
-    q = Rational(binomial.m + 1) / binomial.n
-    return binomial.p.q == 1 or q.q == 1 or Rational(q + binomial.p).q == 1
+    p = _fraction(binomial.p)
+    q = (_fraction(binomial.m) + 1) / _fraction(binomial.n)
+    return p.denominator == 1 or q.denominator == 1 or (q + p).denominator == 1
 
 
 def _scaled_power(a: Expr, b: Expr, w: Expr, p: Rational) -> Expr:
@@ -549,16 +650,16 @@ def _scaled_power(a: Expr, b: Expr, w: Expr, p: Rational) -> Expr:
     principal power), so that it cancels against a power of ``a + b*w`` in
     the integrand."""
     if a.is_extended_positive is True:
-        return as_expr(a**p * (a + b * w)**(-p))
+        return a**p * (a + b * w)**(-p)
     if a.is_extended_negative is True:
-        return as_expr((-a)**p * (-a - b * w)**(-p))
-    return as_expr((1 + b * w / a)**(-p))
+        return (-a)**p * (-a - b * w)**(-p)
+    return (1 + b * w / a)**(-p)
 
 
 def _real_at(f: Expr, x: Symbol, point: Expr) -> bool:
     """Whether ``f`` is exactly real at the rational ``point`` (``False``
-    when SymPy cannot tell)."""
-    value = attempt(lambda: as_expr(f.xreplace({x: point})), settings.timeout)
+    when it cannot be told)."""
+    value = attempt(lambda: _expr(f._xreplace_evaluated({x: point})), settings.timeout, native=True)
     return value is not None and value.is_extended_real is True
 
 
@@ -591,35 +692,34 @@ def binomial_hypergeometric_antiderivative(f: ExprLike, x: Symbol) -> Optional[E
     Examples
     ========
 
-    >>> from sympy import symbols, sqrt
+    >>> from sympy_extras.core import Symbol, sqrt
     >>> from sympy_extras.integrals.algebraic import binomial_hypergeometric_antiderivative
-    >>> x = symbols('x')
+    >>> x = Symbol('x')
     >>> binomial_hypergeometric_antiderivative(sqrt(x**3 + 1), x)
     x*hyper((-1/2, 1/3), (4/3,), -x**3)
     >>> binomial_hypergeometric_antiderivative(x**3*sqrt(x**2 + 1), x) is None
     True
-    >>> binomial_hypergeometric_antiderivative(sqrt(x**7/(1 - 5*x**2)), x)
-    Piecewise((2*sqrt(5)*x*sqrt(x**7/(1 - 5*x**2))*sqrt(5 - 1/x**2)*hyper((-7/4, 1/2), (-3/4,), 1/(5*x**2))/35, x < -sqrt(5)/5), (2*x*sqrt(x**7/(1 - 5*x**2))*sqrt(1 - 5*x**2)*hyper((1/2, 9/4), (13/4,), 5*x**2)/9, True))
-    >>> c = symbols('c')
+    >>> c = Symbol('c')
     >>> binomial_hypergeometric_antiderivative(sqrt(1 + c*x**3), x)
     Piecewise((2*x*sqrt(c*x**3 + 1)*hyper((-5/6, -1/2), (1/6,), -1/(c*x**3))/(5*sqrt(1 + 1/(c*x**3))), c*x**3 < -1), (x*hyper((-1/2, 1/3), (4/3,), -c*x**3), True))
     """
-    f_ = as_expr(f)
+    f_ = to_expr(f)
     binomial = binomial_exponents(f_, x)
     if binomial is None or chebyshev_elementary(binomial):
         return None
     m, a, b, n, p = binomial.m, binomial.a, binomial.b, binomial.n, binomial.p
-    q = Rational(m + 1) / n
-    ratio = as_expr(-b / a)
-    z = as_expr(ratio * x**n)
+    m_, n_, p_ = _fraction(m), _fraction(n), _fraction(p)
+    q = _number((m_ + 1) / n_)
+    ratio = -b / a
+    z = ratio * x**n
     # x**m*(a + b*x**n)**p is x**(m + n*p)*(b + a*x**(-n))**p up to a locally
     # constant factor: exponents m + n*p, -n, and q' = -(q + p), not an integer
-    m2, q2 = Rational(m + n * p), Rational(-(q + p))
-    inner_factor = as_expr(f_ * _scaled_power(a, b, as_expr(x**n), p))
-    outer_factor = as_expr(f_ * _scaled_power(b, a, as_expr(x**(-n)), p))
+    m2, q2 = _number(m_ + n_ * p_), _number(-((m_ + 1) / n_ + p_))
+    inner_factor = f_ * _scaled_power(a, b, x**n, p)
+    outer_factor = f_ * _scaled_power(b, a, x**(-n), p)
     # m + 1 and q + 1 are not zero: q is not an integer
-    inside = as_expr(x * inner_factor / (m + 1) * hyper([-p, q], [q + 1], z))
-    outside = as_expr(x * outer_factor / (m2 + 1) * hyper([-p, q2], [q2 + 1], as_expr(1 / z)))
+    inside = x * inner_factor / (m + 1) * hyper([-p, q], [q + 1], z)
+    outside = x * outer_factor / (m2 + 1) * hyper([-p, q2], [q2 + 1], 1 / z)
     if not ratio.is_number:
         return _parametric_cases(inside, outside, ratio, x, n)
     if ratio.is_extended_real is not True:
@@ -629,27 +729,27 @@ def binomial_hypergeometric_antiderivative(f: ExprLike, x: Symbol) -> Optional[E
         if side == -1 and n.q != 1:
             # a principal power of a negative x: z is not real
             continue
-        if as_expr(ratio * side**n).is_extended_positive is not True:
+        if (ratio * Integer(side)**n).is_extended_positive is not True:
             continue
-        boundary = as_expr(Abs(ratio)**(-1 / n))
-        beyond = as_expr(side * ceiling(2 * boundary))
-        within = as_expr(side * Rational(1, int(ceiling(2 / boundary))))
+        boundary = abs_(ratio)**(-1 / n)
+        beyond = side * ceiling(2 * boundary)
+        within = side * Rational(1, int(ceiling(2 / boundary)))
         if not _real_at(f_, x, beyond):
             # the first form holds there too, on the cut of 2F1 (with a
             # constant imaginary part where f is not real)
             continue
         piece = outside
-        if _real_at(f_, x, within) and p > -1:
+        if _real_at(f_, x, within) and p_ > -1:
             # f real and integrable on both sides of z = 1: the case in 1/z
             # shifted to join the first form there
-            joined = _joined(x, as_expr(side * boundary), side, inner_factor, outer_factor, m, q, m2, q2, p)
+            joined = _joined(x, side * boundary, side, inner_factor, outer_factor, m, q, m2, q2, p)
             if joined is None:
                 continue
-            piece = as_expr(outside + joined)
-        pieces.append((piece, as_boolean(x > boundary if side == 1 else x < -boundary)))
+            piece = outside + joined
+        pieces.append((piece, x > boundary if side == 1 else x < -boundary))
     if not pieces:
         return inside
-    return as_expr(Piecewise(*pieces, (inside, true)))
+    return piecewise(*pieces, (inside, true))
 
 
 def _parametric_cases(inside: Expr, outside: Expr, ratio: Expr, x: Symbol, n: Rational) -> Expr:
@@ -663,25 +763,26 @@ def _parametric_cases(inside: Expr, outside: Expr, ratio: Expr, x: Symbol, n: Ra
     there, in the parameters): an antiderivative on each interval, which
     jumps at ``z = 1``. ``ratio`` not real for real parameters: the form
     in ``z`` alone."""
-    real: dict[Symbol, Expr] = {s: Dummy(s.name, real=True, nonzero=True) for s in sorted_symbols(free_symbols(ratio))}
-    if as_expr(ratio.xreplace(real)).is_extended_real is not True:
+    real: dict[Basic, Basic] = {s: _fresh(s.name, real=True, nonzero=True)
+                                for s in sorted(ratio.free_symbols, key=lambda s: s.name)}
+    if _expr(ratio._xreplace_evaluated(real)).is_extended_real is not True:
         return inside
     condition: Boolean
     if n.q == 1:
         # z real for every real x: z > 1 on one side (n odd) or on both (n even)
         if n.p % 2 == 0 and ratio.is_extended_nonpositive is True:
             return inside
-        condition = as_boolean(ratio * x**n > 1)
+        condition = ratio * x**n > 1
     else:
         # z not real for x < 0 (a principal power of a negative x); written
         # with Abs(x) so that no case compares a complex number, and false
         # at ratio = 0 (where the form in z is defined)
         if ratio.is_extended_nonpositive is True:
             return inside
-        condition = as_boolean(And(x > 0, ratio * Abs(x)**n > 1))
+        condition = and_(x > 0, ratio * abs_(x)**n > 1)
     if condition == false:
         return inside
-    return as_expr(Piecewise((outside, condition), (inside, true)))
+    return piecewise((outside, condition), (inside, true))
 
 
 def _joined(x: Symbol, point: Expr, side: int, inner_factor: Expr, outer_factor: Expr,
@@ -693,22 +794,22 @@ def _joined(x: Symbol, point: Expr, side: int, inner_factor: Expr, outer_factor:
     Gamma(q + 1)*Gamma(p + 1)/Gamma(q + p + 1)``), the factors have finite
     one-sided limits; ``None`` when a limit is not found."""
     before, after = ('-', '+') if side == 1 else ('+', '-')
-    inner = attempt(lambda: limit(inner_factor, x, point, before), settings.timeout)
-    outer = attempt(lambda: limit(outer_factor, x, point, after), settings.timeout)
+    inner = attempt(lambda: limit(inner_factor, x, point, before), settings.timeout, native=True)
+    outer = attempt(lambda: limit(outer_factor, x, point, after), settings.timeout, native=True)
     if inner is None or outer is None or not inner.is_number or not outer.is_number \
             or inner.has(nan, zoo, Limit) or outer.has(nan, zoo, Limit) \
             or inner.is_finite is not True or outer.is_finite is not True:
         return None
     first = point * inner * gamma(q + 1) * gamma(p + 1) / (gamma(q + p + 1) * (m + 1))
     second = point * outer * gamma(q2 + 1) * gamma(p + 1) / (gamma(q2 + p + 1) * (m2 + 1))
-    return as_expr(first - second)
+    return first - second
 
 
 # ---------------------------------------------------------------------------
 # The transformed integral
 
 def _bound(t_of_x: Expr, x: Symbol, point: Expr, assumptions: Assumptions) -> Optional[Expr]:
-    value = attempt(lambda: limit(t_of_x, x, point, assumptions=assumptions), settings.timeout)
+    value = attempt(lambda: limit(t_of_x, x, point, assumptions=assumptions), settings.timeout, native=True)
     if value is None or value.has(nan, zoo, Limit) or value.free_symbols - t_of_x.free_symbols:
         return None
     return value
@@ -717,21 +818,23 @@ def _bound(t_of_x: Expr, x: Symbol, point: Expr, assumptions: Assumptions) -> Op
 def _transformed(f: Expr, x: Symbol, a: Expr, b: Expr, substitution: Rationalisation,
                  assumptions: Assumptions, g: Optional[Expr] = None) -> Optional[ConditionalValue]:
     """The integral of the transformed integrand ``g`` (built from the
-    substitution unless given) over the image of the range."""
-    from .definite import conditional_integral, verify_numerically
+    substitution unless given) over the image of the range, by
+    :func:`~sympy_extras.integrals.definite.conditional_integral`."""
     t = substitution.t
     if g is None:
-        replaced = as_expr(f.xreplace(substitution.radicals))
+        rule: dict[Basic, Basic] = {k: v for k, v in substitution.radicals.items()}
+        replaced = _expr(f._xreplace_evaluated(rule))
         if _radical_atoms(replaced, x):
             return None
-        g = as_expr(replaced.subs(x, substitution.x_of_t) * substitution.x_of_t.diff(t))
-    g = as_expr(cancel(g))
+        g = replaced.subs(x, substitution.x_of_t) * substitution.x_of_t.diff(t)
+    g = cancel(g)
     if not _is_rational_in(g, t):
         return None
     lower = _bound(substitution.t_of_x, x, a, assumptions)
     upper = _bound(substitution.t_of_x, x, b, assumptions)
     if lower is None or upper is None or lower == upper:
         return None
+    from .definite import conditional_integral, verify_numerically
     found = conditional_integral(g, t, lower, upper, assumptions)
     if found is None:
         return None
@@ -741,10 +844,10 @@ def _transformed(f: Expr, x: Symbol, a: Expr, b: Expr, substitution: Rationalisa
     return ConditionalValue(value, found.condition)
 
 
-def rationalised_integral(f: Expr, x: Symbol, a: Expr, b: Expr, substitution: Rationalisation,
+def rationalised_integral(f: Expr, x: Symbol, a: ExprLike, b: ExprLike, substitution: Rationalisation,
                           assumptions: Assumptions = None) -> Optional[ConditionalValue]:
     """``Integral(f, (x, a, b))`` through a rationalising substitution."""
-    return _transformed(f, x, a, b, substitution, assumptions)
+    return _transformed(f, x, to_expr(a), to_expr(b), substitution, assumptions)
 
 
 def algebraic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
@@ -752,22 +855,21 @@ def algebraic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     """``Integral(f, (x, a, b))`` for an algebraic integrand of genus zero:
     the roots of a Möbius function, Euler's substitutions for a square
     root of a polynomial of degree at most two, and Chebyshev's binomial
-    differentials, in this order; ``None`` when none applies.
+    differentials, in this order; ``None`` when none applies. The
+    rational integral is computed by
+    :func:`~sympy_extras.integrals.definite.conditional_integral`.
 
     Examples
     ========
 
-    >>> from sympy import symbols, sqrt, cbrt, oo
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import exp
     >>> from sympy_extras.integrals.algebraic import algebraic_integral
-    >>> x = symbols('x')
-    >>> algebraic_integral(1/sqrt(x**2 + 1), x, 0, 1)
-    ConditionalValue(-log(-1 + sqrt(2)))
-    >>> algebraic_integral(x**3*sqrt(x**2 + 1), x, 0, 1)
-    ConditionalValue(2*(1 + sqrt(2))/15)
-    >>> algebraic_integral(cbrt(x)/(1 + x), x, 0, 1)
-    ConditionalValue(-sqrt(3)*pi/3 - log(2) + 3)
+    >>> x = Symbol('x')
+    >>> algebraic_integral(exp(x), x, 0, 1) is None
+    True
     """
-    f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
+    f_, a_, b_ = to_expr(f), to_expr(a), to_expr(b)
     if not _radical_atoms(f_, x):
         return None
     substitution = moebius_root(f_, x)
@@ -776,10 +878,10 @@ def algebraic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
         if found is not None:
             return found
     best: Optional[ConditionalValue] = None
-    for substitution in euler_substitutions(f_, x, a_, b_, assumptions):
+    for candidate in euler_substitutions(f_, x, a_, b_, assumptions):
         # every applicable Euler substitution, the shortest value kept
-        found = _transformed(f_, x, a_, b_, substitution, assumptions)
-        if found is not None and (best is None or found.value.count_ops() < best.value.count_ops()):
+        found = _transformed(f_, x, a_, b_, candidate, assumptions)
+        if found is not None and (best is None or _operations(found.value) < _operations(best.value)):
             best = found
     if best is not None:
         return best

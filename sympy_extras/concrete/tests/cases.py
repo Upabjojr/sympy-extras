@@ -7,9 +7,9 @@ from typing import Optional, Sequence
 
 from sympy import Add, Expr, Or, Piecewise, Rational, Symbol
 
-from sympy_extras._numeric import reliable_value
-from sympy_extras._special_values import Point, condition_point
-from sympy_extras._typing import as_boolean, as_expr, free_symbols, sorted_symbols
+from sympy_extras._numeric_sympy import reliable_value
+from sympy_extras._special_values_sympy import Point, condition_point
+from sympy_extras._typing_sympy import as_boolean, as_expr, free_symbols, sorted_symbols
 
 
 def case_points(value: Expr) -> list[Point]:

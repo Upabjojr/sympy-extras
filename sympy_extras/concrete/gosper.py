@@ -111,6 +111,10 @@ class _UPoly:
                 out[i + j] = out[i + j] + a * b
         return _UPoly(out)
 
+    def diff(self) -> _UPoly:
+        """The derivative."""
+        return _UPoly([c * k for k, c in enumerate(self.c)][1:])
+
     def scale(self, k: Expr) -> _UPoly:
         return _UPoly([c * k for c in self.c])
 

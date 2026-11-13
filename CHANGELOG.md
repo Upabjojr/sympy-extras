@@ -58,10 +58,12 @@ remove public functions. Breaking changes are listed here when they happen.
   its parameters, from the signs of the discrimination sequence by the
   rule of Frobenius on Hermite's form), `discrimination_sequence`,
   `signature_from_signs`.
-- `sympy_extras.series.fourier`: `fourier_coefficients` (the Fourier
-  coefficients `a0`, `an`, `bn` of piecewise polynomial functions as
-  formulas in a symbolic integer `n`, by repeated integration by parts)
-  and `fourier_series` (partial sums).
+- `sympy_extras.series.fouriercoefficients`: `fourier_coefficients` (the
+  Fourier coefficients `a0`, `an`, `bn` of piecewise polynomial functions
+  as formulas in a symbolic integer `n`, by repeated integration by
+  parts, a `FourierCoefficients`) and `fourier_partial_sum`. (The module
+  was `series.fourier` with `FourierSeries` and `fourier_series` on its
+  branch; those names are the port of SymPy's `sympy.series.fourier`.)
 - `sympy_extras.physics.dimensional`: `pi_groups` (the dimensionless
   groups of the Buckingham Pi theorem, an LLL reduced basis of all the
   integer solutions), `solve_for` (the law the dimensions impose: the
@@ -273,6 +275,676 @@ remove public functions. Breaking changes are listed here when they happen.
   must be proved nonzero by the zero test (`NotImplementedError`
   otherwise). Determinants with polynomial entries are 5 to 200 times
   faster than `sympy.Matrix.det`. See `docs/matrices.md`.
+- The last SymPy fallbacks of the native core are closed: the bridge
+  (`sympy_extras.core.bridge`) now serves only wrapped foreign (SymPy)
+  objects. `Sum` values by SymPy's Euler–Maclaurin summation
+  (`Sum.euler_maclaurin` and the branch of `evalf_sum`, ported to
+  `concrete/_evalf.py`), with guards against SymPy's wrong values (no early
+  stop at a small term when the terms grow again: SymPy's
+  `Sum(exp(-i**2), (i, -50, 50)).evalf()` is `0`; no Euler–Maclaurin for a
+  summand with a peak or an oscillation; no `hypsum` when the term ratio
+  has a pole at a natural number, SymPy's `ZeroDivisionError` on
+  `Sum(i**2/(i**4 + 1), (i, 0, oo))`); the definite `Integral` node has a
+  value (`integrals/_evalf.py`, a port of `evalf_integral`: mpmath's
+  tanh-sinh quadrature of the native integrand, the range subdivided at
+  the kinks of `Abs`, `Piecewise`, `floor`, the value confirmed at a
+  higher precision, `None` when not accurate) and is a number
+  (`is_number`), as SymPy's.
+  `Expr.equals` and `Expr.is_constant` finish SymPy's steps natively (the
+  derivatives, the surds solved for by the native `solve`, the minimal
+  polynomial, the simplified derivatives); `Expr.integrate` is the native
+  `indefinite_integral` / `definite_integral`; `Expr.invert` with one
+  generator and parameters inverts over their rational functions (several
+  generators raise `ValueError`, as SymPy does); the first solution of an
+  `Order`'s change of variable takes the first element of several, or the
+  native `solve`'s solution of a `ConditionSet`; `Basic.simplify` of a node
+  which is not an expression rebuilds it with its arguments simplified;
+  `numeric_value` of a native node without a numerical rule is `None`.
+  `meijerint_inversion` stays unported: no native code calls it.
+- `sympy_extras.series.formal`, `sympy_extras.series.fourier`: native ports of SymPy's
+  formal power series (`fps`, `FormalPowerSeries` with truncate, sums, derivatives,
+  integrals, `product`, `compose`, `inverse`) and Fourier series (`fourier_series`,
+  `FourierSeries`, `FiniteFourierSeries`: truncate, sigma_approximation, shift, shiftx,
+  scale, scalex), with the sequences they use (`sympy_extras.series.sequences`:
+  `SeqFormula`, `SeqPer`, `SeqAdd`, `SeqMul`, `sequence`); `Expr.fps` and
+  `Expr.fourier_series` no longer go through SymPy (only for wrapped foreign nodes);
+  `to_sympy` converts the new classes. Unlike SymPy, `fps(1/(x**2 + x + 1))` is the
+  right series (SymPy's rational algorithm read the quadratic denominator as linear),
+  and the scaled and shifted finite Fourier series keep all their terms (SymPy's kept
+  the first three).
+- Every SymPy 1.14 `_eval_rewrite_as_*` rule of the native classes is native, targets
+  which are not function classes included (Piecewise, Integral, Sum, Product, hyper,
+  meijerg, and names such as `'sqrt'`, `'polynomial'`, `'Nor'`), except Piecewise↔ITE
+  and PowerSet; `rewrite` accepts SymPy's names as strings; `Bridge.rewrite` is removed.
+  `expand_func` of the Airy functions, `Ynm`, `hyper`, `meijerg`, `polygamma` of a
+  non-integer order and `harmonic` at rationals is native. The series of `Piecewise`,
+  `Derivative`, `Subs`, `Integral` and `NonElementaryIntegral` are native; the functions
+  without a rule use the port of `Function._eval_nseries`, and `Max`, `Min`, `Sum`,
+  `Product` and the other nodes without one raise `NotImplementedError`, as in SymPy.
+  Unlike SymPy: `erfi` → `expint`, `li` → `Shi`/`Chi`, `hn1`/`hn2` → `hankel`,
+  `airyaiprime` → `besseli`, the phase of `assoc_legendre` → `Sum`, and `genocchi` →
+  `bernoulli` (no float) are right, and `sec`/`csc` of the special angles rewrite to
+  `sqrt` and `pow` (SymPy raises).
+- `sympy_extras.integrals.meijerint`: a native port of SymPy's Meijer
+  G-function integration (`sympy/integrals/meijerint.py`, SymPy 1.14) on
+  the typed core: the table of G-function representations
+  (`lookup_table`, typed `TableEntry` records), `rewrite_single` (the
+  table, the recursive Mellin transform of a product by the theorem for
+  two G-functions, ported with `_rewrite_gamma` and the inverse Mellin
+  transform of `transforms.py`, and the Mellin kernels of `.mellin`
+  inverted by `slater.mellin_barnes`), `meijerint_indefinite` and
+  `meijerint_definite` (the Mellin-convolution theorems with the
+  convergence conditions of Prudnikov 2.24.1-2 and Luke 5.6, the changes
+  of range), and `meijer_antiderivative`, SymPy's `integrate(f, x,
+  meijerg=True, risch=False)`; values come with their conditions as pairs.
+  Not ported: `meijerint_inversion`.
+- `sympy_extras.integrals.deltafunctions`: a native port of SymPy's
+  `deltaintegrate` and `change_mul`, with `DiracDelta.is_simple` and the
+  expansion of a delta by the roots of its argument.
+- `MeijerG.ap`, `bq`, `nu`, `delta`, `get_period` (ported from SymPy).
+
+- `sympy_extras.integrals.manualintegrate`: a native port of SymPy's
+  `manualintegrate` (SymPy 1.14) on the typed core, with the steps:
+  `integral_steps(f, x)` returns the tree of the rules (frozen dataclasses,
+  `URule`, `PartsRule`, `CyclicPartsRule`, `TrigSubstitutionRule`, ...,
+  `AlternativeRule`, `DontKnowRule`), whose `eval()` is the antiderivative;
+  `manualintegrate(f, x)` evaluates it. The rules are generators which yield
+  the integrals they need to an `IntegralSolver` (the design of SymPy's
+  development branch), which cuts the cycles and remembers the integrals
+  solved completely. Every rule is ported, the special functions included
+  (`Ei`, `Ci`, `Si`, `Chi`, `Shi`, `li`, `erf`, `erfi`, Fresnel, upper
+  gamma, polylog, elliptic, orthogonal polynomials, `Heaviside`,
+  `DiracDelta`). Against SymPy: the secant substitution says `x > c`
+  (SymPy's `-c < x < c` gave a wrong antiderivative for `x < 0`).
+- `sympy_extras.integrals.antiderivative.elementary_antiderivative`: the
+  antiderivative of a polynomial in elementary functions of linear
+  arguments, by the native `manualintegrate` (checked) and the native
+  exponential and heuristic Risch methods.
+
+### Changed
+
+- The import cycles hidden behind `TYPE_CHECKING` imports are broken
+  (internal change): the `_sympystr` methods take the `NodePrinter`
+  protocol of `core.basic` (`StrPrinter` prints `Add`, `Mul` and `Pow`
+  itself), the keys of `core.sorting` the `Sortable` protocol (`ordered`
+  returns the type of its items), `Expr.as_poly` and
+  `AlgebraicNumber.minpoly` the `PolyLike` protocol of `core.expr`; the
+  type-only imports which formed no cycle are module-level imports. Only
+  `core.basic` and `core.expr` keep theirs, for the subclasses named in
+  their signatures (`Symbol`, `Number`, `Boolean`, ...).
+- The asymptotic series of `fresnels` and `fresnelc` at `oo` and `-oo`
+  are native (`FresnelIntegral._eval_aseries`, ported from SymPy's
+  `fresnels._eval_aseries` and `fresnelc._eval_aseries`), and so are
+  those of the nodes `DiGamma`, `TriGamma` (through `PolyGamma`) and of
+  `LowerGamma(s, z)` as `s` goes to `oo` (SymPy's `digamma`, `trigamma`,
+  `lowergamma._eval_aseries`): they went to SymPy through the bridge of
+  the core. Every class of SymPy with an `_eval_aseries` of its own now
+  has a native one.
+- The native code sets its time limits with `native=True`: the series and
+  simplifications of `solvers.kovacic`, the antiderivatives of
+  `solvers.darboux` and the transfer from the reals of
+  `assumptions.resolve` set limits which prepared SymPy's tables, and so
+  imported SymPy; `_numeric`'s check of a hidden zero by the foreign
+  minimal polynomial sets none when no foreign system is registered. A
+  test of `core/tests/test_independence.py` checks every limit of the
+  native modules.
+- `piecewise_simplify_arguments` no longer sends a condition with an
+  `Xor` to SymPy: the new `sympy_extras.logic.anf` ports SymPy's
+  algebraic normal form (`to_anf`, `is_anf`, `distribute_xor_over_and`,
+  `ANFform`, `anf_coeffs`, `bool_monomial` and the `Xor` constructor,
+  `xor_evaluated`), and `logic.boolsimp.simplify_boolean` simplifies an
+  `Xor` as SymPy's `Xor._eval_simplify` (its normal form and the patterns
+  of `Xor`, no longer the univariate intervals and `simplify_logic`);
+  `Piecewise._intervals` writes `Xor`, `Implies`, `Equivalent` and `ITE`
+  in conjunctive normal form as SymPy does. A relation whose sides are
+  not atoms is a variable of the normal form (SymPy's `simplify` and
+  `to_anf` raise `AttributeError` on it).
+- **Breaking**: the integrators reach SymPy no more. The method
+  `'meijer'` of `sympy_extras.integrals.indefinite` is the native
+  `meijerint.meijer_antiderivative`, and the method `'sympy'` (SymPy's
+  `integrate`) is removed, with `indefinite.SYMPY_METHODS`; the exact
+  methods of the antiderivative route of definite integration take
+  `'manual'` and `'meijer'` in its place. The last method of the native definite
+  integration, SymPy's `integrate` and `meijerint`, is native: the
+  theorems of `meijerint_definite` and an antiderivative at the endpoints
+  (cut at its discontinuities on real ranges; the delta functions by the
+  native `deltaintegrate`), checked numerically as before. Removed:
+  `indefinite_sympy.meijerint_of_core`, `indefinite_sympy.integrate_of_core`,
+  `definite_sympy.integrate_of_core`.
+- `sympy_extras.assumptions.boolsimp` is merged into `sympy_extras.logic.boolsimp` (one port of SymPy's `simplify` of Booleans, used by `refine` and, with SymPy's univariate intervals, `piecewise`; `Xor` no longer raises).
+- The core's `ask` no longer asks SymPy what its facts do not decide:
+  the last steps of SymPy's `ask` are ported in the new
+  `assumptions.handlers` (the handlers of the predicates by class of the
+  argument, `sympy/assumptions/handlers/sets.py`, `order.py`,
+  `ntheory.py`, then the SAT search of `assumptions.satask`), so the
+  bridge's `ask` is used only for questions about wrapped SymPy objects.
+  The numbers are decided by reliable values (an imaginary part below the
+  precision, as in `exp_polar(I*pi)`, decides nothing) and the integers
+  among them are proved by their minimal polynomial. SymPy's rule
+  `Real**Real -> Real` for a base which may be zero is not ported: SymPy
+  answers `ask(Q.real(sqrt(x)), Q.real(x))` and
+  `ask(Q.real(sqrt(-1 - x**2)), Q.real(x))` with `True` (here `None` and
+  `False`). SymPy's relational step (`lra_satask`) is not ported, but
+  for its frequent case: a sign of `e` decided by an assumed sign of `f`
+  with `e/f` a rational number (`Q.positive(1 - a)` from
+  `Q.negative(a - 1)`); the algebraic numbers are proved zero by their
+  minimal polynomial.
+- `is_meromorphic` of the incomplete gamma, Bessel, Hankel and spherical
+  Bessel functions, the rewrites of `ff`, `rf` and `binomial` in terms of
+  each other and of `dirichlet_eta` in terms of `zeta` are native ports
+  of SymPy's methods (they went to SymPy through the bridge); an applied
+  undefined function is not sent to the bridge to be rewritten (SymPy has
+  no rule for it).
+- `Basic.simplify` of a relation or a Boolean formula is native
+  (`logic.boolsimp.simplify_boolean`, the port of SymPy's simplify of
+  Booleans) instead of SymPy's `simplify` through the bridge; a formula
+  with an `Xor` or with wrapped SymPy objects still goes to SymPy.
+- `Expr.equals` takes the steps of SymPy's `equals` natively before the
+  bridge: the difference simplified by the native `simplify` (zero:
+  `True`; no sum left: `False`), its factors decided one by one, a number
+  decided by its minimal polynomial; a difference with polar numbers
+  (`exp_polar(0) - 1`, which SymPy does not take for zero) or wrapped
+  SymPy objects, and the undecided ones, still go to SymPy.
+- The point of an `Order` moved by a substitution (`O(x).subs(x,
+  exp(-y))` and the asymptotic series) is solved by the native
+  `solveset` (the first solution: a single element, a complement of
+  finite sets, an image of the integers at `n = 0`); SymPy's `solveset`
+  is asked only when the native one gives another set. The native solver
+  also solves `exp(1/d) = k`, where SymPy's gives a `ConditionSet`.
+- The rewrites in terms of `sin` (of `cos`, `tan`, `cot`, `sec`, `csc`,
+  `sinh`, `csch`, `exp` and `E**x`) and of `sign` in terms of `Abs` are
+  native ports of SymPy's `_eval_rewrite_as_sin` and
+  `_eval_rewrite_as_Abs`; the series of a function without an
+  `_eval_aseries` of its own in SymPy (`airyai`, ...) at an argument
+  going to an infinity raises SymPy's `PoleError` natively (they went to
+  SymPy through the bridge).
+- `core.bridge.Bridge.is_hypergeometric` (and its SymPy implementation)
+  is removed: `Expr.is_hypergeometric` is native and nothing asked it.
+- The rewrites of `hyper`, `meijerg`, the pairs of `Piecewise`,
+  `IndexedRoot`, `CRootOf`, `RootSum`, `Max`, `Min`, the integrals and
+  the sets are decided by the table of SymPy's rules (none for a function
+  target but `Max`/`Min` in terms of `Abs`, `Heaviside`, `Piecewise`):
+  they are rebuilt natively instead of asking SymPy, which answered
+  `None`.
+- The numerical value of a `Sum` is native (`concrete._evalf`, a port of
+  SymPy's `evalf_sum`, `hypsum` and `check_convergence`): the infinite
+  hypergeometric sums by direct summation or Richardson extrapolation,
+  SymPy's `ValueError` for the divergent ones (`Sum(1, (i, 1, oo))`), the
+  finite sums of a few terms term by term; SymPy's Euler–Maclaurin
+  summation is not ported (those sums still go to SymPy). Against SymPy:
+  a ratio of the terms with irrational coefficients is summed numerically
+  (SymPy truncates the coefficients to integers: its value of
+  `Sum(pi**i/factorial(i), (i, 0, oo))` is `exp(3)`).
+- The Gruntz algorithm's tractable rewrites of the special functions are
+  native: SymPy's helpers `_erfs`, `_eis`, `_besseli`, `_besselk` are the
+  nodes `Erfs`, `Eis` (`functions.special.error_functions`), `BesselIs`,
+  `BesselKs` (`functions.special.bessel`) with their asymptotic series,
+  derivatives and rewrites back (`intractable`), and the rules of `erf`,
+  `erfc`, `erfi`, `Ei`, `li`, `Li`, `uppergamma`, `besseli`, `besselk`
+  and `fibonacci` are ported (they went to SymPy, whose helpers came back
+  wrapped). The asymptotic series (`_eval_aseries`) of `erf`, `erfc`,
+  `erfi`, `Ei`, `expint`, `Si`, `Ci`, `besseli` and `besselk` are ported
+  too, and `Li` rewrites in terms of `li` natively. Against SymPy: the
+  series of `Ei` of a polar argument going to an infinity raises
+  `PoleError` (SymPy's forgets the branch term `I*pi`: its series of
+  `expint(2, 1/w)` is `-I*pi/w + O(w**3)` and its
+  `limit(x*exp(x)*expint(2, x), x, oo)` is `-oo*I`; the limit is 1).
+- Polar numbers are decided natively: `equals` of a difference with
+  `exp_polar` or `polar_lift` takes SymPy's steps (no sum: `False`; the
+  factors one by one; the values with the symbols `0` and `1` compared,
+  as SymPy's `is_constant`; a derivative which is never zero) instead of
+  SymPy's `equals`, and answers `None` like SymPy for `exp_polar(0) - 1`;
+  `exp_polar(z)` of a number with `-pi < im(z) <= pi` has the sign of
+  `exp(z)` (`exp_polar(I*pi)` is negative, `sign` of it `-1`, as in
+  SymPy) and its value is that of `exp(z)` evaluated exactly;
+  `periodic_argument` and `principal_branch` have numerical values (ports
+  of their `_eval_evalf`).
+
+- `piecewise_simplify_arguments` simplifies its conditions natively by
+  the new `logic.boolsimp.simplify_boolean`, a typed port of SymPy's
+  `simplify` of Boolean formulas (`BooleanFunction._eval_simplify`,
+  `And._eval_simplify`, `Or._eval_simplify`, `simplify_univariate`, the
+  two- and three-term patterns of the relations, `simplify_logic` with
+  its relations simplified first), instead of SymPy's `simplify`; only a
+  condition with an `Xor` still goes to SymPy (`Xor._eval_simplify`, by
+  the algebraic normal form, is not ported). The endpoints of the
+  intervals of `simplify_univariate` are decided on the formula, where
+  SymPy decides them on the relation of the previous interval:
+  SymPy's `simplify(~((x > 0) & (x < 1)))` is `(x >= 1) | (x < 0)`, false
+  at `x = 0`.
+- The series of `Hyper` and `MeijerG` at an argument going to an infinity
+  follow SymPy's generic branch of `Function._eval_nseries` natively
+  (ported): `PoleError` when the leading term goes to an infinity (these
+  classes have no `_eval_aseries`, as in SymPy), the expansion around the
+  logarithmic term otherwise; they went through SymPy's `_eval_nseries`.
+- `simplify.ratsimp` loads no SymPy at run time: the division of the
+  numerator by the denominator runs over the typed domains `QQ`, `QQ_I`
+  (Gaussian coefficients) and `EX` (floats and the other numbers),
+  instead of sending those to SymPy's `ratsimp`.
+- `ExprWithLimits.doit` (the base class of `Sum` and `Product`, which
+  have their own) evaluates its function and bounds natively, as SymPy's
+  `Basic.doit`, instead of going through SymPy.
+- `concrete.products` loads no SymPy at run time: the product of a
+  polynomial whose coefficients our `Poly` does not take (`I`, `sqrt(2)`,
+  `pi`, floats) is taken by the closed forms of its roots (the native
+  `ex_roots`) instead of sending the whole product to SymPy's
+  `Product.doit`; it stays unevaluated when they are not found (a cubic
+  or quartic over `EX`, where SymPy has formulas, and degree five or more,
+  where SymPy's recursion on the cofactor does not end).
+- `concrete.eulersums.polygamma_integral_representation` returns the
+  core's unevaluated `Integral` (`integrals.integral`) instead of SymPy's
+  `Integral` wrapped, and loads no SymPy; it prints in SymPy's order
+  (`-EulerGamma*zeta(s) + Integral(...)`).
+- `concrete.delta` loads no SymPy at run time: the equation of a delta
+  the linear and finite solvers do not list goes to the native
+  `solve_equation`, and the systems of several deltas which are not
+  linear with a unique solution to the native `solve_system` (for the
+  symbols in SymPy's canonical order), instead of SymPy's `solve`;
+  `NotImplementedError` when they have no method, as SymPy raises.
+- `concrete.summations` loads no SymPy at run time: the residue method
+  takes the poles SymPy writes as `CRootOf` by the residue of a pole of
+  order `m` at an algebraic point (SymPy's series there gives
+  `Sum(1/(i**4 + i + 1), (i, -oo, oo))` as `0`; the sum is about
+  `2.4920`) and the coefficients our `Poly` does not take (`I`, `pi`,
+  `sqrt(2)`) by the closed forms of the native `ex_roots` (SymPy raised
+  `NotImplementedError` for the sorted roots over `EX`); the Hurwitz zeta
+  function of `Sum.doit` is the port of SymPy's `Sum.eval_zeta_function`;
+  the equations of the denominators are solved by the native
+  `solve_equation` (`NotImplementedError` when it has no method), and a
+  convergence condition the native solver does not decide is not taken
+  for empty (it went to SymPy's `as_set`).
+- `assumptions.solve` loads no SymPy at run time: the systems which the
+  regular chains do not solve go to the native `solve_system` (the
+  substitution method of SymPy's `nonlinsolve`, the unknowns left free
+  standing for themselves) instead of SymPy's `nonlinsolve`, and the
+  intersections the sets of the core leave unevaluated are evaluated
+  natively (a condition set restricted to the other set, the images
+  `a*k + b` of the integers in a bounded interval as a finite set, a finite
+  set filtered by its decided memberships) instead of by SymPy's
+  constructors; the integers in an interval stay an `Intersection` natively
+  (SymPy's face still gives its `Range`). `solve_sympy.nonlinsolve_of_core`
+  and `solve_sympy.evaluated_set_of_core` are removed. The points of
+  `nonlinsolve` repeated in two radical forms (`sqrt(1 - y**2)` and
+  `sqrt(-(y - 1)*(y + 1))`) are given once.
+
+- The relations in one unknown which `assumptions.solve`, the
+  transcendental solver and `sympy_extras._special_values` solved with
+  SymPy's `solveset` at run time (`assumptions.solve_sympy.solveset_of_core`,
+  `solvers.transcendental_sympy.solveset_of_core`, both removed) are solved
+  by the new native port `sympy_extras.solvers.solveset` (`solveset`,
+  `real_polynomial_solutions`): over the reals the polynomials with
+  irrational coefficients (all their roots, the real ones told apart by
+  reliable values, the signs between them for an inequality), the
+  parametric linear and even binomial inequalities, the transcendental
+  relations through `solve_transcendental`, the equations in exponentials
+  and logarithms by their checked candidates and `g(u(x)) = c` for a sine,
+  a cosine or a tangent; over the complex numbers the rational equations,
+  `g(u(x)) = c` for an exponential, trigonometric or hyperbolic `g` (images
+  of the integers) and the radical equations. What it does not solve is
+  the `ConditionSet` of the relation, as SymPy's answer. The roots which
+  are numbers are written `a + b*I`, as SymPy's `_solve_as_poly` does (the
+  formulas of Ferrari put a square root on its branch cut). The extraneous
+  root `-1` which SymPy's `solveset` gave for `log(x) + log(x - 1) = log(2)`
+  over the reals is not returned.
+
+- The solvers which called SymPy's `solve` at run time through the
+  `solve_of_core` functions of the faces (`charpit`, `second_order`,
+  `lie`, `abel`, `ode`, `pde`, `factorization`, and the Lambert W
+  candidates of `transcendental`) use the native port of it, the new
+  modules `sympy_extras.solvers.solvers` (`solve_equation`: one equation
+  in one unknown by its roots, one generator, the radicals of one base,
+  the inversion of the outer functions; `solve_system`: polynomial systems
+  by a Gröbner basis and substitution; `invert`, `checksol`) and
+  `sympy_extras.solvers.bivariate` (`solve_lambert`, SymPy's Lambert W
+  forms), so that these steps load no SymPy. The functions
+  `charpit_sympy.solve_of_core`, `factorization_sympy.solve_of_core`,
+  `pde_sympy.solve_of_core` and `transcendental_sympy.solve_of_core` are
+  removed. The Lambert W candidates of `solve_transcendental` include the
+  branch `-1` whenever it is real (SymPy's `solve` gave only the principal
+  branch of `x = exp(x) - 2`, which the transcendental solver completed
+  already).
+- **Breaking**: the method `'manual'` of `sympy_extras.integrals.indefinite`
+  is the native `manualintegrate` (in the place SymPy's had);
+  `indefinite_sympy.manualintegrate_of_core` is removed and
+  `indefinite.SYMPY_METHODS` no longer lists `'manual'`. The native
+  `antiderivative` integrates the polynomials in elementary functions and
+  the parts of its integrations by parts by `elementary_antiderivative`
+  instead of SymPy's `integrate`: `antiderivative_sympy.integrate_of_core`
+  is removed, and those antiderivatives load no SymPy
+  (`t**2*cos(3*t - 1)` in SymPy's form at once, `t*cos(t)*sinh(t)` in a
+  real form).
+
+- **Breaking**: the definite integration driver `sympy_extras.integrals.definite`
+  (`definite_integral`, `conditional_integral`, `verify_numerically`) is
+  native on the typed core: its functions take and return objects of
+  `sympy_extras.core`, and importing it, and the integrals the native
+  methods settle, load no SymPy (the native Marichev–Adamchik method,
+  residues, tables, contours, antiderivatives, telescoping and the other
+  methods of the package called directly; the native `solve`, `ask`, SAT
+  solver, Gruntz limits, factorisation and simplification; the port of
+  `singularities`; the quadratures evaluate the integrands by the
+  numerical rules of the nodes instead of `lambdify`). An integral left
+  undone is the node `sympy_extras.integrals.integral.Integral`, now with
+  bounds (`Integral(f, x, a, b)`, SymPy's `Integral(f, (x, a, b))` through
+  interop; the native `has_integral` of `laplace` and `linear_ode` and the
+  special values treat it as unevaluated). The old API on SymPy objects
+  is `sympy_extras.integrals.definite_sympy`, which keeps SymPy's
+  `integrate` and `meijerint` as the last methods (`integrate_of_core`);
+  the verified antiderivatives come from the native `indefinite`. The private helpers
+  (`_Integrator`, `_quadrature`, `_positions`, ...) take native objects;
+  the native `DefiniteIntegrator` and `definite_integrator` of
+  `definite` replace those of `parametric_sympy`. The native modules call
+  the native driver directly, and the routes back into it are removed:
+  `laplace_sympy.definite_integral_of_core` and
+  `conditional_integral_of_core` (with their re-exports in
+  `summability_sympy`, `transformations_sympy` and `algebraic_sympy`),
+  `telescoping_sympy.definite_integral_of_core` and
+  `verify_numerically_of_core`, `residues_sympy.verify_numerically_of_core`,
+  `algebraic_sympy.verify_numerically_of_core` and
+  `regions_sympy.definite_integral_of_core`.
+- The native ODE solvers no longer call SymPy's `dsolve`, its rational
+  Riccati solver or its `linodesolve` at run time. The new
+  `sympy_extras.solvers.dsolve` (`dsolve`, `explicit_solution`,
+  `solution_parts`, `linear_coefficients`, `linear_basis`) ports SymPy's
+  classical hints to the core: linear equations with constant
+  coefficients (conjugate roots as `sin`/`cos`), Euler's equations, the
+  first order linear equation, the reduction to the lowest derivative and
+  rational coefficients through `linear_ode`, the particular solutions
+  by variation of parameters; separable, Bernoulli, exact and
+  homogeneous-coefficient first order equations and factorable ones. It
+  replaces SymPy's `dsolve` in `solvers.ode` (`solve_ode`, `dsolve_lie`),
+  `solvers.pde`, `solvers.second_order`, `solvers.first_order`
+  (`lagrange_ode`), `solvers.abel` (`air_solution`), `solvers.linear_ode`
+  (the last resort of `dsolve_linear`) and `integrals.telescoping`. The
+  fallback of Kovacic's case 1 is the new `kovacic.rational_riccati`
+  (the hyperexponential solutions of `z'' = r z`), and the last resort
+  for a fundamental matrix of `linear_systems.dsolve_system` is
+  `exp(M g(x))` for `A = g'(x) M` by the native matrix exponential. The
+  routes `pde_sympy.dsolve_of_core`, `first_order_sympy.dsolve_of_core`,
+  `linear_ode_sympy.dsolve_of_core`, `telescoping_sympy.dsolve_of_core`,
+  `kovacic_sympy.riccati_of_core` and
+  `linear_systems_sympy.linodesolve_of_core` are removed. The solutions
+  are SymPy's or equivalent ones (checked by substitution); a first
+  order linear solution keeps SymPy's form `(C1 + x)*exp(x)` when shorter.
+  `solvers.ode.check_ode_solution` takes SymPy's `solve_for_func`
+  argument (an implicit relation checked through its derivatives without
+  being solved).
+- Three more of the small run-time routes into SymPy are gone. The
+  annihilators of `integrals.dfinite` (`annihilators`, and the equations
+  of the factors of `closure` outside its table) no longer come from
+  SymPy's `expr_to_holonomic` (`dfinite_sympy.holonomic_of_core` is
+  removed): the annihilator of an integrand is the first linear
+  dependency among its derivatives in the closure of its factors (sums,
+  products, rational arguments and algebraic powers of rational
+  functions), so of least order there; the Bessel, Hankel and Airy
+  equations are in the table (SymPy gives a third order equation for
+  `besseli` and `bessely` and none for the Airy functions), and a factor
+  whose derivative is in the closure (`Ei`, `Si`, `Ci`, `atan`, `asin`)
+  gets the equation of its derivative composed with `d/du`. The
+  coefficients of an annihilator may differ from SymPy's by a factor (a
+  scaled argument such as `J_0(t x)` is no longer substituted).
+  The antiderivatives of `integrals.parametric` and `solvers.charpit` come
+  from the native `indefinite.closed_antiderivative`
+  (`parametric_sympy.antiderivative_of_core` and
+  `charpit_sympy.antiderivative_of_core` are removed); the integral of
+  `atan(p*x)/(x*(1 + x**2))` over `(0, oo)` is now
+  `pi*log(p + 1)/2`. The native `assumptions.refine.simplify` of compound
+  Boolean formulas no longer calls SymPy's `simplify`
+  (`refine_sympy.simplify_boolean_of_core` is removed): the new
+  `sympy_extras.assumptions.boolsimp` (`simplify_boolean`,
+  `simplify_univariate`) ports the `_eval_simplify` of SymPy's
+  `BooleanFunction`, `And` and `Or`, with the intervals of a univariate
+  formula computed natively (maximal intervals, and exactly where SymPy
+  drops the endpoint of `~((x > -1) & (x < 1))` or gives up on
+  `(x**2 > 4) & (x > 0)`).
+- The native indefinite integrator no longer tries SymPy's heuristic
+  Risch integrator after its own (the method `'sympy heurisch'` and
+  `indefinite_sympy.heurisch_of_core` are removed): on the integrals of
+  the test suites which reached it, it answered only Piecewise integrands
+  with conditions in the variable, taking the Piecewise for a constant
+  (`y*Piecewise((1, y > 1), (0, True))`, which jumps at `y = 1`, is now
+  `Piecewise((0, y <= 1), (y - 1, True))` by the Meijer route), and on the
+  integrands of SymPy's own heurisch tests the native port missed only
+  `1/(x + sin(y))`, which it now does (the transcendental constants of
+  the parameters, `sin(y)`, `exp(y)`, are independent generators of the
+  content of a polynomial, as in SymPy's domains).
+- **Breaking**: the verified indefinite integration
+  `sympy_extras.integrals.indefinite` (`indefinite_integral`,
+  `verified_antiderivative`, `is_antiderivative`, `real_form`,
+  `conjugate_logarithms`) is native on the typed core: its functions take
+  and return objects of `sympy_extras.core`, and importing it and running
+  its native methods loads no SymPy (the native rational integrator, the
+  radical, exponential and trigonometric tables, the Risch package,
+  Trager's algorithm on the native curves, the binomial differentials, the
+  rewritings and substitutions, the heuristic Risch integrator; the checks
+  by the native `cancel`, `simplify`, structure theorem and reliable
+  values; the cases of the special values by the native
+  `sympy_extras._special_values`). An integral which no method does is the
+  new unevaluated node `sympy_extras.integrals.integral.Integral`
+  (converted to SymPy's `Integral`). SymPy's routes have no native
+  counterpart and are the last methods, reached through the new face
+  `sympy_extras.integrals.indefinite_sympy` (`heurisch_of_core`,
+  `manualintegrate_of_core`, `meijerint_of_core`, `integrate_of_core`), so
+  that SymPy loads only when every native method has failed; SymPy's
+  heuristic Risch integrator, which ran right after the native one, is
+  now the method `'sympy heurisch'` among them. The old API on SymPy
+  objects is `sympy_extras.integrals.indefinite_sympy`, which `definite`
+  uses. The native `antiderivative` calls the native `indefinite`
+  directly: `antiderivative_sympy.verified_antiderivative_of_core` is
+  removed. The quadratures of the native ODE solvers (`kovacic`,
+  `linear_ode`, `factorization`, `linear_systems`, `special`, `darboux`,
+  `abel`, `ode`, `second_order`, `first_order`, `dae`) go through the
+  native `indefinite` too (the new `closed_antiderivative`; SymPy's
+  `integrate(conds='none')` becomes the generic antiderivative,
+  `conds='piecewise'` the one with the cases of the special values), and
+  an integral left undone is the native `Integral`:
+  `kovacic_sympy.integrate_of_core` and `integral_of_core`,
+  `first_order_sympy.integrate_of_core` and `dae_sympy.integral_of_core`
+  are removed.
+- The exact solutions of a rational univariate representation
+  (`polys.rur.RationalUnivariateRepresentation.solutions`, `rur.exact_solutions`),
+  of a regular chain (`polys.regularchains.RegularChain.solutions`, the new
+  native `regularchains.solutions.exact_solutions`, a port of the face's
+  module which matches the roots by their exact values and SymPy's
+  `nroots` order) and the numerical poles without short radicals of the
+  residue integrator (`integrals.residues.poles`) no longer load SymPy at
+  run time: the roots are the native `CRootOf` of `polys.complexrootof` in
+  SymPy's order (the real roots of the solutions as `IndexedRoot`). The
+  routes `rur_sympy.solutions_of_core`,
+  `regularchains_sympy.exact_solutions_of_core` and
+  `residues_sympy.complex_roots_of_core` are removed. `IndexedRoot` prints
+  its polynomial in the order of the plain variable
+  (`IndexedRoot(x**3 - 2*x**2 + x - 1, x, 0)`, which printed
+  `-1 + x**3 - 2*x**2 + x`).
+- **Breaking**: Trager's algorithm `sympy_extras.integrals.trager`
+  (`trager_antiderivative`, `trager_reduce`, `hermite_reduce_algebraic`,
+  `is_nonelementary_algebraic`) is native on the typed core: its functions
+  take and return objects of `sympy_extras.core`, and importing and running
+  it loads no SymPy (the dense polynomials of `polys.polyclasses` over
+  `QQ`, number fields of a primitive element of the constants, the fields
+  of rational functions of the parameters and `EX`; the native rational
+  integrator, Risch differential equation, general curve and Chebyshev
+  criterion). The old API on SymPy objects is
+  `sympy_extras.integrals.trager_sympy`, which `indefinite` uses; it
+  reaches the general curve through `curves_sympy`, so that the residues
+  of fields without radicals are still written with SymPy's `CRootOf`
+  (the native module leaves those integrals undone). The private helpers
+  (`_rational_parameters`, `_root_components`, `_hermite_index_n`, ...)
+  take native objects.
+- **Breaking**: `solvers.inequalities.solve_inequality` no longer loads
+  SymPy at run time: a relational which is not rational in the variable
+  is solved by the native `solve_transcendental` (absolute values by
+  cases, then the kernels) in place of SymPy's
+  `solve_univariate_inequality`, and raises `NotImplementedError` (as
+  SymPy did) when the solutions are not a union of intervals and points.
+  The module `solvers.inequalities_sympy` (only the route
+  `solve_inequality_of_core`) is removed. `solve_transcendental` solves
+  the formulas which the absolute values leave rational in the unknown
+  (`1/Abs(c) > 1`), which gave `None`.
+- The cases of the isolated values of the parameters of the native sums
+  (`concrete.karr`, `creative`, `zeilberger`, `qhyper`, `rational`) no
+  longer load SymPy at run time (internal change, same API): the
+  summation rules of `karr_sympy.with_sum_special_values` (no case where
+  the summand is undefined or has a pole in the range, the powers of `0`
+  summed by their values, the numerical check against the sum term by
+  term) are written on the core over the native
+  `_special_values.with_special_values`; the route
+  `karr_sympy.sum_special_values_of_core` is gone.
+- The last resort of the convergence tests for terms without parameters
+  (`concrete.convergence`) no longer loads SymPy at run time (internal
+  change, same API): the integral of the integral test comes from a
+  native antiderivative (the transcendental Risch algorithm, then the
+  heuristic one, checked by differentiation) and the native limits, and
+  SymPy's `Sum.is_convergent` is ported (its `False` still counts as "not
+  shown"); the routes `convergence_sympy.improper_integral_of_core` and
+  `is_convergent_of_core` are gone. The native `ask` no longer prepares
+  SymPy's tables for the CAD of its MetiTarski bounds (a time limit
+  without `native=True` loaded SymPy).
+- The power series of Ramanujan's master theorem and the method of
+  brackets (`integrals.brackets`, and `integrals.series` through
+  `taylor_coefficient`) no longer load SymPy at run time (internal change,
+  same API): the new `brackets.formal_series_terms` finds the coefficients
+  of a single residue class as a hypergeometric term, its ratio guessed
+  from the native series (`concrete.guess.guess_recurrence`) and proved by
+  the differential equation it implies, checked on the function (in place
+  of SymPy's `fps`; the Bessel function `besselj(0, x)`, which `fps` did
+  not expand, now has its series), and the strip of convergence comes
+  from the order at 0 and the behaviour at infinity (powers with
+  logarithms, decays faster than every power, and oscillations
+  `x**q sin(a x**p)` by Dirichlet's test) in place of the strip of SymPy's
+  `mellin_transform`. The routes `brackets_sympy.fps_of_core` and
+  `mellin_strip_of_core` are gone.
+- The periods of the periodic formulas of `assumptions.solve` and of the
+  periodic rule of `integrals.laplace` no longer load SymPy at run time
+  (internal change, same API): SymPy's `periodicity` and `lcim` are
+  ported to the core as the new `sympy_extras.calculus.util` (the periods
+  of the trigonometric functions of linear arguments and the
+  decomposition of compositions written down there), and the routes
+  `solve_sympy.periodicity_of_core` and `laplace_sympy.periodicity_of_core`
+  are gone.
+- The limits of sequences (`assumptions.limits.limit_seq`, and the
+  convergence tests through it) no longer load SymPy at run time
+  (internal change, same API): SymPy's `limit_seq` is ported to the core
+  as the new `sympy_extras.series.limitseq` (`limit_seq`,
+  `difference_delta`, `dominant`), and the route
+  `limits_sympy.limit_seq_of_core` is gone. The core gains the rules it
+  needed from SymPy: the power of a negative number to an even or odd
+  symbol takes the sign out (`(-2)**n` is `-2**n` for an odd `n`), the
+  tractable forms of the limit algorithm for `gamma`, `binomial`, the
+  rising and falling factorials and `harmonic` (and the intractable one of
+  `loggamma`), and the asymptotic series of `polygamma`. Without SymPy the
+  core's `limit(exp(x)/gamma(x), x, oo)` gave `oo` (the tractable form of
+  `gamma` was SymPy's rule only, silently skipped); it is `0`.
+- The signs of the functions which are not rational
+  (`assumptions.analysis.sign_on`, and through it `ask`, `refine`, `solve`,
+  `solvers.isolation`, the convergence tests) no longer load SymPy at run
+  time (internal change, same API): the continuity on a set is checked
+  natively on the subexpressions (the functions of SymPy's
+  `continuous_domain`: powers, `exp`, `log`, `Abs`, the trigonometric and
+  hyperbolic functions and their inverses, each continuous where the
+  signs of its argument allow), the zeros are those of the native
+  `solve_transcendental` factor by factor of the common factors, the
+  periodic families listed on bounded sets, and the intersections of the
+  CAD's solution sets with other intervals are made by certified
+  comparisons of their ends. The routes `analysis_sympy.continuous_on_of_core`,
+  `finite_zeros_of_core`, `has_discrete_zeros_of_core`,
+  `intersection_of_core` and `isolation_sympy.continuous_on_of_core` are
+  gone. `solve_transcendental` takes `lambert=False` to skip the Lambert W
+  candidates of SymPy's `solve`, reduces `x` outside the roots of a
+  linear argument (`x = sqrt(x + 2)`), and no longer rewrites a power of a
+  negative base as an exponential: `(-1)**x = 1` gave `{0}` and
+  `(-2)**x = 4` no solution; both give `None` now.
+- **Breaking**: `polys.roots_sympy.roots_of_core` is removed: the new
+  `polys.polyroots.ex_roots` gives the roots of a polynomial with
+  coefficients of any kind by SymPy's formulas over `EX` (a root `-1` or
+  `1` divided out, then the linear and quadratic formulas with `simplify`;
+  nothing from a degree five or more, as SymPy without quintics), which
+  the native `roots` now uses for the components of a decomposition and
+  `_special_values` for the real roots of `a**2 - pi`; a cubic or a quartic
+  over `EX` is not ported (`radical_form` then gives no radical form,
+  `_special_values` no candidate).
+- **Breaking**: `assumptions.refine_sympy.factor_list_of_core` is removed (the
+  native factorisation raises `CoercionFailed`, never `NotImplementedError`,
+  for coefficients which are not rational, so the route was not reached);
+  the native `simplify` of a relation which is not polynomial in real
+  variables is the new `assumptions.refine.simplify_relational`, a port of
+  SymPy's `Relational._eval_simplify` (the sides simplified, solved for a
+  single symbol when linear, the coefficients made coprime), the
+  difference of two numbers decided by a reliable value rather than to
+  two digits. `simplify_boolean_of_core` stays for compound formulas
+  (SymPy's `simplify_univariate` and the patterns of `And` and `Or`).
+- **Breaking**: `sympy_extras.polys.polytools_sympy` (`invert_of_core`,
+  `cancel_of_core`, `factor_of_core`) is removed: the native `cancel`
+  cancels over `CC` (the gcd over `QQ_I`, the cofactors rounded back, as
+  SymPy's `PolyElement.cancel` of an inexact domain), over `EX` (numbers
+  such as `zoo` or `oo` among the coefficients; a zero `EX` cannot detect
+  leaves the fraction as it is where SymPy raises `PolynomialDivisionFailed`)
+  and with generators over a composite domain (the other factors as
+  elements of `EX`, the same rational function as SymPy's in another form,
+  and a generator which is not a factor of the expression, `x**2` in `x**3`,
+  through the same path); `factor` with generators over `ZZ_I`, `QQ_I` and
+  `RR` factors in every symbol, factors `zoo`, `oo` and `nan` among the
+  coefficients as generators (SymPy's `ZZ[zoo]`), and leaves a polynomial
+  over `CC` or `EX` otherwise as it is (SymPy's `DomainError`); `invert` of two numbers follows
+  SymPy's `Domain.invert` over `ZZ_I`, `QQ_I` and `RR` (the `TypeError` of
+  SymPy over `CC`). The dense pseudo-division raises
+  `PolynomialDivisionFailed` when the degree does not drop, as SymPy's.
+- **Breaking**: `solvers.isolation_sympy.real_roots_of_core` is removed:
+  the real roots of a polynomial with rational coefficients which are not
+  in radicals are the native canonical `IndexedRoot` of their minimal
+  polynomial (SymPy's `CRootOf` through `interop`), ordered exactly as
+  real algebraic numbers, so that `isolate_real_roots` no longer loads
+  SymPy for them.
+- **Breaking**: `simplify_logic_of_core` is removed from
+  `polys.virtual_substitution_sympy` and `solvers.integers_sympy`: the
+  results of virtual substitution and of Cooper's algorithm, and the joined
+  conditions of the cases of the ODE solvers (`solvers._special_values`),
+  are simplified by the new native `sympy_extras.logic.boolalg`
+  (`simplify_logic`, `SOPform`, `POSform`, ported from SymPy's
+  Quine–McCluskey minimisation), without loading SymPy. The relations are
+  numbered in `ordered` order instead of SymPy's hash order, so that an
+  equally small form may be chosen where SymPy's depended on the hashes.
+- **Breaking**: the transcendental Risch package `sympy_extras.integrals.risch`
+  (`risch.py`, `rde.py`, `prde.py`, `cde.py`, `polymatrix.py`) is native on
+  the typed core: its functions take and return objects of
+  `sympy_extras.core` and the new `sympy_extras.integrals.risch.tower`
+  (`TowerPoly`, a polynomial of the tower in one generator, over
+  `RationalFunction`, an element of `C(x, t1, ..., tn)` with exact
+  arithmetic over `QQ`, `QQ(I)` and the square roots of integers, in place
+  of SymPy's `Poly` over `ZZ(x, t0)`, `QQ_I(x)` and `EX`); `PolyMatrix`
+  becomes `FieldMatrix`; `DifferentialExtension(extension={'D': ...})`
+  becomes `DifferentialExtension.manual(D, exts=..., extargs=..., Tfuncs=...)`;
+  `derivation(p, DE, basic=True)` becomes `derivation_element(a, DE)`;
+  `risch_integrate(..., separate_integral=True)` becomes
+  `risch_integrate_separate`; `as_poly_1t` returns a `LaurentPolynomial`;
+  the degree bounds are integers (`rde.OO` for `+oo`); `NonElementaryIntegral`
+  is a node of the core (SymPy's, a subclass of `Integral`, is in
+  `risch_sympy`, and `interop` converts both ways). Importing and running it
+  loads no SymPy. The SymPy face `risch/risch_sympy.py` keeps
+  `risch_antiderivative`, `is_nonelementary` and adds `risch_integrate`
+  (SymPy's signature) and `rational_risch_de` (used by `trager`).
+  Constants other than `I` and square roots of integers (cube roots, nested
+  radicals, `CRootOf`) make the algorithm give up (`NotImplementedError`).
+- `rde.weak_normalizer` raises each gcd to the power of its residue
+  (Bronstein's WeakNormalizer): SymPy's took it once per root of the
+  resultant, which leaves `3/(t - 1)` over `t = exp(x)` with the residue 2.
+
+### Added
+
+- `sympy_extras.polys.complexrootof`: a native node for the complex roots
+  of polynomials with rational coefficients, `ComplexRootOf` (alias
+  `CRootOf`; SymPy's `CRootOf`, ported), which never evaluates, and the
+  evaluating `rootof`, `all_roots`, `real_roots`, `polynomial_roots`,
+  `root_count`, `algebraic_number`. The roots are in SymPy's order (the
+  real ones increasing, then the others factor by factor, each root after
+  its conjugate, the pairs by SymPy's Collins–Krandick rectangles, which
+  `complex_rectangles` reproduces from exact isolating regions); the
+  numerical values are refined exactly to any precision (a real part on
+  the imaginary axis is exactly zero). `sympy_extras.interop` converts
+  SymPy's `CRootOf` to the node and back (a `CRootOf` coming from SymPy
+  was a wrapped foreign node), `polys.roots.polynomial_root` and
+  `radical_form` recognise it, and the native `minimal_polynomial` knows
+  it and the `IndexedRoot` of the CAD.
 - `sympy_extras.polys.berlekampmassey`: `berlekamp_massey` (the shortest
   linear recurrence of a sequence over any field of the typed layer),
   `extend_sequence`, `satisfies_recurrence`.
@@ -802,6 +1474,938 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The native `sympy_extras.assumptions.sat` (`satisfiable`, `tautology`,
+  `find_instance`) no longer loads SymPy at run time (internal change,
+  same API): the propositional abstraction is solved by a typed port of
+  SymPy's DPLL2 (the new `sympy_extras.logic.dpll2`:
+  `propositional_models`, `is_satisfiable`, `SATSolver`) on conjunctive
+  normal forms of the core's Booleans (the new `sympy_extras.logic.cnf`:
+  `to_clauses`, `conjunction`, `Clauses`, a port of the conversion of
+  `sympy.assumptions.cnf`); the consistency of the predicates with their
+  known facts is a port of SymPy's `satask` with the class facts of
+  `sathandlers` and the known number facts (the new
+  `sympy_extras.assumptions.satask.predicates_consistent`); the floor and
+  the comparison of rational multiples, products and integer powers of
+  real roots are native (`polys.cad.samplepoints.scaled_real`, new). The
+  routes `sat_sympy.propositional_models_of_core`,
+  `predicates_consistent_of_core`, `floor_of_core` and
+  `compare_real_of_core` are gone. The models of `all_models=True` now
+  come in an order which does not depend on the hash seed (SymPy's
+  numbering of the atoms followed the iteration of a set). The native
+  limits under assumptions (`assumptions.limits`) set native time limits
+  around their native engines, `simplify` and `resolve`, so that a
+  `limit` with a parameter without assumptions (`limit(sin(a*x)/x, x,
+  0)`) loads no SymPy either.
+- The definite integrals from an antiderivative are native
+  (**breaking**): `sympy_extras.integrals.antiderivative`
+  (`antiderivative`, `antiderivative_integral`,
+  `principal_value_integral`, `finite_part_integral`, `discontinuities`,
+  `one_sided_limit`, `select_branch`, `quick_shape`, `by_parts_shape`)
+  takes and returns objects of the core and imports no SymPy: the
+  singularities by a port of SymPy's `singularities` on the native solve
+  under the assumptions on the range (the new `singularities`, a list of
+  points), their placement by the native ask, the native limits under
+  assumptions and series. The antiderivative is a typed step
+  (`AntiderivativeStep`, the new `step` argument of the integrals): by
+  default the native table of quadratic radicals, then SymPy's
+  `integrate` and the verified methods of `indefinite` (not ported yet)
+  through the face (`antiderivative_sympy.integrate_of_core`,
+  `verified_antiderivative_of_core`), which loads SymPy on that path
+  only; a native antiderivative (the native `ratint`) runs the whole
+  method without SymPy. `_real_logarithms` and `_elementary_polynomial`
+  are public as `real_logarithms` and `elementary_polynomial`. The old
+  API on SymPy objects is in `sympy_extras.integrals.antiderivative_sympy`,
+  used by `definite`, `series` and the tests.
+- The integrals over regions are native (**breaking**):
+  `sympy_extras.integrals.regions` (`IntegralByRanges`,
+  `integrate_by_ranges`) takes and returns objects of the core and
+  imports no SymPy: the native cylindrical decomposition, `ask`,
+  `refine`, `solve`, `simplify`, the roots of `polys.polyroots` for the
+  explicit branches of the bounds, the native simplex method for the
+  boundedness of a polytope and the native `axisymmetric`, which now
+  calls the native `integrate_by_ranges` directly
+  (`axisymmetric_sympy.integrate_by_ranges_of_core` is gone). The
+  `IntegralByRanges` of the core is an unevaluating node storing its
+  arguments; a numeric bound is an `IndexedRoot` (still `CRootOf` on the
+  face). The one-dimensional integrals are a typed `Integrator`
+  (`integrator=` of `integrate_by_ranges` and `axisymmetric_integral`):
+  by default `definite_integral`, not ported yet, through the face
+  (`regions_sympy.definite_integral_of_core`), so that SymPy is loaded
+  on that path only; an integrator on the core runs the decomposition
+  and the iterated integrals without SymPy. The old API on SymPy objects
+  is in `sympy_extras.integrals.regions_sympy`, used by the tests, the
+  docs and the benchmarks.
+- The rationalising substitutions for algebraic integrands and the
+  canonical forms and substitutions before integration are native
+  (**breaking**): `sympy_extras.integrals.algebraic`
+  (`algebraic_integral`, `euler_substitutions`, `euler_substitution`,
+  `moebius_root`, `binomial_differential`, `binomial_exponents`,
+  `chebyshev_elementary`, `binomial_hypergeometric_antiderivative`,
+  `rationalised_integral`, `Rationalisation`, `BinomialDifferential`) and
+  `sympy_extras.integrals.rewriting` (`rewritten_forms`,
+  `power_substitutions`, `substitute_back`, `implied_assumptions`,
+  `Substitution`) take and return objects of the core and import no
+  SymPy: the native ask, limits under assumptions, `cancel`, `factor`,
+  `powsimp`, the roots of quadratics, the rewriting rules of the core's
+  functions and `tidy`. The new variables are dummies with names of their
+  own (`_t3` rather than `_t`). The rational integral of `algebraic` and
+  its numerical check still come from `definite` (not ported yet)
+  through the face (`algebraic_sympy.conditional_integral_of_core`,
+  `verify_numerically_of_core`); SymPy is loaded on that path only. The
+  old API on SymPy objects is in `sympy_extras.integrals.algebraic_sympy`
+  and `sympy_extras.integrals.rewriting_sympy`, used by `definite`,
+  `indefinite`, `trager` and the tests.
+- The integrals by series expansion and the region integrals with a
+  rotational symmetry are native (**breaking**):
+  `sympy_extras.integrals.series` (`series_integral`, `fourier_integral`,
+  `fourier_expansion`, `expansions`, `moments`, `sum_series`,
+  `Expansion`) and `sympy_extras.integrals.axisymmetric`
+  (`axisymmetric_integral`, `rotation_group`, `rotation_invariant`,
+  `aligned_frame` and its result, now the public `Frame`) take and return
+  objects of the core and import no SymPy: the native summation,
+  `hypersimp`, `hyperexpand`, roots, convergence tests, Euler sums,
+  Zeilberger's algorithm, `ask`, `refine`, `tidy`, `cancel` and numerical
+  comparison. The full partial fractions of the rational series are
+  written over the roots of the denominator (SymPy's `apart(full=True)`
+  is not ported), and the frame of `aligned_frame` comes from a port of
+  SymPy's Gram–Schmidt process. The moments, the mean values and the
+  computed Fourier coefficients still come from `definite` (not ported
+  yet) through the faces (`laplace_sympy.definite_integral_of_core`,
+  `conditional_integral_of_core`; the coefficients first from the native
+  `antiderivative_integral`), the numerical check of
+  an unjustified interchange from `definite.verify_numerically` through
+  `residues_sympy.verify_numerically_of_core`, and the profile integral
+  from `regions` through the new
+  `axisymmetric_sympy.integrate_by_ranges_of_core`; SymPy is loaded on
+  those paths only. Every dummy has a name of its own (`_k3`, `_Y1_0`:
+  the typed polynomials map their symbols by name). The old API on SymPy
+  objects is in `series_sympy` (used by `definite`, with
+  `_polygamma_series_sympy` for the fuzzer) and `axisymmetric_sympy`
+  (used by `regions`).
+- The Laplace rules, Frullani's and Glasser's theorems, the summability
+  means and differentiation under the integral sign are native
+  (**breaking**): `sympy_extras.integrals.laplace` (`laplace_rules`,
+  `laplace_integral`, `laplace_of_convolution`, `transform`,
+  `real_arguments`, and the new `has_integral`),
+  `sympy_extras.integrals.transformations` (`frullani`, `glasser`,
+  `transformation_integral`), `sympy_extras.integrals.summability`
+  (`summable_integral`, `oscillatory_tail`, `METHODS`) and
+  `sympy_extras.integrals.parametric` (`parametric_integral`,
+  `candidate_parameters`) take and return objects of the core and
+  import no SymPy: the native ask, limits under assumptions, partial
+  fractions, `simplify`, `tidy`, `mellin` and `conditions`. The
+  integrals of the pieces still come from `definite` (not ported yet)
+  through the faces (`laplace_sympy.definite_integral_of_core` and
+  `conditional_integral_of_core`), as do SymPy's `periodicity` and, for
+  the antiderivative in the parameter, SymPy's `integrate`; SymPy is
+  loaded on those paths only. `parametric_integral` takes an
+  `integrator`, a `ParametricIntegrator` (the definite integrals and the
+  numerical check), by default `parametric_sympy.DefiniteIntegrator`.
+  Every dummy has a name of its own (the typed polynomials map their
+  symbols by name). The old API on SymPy objects is in
+  `laplace_sympy`, `transformations_sympy`, `summability_sympy` and
+  `parametric_sympy` (used by `definite`).
+- The residue theorem integrators are native (**breaking**):
+  `sympy_extras.integrals.residues` (`residue_integral`,
+  `real_line_integral`, `fourier_integral`, `keyhole_integral`,
+  `period_integral`, `rational_function`, `poles`) and
+  `sympy_extras.integrals.contours` (`contour_integral`,
+  `rectangular_integral`, `sector_integral`, `indented_integral`) take and
+  return objects of the core and import no SymPy. The rational functions
+  hold dense coefficients (radicals, `I`, parameters; the typed `Poly`
+  has no domain `EX`), the poles are the native `roots` with the
+  irrational constants as placeholders, the denominators with `I` among
+  their coefficients factored over `ZZ_I` first (the double poles of
+  `1/(3 + sin(x))**2` in `exp(I*x)`); a multiple pole is divided out by
+  synthetic division, the branch of the logarithm of the keyhole is a
+  symbol with the derivation `d/dz + (1/z) d/dL` instead of an undefined
+  function, the rectangle's triangular system is solved by elimination on
+  core expressions and its multiple poles by the core's `residue`; a pole
+  placed at a sample of the parameters is verified by the validated
+  quadrature (or mpmath's rules of `recognize`) instead of `definite`'s
+  `verify_numerically`, which is reached through the face only when they
+  settle nothing. The `CRootOf` roots of a numerical denominator whose
+  radicals are unwieldy still come from SymPy, through
+  `residues_sympy.complex_roots_of_core`. The old API on SymPy objects is
+  `sympy_extras.integrals.residues_sympy` and
+  `sympy_extras.integrals.contours_sympy` (used by `definite`).
+- Creative telescoping for integrals is native (**breaking**):
+  `sympy_extras.integrals.telescoping` (`almkvist_zeilberger`,
+  `holonomic_ode`, `holonomic_integral`, `DifferentialTelescoper`, ...),
+  `sympy_extras.integrals.reduction` (`HermiteReducer`, `hermite_reduce`,
+  `reduction_telescoper`, `reduction_ode`, `reduction_integral`) and
+  `sympy_extras.integrals.dfinite` (`chyzak`, `closure`, `annihilators`,
+  `normal_form`, `dfinite_ode`, `dfinite_integral`, ...) take and return
+  objects of the core and import no SymPy. The polynomials in `x` have
+  their coefficients in the field `QQ_I(parameters)` of the typed layer
+  (factored over `QQ`, or over `QQ_I` when `I` occurs, as SymPy's
+  `QQ(t)` and `QQ_I(t)` factor), the linear systems are solved by its
+  null spaces, the boundary limits are the native ones, the equation of
+  the integral is solved by the native linear ODE solvers with variation
+  of parameters (SymPy's `dsolve` only when they leave it unsolved), and
+  the equations of the factors `exp`, `sin`, `cos`, `sinh`, `cosh`,
+  `besselj`, `erf`, `erfc`, `erfi` and `log` are written down. What stays
+  on SymPy goes through the `*_of_core` functions of the faces: the
+  initial values and the numerical check (`definite_integral`,
+  `verify_numerically`; `definite` is not ported), `expr_to_holonomic`
+  for `annihilators` and the other factors. `HermiteReducer.A` and `.B`
+  are expressions on the core. The old API on SymPy objects is
+  `sympy_extras.integrals.telescoping_sympy`, `reduction_sympy` and
+  `dfinite_sympy` (used by `definite`).
+
+- The mean value integrals of periodic integrands are native
+  (**breaking**): `sympy_extras.integrals.periodic` (`mean_value_integral`,
+  `laurent_coefficient`, `to_laurent`) takes and returns objects of the
+  core and imports no SymPy. It runs on the native `brackets`, `mellin`
+  and `conditions` instead of their faces, the native expansion,
+  summation and `simplify`; the Taylor series of `exp`, `sin`, `cos`,
+  `sinh` and `cosh` are written down (in the forms of the formal power
+  series), so that only the other functions reach SymPy's `fps` through
+  `brackets`, and the bounds of the sums of two series are computed with
+  an exact rational slope instead of a float. The old API on SymPy
+  objects is `sympy_extras.integrals.periodic_sympy` (used by `definite`).
+- Trager's algorithm on a general curve is native (**breaking**):
+  `sympy_extras.integrals.curves` (`curve_antiderivative`, `curve_reduce`,
+  `is_nonelementary_on_curve`, `integrate_on_curve`, `AlgebraicIntegrand`,
+  `CurveIntegral`) takes and returns objects of the core and imports no
+  SymPy. It runs on the native function fields, Puiseux expansions and
+  number fields without their faces (the rationals as the number field
+  `RATIONALS` of degree one, the integral basis normal at infinity
+  computed over the plain rationals), the minimal polynomial of the
+  primitive element is read off its powers in the monomial basis of the
+  radicals (the radicals independent when it is irreducible over
+  `Q(x)`: a specialisation of `x`, else the bivariate factorisation)
+  instead of SymPy's `minimal_polynomial` with symbols, and the
+  expressions are cancelled by the native `cancel` after the coefficients
+  of the monomials of the radicals are reduced over `Q(x)` (the
+  logarithms come out shorter than before, SymPy's `cancel` keeping the
+  common factors of `x` and `sqrt(x)`). The field of the residues is
+  named by its largest real root (an `IndexedRoot`) or in radicals;
+  `CurveIntegral.elementary_part(theta)` and `remainder_expr(theta)` take
+  the expression of a generator which has neither (the native
+  `curve_antiderivative` returns `None` then). The old API on SymPy
+  objects is `sympy_extras.integrals.curves_sympy` (used by `trager`),
+  which writes such a generator as SymPy's `CRootOf`; its `CurveIntegral`
+  wraps the native one (`remainder` is the native element), and
+  `AlgebraicIntegrand.algebra` is the native algebra.
+- The validated numerical integration is native (**breaking**):
+  `sympy_extras.integrals.validated` (`validated_integral`, `enclosure`)
+  takes and returns objects of the core and imports no SymPy (the value
+  and the error are floats of the core). The enclosures come from the
+  native interval evaluator of `assumptions.intervals` instead of its
+  SymPy face (no conversion per panel and node), the derivatives,
+  `together`, `cancel`, `simplify`, `powdenest` and the limits at
+  infinity are the core's, the polynomials in the variable are lists of
+  any coefficients (the typed `Poly` has no `EX` for `pi` or `sqrt(2)`),
+  Sturm's count on a ray is `polys.rootisolation`'s, and the
+  antiderivatives of the trigonometric factor of an oscillatory tail are
+  written down instead of asking `integrate`. The old API on SymPy objects
+  is `sympy_extras.integrals.validated_sympy` (used by `definite`); it
+  returns SymPy floats as before (a zero stays `Float(0, digits)`).
+- The reduction to Legendre's elliptic integrals is native
+  (**breaking**): `sympy_extras.integrals.elliptic` (`elliptic_integral`,
+  `radicand`, `real_roots`, `legendre_reduction`, `Reduction`) takes and
+  returns objects of the core (the core's `elliptic_k`, `elliptic_e`,
+  `elliptic_f`, `elliptic_pi`) and imports no SymPy: the native
+  factorisations with placeholders for the irrational constants (the
+  typed `Poly` has no `EX`), the partial fractions from the Taylor
+  coefficients at the linear factors of the denominator, factored over
+  the number field of its radicals as SymPy's `apart` does with
+  `extension=True` (Trager's `dup_ext_factor`), the roots of the linear
+  and quadratic factors by the native `roots` instead of `solve`, the
+  real roots of numeric radicands as indexed roots (`CRootOf` through
+  interop) and their complex pairs from mpmath roots and the native
+  resultants, the native `ask` and reliable values, and the native
+  `ratint` for the rational antiderivative of the elementary odd part of
+  the two-pairs case. The old API on SymPy objects moves
+  to the new face `sympy_extras.integrals.elliptic_sympy`, which
+  `integrals.definite` and the tests use. The unused helper
+  `_square_root` is gone.
+
+- The rational integrator is native (**breaking**):
+  `sympy_extras.integrals.risch.rationaltools` (`ratint`,
+  `ratint_ratpart`, `ratint_logpart`, `log_to_real`, `log_to_atan`, and
+  the new `polynomial_part`) takes and returns objects of the core and
+  imports no SymPy: Hermite's reduction (the linear system of
+  Horowitz–Ostrogradsky solved by elimination over the domain) and
+  Lazard–Rioboo–Trager by the native subresultant PRS, square-free
+  decompositions, gcds and `roots`, on typed dense polynomials over `QQ`
+  or over the new domain `EX` of core expressions
+  (`sympy_extras.polys.domains.expressiondomain`, ported from SymPy: the
+  normal form `cancel` expanded over the products, as SymPy's `EX`);
+  SymPy's domain normalisations (the `cancel` over `ZZ`, the primitive
+  parts, the fraction-field forms of `Poly.as_expr`) are reproduced. The
+  sums over the roots are the new native `RootSum` node of
+  `sympy_extras.polys.rootoftools` (ported from SymPy: `RootSum` never
+  evaluates, `root_sum` evaluates as SymPy's constructor, with
+  `preprocess_roots`, the factors, the roots of linear and quadratic
+  factors and the rational case by the trace in `K[t]/(q)`; `doit` by
+  `roots`, `diff`, numerical values; `interop` converts both ways). The old
+  API on SymPy objects (`Poly` arguments, SymPy's `RootSum`) moves to the
+  new face `sympy_extras.integrals.risch.rationaltools_sympy`, which
+  `risch.risch`, `trager`, `indefinite`, `trigonometric`, `radicals` and the
+  tests use. `exponential.exponential_rational` calls the native `ratint`
+  (`exponential_sympy.ratint_of_core` is removed), and
+  `solvers.linear_systems` the new native `rational_integral`
+  (`linear_systems_sympy.rational_integral_of_core` is removed). The
+  package `sympy_extras.integrals.risch` exports nothing, so that the
+  native module imports without SymPy: `risch_antiderivative` and
+  `is_nonelementary` move to `sympy_extras.integrals.risch.risch_sympy`.
+  Fixed on the way: the derivative of a `RootSum` whose function is
+  constant in the variable is the degree times it (SymPy 1.14 returns the
+  function itself: `RootSum(t**3 - t - 1, Lambda(t, log(t*x))).diff(x)` is
+  `1/x`). Over coefficients with
+  square roots of numbers the arithmetic rationalizes the denominators
+  (`EXR`, which keeps the gcds from growing); the transcendental constants
+  (`pi`, `tan(1)`) are parameters of the root formulas, as in SymPy's
+  `ZZ(tan(1))`. Compared with the old code on the 750 distinct calls of
+  the integrals and solvers suites and 78 more integrands: the same
+  results but for 33 calls and 6 integrands (radical coefficients, rationalized and often
+  shorter; the forms of the roots of cubics in radicals; parameters in
+  the arguments of the logarithms; the sign of the arctangent pairs), every
+  antiderivative checked by differentiation; two integrands which the old
+  code did not finish in a minute take a second.
+- The antiderivatives of exponentials and the recognition of constants are
+  native (**breaking**): `sympy_extras.integrals.exponential`
+  (`exponential_antiderivative`, `power_exponential`,
+  `exponential_rational`, `nested_power_exponential`,
+  `rational_exponential`, `composite_gaussian`,
+  `reciprocal_square_exponential`) and `sympy_extras.integrals.recognize`
+  (`recognize_constant`, `recognize_integral`, `quadrature`,
+  `DEFAULT_CONSTANTS`) take and return objects of the core and import no
+  SymPy: the native `powsimp`, `expand`, `factor`, `cancel`, `simplify`,
+  `roots` (with a dummy for every coefficient outside the polynomial
+  domains, `pi` or `exp(c)`, the typed `Poly` having no `EX`), the native
+  `ask` and the numerical checks of `integrals.conditions`; the
+  quadrature evaluates the integrand by the numerical rules of the core's
+  nodes instead of `lambdify`; the two unknowns of the composite Gaussian
+  are solved by a 2x2 elimination instead of SymPy's `solve` (an
+  underdetermined system is refused). One step stays on SymPy, reached
+  only by the substitution `u = exp(c*x)`: its `ratint`, through
+  `exponential_sympy.ratint_of_core`. The old API on SymPy objects moves
+  to the new faces `sympy_extras.integrals.exponential_sympy` and
+  `sympy_extras.integrals.recognize_sympy`, which `integrals.indefinite`,
+  `integrals.definite`, the tests and the docs use (the results are the
+  same, `srepr` for `srepr`, on the calls of the tests and 70 more).
+  Fixed on the way: `Integer(n).as_content_primitive()` of the core
+  returned the content as a `Rational` which is not an `Integer`
+  (`factor_terms(a*x**2)` had the exponent `Rational(2, 1)`), and the
+  native `hyperexpand` looped forever on `1F1(a; a + 1; z)` with a
+  rational `a` (the parameters of an instantiated formula were not
+  evaluated, `1/3 + 1` was shifted towards `4/3`).
+
+- The heuristic Risch integrator and the table of definite integrals are
+  native (**breaking**): `sympy_extras.integrals.heurisch`
+  (`components`, `heurisch_antiderivative`, `heurisch_cases`) and
+  `sympy_extras.integrals.tables` (`TABLE`, `TableEntry`, `lookup`,
+  `table_integral`, the patterns' `X`, `A`, `B`, `N`, `M`, `C`, `K`)
+  take and return objects of the core (the native `ConditionalValue`)
+  and import no SymPy. The polynomial steps of heurisch run on the typed
+  `Poly`, `gcd`, `lcm`, `factor_list`, `cancel` and `roots`, the
+  constants the typed `Poly` does not take as coefficients (`pi`,
+  `exp(y)`, `sqrt(2)`, `I`) replaced by placeholder symbols, as SymPy's
+  composite domains make them generators; the linear system of the
+  candidate is solved by its reduced row echelon form (unique for the
+  order of the unknowns, so the solution of SymPy's `solve_lin_sys`)
+  over `QQ`, over the number field of the algebraic constants (`I` and
+  radicals of rationals through a primitive element: the arctangents of
+  `1/(x**4 + 1)` need `sqrt(2)**2 = 2`, which SymPy's `EX` decided), or
+  over the fractions of the parameters; the tangents of the half angle,
+  SymPy's `root_factors`, `denoms` and the single-equation `solve` of
+  `heurisch_cases` are ported in the module; the verification by the
+  native `cancel`, `simplify` and `numerically_equal`. The old API on
+  SymPy objects is in the faces `sympy_extras.integrals.heurisch_sympy`
+  and `sympy_extras.integrals.tables_sympy` (`TableEntry.from_core`,
+  `to_core`, the table converted), which `indefinite`, `definite` and
+  the tests use.
+- The asymptotic expansions of integrals are native (**breaking**):
+  `sympy_extras.integrals.asymptotic` (`asymptotic_integral`,
+  `watson_lemma`, `laplace_method`, `stationary_phase`,
+  `steepest_descent`, `uniform_expansion`, `exponential_part`,
+  `oscillatory_part`) takes and returns objects of the core and imports
+  no SymPy: the expansions are the core's series and `Order`, the
+  stationary and saddle points the native `solve`, the signs the native
+  `ask`, the limits at infinite ends the native `limit`, and the
+  quadratures which confirm the complex saddle points evaluate the
+  integrand with mpmath through the core (no `lambdify`); the polynomial
+  coefficients in the parameter are read from the expansion (the typed
+  `Poly` has no domain `EX`). The SymPy API is the new face
+  `sympy_extras.integrals.asymptotic_sympy`, with the same results; it
+  leaves a sum unevaluated when SymPy's `Order` cannot compare its terms
+  with the order term, as before. The stationary points of
+  transcendental phases and the complex saddle points still reach
+  SymPy's `solveset` at run time, through the native `solve`. Import the
+  face to keep the old API.
+- A sum of imaginary terms is imaginary (and so nonzero) in the core only
+  when the sum of the terms times `I` is known not to vanish, as SymPy's
+  `Add._eval_is_imaginary` says: `I - 4*w**3` with `w = 2**(1/3)*(I -
+  sqrt(3))/4`, which is zero, was imaginary, and the native `solve`
+  dropped two of the three roots of `4*x**3 - I`.
+- The convergence tests of series and products are native
+  (**breaking**): `sympy_extras.concrete.convergence` (`sum_convergence`,
+  `product_convergence`, `is_convergent`) takes and returns objects of
+  the core and imports no SymPy: the limits, the decisions under
+  assumptions, the boundary points, the signs, the quantifier-free
+  simplification of the conditions and the simplifications of the ratios
+  are the native ones of `sympy_extras.assumptions` and
+  `sympy_extras.simplify`, and the polynomial coefficients of the
+  majorants are read from the expansion (the typed `Poly` has no domain
+  for `pi*n + 1`). Two steps of the last resort for terms without
+  parameters go through the new face at run time:
+  `convergence_sympy.improper_integral_of_core` (SymPy's `integrate` of
+  the integral test) and `convergence_sympy.is_convergent_of_core`
+  (SymPy's `Sum.is_convergent`). The old API on SymPy objects moves to
+  the new face `sympy_extras.concrete.convergence_sympy`, which
+  `integrals.series`, the tests, the benchmarks, the README and the docs
+  use. The core's `rewrite(Factorial)` gains SymPy's rules for `gamma`,
+  `binomial`, `rf` and `ff` (PORTED FROM SYMPY). In `concrete.delta` and
+  `concrete.summations` the equations which `linsolve` does not solve go
+  to the native `assumptions.solve` (a finite set of solutions over the
+  complex numbers, those contradicting the assumptions of the unknown
+  dropped as SymPy's `solve` does) before SymPy's `solve`, and SymPy's
+  `as_set() == EmptySet` of a condition in one symbol is the native
+  `solve` over the reals; SymPy's `solve(..., dict=True)` of the systems
+  of several deltas, SymPy's `Integral` of
+  `eulersums.polygamma_integral_representation`, the residue method with
+  `CRootOf` poles and the zeta function match of `Sum.doit` stay on
+  SymPy.
+- The top-level helpers import no SymPy (**breaking**):
+  `sympy_extras._special_values` (`with_special_values`,
+  `special_points`, `point_condition`, `condition_point`,
+  `point_assumptions`, `undefined_at`, `equality_points`,
+  `defined_problem`) takes and returns objects of the core, with the
+  native factorisation, roots, transcendental solver and `satisfiable`
+  (SymPy's `roots` of a polynomial with irrational coefficients and its
+  `solveset` of a transcendental factor the native solver does not
+  reduce go through `roots_sympy`/`transcendental_sympy` at run time);
+  the old API on SymPy objects is the new face
+  `sympy_extras._special_values_sympy` (used by `integrals.definite`,
+  `integrals.indefinite` and `concrete.karr_sympy`; not to be confused
+  with `solvers._special_values_sympy`). The native
+  `solvers._special_values` calls it directly, and
+  `solvers._special_values_sympy.special_values_of_core` is removed.
+  The SymPy aliases and narrowing helpers of `sympy_extras._typing`
+  (`ExprLike`, `OrderSpec`, `QuantifierPrefix`, `QuantifierSpec`,
+  `as_expr`, `as_boolean`, `as_symbol`, `as_set`, `free_symbols`,
+  `sorted_symbols`) moved to the new `sympy_extras._typing_sympy`, which
+  re-exports the SymPy-free aliases (`Dup`, `Dmp`, `Monomial`, `Sign`,
+  `Truth`, `DomainElement`, `OrderKey`, `Weights`, `QuantifierKind`)
+  that stay in `_typing`; every SymPy-side importer switched.
+  `sympy_extras._timeout` already imported no SymPy at module level; its
+  preparation of SymPy's integration tables is now the public
+  `prepare_sympy()`, called by the limits without `native=True` and by
+  the callbacks of the `_special_values_sympy` face (which run under the
+  native limits of the native module). The native cases of the ODE
+  solutions no longer load SymPy (the symbolic check of a solution at a
+  point runs under a native limit).
+- The symmetry method for ODEs and the second order solvers are native
+  (**breaking**): `sympy_extras.solvers.ode` (`ode_symmetries`,
+  `canonical_coordinates`, `reduce_order`, `dsolve_lie`, `solve_ode`,
+  `ReducedODE`) and `sympy_extras.solvers.second_order`
+  (`second_order_rhs`, `integrating_factor_xy`, `integrating_factor_p`,
+  `is_linearizable`, `linearize`, `rectify_symmetries`,
+  `commuting_pair`, `transformed_rhs`, `dsolve_second_order`,
+  `FirstIntegral`, `Linearization`) take and return objects of the core
+  and the native `lie.Symmetry`, and import no SymPy: the symmetries,
+  the jets, the coefficients, the factorisations, the cancellations and
+  the simplifications are the native ones, a first order equation goes
+  to the native `first_order.dsolve_first_order`, the structure
+  constants of the symmetries are solved by the native
+  `linsolve.solve_linear_unique` (SymPy's `solve` only for a system
+  without a unique solution) and their centralizers by the native null
+  spaces, and the solutions are checked by the new
+  `ode.check_ode_solution`, a port of SymPy's `checkodesol`
+  (PORTED FROM SYMPY, `sympy/solvers/ode/subscheck.py`). SymPy's
+  `dsolve` and `solve` (`pde_sympy.dsolve_of_core`,
+  `pde_sympy.solve_of_core`, `first_order_sympy.dsolve_of_core`,
+  `charpit_sympy.solve_of_core`, `factorization_sympy.solve_of_core`) and
+  `integrate` (`kovacic_sympy.integrate_of_core`, `integral_of_core`) are
+  called through the faces; no new `*_of_core` function. The old API on
+  SymPy objects moves to the new faces `sympy_extras.solvers.ode_sympy`
+  (also `check_ode_solution`) and `sympy_extras.solvers.second_order_sympy`,
+  which the tests, the benchmarks, the README and the docs use. Two
+  differences with the old modules: a quadrature which SymPy evaluates
+  only in part is kept as the whole unevaluated `Integral(V, r)` (the
+  same function, written `Integral(c*V, r)` rather than `c*Integral(V,
+  r)`), and a relation which SymPy's `solve` splits into several
+  branches is a solution only when every branch is (the old check read
+  the first `(verdict, residual)` pair of `checkodesol`'s list, a
+  nonempty tuple and always true). A wrapped SymPy `Integral`, `Sum` or
+  `Product` substitutes its bound variable as SymPy does
+  (`Integral(f(r), r).subs(r, g)` is `Integral(f(r), (r, g))`; the
+  interop rebuilt invalid limits and raised `ValueError`).
+- The method of brackets and the Dirichlet integrals are native
+  (**breaking**): `sympy_extras.integrals.brackets` (`SeriesCoefficient`,
+  `taylor_coefficient`, `ramanujan_master_theorem`, `method_of_brackets`,
+  `mellin_transform_series`, the new `FormalSeriesTerms`) and
+  `sympy_extras.integrals.dirichlet` (`dirichlet_integral`,
+  `trigonometric_sum`, whose kinds are now the classes `Sin` and `Cos` of
+  the core) take and return core expressions, the native
+  `MellinTransform` and `ConditionalValue`, and import no SymPy: the
+  coefficient functions, the checks of the formal series against the
+  native Taylor series, the decay at infinity (native series and
+  limits), the bracket sums (the native `summation`), `gammasimp`,
+  `hyperexpand`, `powsimp`, `simplify`, `logcombine`, `TR8` and `ask`
+  are the native ones. SymPy's formal power series (`fps`, not ported)
+  and, when the decay is not found, the strip of SymPy's
+  `mellin_transform` are called through the face
+  (`brackets_sympy.fps_of_core`, `brackets_sympy.mellin_strip_of_core`).
+  The old API on SymPy objects moves to the new faces
+  `sympy_extras.integrals.brackets_sympy` and
+  `sympy_extras.integrals.dirichlet_sympy` (same results), which
+  `definite`, `series` and `periodic` now import. One result changes: the
+  method of brackets no longer returns `E*pi/sin(pi*s)` for
+  `exp(-x)/(1 + x)` (a wrong transform, from SymPy's `Sum.doit` of the
+  series left by the bracket; the native summation leaves it unevaluated
+  and the method gives up).
+- Slater's theorem and the Marichev–Adamchik method are native
+  (**breaking**): `sympy_extras.integrals.slater` (`MeijerG`,
+  `mellin_barnes`, `slater_expansion`, `expand_meijerg`,
+  `line_conditions`) and `sympy_extras.integrals.marichev`
+  (`mellin_integrate`, `integrate_product`, `evaluate_quotient`, `tidy`,
+  `checked_tidy`, `real_logarithms`, `polar_elliptic`, `polar_lowergamma`,
+  `right_half_plane_powers`, `bessel_k_forms`, `exponential_form`,
+  `reduce_positive_powers`) take and return core expressions, the native
+  `GammaQuotient`, `Product` and `ConditionalValue`, and import no SymPy:
+  the expansions by the native `hyperexpand`, the logarithmic case by the
+  native limits, the simplifications by the native `simplify`,
+  `gammasimp`, `factor`, `unpolarify`, `expand_func` and `refine`, the
+  decisions by the native `ask`. `MeijerG.as_sympy` is `MeijerG.as_expr`
+  on the core. The old API on SymPy objects is in the faces
+  `sympy_extras.integrals.slater_sympy` and
+  `sympy_extras.integrals.marichev_sympy` (`MeijerG` with
+  `to_core`/`from_core`), which `definite`, `laplace`, `algebraic`,
+  `series`, `reduction`, `telescoping`, `dfinite` and the tests use. New:
+  `marichev.projected_sums`, the polar numbers in the terms of sums
+  replaced by their projections, which `tidy` applies before
+  `unpolarify` (the value of `exp(-x)*cos(2*x)*besselj(0, x)` over
+  `(0, oo)`, where the native `hyperexpand` writes
+  `1/sqrt(1 - polar_lift(w))`, was refused), and `marichev.real_constant`,
+  a constant written with `I` or roots of `-1` in real terms when that
+  removes them (`3 - log(2) - sqrt(3)*pi/3` for `cbrt(x)/(1 + x)` over
+  `(0, 1)`); the value of `exp(-2*x)*cos(x)*besselj(0, x)` over
+  `(0, oo)` in README and `docs/integrals.md` now comes from the
+  Marichev–Adamchik method in another real form (SymPy's `hyperexpand` of
+  its `1F0` used to time out). Fixed in
+  `sympy_extras.functions.special.hyper.hyper`: the argument is
+  unpolarified where the series is single valued, as SymPy's
+  `hyper.eval` does. Fixed in
+  `sympy_extras.simplify.hyperexpand`: the symbolic formulas were
+  instantiated without evaluation (the core's `xreplace`), so that no
+  origin was found for `2F1(nu/2 + 1/2, nu/2 + 1; nu + 1; z)` and the
+  like, which SymPy expands.
+- The linear systems `Y' = A Y + b` are native (**breaking**):
+  `sympy_extras.solvers.linear_systems` (`CyclicReduction`,
+  `cyclic_reduction`, `cyclic_vector`, `system_to_scalar`,
+  `rational_system_solutions`, `hyperexponential_system_solutions`,
+  `dsolve_system`, `LinearSystemSolution`, `dsolve_linear_system`) takes
+  and returns the `ExprMatrix` of core expressions and the native
+  `LinearOperator`, and imports no SymPy: the scalar equations go to the
+  native `linear_ode` and `factorization` solvers, the Krylov rows of the
+  cyclic vectors, their inverse and the scalar equation are computed in
+  the native field of rational functions (`SparseFractionField`; the
+  normal forms by the native `cancel` otherwise), Barkatou's bounds use
+  the native `factor_list`, `resultant`, `roots` and null spaces (the
+  limits at infinity of rational functions read from the leading
+  coefficients instead of SymPy's `limit`), the determinants are the
+  native Berkowitz ones, the checks and the final forms the native
+  `simplify`, and a constant system whose scalar equation is not solved
+  gets the columns of the native matrix exponential (Putzer,
+  `dae.matrix_exponential`) before SymPy's `linodesolve`. SymPy's
+  `integrate` (Liouville's formula and the quadratures of variation of
+  constants, `kovacic_sympy.integrate_of_core`/`integral_of_core`), its
+  rational integrator with `RootSum` (the new
+  `linear_systems_sympy.rational_integral_of_core`) and `linodesolve`
+  (the new `linear_systems_sympy.linodesolve_of_core`) are called through
+  the face. The old API on SymPy matrices moves to the new face
+  `sympy_extras.solvers.linear_systems_sympy` (`CyclicReduction` and
+  `LinearSystemSolution` with SymPy matrices), which the tests, the
+  benchmarks and the docs use. `linear_ode._solve_operator` imports
+  `kovacic_sympy` only for first order equations, so that the scalar
+  equations of higher order solved without quadratures load no SymPy.
+  Fixed on the way: at a pole of order two or more whose `det N` is
+  identically zero (a singular `A`, and every augmented system of an
+  inhomogeneous one) the multiplicity of the zero polynomial came out 0
+  and was taken for an invertible leading matrix, so that no rational
+  solution was returned (`Y' = [[1, 1], [1, 1]] Y/x**2` lost `(1, -1)`)
+  and the rational particular solutions at such poles were never found
+  (variation of constants gave another one, with its integrals). Every
+  other recorded call gives the same result as before (see the commit
+  message for the comparison).
+- The Darboux polynomials and the Prelle–Singer procedure are native
+  (**breaking**): `sympy_extras.solvers.darboux` (`darboux_polynomials`,
+  `exponential_factors`, `darboux_integrating_factor`,
+  `darboux_first_integral`, `prelle_singer`, `vector_field`,
+  `DarbouxPolynomial`, `ExponentialFactor`, `DarbouxIntegral`) takes and
+  returns the expressions, functions and symbols of the core and imports
+  no SymPy: the field is a typed sparse polynomial over `QQ`, a number
+  field `QQ(alpha)` (`AlgebraicField`, of a primitive element of the
+  radicals, `I` and the `extension` among the coefficients) or `QQ(a, b,
+  ...)` (`SparseFractionField`, with the transcendental constants such as
+  `pi` as parameters, as SymPy's `Poly` takes them); the factorisations are Wang's (the parameters
+  as further variables) and Trager's, the leaf systems go to the native
+  Gröbner bases and FGLM, the linear algebra to `sparse_echelon`, and the
+  explicit solution to the native `solveset_rational` and `simplify`.
+  The quadratures of an integrating factor still go through SymPy's
+  `integrate` (`kovacic_sympy.integrate_of_core`). The old API on SymPy
+  objects is in the new face `sympy_extras.solvers.darboux_sympy` (the
+  same results on the tests, the doctests and 275 calls on 63 fields,
+  three to four times faster); `solvers.first_order`, the fuzz driver and the
+  documentation use it. Fixed on the way: Kamke 1.23 `y' = b - a y**2`
+  made `darboux_polynomials` and `darboux_integrating_factor` raise
+  `ValueError("0**0")` from SymPy's `PolyElement.evaluate` over `ZZ(a,
+  b)` (sympy-extras#25); they give `y**2 - b/a` and `1/(y**2 - b/a)`.
+  Coefficients with both parameters and algebraic numbers are refused
+  with a `ValueError`, as before.
+- The first order solvers and the Abel equations are native
+  (**breaking**): `sympy_extras.solvers.first_order` (`riccati_ode`,
+  `chini_ode`, `abel_ode`, `lagrange_ode`, `dsolve_first_order`) and
+  `sympy_extras.solvers.abel` (`abel_coefficients`, `abel_invariants`,
+  `constant_invariant`, `abel_equivalence`, `particular_solution`,
+  `air_solution`, `abel_by_invariants`, `AbelInvariants`,
+  `AbelTransformation`, `REPRESENTATIVES`) take and return the
+  expressions, functions and symbols of the core and import no SymPy: the
+  coefficients (read from the expanded terms, SymPy's domain `EX` not
+  being ported), the cancellations, `factor`, `together`, `powdenest`,
+  `real_root`, `simplify`, the gcd of the equivalence (`UPoly`), the
+  linearised Riccati equations (the native `special_solutions` and
+  `dsolve_linear`) and the cases of the isolated parameter values are
+  native, and so is the numerical check of an implicit relation (a
+  secant method in mpmath at 30 digits in place of SymPy's `nsolve`).
+  SymPy's `integrate` (`first_order_sympy.integrate_of_core`,
+  `kovacic_sympy.integrate_of_core`), its `dsolve` of the linear
+  equation of a Lagrange equation and of an inverse Riccati equation
+  (`first_order_sympy.dsolve_of_core`), its `solve` of the undetermined
+  coefficients of a particular solution and of a common factor of the
+  equivalence (`factorization_sympy.solve_of_core`,
+  `charpit_sympy.solve_of_core`) and the Prelle–Singer procedure of
+  `solvers.darboux` (`prelle_singer_of_core`) are called through the
+  faces at run time. The old API on SymPy objects is in the new faces
+  `sympy_extras.solvers.first_order_sympy` and
+  `sympy_extras.solvers.abel_sympy` (results compared on the tests, the
+  doctests and 40 further first order equations; see the commit
+  message); `solvers.ode`, `solvers.darboux` (its private helpers
+  `_derivative_polynomial`, `_explicit_rhs` stay on SymPy in
+  `first_order_sympy`), the tests, the benchmarks and the documentation
+  use the faces.
+
+- The Lie point symmetries and the similarity reductions are native
+  (**breaking**): `sympy_extras.solvers.lie` (`JetSpace`, `Symmetry`,
+  `symmetries`, `check_symmetry`, `infinitesimal_condition`,
+  `determining_equations`, `determining_system`, `symmetry_janet_basis`,
+  and the new `leading_derivatives`) and `sympy_extras.solvers.pde`
+  (`pde_symmetries`, `similarity_reduction`, `pdsolve_lie`, `Reduction`,
+  and the new `check_pde_solution`) take and return the expressions,
+  functions and symbols of the core and import no SymPy: the linear
+  system of the ansatz is solved over `QQ` or the field of rational
+  functions of the parameters (`SparseFractionField`, the constants
+  outside it such as `sqrt(2)` taken as generic symbols), the
+  determining system goes to the native Janet basis of
+  `sympy_extras.polys.differential` (no longer through
+  `polys.differential_sympy`), a quadratic leading derivative is solved
+  by the native `roots_quadratic`, the reduced equations are normalised
+  by the native `factor_list`, and the solutions of `pdsolve_lie` are
+  checked by substitution with the native `simplify` (no longer SymPy's
+  `checkpdesol`). The old API on SymPy objects is in the new faces
+  `sympy_extras.solvers.lie_sympy` and `sympy_extras.solvers.pde_sympy`
+  (same results on the tests, the doctests and 34 further equations);
+  SymPy's `dsolve` (`dsolve_of_core`) and `solve` for the equations not
+  linear in the unknown (`pde_sympy.solve_of_core`; `lie` uses
+  `charpit_sympy.solve_of_core` for a leading derivative which is
+  neither linear nor quadratic) are called through them. `solvers.ode`,
+  `solvers.second_order`, the benchmarks and the documentation use the
+  faces.
+
+- The transcendental equations and the inequalities in one variable are
+  native (**breaking**): `sympy_extras.solvers.transcendental`
+  (`solve_transcendental`, `polynomialize`, `Reduction`) takes and
+  returns the formulas, symbols and sets of the core and imports no
+  SymPy: the kernels, the functional relations, the clearing of the
+  denominators (the coefficients read from the expanded terms, SymPy's
+  domain `EX` not being ported), the inverse images and the polynomial
+  formulas with rational coefficients (the native CAD and radical forms)
+  are native, and so are the relations linear in the unknown with real
+  coefficients which SymPy's `solveset` solved when no solver is given.
+  SymPy's `solveset` of the other ones (`solveset_of_core`), the Lambert
+  W candidates of SymPy's `solve` (`solve_of_core`) and the reliable
+  numerical values of `sympy_extras._numeric` (`reliable_form_of_core`,
+  `reliable_value_of_core`) are called through the new face
+  `sympy_extras.solvers.transcendental_sympy`, which keeps the old API
+  on SymPy objects (`solve_transcendental`, `polynomialize`, `Reduction`
+  with SymPy attributes); the tests use it. The native
+  `sympy_extras.assumptions.solve` calls `solve_transcendental`
+  directly, and `solve_sympy.solve_transcendental_of_core` is removed.
+  `sympy_extras.solvers.inequalities.solve_inequality` imports no SymPy
+  either: a relational rational in the variable with rational
+  coefficients is solved by the CAD (SymPy's
+  `reduce_rational_inequalities`, the same relational), the others go
+  through `sympy_extras.solvers.inequalities_sympy.solve_inequality_of_core`
+  at run time. Fixed on the way: a linear relational whose denominators
+  vanish somewhere (`x < x*(2/x - 1)`) came back without SymPy's
+  condition on them (`x < 1` for `(x < 1) & Ne(x, 0)`). Every recorded
+  call gives the same result as before (see the commit message for the
+  comparison).
+- The linear ODE solvers are native (**breaking**):
+  `sympy_extras.solvers.linear_ode` (`LinearOperator`,
+  `polynomial_solutions`, `rational_solutions`,
+  `hyperexponential_solutions`, `hyperexponential_search`,
+  `reduce_order_linear`, `dsolve_linear`, `gcrd`, `lclm`,
+  `log_derivative`), `sympy_extras.solvers.factorization`
+  (`factor_operator`, `right_factor`, `left_factor`,
+  `OperatorFactorization`, `variation_of_parameters`, `solve_factored`),
+  `sympy_extras.solvers.irregular` (`Place`, `irregular_places`,
+  `local_exponential_parts`, `finite_exponential_parts`,
+  `conjugate_sum`) and `sympy_extras.solvers.special`
+  (`special_solutions`, `bessel_solutions`, `whittaker_solutions`,
+  `hypergeometric_solutions`, `whittaker_m`) take and return the
+  expressions, functions and symbols of the core and import no SymPy.
+  The polynomials in one variable are the new `linear_ode.UPoly`
+  (coefficients any constant expressions, normalised by the native
+  `cancel`; the native `factor_list`, `gcd`, `resultant` and `roots`
+  with the coefficients the typed `Poly` refuses taken as generators),
+  the linear algebra the native field of rational functions
+  (`SparseFractionField`: null spaces, the inverse of Beke's cyclic
+  matrix) with Gaussian elimination on expressions as the fallback, the
+  determinants those of `_special_values`, the number fields of the
+  irregular points `polys.domains.AlgebraicField` with Trager's
+  factorisation (the root `alpha` of a place of degree more than one is
+  a symbol, the generator of the field; `irregular_places` returns
+  `UPoly`), the integral of an exponential part the conjugate sum of
+  `-r/((m - 1) (x - alpha)**(m - 1))` instead of SymPy's
+  `ratint_ratpart`, the integrals of the polynomial exponential parts
+  term by term, the special functions those of
+  `sympy_extras.functions`. `LinearOperator.coefficients` and
+  `OperatorFactorization.factors`/`irreducible` are tuples on the core.
+  SymPy's `integrate` (`kovacic_sympy.integrate_of_core`,
+  `integral_of_core`), `dsolve` (the new
+  `linear_ode_sympy.dsolve_of_core`) and `solve` on the
+  Grassmann–Plücker relations of Beke's method (the new
+  `factorization_sympy.solve_of_core`) are called through the faces. The
+  old API on SymPy objects moves to the new faces
+  `sympy_extras.solvers.linear_ode_sympy`, `factorization_sympy`,
+  `irregular_sympy` and `special_sympy` (with the private helpers that
+  `linear_systems` and the tests use: `_solve_operator`, `_nullspace`,
+  `_indicial_at`, `_indicial_at_infinity`, `_quadrature`, ...), which
+  `linear_systems`, `first_order`, the tests, the benchmarks, the README
+  and the docs use. The wrapped SymPy expressions of the interop
+  (`SymPyExprNode`) now differentiate through SymPy: the derivative of an
+  unevaluated `Integral(f, x)` by `x` is `f` (it stayed
+  `Derivative(Integral(f, x), x)`). Every recorded call of the tests and
+  the doctests gives the same result on the faces except the form of
+  some expanded `L(y)` and the order of two hyperexponential solutions,
+  and so do 40 further equations (see the commit message).
+- The Mellin transforms are native (**breaking**):
+  `sympy_extras.integrals.mellin` (`GammaQuotient`, `MellinTransform`,
+  `Kernel`, `KERNELS`, `Match`, `Product`, `mellin_kernel`,
+  `mellin_transform`, `monomial`, `decompose_integrand`,
+  `poles_separated`) takes and returns the expressions, functions and
+  symbols of the core and imports no SymPy: the table on the core's
+  `gamma`, `polygamma`, `zeta`, `dirichlet_eta`, `lerchphi`, the
+  matching on the core's function classes, the scale conditions decided
+  by the native `ask`. The old API on SymPy objects moves to the new face
+  `sympy_extras.integrals.mellin_sympy` (the same classes as SymPy
+  containers with `to_core`/`from_core`, the operations and functions
+  running the native code; the entries of `KERNELS` are kept identical),
+  which `slater`, `marichev`, `brackets`, `definite`, `laplace`,
+  `periodic`, `contours`, `dirichlet`, `series`, `transformations`, the
+  tests, the benchmarks, the README and the docs use. The products of two
+  functions which are one kernel (two Bessel functions,
+  `exp(-x)*besseli`, `erfc(x)*exp(x**2)`) are matched without
+  placeholder expressions (`_CombinedBessel`, `_CombinedBesseli`,
+  `_CombinedErfc` are gone) and come after the other kernels, as before.
+  The core's derivatives of order 2 or more are not simplified as
+  SymPy's are, so `mellin_transform` applies SymPy's
+  `factor_terms(signsimp(...))` to the transform of `log(x)**n*f(x)`
+  itself and the results keep SymPy's form.
+- The radical table and the trigonometric integrator are native
+  (**breaking**): `sympy_extras.integrals.radicals`
+  (`quadratic_radical_antiderivative`,
+  `euler_substitution_antiderivative`) and
+  `sympy_extras.integrals.trigonometric` (`trigonometric_antiderivative`)
+  take and return the expressions and symbols of the core and import no
+  SymPy: the coefficients of the radicands are read off the expanded
+  polynomial (any coefficients, as SymPy's `Poly` over `EX`), the real
+  roots of an Euler substitution are the native `roots`, the products of
+  sines and cosines the native `TR8`, the hyperbolic ones written in
+  exponentials by hand (SymPy's `rewrite(exp)` forms), the checks the
+  native `cancel`, `simplify` and `numerically_equal`, and the solution
+  of a vanishing frequency the native `roots` with the roots which
+  contradict the assumptions of the symbol left out (as SymPy's `solve`
+  does). The rational functions which the Euler and Weierstrass
+  substitutions and the integrations by parts leave go to the native
+  `ratint` (`sympy_extras.integrals.risch.rationaltools`).
+  The SymPy API with the same results is the new faces
+  `sympy_extras.integrals.radicals_sympy` and
+  `sympy_extras.integrals.trigonometric_sympy`, which `antiderivative`,
+  `definite` and `indefinite` call.
+- Kovacic's algorithm and the special values of the ODE solutions are
+  native (**breaking**): `sympy_extras.solvers.kovacic`
+  (`liouvillian_solution`, `dsolve_kovacic`, `normal_form`,
+  `KovacicSolution`) and `sympy_extras.solvers._special_values`
+  (`general_solution_cases`, `basis_cases`, `solution_cases`,
+  `solution_jacobian`, `explicit_solution`, `as_zero`, and the new
+  `ode_order`, `determinant`, `defined_equation`) take and return the
+  expressions, functions and symbols of the core and import no SymPy:
+  the poles are the native `roots` (the irrational numbers and the
+  functions of the parameters in the coefficients taken as generators,
+  as SymPy's `Poly` does), the Laurent parts of `sqrt(r)` the native
+  series, the linear systems of the cases Gaussian elimination on
+  expressions (`recurr._solve_linear`), the Jacobians SymPy's
+  determinant formulas and Berkowitz's algorithm, the simplifications the
+  native `simplify`. SymPy's `integrate` (`integrate_of_core`,
+  `integral_of_core` for the unevaluated integrals) and its rational
+  Riccati solver (`riccati_of_core`) are called through the new face
+  `sympy_extras.solvers.kovacic_sympy`, the candidate points of
+  `sympy_extras._special_values.with_special_values` through
+  `sympy_extras.solvers._special_values_sympy.special_values_of_core`.
+  The old API on SymPy objects moves to these faces, which
+  `linear_ode`, `factorization`, `special`, `ode`, `first_order`,
+  `second_order`, the tests, the benchmarks, the README and the docs
+  use. The second solution of case 2 comes from the conjugate root
+  `phi - omega` (Vieta) instead of SymPy's `roots` of the quadratic, so
+  its form may differ (`exp(-2*x*sqrt(1/x))` for
+  `exp(-2*sqrt(x**3)/x)`); every other recorded call gives the same
+  result (see the commit message for the comparison).
+- Charpit's method and the differential-algebraic solver are native
+  (**breaking**): `sympy_extras.solvers.charpit` (`complete_integral`,
+  `check_complete_integral`) takes equations of the core and imports no
+  SymPy (the equations polynomial in the unknown are solved by the native
+  `roots`, in the order and with the simplification of SymPy's `solve`;
+  sums of powers are integrated term by term; the checks use the native
+  `simplify`); `sympy_extras.solvers.dae` (`dsolve_dae`,
+  `core_nilpotent_decomposition`, `dae_index`, `dae_matrices`,
+  `check_dae`, `DAESolution`) works on `ExprMatrix` of the core, with
+  exact Gaussian elimination by the native `cancel` and a new
+  `matrix_exponential` by Putzer's algorithm (eigenvalues by the native
+  `roots`) instead of SymPy's `Matrix.exp`. What stays on SymPy is called
+  at run time through the faces: `solve` for equations not polynomial in
+  the unknown and `integrate` for integrands which are not sums of powers
+  (`charpit_sympy.solve_of_core`, `charpit_sympy.antiderivative_of_core`),
+  `integrate` of the particular solution of the regular part
+  (`dae_sympy.integral_of_core`, SymPy's `Integral` when it finds none).
+  The old API on SymPy objects moves to the faces
+  `sympy_extras.solvers.charpit_sympy` and
+  `sympy_extras.solvers.dae_sympy`, with the same results on 92 recorded
+  calls (the tests, the doctests and about 50 more equations, matrices
+  and systems); the benchmarks, the README and the docs use the faces.
+  `dae_matrices` raises `ValueError` ("... is not linear in the functions
+  and their first derivatives") instead of SymPy's `NonlinearError` (a
+  subclass of `ValueError`) for nonlinear equations. The constant factor
+  of an integrand stays out of the antiderivative, as in SymPy's
+  `integrate`: SymPy's `solve` finds no root of `a*log(u) + log(u) - 1`.
+
+- The Thue equation solver is native (**breaking**):
+  `sympy_extras.solvers.thue_equation.thue` takes a form and generators
+  (symbols or other expressions, as `Poly`) of the core and imports no
+  SymPy (the norms are resultants of the typed
+  `euclidtools`, the irreducibility test and the integer roots of
+  `small_solutions` come from `factortools.dup_zz_factor`, de Weger's
+  reduction solves its rational system by Gaussian elimination on
+  `Fraction`s instead of SymPy's `Matrix.LUsolve`; the numerics stay on
+  mpmath). The old API on SymPy objects moves to the face
+  `sympy_extras.solvers.thue_equation_sympy` (`thue`, and the integer
+  level `ThueEquation`, `units_of_order`, `elements_of_norm`,
+  `short_vectors`, `lll`, `at_precision` re-exported), with the same
+  results on 81 recorded calls (the tests, the doctests and 41 more
+  equations: cubic, quartic and quintic forms, several right-hand sides,
+  reducible forms, equations without solutions, the refusals); the
+  benchmarks, the README and the docs use the face.
+  `ThueEquation.small_solutions` now lists the roots for each `y` in
+  increasing order (the same set); the errors of the native polynomials
+  come out of the face as SymPy's `PolynomialError`.
+- The last polynomial modules on SymPy are native (**breaking**): every
+  module of `sympy_extras.polys` but `interop` and the SymPy faces
+  (`*_sympy`) imports no SymPy (a test of `core/tests/test_independence.py`
+  imports them all).
+  - `polys.groebnerwalk`: `groebner_walk(G, ring, target, check, lift)`
+    (both liftings), `extended_groebner`, `initial_form`, and the new
+    `is_groebner` and `normal_form` on the typed `rings.PolyRing` over a
+    field (moved from `polys.ideals`, which re-exports `groebner_walk`,
+    `normal_form` and `initial_form`). The old API on SymPy's rings and
+    orders moves to the face `polys.groebnerwalk_sympy`, computed by the
+    native walk over `QQ`, `GF(p)`, `QQ<a>`, `QQ_I` and `QQ(t)`/`ZZ(t)`
+    (`NotImplementedError` over the others, `EX`, `RR`); over a ring which
+    is not a field it walks over the field of fractions and clears the
+    denominators, as SymPy's `groebner` does: the old walk over `ZZ`
+    returned `[]` for `(2*x**2 - 3*y, x*y - 4)` (and the cofactor lifting
+    failed), now `[8*x - 3*y**2, 3*y**3 - 32]`.
+  - `polys.orderings`: the typed orders (`MonomialOrder`, `lex`, `grlex`,
+    `grevlex`, `WeightOrder`, `BlockOrder`, `elimination_order`,
+    `as_order`), moved from `polys.rings` (which re-exports them); the
+    SymPy `MonomialOrder` subclasses of the old module (for SymPy's
+    `groebner`) move to `polys.orderings_sympy`.
+  - `polys.hilbert`: `hilbert_numerator` returns a `DensePoly` over `ZZ`
+    in a core symbol, `hilbert_series` a core expression, and the new
+    `reduced_hilbert_series` the reduced numerator and the dimension; the
+    SymPy `Poly` and expression move to `polys.hilbert_sympy`
+    (`ideals_sympy` uses it).
+  - `polys.subresultants`: `dup_psc(f, g, K)` over a typed domain (several
+    variables: over a `PolynomialRing` or `SparsePolynomialRing` tower)
+    and `psc(f, g)` on `rings.PolyRing`, whose coefficients are elements of
+    the same ring free of the first generator; `dup_psc`, `dmp_psc` on
+    SymPy's dense representation and `psc` on SymPy's rings (the native
+    `psc` over `ZZ`, `QQ`, `GF(p)`) move to `polys.subresultants_sympy`.
+  - `polys.polytools` imports no SymPy: `invert` of several generators
+    raises `ValueError('univariate polynomial expected')` and of two
+    rationals which are not both integers `NotInvertible` natively (what
+    SymPy does); the calls to SymPy which remain (`invert` of numbers in
+    `ZZ_I`, `RR`, `EX`; `cancel` over `CC`, `EX`, with generators over the
+    other unported domains or with a generator which is not a factor;
+    `factor` over `EX` and over `ZZ_I`, `QQ_I`, `RR` with generators) are
+    `invert_of_core`, `cancel_of_core` and `factor_of_core` of the new
+    `polys.polytools_sympy`, imported only when needed.
+
+  On 520 recorded calls (the tests and doctests of these modules and 40
+  more) the faces return what the old modules returned, except the walk
+  over `ZZ` above; the native modules, inputs and outputs converted,
+  return what the faces return on 1097 checks.
+- The reliable numerical values and the conditions of the integrals are
+  native (**breaking**): `sympy_extras._numeric` (`reliable_form`,
+  `reliable_value`, and the new `reliable_complex`) and
+  `sympy_extras.integrals.conditions` (`ConditionalValue`, `decide`,
+  `canonical`, `real_form`, `positive`, `plain_symbols`, `symbol_facts`,
+  `with_symbol_facts`, `sample_values`, `numerically_equal`,
+  `numerical_verdict`, `combine`) take and return the objects of the core
+  and import no SymPy: the values are computed with mpmath by the core,
+  with the same rules (a part which is a rounding error is told by
+  evaluations at 15, 30 and 60 more digits, an exact `0.0` of a sum whose
+  terms are not zero is a suspect too, the value returned is refined at
+  doubling precisions), and a hidden zero is proved by the core's
+  `is_zero` or by the native minimal polynomial (SymPy's for a number
+  with a wrapped foreign object such as `CRootOf`); the decisions use the
+  native `ask`, `find_instance` and structure theorem. The old API on
+  SymPy objects moves to the faces `sympy_extras._numeric_sympy` and
+  `sympy_extras.integrals.conditions_sympy`, which the integrators written
+  on SymPy (33 modules of `sympy_extras.integrals`, `solvers._special_values`,
+  `solvers.transcendental`, `concrete.karr_sympy`) now import; the face's
+  `ConditionalValue` is the same container on SymPy objects, with
+  `to_core`/`from_core`. The package `sympy_extras.integrals` exports
+  nothing any more (as `sympy_extras.solvers`), so that importing the
+  native module does not load the integrators: `from sympy_extras.integrals
+  import definite_integral` becomes `from sympy_extras.integrals.definite
+  import definite_integral`, and so on for every name it exported. The
+  native `ask`, `limits`, `solve`, the structure theorem and
+  `concrete.creative` call the native functions, and the wrappers they
+  went through are removed: `ask_sympy.sample_values_of_core`,
+  `ask_sympy.reliable_complex_of_core`, `structure_sympy.sample_values_of_core`,
+  `structure_sympy.reliable_value_of_core`, `limits_sympy.reliable_value_of_core`,
+  `solve_sympy.reliable_value_of_core`, `karr_sympy.reliable_value_of_core`.
+  On the 5765 distinct calls recorded from the tests of `integrals`
+  (definite, regions, indefinite, marichev, laplace), of `assumptions`,
+  of the structure theorem and from the doctests, and 570 more (hidden
+  zeros, cuts, conditions), the face gives the old results except two
+  values which are zero (an expression in `lerchphi` and `exp_polar`:
+  `0.e-167` before, `4.9e-150 - 3.3e-150*I` now); `reliable_value` takes
+  26 s instead of 66 s on them, `reliable_form` 6 s instead of 2 s, the
+  others the same time or less.
+  Fixed on the way: mpmath converts the integer denominator of a float
+  such as `1e-1737200` in about a minute, so printing such a core `Float`,
+  its numerical value and its conversion to SymPy were that slow; they now
+  build the mpmath number from the mantissa and the exponent
+  (`core.numbers.fraction_to_mpf`). The core's `meijerg` had no numerical
+  value with half-integer parameters (they went to mpmath as complex
+  numbers, which its pole test compares with integers).
+
 - The differential algebra is native (**breaking**):
   `sympy_extras.polys.differential` (`DifferentialRing`,
   `DifferentialPolynomial`, `janet_basis`, `JanetBasis`,
@@ -830,6 +2434,36 @@ remove public functions. Breaking changes are listed here when they happen.
   `rings.PolyElement.div` updates its remainder and quotients in place
   (the same terms in the same order): the dense Janet basis of the tests
   which took 10 s on SymPy takes 8.5 s.
+- The Puiseux expansions and the function fields of algebraic curves are
+  native (**breaking**): `sympy_extras.polys.puiseux` (`puiseux_expansions`,
+  `expansions_in_field`, `adjoin_root`, `PuiseuxExpansion`,
+  `LaurentSeries`, `Embedding`, `field_of`, `minimal_polynomial_of`,
+  `in_subfield`) works on core expressions and the typed number fields
+  (`AlgebraicField`; the rationals are `RATIONALS`, of degree one; the
+  curves are dictionaries `{i: {k: coefficient of x**k y**i}}`;
+  `minimal_polynomial_of` returns the monic coefficients; the new
+  `field_from_polynomial`, `factor_over`, `curve_from_expr`,
+  `PuiseuxExpansion.evaluate_expr`), and `sympy_extras.polys.functionfields`
+  (`FunctionField[T]`, `Element[T]`, `function_field(F, x, y, K)`,
+  `integral_basis`) is generic in its field of constants (`QQ`, a number
+  field, `SparseFractionField` of the parameters); neither imports SymPy.
+  The old API on SymPy objects moves to the faces
+  `sympy_extras.polys.puiseux_sympy` and
+  `sympy_extras.polys.functionfields_sympy` (same results on the recorded
+  calls of the tests, the integrals on curves and 40 more curves, except
+  the choice between `t` and `-t` in some branches, now SymPy's as before),
+  which `sympy_extras.integrals.curves` calls. A new number field is named
+  natively by the largest real root of its minimal polynomial
+  (`IndexedRoot`, radicals for quadratic and binomial polynomials, the
+  symbol `theta` for a field with no real generator and no radicals); the
+  face gives SymPy's `QQ.algebraic_field(rootof(N, k, radicals=True))` as
+  before. Fixed on the way: the inverse of a basis was cached by the
+  identity of the list, so that a basis changed in place, or a new list at
+  the address of a freed one (the loop of Trager's algorithm), got a stale
+  inverse (the occasional `ValueError: 1/(6*x + 6) is not a polynomial` of
+  `test_bases_are_maximal_by_puiseux_expansions` in a full run); and the
+  integral basis of a curve with parameters such as `y**3 - a*x**2` no
+  longer fails on SymPy's conversion of constants into `QQ(a)(x)`.
 
 - The decompositions of ideals and the rational univariate representation
   are native (**breaking**): `sympy_extras.polys.idealdecomposition`
@@ -1981,6 +3615,62 @@ remove public functions. Breaking changes are listed here when they happen.
   at the precisions they ask).
 
 ### Fixed
+
+- The case `a = b` of `sin(a*x)*sin(b*x)` over `(0, pi)` was missing
+  under some hash seeds: the antiderivative `x/2 - Piecewise((x, Eq(b, 0)),
+  ...)/2` of `sin(b*x)**2` had no branch selected for a plain `b`, and the
+  methods spent 5 s on the Mellin route of its quarter periods, beyond the
+  budget of the special values. The quick antiderivative route of
+  `definite_integral` takes the generic branch of an antiderivative whose
+  cases are isolated values of the parameters (new
+  `integrals.antiderivative.generic_antiderivative`), the driver writing
+  the cases of the integral itself: 0.8 s instead of 5.
+- The core matcher matches a product or sum pattern with a wild bound
+  already: `match(z, p*z**q, {p: 1})` gave `None` (the bound value was
+  looked for among the factors). `meijerint` no longer matches its table
+  factor by factor (`_match` removed).
+- The core `limit` of a step function away from its jump: `Heaviside(x -
+  1)` and `E*Heaviside(x - 1)` at `0+` did not finish (gruntz expanded the
+  step, whose Taylor terms at `-1` are all zero, ever further; SymPy 1.14
+  hangs as well). `Heaviside(u)` is replaced by 0 or 1 by the sign of the
+  limit of `u`, as `sign` is. The endpoint values of the definite last
+  method no longer refuse the antiderivatives with steps.
+- Core nodes survive pickling: the singletons (`true`, `false`, `oo`,
+  `zoo`, `nan`, `pi`, `E`, `I`, ...) are unpickled as themselves, so that
+  the last pair of an unpickled `Piecewise` is again the default one
+  (`cond is true` failed on it), and the hash is computed again in the
+  process which unpickles a node (it kept the hash of the pickling
+  process, wrong under another `PYTHONHASHSEED`). New
+  `core.basic.register_singleton`.
+- The native `Ei` of a positive number times `polar_lift(-1)` evaluates
+  above the cut, `Ei(-x) + I*pi` (SymPy's `Ei._eval_evalf`); it gave
+  `Ei(-x)`. `exp_polar` of a real number is positive (`exp_polar(0)`
+  was not known positive).
+- `polys.regularchains_sympy.solutions.exact_solutions` with `real=True`
+  returned the complex points whose coordinate is a root times an integer
+  basis (`4*CRootOf(x**2 - x + 1, 0)` for `y**3 + 64`, taken for a real
+  root).
+
+- The native `solve` (`sympy_extras.assumptions.solve`) kept the
+  solutions contradicting the flags of the unknown: `pi*k = 1` gave
+  `{1/pi}` for `k = Symbol('k', integer=True)`, `p**2 = 4` gave `{-2, 2}`
+  for a positive `p`. As SymPy's `solve` does with `check_assumptions`,
+  the finitely many solutions (points of a system included) at which the
+  native `ask` finds a flag false are now dropped, the undecided ones
+  kept; the workaround in `concrete.delta._finite_solutions` is gone.
+- `solvers.linsolve.solve_one` gave `[1/2]` for `2*j - 1` with an integer
+  `j`, where SymPy's `solve` gives `[]`: a root for which the core's
+  `check_assumptions` is `False` is dropped.
+- `concrete.summations` reached SymPy's `eval_sum_residue` through
+  `getattr(importlib.import_module(...))`, which AGENTS.md forbids: a
+  typed wrapper with an explicit import replaces it, and the unused copy
+  of the helper in `concrete.products` is removed.
+- `abel_ode` returned the relation `0 = C1 - 11**(2/3)*log(x)/9`, with
+  no `y` in it, for the Abel equation of the second kind `y y' = y + x`:
+  the separable class of the transformed equation was not checked. The
+  relation is now checked on the transformed equation, and a relation
+  without the unknown is never taken for a solution (`dsolve_first_order`
+  goes on to the Prelle–Singer first integral).
 
 - `rsolve_linear` with initial values did not return on a recurrence
   whose characteristic polynomial is an irreducible cubic (the

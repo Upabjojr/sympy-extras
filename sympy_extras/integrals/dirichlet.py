@@ -40,10 +40,17 @@ which equal `\\pi/2` up to the factor `1/13` and not from `1/15` on
 (Borwein and Borwein [Borwein]_): the value comes out of the
 computation, not of a table.
 
+The module works on the objects of the core (:mod:`sympy_extras.core`, the
+functions of :mod:`sympy_extras.functions`) with the native ``ask``, the
+native ``TR8`` of :mod:`sympy_extras.simplify.fu`, ``simplify`` and
+``logcombine``, and imports no SymPy:
+:mod:`sympy_extras.integrals.dirichlet_sympy` is its face on SymPy objects.
+
 Examples
 ========
 
->>> from sympy import symbols, sin, cos, oo
+>>> from sympy_extras.core import symbols, oo
+>>> from sympy_extras.functions import sin, cos
 >>> from sympy_extras.integrals.dirichlet import dirichlet_integral
 >>> x = symbols('x')
 >>> dirichlet_integral(sin(x)**2/x**2, x, 0, oo)
@@ -63,32 +70,41 @@ References
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.numbers import Integer, oo, pi
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Symbol
-from sympy.functions.combinatorial.factorials import factorial
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.trigonometric import sin, cos
-from sympy.polys.polytools import cancel, degree
-from sympy.simplify.fu import TR8
-from sympy.simplify.simplify import logcombine, simplify
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.core.add import Add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import Integer, oo, pi
+from sympy_extras.core.power import Pow
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions.combinatorial.factorials import factorial
+from sympy_extras.functions.elementary.exponential import Exp, log
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin, cos, sin
+from sympy_extras.polys.polytools import cancel
+from sympy_extras.simplify.fu import TR8
+from sympy_extras.simplify.simplify import logcombine, simplify
 
-from sympy_extras._typing import ExprLike, as_boolean, as_expr
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
 from .conditions import ConditionalValue
 from .mellin import monomial
 
-__all__ = ['dirichlet_integral', 'trigonometric_sum']
+__all__ = ['dirichlet_integral', 'trigonometric_sum', 'TrigonometricKind', 'TrigonometricSum']
+
+#: the kind of a term of a trigonometric sum: the class of its function
+TrigonometricKind = Union[type[Sin], type[Cos]]
 
 #: a trigonometric sum: the constant term and ``{(w, kind): coefficient}``
-#: for the terms ``coefficient * kind(w * x)``, ``kind`` being ``sin`` or ``cos``
-TrigonometricSum = tuple[Expr, dict[tuple[Expr, type], Expr]]
+#: for the terms ``coefficient * kind(w * x)``, ``kind`` being ``Sin`` or ``Cos``
+TrigonometricSum = tuple[Expr, dict[tuple[Expr, TrigonometricKind], Expr]]
+
+
+def _as_expr(e: Basic) -> Expr:
+    if not isinstance(e, Expr):
+        raise TypeError("expected an expression of the core, got %r" % (e,))
+    return e
 
 
 def trigonometric_sum(g: Expr, x: Symbol, assumptions: Assumptions = None) -> Optional[TrigonometricSum]:
@@ -98,61 +114,71 @@ def trigonometric_sum(g: Expr, x: Symbol, assumptions: Assumptions = None) -> Op
     cosine and sine; ``None`` when ``g`` is not such a sum or the sign of
     a frequency is unknown.
 
-    >>> from sympy import symbols, sin, cos, pi
+    >>> from sympy_extras.core import symbols, pi
+    >>> from sympy_extras.functions import sin
     >>> from sympy_extras.integrals.dirichlet import trigonometric_sum
     >>> x = symbols('x')
     >>> constant, terms = trigonometric_sum(sin(x)**2, x)
-    >>> constant, terms
-    (1/2, {(2, cos): -1/2})
-    >>> trigonometric_sum(sin(x + pi/4), x)[1]
-    {(1, sin): sqrt(2)/2, (1, cos): sqrt(2)/2}
+    >>> constant, [(w, kind.__name__, c) for (w, kind), c in terms.items()]
+    (1/2, [(2, 'Cos', -1/2)])
+    >>> [(w, kind.__name__, c) for (w, kind), c in trigonometric_sum(sin(x + pi/4), x)[1].items()]
+    [(1, 'Sin', sqrt(2)/2), (1, 'Cos', sqrt(2)/2)]
     """
-    if g.has(exp):
-        g = as_expr(g.rewrite(cos))
+    g = _as_expr(g)
+    if g.has(Exp):
+        g = _as_expr(g.rewrite(Cos))
     expanded = g
     for _ in range(8):
         # the product formulas leave squares behind (sin(x)**4 is
         # (1 - cos(2*x))**2/4): again until every term is one function
-        expanded = as_expr(TR8(expanded).expand())
-        if all(not isinstance(as_expr(term).as_independent(x, as_Add=False)[1], (Pow, Mul))
+        expanded = TR8(expanded).expand()
+        if all(not isinstance(term.as_independent(x, as_Add=False)[1], (Pow, Mul))
                for term in Add.make_args(expanded)):
             break
     constant: Expr = S.Zero
-    terms: dict[tuple[Expr, type], Expr] = {}
+    terms: dict[tuple[Expr, TrigonometricKind], Expr] = {}
 
-    def add(w: Expr, kind: type, c: Expr) -> None:
-        terms[(w, kind)] = as_expr(terms.get((w, kind), S.Zero) + c)
+    def add(w: Expr, kind: TrigonometricKind, c: Expr) -> None:
+        terms[(w, kind)] = terms.get((w, kind), S.Zero) + c
 
     for term in Add.make_args(expanded):
-        coefficient, rest = as_expr(term).as_independent(x, as_Add=False)
-        c, function = as_expr(coefficient), as_expr(rest)
+        c, function = term.as_independent(x, as_Add=False)
         if function == 1:
-            constant = as_expr(constant + c)
+            constant = constant + c
             continue
-        if not isinstance(function, (sin, cos)):
+        if not isinstance(function, (Sin, Cos)):
             return None
-        argument = as_expr(function.args[0])
-        if not argument.is_polynomial(x) or degree(argument, x) != 1:
+        argument = function.args[0]
+        if argument.is_polynomial(x) is not True or not _of_degree_one(argument, x):
             return None
-        w, phase = as_expr(argument.coeff(x)), as_expr(argument.subs(x, 0))
+        w, phase = argument.coeff(x), argument.subs(x, S.Zero)
         if w.has(x) or phase.has(x):
             return None
-        if ask(as_boolean(w > 0), assumptions) is not True:
-            if ask(as_boolean(w < 0), assumptions) is not True:
+        if ask(w > 0, assumptions) is not True:
+            if ask(w < 0, assumptions) is not True:
                 return None
             # cos is even, sin odd
             w, phase = -w, -phase
-            if isinstance(function, sin):
+            if isinstance(function, Sin):
                 c = -c
         if phase == 0:
-            add(w, type(function), c)
-        elif isinstance(function, sin):
-            add(w, sin, c * cos(phase))
-            add(w, cos, c * sin(phase))
+            add(w, Sin if isinstance(function, Sin) else Cos, c)
+        elif isinstance(function, Sin):
+            add(w, Sin, c * cos(phase))
+            add(w, Cos, c * sin(phase))
         else:
-            add(w, cos, c * cos(phase))
-            add(w, sin, -c * sin(phase))
+            add(w, Cos, c * cos(phase))
+            add(w, Sin, -c * sin(phase))
     return constant, {key: value for key, value in terms.items() if value != 0}
+
+
+def _of_degree_one(p: Expr, x: Symbol) -> bool:
+    """Whether the polynomial ``p`` has degree one in ``x`` (its
+    derivative is free of ``x`` and not zero), whatever its coefficients
+    (SymPy's ``degree`` over ``EX``, which the typed ``Poly`` does not
+    have)."""
+    d = p.diff(x).expand()
+    return not d.has(x) and d != 0
 
 
 def _vanishes_to_order(total: TrigonometricSum, n: int) -> bool:
@@ -162,9 +188,9 @@ def _vanishes_to_order(total: TrigonometricSum, n: int) -> bool:
     for m in range(n):
         coefficient = constant if m == 0 else S.Zero
         for (w, kind), c in terms.items():
-            if m % 2 == 0 and kind is cos:
+            if m % 2 == 0 and kind is Cos:
                 coefficient = coefficient + c * w**m
-            elif m % 2 == 1 and kind is sin:
+            elif m % 2 == 1 and kind is Sin:
                 coefficient = coefficient + c * w**m
         if simplify(coefficient) != 0:
             return False
@@ -174,12 +200,12 @@ def _vanishes_to_order(total: TrigonometricSum, n: int) -> bool:
 def _derivative(total: TrigonometricSum) -> TrigonometricSum:
     """The derivative of the sum in ``x``, a sum without constant term."""
     _, terms = total
-    derived: dict[tuple[Expr, type], Expr] = {}
+    derived: dict[tuple[Expr, TrigonometricKind], Expr] = {}
     for (w, kind), c in terms.items():
-        if kind is sin:
-            derived[(w, cos)] = as_expr(derived.get((w, cos), S.Zero) + c * w)
+        if kind is Sin:
+            derived[(w, Cos)] = derived.get((w, Cos), S.Zero) + c * w
         else:
-            derived[(w, sin)] = as_expr(derived.get((w, sin), S.Zero) - c * w)
+            derived[(w, Sin)] = derived.get((w, Sin), S.Zero) - c * w
     return S.Zero, derived
 
 
@@ -188,8 +214,8 @@ def _reflected(total: TrigonometricSum, n: int) -> TrigonometricSum:
     brought to the positive one."""
     constant, terms = total
     factor = Integer(-1)**n
-    reflected = {(w, kind): as_expr(factor * (-c if kind is sin else c)) for (w, kind), c in terms.items()}
-    return as_expr(factor * constant), reflected
+    reflected = {(w, kind): factor * (-c if kind is Sin else c) for (w, kind), c in terms.items()}
+    return factor * constant, reflected
 
 
 def _half_line(total: TrigonometricSum, n: int) -> Optional[Expr]:
@@ -203,11 +229,11 @@ def _half_line(total: TrigonometricSum, n: int) -> Optional[Expr]:
     current = total
     for _ in range(n - 1):
         current = _derivative(current)
-    value = S.Zero
+    value: Expr = S.Zero
     for (w, kind), c in current[1].items():
-        value = value + (pi * c / 2 if kind is sin else -c * log(w))
+        value = value + (pi * c / 2 if kind is Sin else -c * log(w))
     # the frequencies are positive: their logarithms combine
-    return as_expr(logcombine(as_expr(value / factorial(n - 1)), force=True))
+    return logcombine(value / factorial(Integer(n - 1)), force=True)
 
 
 def dirichlet_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
@@ -219,7 +245,8 @@ def dirichlet_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     Examples
     ========
 
-    >>> from sympy import symbols, sin, cos, oo, pi
+    >>> from sympy_extras.core import symbols, oo
+    >>> from sympy_extras.functions import sin, cos
     >>> from sympy_extras.integrals.dirichlet import dirichlet_integral
     >>> x = symbols('x')
     >>> dirichlet_integral(sin(x)**3/x**3, x, 0, oo)
@@ -229,18 +256,18 @@ def dirichlet_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     >>> dirichlet_integral(sin(x)/x**2, x, 0, oo) is None
     True
     """
-    f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
-    if (a_, b_) not in ((S.Zero, oo), (-oo, S.Zero), (-oo, oo)) or not f_.has(sin, cos, exp):
+    f_, a_, b_ = to_expr(f), to_expr(a), to_expr(b)
+    if (a_, b_) not in ((S.Zero, oo), (-oo, S.Zero), (-oo, oo)) or not f_.has(Sin, Cos, Exp):
         return None
-    numerator, denominator = as_expr(cancel(f_)).as_numer_denom()
-    found = monomial(as_expr(denominator), x)
-    if found is None or not isinstance(found[1], Integer) or found[1] < 1:
+    numerator, denominator = cancel(f_).as_numer_denom()
+    found = monomial(denominator, x)
+    if found is None or not isinstance(found[1], Integer) or int(found[1]) < 1:
         return None
     scale, n = found[0], int(found[1])
-    total = trigonometric_sum(as_expr(numerator / scale), x, assumptions)
+    total = trigonometric_sum(numerator / scale, x, assumptions)
     if total is None:
         return None
-    value = S.Zero
+    value: Expr = S.Zero
     if b_ == oo:
         right = _half_line(total, n)
         if right is None:
@@ -251,4 +278,5 @@ def dirichlet_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
         if left is None:
             return None
         value = value + left
-    return ConditionalValue(as_expr(Mul(value).expand()))
+    # SymPy's expand, whose log hint is on by default
+    return ConditionalValue(value.expand(log=True))

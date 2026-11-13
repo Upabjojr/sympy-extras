@@ -8,7 +8,7 @@ from sympy import Integer, Mul, Rational, expand, symbols
 from sympy.core.expr import Expr
 from sympy.testing.pytest import raises
 
-from sympy_extras._typing import as_expr
+from sympy_extras._typing_sympy import as_expr
 from sympy_extras.polys.ideals_sympy import Ideal
 from sympy_extras.polys.regularchains_sympy import RegularChain, regular_gcd, triangularize
 

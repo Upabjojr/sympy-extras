@@ -7,8 +7,8 @@ import random
 
 from sympy import symbols, sqrt, cbrt, log, Rational, Expr, N
 
-from sympy_extras._typing import as_expr
-from sympy_extras.integrals.curves import curve_antiderivative, is_nonelementary_on_curve, curve_reduce
+from sympy_extras._typing_sympy import as_expr
+from sympy_extras.integrals.curves_sympy import curve_antiderivative, is_nonelementary_on_curve, curve_reduce
 
 x = symbols('x')
 

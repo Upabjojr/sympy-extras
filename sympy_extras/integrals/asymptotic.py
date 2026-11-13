@@ -66,10 +66,20 @@ The expansions come with an :class:`~sympy.series.order.Order` term in the
 parameter at infinity; an expansion which terminates (a polynomial
 `\\varphi` under Watson's lemma) is returned exactly.
 
+The module works on the objects of the core (:mod:`sympy_extras.core`)
+and imports no SymPy: :mod:`sympy_extras.integrals.asymptotic_sympy` is its
+face on SymPy objects. The stationary points are found by the native
+:func:`~sympy_extras.assumptions.solve.solve`, the signs by the native
+:func:`~sympy_extras.assumptions.ask.ask`, the limits at the infinite ends
+by the native :func:`~sympy_extras.assumptions.limits.limit`, the
+expansions by the core's series and ``Order``, and the quadratures which
+confirm the saddle points evaluate the integrand with mpmath.
+
 Examples
 ========
 
->>> from sympy import symbols, exp, sqrt, oo, log, cos, sin, pi
+>>> from sympy_extras.core import symbols, oo, pi
+>>> from sympy_extras.functions import exp, sqrt, log, cos, sin
 >>> from sympy_extras.integrals.asymptotic import asymptotic_integral
 >>> x = symbols('x')
 >>> t = symbols('t', positive=True)
@@ -100,98 +110,161 @@ References
 """
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Callable, Optional
 
-from sympy.core.add import Add
-from sympy.core.expr import Expr
-from sympy.core.mul import Mul
-from sympy.core.numbers import I, Integer, Rational, oo, pi, nan, zoo
-from sympy.core.power import Pow
-from sympy.core.singleton import S
-from sympy.core.symbol import Dummy, Symbol
-from sympy.functions.combinatorial.factorials import factorial
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.elementary.miscellaneous import sqrt
-from sympy.functions.elementary.trigonometric import cos, sin
-from sympy.functions.elementary.complexes import re, Abs
-from sympy.functions.special.bessel import airyai, airyaiprime
-from sympy.functions.special.gamma_functions import gamma
-from sympy.series.order import Order
-from sympy.sets.sets import FiniteSet
-from sympy.simplify.simplify import simplify
-from sympy.logic.boolalg import Boolean
+import mpmath
 
 from sympy_extras._timeout import attempt
-from sympy_extras._typing import ExprLike, as_boolean, as_expr, as_set
-from sympy_extras.assumptions.ask_sympy import Assumptions, ask
-from sympy_extras.assumptions.solve_sympy import solve
+from sympy_extras.assumptions.ask import Assumptions, ask
+from sympy_extras.assumptions.limits import limit
+from sympy_extras.assumptions.solve import solve
+from sympy_extras.core.add import Add, add
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.evalf import numeric_value
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import DefinedFunction
+from sympy_extras.core.logic import Boolean, BooleanLike
+from sympy_extras.core.mul import Mul
+from sympy_extras.core.numbers import I, Integer, Rational, nan, number_from_fraction, oo, pi, zoo
+from sympy_extras.core.order import Order, order as order_term
+from sympy_extras.core.power import Pow, sqrt
+from sympy_extras.core.singleton import S
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.combinatorial.factorials import factorial
+from sympy_extras.functions.elementary.complexes import abs_, im, re
+from sympy_extras.functions.elementary.exponential import Exp, exp, log
+from sympy_extras.functions.elementary.trigonometric import Cos, Sin, cos, sin
+from sympy_extras.functions.special.bessel import airyai, airyaiprime
+from sympy_extras.functions.special.error_functions import erfc
+from sympy_extras.functions.special.gamma_functions import gamma
+from sympy_extras.sets.sets import EmptySetClass, FiniteSet, Reals
 from sympy_extras.settings import settings
+from sympy_extras.simplify.simplify import simplify
 
 __all__ = ['asymptotic_integral', 'watson_lemma', 'laplace_method', 'stationary_phase',
            'steepest_descent', 'uniform_expansion', 'exponential_part', 'oscillatory_part']
 
 
+def _rational(p: int, q: int) -> Rational:
+    """The rational number ``p/q`` in lowest terms (an ``Integer`` when it
+    is one)."""
+    return number_from_fraction(Fraction(p, q))
+
+
+def _infinite(e: Expr) -> bool:
+    return e == oo or e == -oo
+
+
 # ---------------------------------------------------------------------------
 # Recognising the shapes
+
+def _exponent_of(rest: Expr, x: Symbol) -> Optional[Expr]:
+    """The exponent ``a`` of ``rest == x**a``; ``None`` for another form."""
+    if rest == 1:
+        return S.Zero
+    if rest == x:
+        return S.One
+    if isinstance(rest, Pow) and rest.base == x:
+        return rest.exp
+    return None
+
+
+def _coefficients(e: Expr, x: Symbol) -> Optional[dict[int, Expr]]:
+    """The nonzero coefficients of ``e`` as a polynomial in ``x`` with
+    expressions as coefficients (SymPy's ``Poly(e, x)`` over ``EX``, which
+    the typed ``Poly`` does not have), ``None`` when ``e`` is not a
+    polynomial in ``x``."""
+    coefficients: dict[int, Expr] = {}
+    for term in Add.make_args(e.expand()):
+        if term == 0:
+            continue
+        coefficient, rest = term.as_independent(x, as_Add=False)
+        exponent = _exponent_of(rest, x)
+        if not isinstance(exponent, Integer) or exponent < 0 or coefficient.has(x):
+            return None
+        k = int(exponent)
+        coefficients[k] = coefficients.get(k, S.Zero) + coefficient
+    return {k: c for k, c in coefficients.items() if c != 0}
+
+
+def _degree(coefficients: dict[int, Expr]) -> int:
+    """The degree of a polynomial given by its coefficients (``-1`` for
+    zero)."""
+    return max(coefficients, default=-1)
+
+
+def _power_as_exponential(e: Basic) -> Basic:
+    """``b**e`` as ``exp(e log b)``."""
+    if not isinstance(e, Pow):
+        raise TypeError("a power is expected, got %s" % (e,))
+    return exp(e.exp * log(e.base))
+
 
 def exponential_part(f: Expr, x: Symbol, t: Symbol) -> Optional[tuple[Expr, Expr]]:
     """``(phi, h)`` with ``f == phi(x) * exp(t*h(x))``, ``phi`` and ``h``
     free of ``t``; powers ``g(x)**t`` count as ``exp(t*log(g))``. ``None``
     when the dependence on ``t`` is not of this form.
 
-    >>> from sympy import symbols, exp, log
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp, log
     >>> from sympy_extras.integrals.asymptotic import exponential_part
     >>> x, t = symbols('x t')
     >>> exponential_part(x**t*exp(-t*x)/(1 + x), x, t)
     (1/(x + 1), -x + log(x))
     """
-    rewritten = as_expr(f.replace(lambda e: isinstance(e, Pow) and as_expr(e.exp).has(t),
-                                  lambda e: exp(as_expr(e.exp) * log(as_expr(e.base)))))
+    rewritten = as_expr(f.replace(lambda e: isinstance(e, Pow) and e.exp.has(t), _power_as_exponential))
     phi: Expr = S.One
     argument: Expr = S.Zero
     for factor in Mul.make_args(rewritten):
-        factor_ = as_expr(factor)
-        if isinstance(factor_, exp) and factor_.has(t):
-            argument = argument + as_expr(factor_.args[0])
-        elif factor_.has(t):
+        if isinstance(factor, Exp) and factor.has(t):
+            argument = argument + factor.args[0]
+        elif factor.has(t):
             return None
         else:
-            phi = phi * factor_
+            phi = phi * factor
     if argument == 0:
         return None
-    polynomial = argument.as_poly(t)
-    if polynomial is None or polynomial.degree() != 1:
+    polynomial = _coefficients(argument, t)
+    if polynomial is None or _degree(polynomial) != 1:
         return None
-    h = as_expr(polynomial.coeff_monomial(t))
-    rest = as_expr(polynomial.coeff_monomial(1))
+    h = polynomial[1]
+    rest = polynomial.get(0, S.Zero)
     if h.has(t) or rest.has(t):
         return None
-    return (as_expr(phi * exp(rest)), h)
+    return (phi * exp(rest), h)
 
 
 def oscillatory_part(f: Expr, x: Symbol, t: Symbol) -> Optional[tuple[Expr, Expr, str]]:
     """``(phi, h, kind)`` with ``f == phi(x) * K(t*h(x))`` for ``K`` one of
-    ``exp(I*...)`` (``kind='exp'``), ``cos`` or ``sin``; ``None`` otherwise."""
+    ``exp(I*...)`` (``kind='exp'``), ``cos`` or ``sin``; ``None`` otherwise.
+
+    >>> from sympy_extras.core import symbols, pi
+    >>> from sympy_extras.functions import cos, sin
+    >>> from sympy_extras.integrals.asymptotic import oscillatory_part
+    >>> x, t = symbols('x t')
+    >>> oscillatory_part(cos(t*sin(x))/pi, x, t)
+    (1/pi, sin(x), 'cos')
+    """
     phi: Expr = S.One
     found: Optional[tuple[Expr, str]] = None
     for factor in Mul.make_args(f):
-        factor_ = as_expr(factor)
-        if not factor_.has(t):
-            phi = phi * factor_
+        if not factor.has(t):
+            phi = phi * factor
             continue
         if found is not None:
             return None
-        if isinstance(factor_, (cos, sin, exp)) and len(factor_.args) == 1:
-            argument = as_expr(factor_.args[0])
-            if isinstance(factor_, exp):
-                argument = as_expr(argument / I)
-            polynomial = argument.as_poly(t)
-            if polynomial is None or polynomial.degree() != 1 or polynomial.coeff_monomial(1) != 0:
+        if isinstance(factor, (Cos, Sin, Exp)) and len(factor.args) == 1:
+            argument = factor.args[0]
+            if isinstance(factor, Exp):
+                argument = argument / I
+            polynomial = _coefficients(argument, t)
+            if polynomial is None or _degree(polynomial) != 1 or 0 in polynomial:
                 return None
-            h = as_expr(polynomial.coeff_monomial(t))
+            h = polynomial[1]
             if h.has(t) or h.has(I):
                 return None
-            kind = 'cos' if isinstance(factor_, cos) else 'sin' if isinstance(factor_, sin) else 'exp'
+            kind = 'cos' if isinstance(factor, Cos) else 'sin' if isinstance(factor, Sin) else 'exp'
             found = (h, kind)
         else:
             return None
@@ -208,41 +281,32 @@ def _puiseux_terms(phi: Expr, x: Symbol, count: int) -> Optional[tuple[list[tupl
     at ``0`` and the exponent of the next one (``None`` when the expansion
     terminates)."""
     if phi.is_polynomial(x):
-        polynomial = phi.as_poly(x)
+        polynomial = _coefficients(phi, x)
         if polynomial is None:
             return None
-        monomials: list[tuple[Expr, Expr]] = [(as_expr(c), Integer(k)) for (k,), c in sorted(polynomial.terms())]
+        monomials: list[tuple[Expr, Expr]] = [(polynomial[k], Integer(k)) for k in sorted(polynomial)]
         return (monomials, None)
     n = count + 2
     for _ in range(6):
-        expansion = attempt(lambda: as_expr(phi.series(x, 0, n)), settings.timeout)
+        depth = n
+        expansion = attempt(lambda: phi.series(x, 0, depth), settings.timeout, native=True)
         if expansion is None:
             return None
         tail = expansion.getO()
-        order = tail if isinstance(tail, Order) else None
-        body = as_expr(expansion.removeO())
+        found_order = tail if isinstance(tail, Order) else None
+        body = expansion.removeO()
         terms: list[tuple[Expr, Expr]] = []
         for term in Add.make_args(body):
-            term_ = as_expr(term)
-            coefficient, rest = term_.as_independent(x, as_Add=False)
-            rest_ = as_expr(rest)
-            if rest_ == 1:
-                exponent: Expr = S.Zero
-            elif rest_ == x:
-                exponent = S.One
-            elif isinstance(rest_, Pow) and rest_.base == x:
-                exponent = as_expr(rest_.exp)
-            else:
+            coefficient, rest = term.as_independent(x, as_Add=False)
+            exponent = _exponent_of(rest, x)
+            if exponent is None:
                 return None
-            if as_expr(coefficient) != 0:
-                terms.append((as_expr(coefficient), exponent))
+            if coefficient != 0:
+                terms.append((coefficient, exponent))
         terms.sort(key=lambda item: float(item[1]))
-        if order is None:
+        if found_order is None:
             return (terms, None)
-        next_exponent = as_expr(order.expr.as_independent(x, as_Add=False)[1])
-        next_ = S.Zero if next_exponent == 1 else as_expr(next_exponent.exp) if isinstance(next_exponent, Pow) \
-            else S.One if next_exponent == x else None
-        if next_ is None:
+        if _exponent_of(found_order.expr.as_independent(x, as_Add=False)[1], x) is None:
             return None
         if len(terms) > count:
             return (terms[:count], terms[count][1])
@@ -255,7 +319,8 @@ def watson_lemma(phi: Expr, x: Symbol, t: Symbol, order: int = 3) -> Optional[Ex
     ``t -> oo`` by Watson's lemma, with ``order`` terms; exact when the
     expansion of ``phi`` terminates.
 
-    >>> from sympy import symbols, sin
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import sin
     >>> from sympy_extras.integrals.asymptotic import watson_lemma
     >>> x, t = symbols('x t', positive=True)
     >>> watson_lemma(sin(x), x, t, 2)
@@ -267,12 +332,12 @@ def watson_lemma(phi: Expr, x: Symbol, t: Symbol, order: int = 3) -> Optional[Ex
     terms, next_exponent = found
     total: Expr = S.Zero
     for coefficient, exponent in terms:
-        if not (as_expr(exponent + 1)).is_positive:
+        if not (exponent + 1).is_positive:
             return None
         total = total + coefficient * gamma(exponent + 1) / t**(exponent + 1)
     if next_exponent is None:
         return total
-    return as_expr(total + Order(t**(-next_exponent - 1), (t, oo)))
+    return total + order_term(t**(-next_exponent - 1), (t, oo))
 
 
 # ---------------------------------------------------------------------------
@@ -283,8 +348,8 @@ def _points_in(points: list[Expr], a: Expr, b: Expr, assumptions: Assumptions) -
     for p in points:
         if p.is_extended_real is False:
             continue
-        below = True if a == -oo else ask(as_boolean(p > a), assumptions)
-        above = True if b == oo else ask(as_boolean(p < b), assumptions)
+        below = True if a == -oo else ask(p > a, assumptions)
+        above = True if b == oo else ask(p < b, assumptions)
         if below is None or above is None:
             return None
         if below and above:
@@ -294,24 +359,24 @@ def _points_in(points: list[Expr], a: Expr, b: Expr, assumptions: Assumptions) -
 
 def _stationary_points(h: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[list[Expr]]:
     """The zeros of ``h'`` inside ``(a, b)``."""
-    facts: list[Boolean] = []
+    facts: list[BooleanLike] = []
     if a != -oo:
-        facts.append(as_boolean(x > a))
+        facts.append(x > a)
     if b != oo:
-        facts.append(as_boolean(x < b))
+        facts.append(x < b)
     if isinstance(assumptions, (Boolean, bool)):
-        facts.append(as_boolean(assumptions))
+        facts.append(assumptions)
     elif assumptions is not None:
-        facts.extend(as_boolean(item) for item in assumptions)
-    zeros = attempt(lambda: solve(as_expr(h.diff(x)), x, facts, domain=S.Reals), settings.timeout)
+        facts.extend(assumptions)
+    derivative = h.diff(x)
+    zeros = attempt(lambda: solve(derivative, x, facts, domain=Reals), settings.timeout, native=True)
     if zeros is None:
         return None
-    if zeros is S.EmptySet:
+    if isinstance(zeros, EmptySetClass):
         return []
-    zero_set = as_set(zeros)
-    if not isinstance(zero_set, FiniteSet):
+    if not isinstance(zeros, FiniteSet):
         return None
-    return _points_in([as_expr(p) for p in zero_set], a, b, assumptions)
+    return _points_in(list(zeros.elements), a, b, assumptions)
 
 
 def _first_nonzero_derivative(h: Expr, x: Symbol, x0: Expr, start: int,
@@ -320,12 +385,12 @@ def _first_nonzero_derivative(h: Expr, x: Symbol, x0: Expr, start: int,
     least ``start`` which is not zero, and its sign; ``None`` when a sign
     cannot be decided or the first eight derivatives vanish."""
     for n in range(start, 9):
-        value = as_expr(simplify(h.diff(x, n).subs(x, x0)))
+        value = simplify(h.diff((x, n)).subs(x, x0))
         if value == 0:
             continue
-        if ask(as_boolean(value < 0), assumptions) is True:
+        if ask(value < 0, assumptions) is True:
             return (n, -1)
-        if ask(as_boolean(value > 0), assumptions) is True:
+        if ask(value > 0, assumptions) is True:
             return (n, 1)
         return None
     return None
@@ -346,63 +411,55 @@ def _power_expansion(phi: Expr, h: Expr, x: Symbol, x0: Expr, t: Symbol, correct
     ``t`` of the next term."""
     u = Dummy('u')
     orientation = S.NegativeOne if side == 'left' else S.One
-    point = as_expr(x0 + orientation * u)
-    c = as_expr(-orientation**n * h.diff(x, n).subs(x, x0) / factorial(n))
-    remainder = as_expr(h.subs(x, point) - h.subs(x, x0) + c * u**n)
-    integrand = as_expr(phi.subs(x, point) * exp(t * remainder))
+    point = x0 + orientation * u
+    c = -orientation**n * h.diff((x, n)).subs(x, x0) / factorial(n)
+    remainder = h.subs(x, point) - h.subs(x, x0) + c * u**n
+    integrand = phi.subs(x, point) * exp(t * remainder)
     kept_steps = n * corrections         # down to t**(-corrections) below the leading term
     depth = (n + 1) * kept_steps + 1
-    expansion = attempt(lambda: as_expr(integrand.series(u, 0, depth).removeO()), settings.timeout)
+    expansion = attempt(lambda: integrand.series(u, 0, depth).removeO(), settings.timeout, native=True)
     if expansion is None:
         return None
     total: Expr = S.Zero
-    for term in Add.make_args(as_expr(expansion.expand())):
-        coefficient, rest = as_expr(term).as_independent(u, as_Add=False)
-        rest_ = as_expr(rest)
-        k = 0 if rest_ == 1 else 1 if rest_ == u else int(as_expr(rest_.exp)) if isinstance(rest_, Pow) else -1
-        if k < 0:
+    for term in Add.make_args(expansion.expand()):
+        coefficient, rest = term.as_independent(u, as_Add=False)
+        exponent = _exponent_of(rest, u)
+        if not isinstance(exponent, Integer) or exponent < 0:
             return None
+        k = int(exponent)
         if side == 'both' and k % 2:
             continue
-        moment = as_expr(gamma(Rational(k + 1, n)) / (n * (t * c)**Rational(k + 1, n)))
+        moment = gamma(_rational(k + 1, n)) / (n * (t * c)**_rational(k + 1, n))
         if side == 'both':
             moment = 2 * moment
-        total = total + as_expr(coefficient) * moment
+        total = total + coefficient * moment
     # keep the powers of t from the leading t**(-1/n) down kept_steps steps of t**(-1/n)
     kept: Expr = S.Zero
-    for term in Add.make_args(as_expr(total.expand())):
-        coefficient, rest = as_expr(term).as_independent(t, as_Add=False)
-        rest_ = as_expr(rest)
-        if rest_ == 1:
-            power: Optional[Rational] = Rational(0)
-        elif rest_ == t:
-            power = Rational(1)
-        elif isinstance(rest_, Pow) and rest_.base == t and isinstance(rest_.exp, Rational):
-            power = rest_.exp
-        else:
-            power = None
-        if power is None:
+    for term in Add.make_args(total.expand()):
+        coefficient, rest = term.as_independent(t, as_Add=False)
+        power = _exponent_of(rest, t)
+        if not isinstance(power, Rational):
             return None
         step = -(power * n + 1)          # steps of t**(-1/n) below the leading term
         if 0 <= step <= kept_steps:
-            kept = kept + as_expr(term)
+            kept = kept + term
     next_step = kept_steps + 2 if side == 'both' else kept_steps + 1
-    return (as_expr(simplify(kept)), Rational(-1 - next_step, n))
+    return (simplify(kept), _rational(-1 - next_step, n))
 
 
 def _edges_below(h: Expr, x: Symbol, value: Expr, a: Expr, b: Expr, assumptions: Assumptions) -> bool:
     """Whether ``h`` stays below ``value`` at the infinite ends of the
     range (its limits there are smaller)."""
-    from sympy_extras.assumptions.limits_sympy import limit
     for endpoint in (a, b):
-        if endpoint not in (-oo, oo):
+        if not _infinite(endpoint):
             continue
-        edge = attempt(lambda: limit(h, x, endpoint, assumptions=assumptions), settings.timeout)
+        end = endpoint
+        edge = attempt(lambda: limit(h, x, end, assumptions=assumptions), settings.timeout, native=True)
         if edge is None or edge.has(nan, zoo):
             return False
         if edge == -oo:
             continue
-        if edge == oo or ask(as_boolean(edge < value), assumptions) is not True:
+        if edge == oo or ask(edge < value, assumptions) is not True:
             return False
     return True
 
@@ -418,29 +475,28 @@ def _maxima(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr,
         return None
     found: list[tuple[Expr, int, str]] = []
     for x0 in points:
-        order = _first_nonzero_derivative(h, x, x0, 2, assumptions)
-        if order is None:
+        derivative_order = _first_nonzero_derivative(h, x, x0, 2, assumptions)
+        if derivative_order is None:
             return None
-        n, sign = order
+        n, sign = derivative_order
         if n % 2 == 0 and sign < 0:
             found.append((x0, n, 'both'))
         # a minimum or an inflection: nothing
     for endpoint, side in ((a, 'right'), (b, 'left')):
-        if endpoint in (-oo, oo):
+        if _infinite(endpoint):
             continue
-        derivatives = [as_expr(h.diff(x, n).subs(x, endpoint)) for n in (1, 2)]
+        derivatives = [h.diff((x, n)).subs(x, endpoint) for n in (1, 2)]
         if any(d.has(zoo, nan, oo, -oo) for d in derivatives):
             # a singular endpoint (log(x) at 0): no maximum when h falls to -oo there
-            from sympy_extras.assumptions.limits_sympy import limit
-            edge = attempt(lambda: limit(h, x, endpoint, '+' if side == 'right' else '-', assumptions=assumptions),
-                           settings.timeout)
+            end, direction = endpoint, '+' if side == 'right' else '-'
+            edge = attempt(lambda: limit(h, x, end, direction, assumptions=assumptions), settings.timeout, native=True)
             if edge == -oo:
                 continue
             return None
-        order = _first_nonzero_derivative(h, x, endpoint, 1, assumptions)
-        if order is None:
+        derivative_order = _first_nonzero_derivative(h, x, endpoint, 1, assumptions)
+        if derivative_order is None:
             return None
-        n, sign = order
+        n, sign = derivative_order
         orientation = 1 if side == 'right' else -1
         if orientation**n * sign < 0:
             # h decreases into the range: a maximum at the endpoint
@@ -456,21 +512,21 @@ def _global_maxima(candidates: list[tuple[Expr, int, str]], h: Expr, x: Symbol,
     if not candidates:
         return None
     best = [candidates[0]]
-    height = as_expr(h.subs(x, candidates[0][0]))
+    height = h.subs(x, candidates[0][0])
     for candidate in candidates[1:]:
-        value = as_expr(h.subs(x, candidate[0]))
-        difference = as_expr(simplify(value - height))
+        value = h.subs(x, candidate[0])
+        difference = simplify(value - height)
         if difference == 0:
             best.append(candidate)
-        elif ask(as_boolean(difference > 0), assumptions) is True:
+        elif ask(difference > 0, assumptions) is True:
             # the earlier maxima are exponentially smaller: dropped
             best, height = [candidate], value
-        elif ask(as_boolean(difference < 0), assumptions) is not True:
+        elif ask(difference < 0, assumptions) is not True:
             return None
     return best
 
 
-def laplace_method(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, order: int = 2,
+def laplace_method(phi: ExprLike, h: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol, order: int = 2,
                    assumptions: Assumptions = None) -> Optional[Expr]:
     """The expansion of ``Integral(phi*exp(t*h), (x, a, b))`` for ``t -> oo``
     by Laplace's method, ``order`` terms: the sum of the contributions of
@@ -483,7 +539,8 @@ def laplace_method(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, o
     maximum the complex saddle points are tried
     (:func:`steepest_descent`).
 
-    >>> from sympy import symbols, cosh, oo, cos, pi
+    >>> from sympy_extras.core import symbols, oo, pi
+    >>> from sympy_extras.functions import cosh, cos
     >>> from sympy_extras.integrals.asymptotic import laplace_method
     >>> x = symbols('x')
     >>> t = symbols('t', positive=True)
@@ -494,20 +551,20 @@ def laplace_method(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, o
     >>> laplace_method(1, cos(x), x, 0, 2*pi, t, 1)
     sqrt(2)*sqrt(pi)*exp(t)/sqrt(t) + O(exp(t)/t, (t, oo))
     """
-    phi_, h_ = as_expr(phi), as_expr(h)
+    phi_, h_, a_, b_ = to_expr(phi), to_expr(h), to_expr(a), to_expr(b)
     corrections = max(order - 1, 0)
-    candidates = _maxima(phi_, h_, x, a, b, assumptions)
+    candidates = _maxima(phi_, h_, x, a_, b_, assumptions)
     if candidates is None:
         return None
     if not candidates:
-        if a == -oo and b == oo and not _stationary_points(h_, x, a, b, assumptions):
+        if a_ == -oo and b_ == oo and not _stationary_points(h_, x, a_, b_, assumptions):
             return steepest_descent(phi_, h_, x, t, assumptions)
         return None
     best = _global_maxima(candidates, h_, x, assumptions)
     if best is None:
         return None
-    height = as_expr(h_.subs(x, best[0][0]))
-    if not _edges_below(h_, x, height, a, b, assumptions):
+    height = h_.subs(x, best[0][0])
+    if not _edges_below(h_, x, height, a_, b_, assumptions):
         return None
     total: Expr = S.Zero
     scale: Optional[Expr] = None
@@ -519,22 +576,21 @@ def laplace_method(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, o
         if series == 0:
             return None
         total = total + exp(t * height) * series
-        candidate_scale = as_expr(exp(t * height) * t**next_power)
-        if scale is None or as_expr(next_power - _power_of(scale, t)).is_positive:
+        candidate_scale = exp(t * height) * t**next_power
+        if scale is None or (next_power - _power_of(scale, t)).is_positive:
             scale = candidate_scale
     if scale is None:
         return None
-    return as_expr(as_expr(total) + Order(scale, (t, oo)))
+    return total + order_term(scale, (t, oo))
 
 
 def _power_of(e: Expr, t: Symbol) -> Expr:
     """The exponent of ``t`` in ``e``, a product with one power of ``t``."""
     for factor in Mul.make_args(e):
-        factor_ = as_expr(factor)
-        if factor_ == t:
+        if factor == t:
             return S.One
-        if isinstance(factor_, Pow) and factor_.base == t:
-            return as_expr(factor_.exp)
+        if isinstance(factor, Pow) and factor.base == t:
+            return factor.exp
     return S.Zero
 
 
@@ -544,14 +600,13 @@ def _power_of(e: Expr, t: Symbol) -> Expr:
 def _saddle_points(h: Expr, x: Symbol) -> Optional[list[Expr]]:
     """The complex zeros of ``h'`` (the saddle points of ``exp(t h)``),
     ``None`` when they cannot be found or are not isolated."""
-    from sympy.solvers.solvers import solve as sympy_solve
-    derivative = as_expr(h.diff(x))
-    found = attempt(lambda: sympy_solve(derivative, x), settings.timeout)
-    if not isinstance(found, list) or not found:
+    derivative = h.diff(x)
+    found = attempt(lambda: solve(derivative, x), settings.timeout, native=True)
+    if not isinstance(found, FiniteSet) or not found.elements:
         return None
     points: list[Expr] = []
-    for item in found:
-        if not isinstance(item, Expr) or item.has(oo, -oo, zoo, nan):
+    for item in found.elements:
+        if item.has(oo, -oo, zoo, nan):
             return None
         points.append(item)
     return points
@@ -563,11 +618,72 @@ def _leading_saddle_term(phi: Expr, h: Expr, x: Symbol, z0: Expr, t: Symbol) -> 
     direction of increasing real part (the principal branch of the root
     gives that direction, [Bleistein]_ 7.2); ``None`` for a degenerate
     saddle or one whose descent path is vertical."""
-    second = as_expr(simplify(h.diff(x, 2).subs(x, z0)))
+    second = simplify(h.diff((x, 2)).subs(x, z0))
     if second == 0 or second.is_extended_real and second.is_positive:
         return None
-    height = as_expr(h.subs(x, z0).expand())
-    return as_expr(as_expr(phi.subs(x, z0)).expand() * exp(t * height) * sqrt(2 * pi / (-t * second)))
+    height = h.subs(x, z0).expand()
+    return phi.subs(x, z0).expand() * exp(t * height) * sqrt(2 * pi / (-t * second))
+
+
+#: a function of one complex variable evaluated by mpmath
+_Numeric = Callable[[mpmath.mpc], mpmath.mpc]
+
+
+def _constant(value: mpmath.mpc) -> _Numeric:
+    return lambda z: value
+
+
+def _sum(parts: list[_Numeric]) -> _Numeric:
+    def evaluate(z: mpmath.mpc) -> mpmath.mpc:
+        total = mpmath.mpc(0)
+        for part in parts:
+            total = total + part(z)
+        return total
+    return evaluate
+
+
+def _product(parts: list[_Numeric]) -> _Numeric:
+    def evaluate(z: mpmath.mpc) -> mpmath.mpc:
+        total = mpmath.mpc(1)
+        for part in parts:
+            total = total * part(z)
+        return total
+    return evaluate
+
+
+def _power(base: _Numeric, exponent: _Numeric) -> _Numeric:
+    return lambda z: mpmath.power(base(z), exponent(z))
+
+
+def _function(node: DefinedFunction, parts: list[_Numeric]) -> _Numeric:
+    def evaluate(z: mpmath.mpc) -> mpmath.mpc:
+        value = node.numeric([part(z) for part in parts])
+        if value is None:
+            raise ValueError("%s has no numerical value" % (node,))
+        return value
+    return evaluate
+
+
+def _numeric_function(e: Expr, x: Symbol) -> _Numeric:
+    """``e`` as a function of ``x`` evaluated by mpmath at its working
+    precision (the role of SymPy's ``lambdify(x, e, 'mpmath')``);
+    ``ValueError`` for a node without a numerical rule."""
+    if e == x:
+        return lambda z: z
+    if not e.has(x):
+        value = numeric_value(e, mpmath.mp.prec)
+        if value is None:
+            raise ValueError("%s has no numerical value" % (e,))
+        return _constant(value)
+    if isinstance(e, Add):
+        return _sum([_numeric_function(a, x) for a in e.args])
+    if isinstance(e, Mul):
+        return _product([_numeric_function(a, x) for a in e.args])
+    if isinstance(e, Pow):
+        return _power(_numeric_function(e.base, x), _numeric_function(e.exp, x))
+    if isinstance(e, DefinedFunction):
+        return _function(e, [_numeric_function(as_expr(a), x) for a in e.args])
+    raise ValueError("%s has no numerical rule" % (e,))
 
 
 def _saddle_check(phi: Expr, h: Expr, x: Symbol, t: Symbol, terms: list[Expr], level: float) -> bool:
@@ -578,29 +694,32 @@ def _saddle_check(phi: Expr, h: Expr, x: Symbol, t: Symbol, terms: list[Expr], l
     decreasing. The integral is ``exp(t level)`` times smaller than the
     integrand, which cancels: the quadrature runs with the digits that
     cancellation costs."""
-    import mpmath
-    from sympy.utilities.lambdify import lambdify
     errors: list[float] = []
     for value in (30, 120):
         digits = 25 + int(value * abs(level) / 2.3)
-        g: Callable[[mpmath.mpf], mpmath.mpc] = lambdify(x, as_expr((phi * exp(t * h)).subs(t, value)), 'mpmath')
         try:
             with mpmath.workdps(digits):
+                g = _numeric_function((phi * exp(t * h)).subs(t, value), x)
                 points = [mpmath.mpf(p) / 10 for p in range(-30, 31)]
-                exact = mpmath.quad(g, [mpmath.mpf('-inf')] + points + [mpmath.mpf('inf')])
-                exact_ = complex(exact)
-        except (ValueError, TypeError, ZeroDivisionError, OverflowError, NameError, AttributeError,
-                NotImplementedError, mpmath.libmp.NoConvergence):
+                exact = complex(mpmath.quad(g, [mpmath.mpf('-inf')] + points + [mpmath.mpf('inf')]))
+                numbers = [numeric_value(term.subs(t, value), mpmath.mp.prec) for term in terms]
+        except (ValueError, TypeError, ZeroDivisionError, OverflowError, NotImplementedError,
+                mpmath.libmp.NoConvergence):
             return False
-        values = [complex(as_expr(term.subs(t, value)).evalf(digits)) for term in terms]
+        values: list[complex] = []
+        for number in numbers:
+            if number is None:
+                return False
+            values.append(complex(number))
         envelope = sum(abs(v) for v in values)
         if envelope == 0:
             return False
-        errors.append(abs(sum(values) - exact_) / envelope)
+        errors.append(abs(sum(values) - exact) / envelope)
     return errors[1] < 0.02 and errors[1] <= errors[0]
 
 
-def steepest_descent(phi: Expr, h: Expr, x: Symbol, t: Symbol, assumptions: Assumptions = None) -> Optional[Expr]:
+def steepest_descent(phi: ExprLike, h: ExprLike, x: Symbol, t: Symbol,
+                     assumptions: Assumptions = None) -> Optional[Expr]:
     """The leading term of ``Integral(phi*exp(t*h), (x, -oo, oo))`` for
     ``t -> oo`` from the saddle points of ``h`` in the complex plane
     ([Bleistein]_ 7.2, [Olver]_ 4.7): the real line is deformed onto the
@@ -618,14 +737,14 @@ def steepest_descent(phi: Expr, h: Expr, x: Symbol, t: Symbol, assumptions: Assu
     does); without the numerical checks of the settings only the
     quadratic case is answered.
 
-    >>> from sympy import symbols, I
+    >>> from sympy_extras.core import symbols, I
     >>> from sympy_extras.integrals.asymptotic import steepest_descent
     >>> x = symbols('x')
     >>> t = symbols('t', positive=True)
     >>> steepest_descent(1, -x**2 + I*x, x, t)
     sqrt(pi)*exp(-t/4)/sqrt(t) + O(exp(-t/4)/t**(3/2), (t, oo))
     """
-    phi_, h_ = as_expr(phi), as_expr(h)
+    phi_, h_ = to_expr(phi), to_expr(h)
     saddles = _saddle_points(h_, x)
     if saddles is None:
         return None
@@ -633,7 +752,7 @@ def steepest_descent(phi: Expr, h: Expr, x: Symbol, t: Symbol, assumptions: Assu
     for z0 in saddles:
         term = _leading_saddle_term(phi_, h_, x, z0, t)
         if term is None:
-            if as_expr(simplify(h_.diff(x, 2).subs(x, z0))) == 0:
+            if simplify(h_.diff((x, 2)).subs(x, z0)) == 0:
                 # a degenerate saddle (cubic or worse): an Airy-type
                 # contribution, not a Gaussian one
                 return None
@@ -642,20 +761,20 @@ def steepest_descent(phi: Expr, h: Expr, x: Symbol, t: Symbol, assumptions: Assu
         terms.append((z0, term))
     if not terms:
         return None
-    polynomial = h_.as_poly(x)
-    if polynomial is not None and polynomial.degree() == 2 and phi_.is_polynomial(x):
-        leading = as_expr(polynomial.LC())
-        if ask(as_boolean(re(leading) < 0), assumptions) is True and len(terms) == 1:
+    polynomial = _coefficients(h_, x)
+    if polynomial is not None and _degree(polynomial) == 2 and phi_.is_polynomial(x):
+        leading = polynomial[2]
+        if ask(re(leading) < 0, assumptions) is True and len(terms) == 1:
             return _with_order(terms[0][1], _saddle_scale(h_, x, terms[0][0], t), t)
         return None
-    if not settings.numerical_checks or any(as_expr(z0).free_symbols for z0, _ in terms):
+    if not settings.numerical_checks or any(z0.free_symbols for z0, _ in terms):
         return None
     levels: dict[float, list[Expr]] = {}
     for z0, term in terms:
-        height = as_expr(re(h_.subs(x, z0)).evalf(15))
-        if not height.is_number:
+        height = numeric_value(re(h_.subs(x, z0)), 60)
+        if height is None:
             return None
-        key = round(float(height), 8)
+        key = round(float(mpmath.re(height)), 8)
         levels.setdefault(key, []).append(term)
     for key in sorted(levels, reverse=True):
         group = levels[key]
@@ -663,66 +782,65 @@ def steepest_descent(phi: Expr, h: Expr, x: Symbol, t: Symbol, assumptions: Assu
         for candidate in candidates:
             if _saddle_check(phi_, h_, x, t, candidate, key):
                 scale = _saddle_scale(h_, x, [z0 for z0, term in terms if term in candidate][0], t)
-                return _with_order(as_expr(Add(*candidate)), scale, t)
+                return _with_order(add(*candidate), scale, t)
     return None
 
 
 def _saddle_scale(h: Expr, x: Symbol, z0: Expr, t: Symbol) -> Expr:
     """The size of the next term of the saddle at ``z0``:
     ``exp(t Re h(z0)) t**(-3/2)``."""
-    height = as_expr(simplify(re(h.subs(x, z0))))
-    return as_expr(exp(t * height) * t**Rational(-3, 2))
+    height = simplify(re(h.subs(x, z0)))
+    return exp(t * height) * t**_rational(-3, 2)
 
 
 def _with_order(leading: Expr, scale: Expr, t: Symbol) -> Expr:
-    """``leading + O(scale)``; the sum is left unevaluated when SymPy
-    cannot compare the terms with the order (an ``exp(I t c)`` or an
-    ``erfc`` of a complex argument stops ``gruntz``)."""
-    order = Order(scale, (t, oo))
+    """``leading + O(scale)``; the sum is left unevaluated when the order
+    cannot be compared with the terms (an ``exp(I t c)`` or an ``erfc``
+    of a complex argument stops ``gruntz``)."""
     try:
-        return as_expr(leading + order)
+        return leading + order_term(scale, (t, oo))
     except (NotImplementedError, ValueError, TypeError):
-        return as_expr(Add(leading, order, evaluate=False))
+        return Add(leading, Order(scale, (t, oo)))
 
 
 # ---------------------------------------------------------------------------
 # Stationary phase
 
-def stationary_phase(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, kind: str = 'exp',
+def stationary_phase(phi: ExprLike, h: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol, kind: str = 'exp',
                      assumptions: Assumptions = None) -> Optional[Expr]:
     """The leading term of ``Integral(phi*exp(I*t*h), (x, a, b))`` (or with
     ``cos(t*h)``, ``sin(t*h)`` for ``kind='cos'``, ``'sin'``) for
     ``t -> oo``: the sum over the interior stationary points of
     ``phi(x0) sqrt(2 pi/(t |h''(x0)|)) exp(I t h(x0) +/- I pi/4)``.
 
-    >>> from sympy import symbols, pi
+    >>> from sympy_extras.core import symbols
     >>> from sympy_extras.integrals.asymptotic import stationary_phase
     >>> x = symbols('x')
     >>> t = symbols('t', positive=True)
     >>> stationary_phase(1, x**2, x, -1, 1, t)
     sqrt(pi)*exp(I*pi/4)/sqrt(t) + O(t**(-3/2), (t, oo))
     """
-    phi_, h_ = as_expr(phi), as_expr(h)
-    points = _stationary_points(h_, x, a, b, assumptions)
+    phi_, h_, a_, b_ = to_expr(phi), to_expr(h), to_expr(a), to_expr(b)
+    points = _stationary_points(h_, x, a_, b_, assumptions)
     if not points:
         return None
     total: Expr = S.Zero
     for x0 in points:
-        second = as_expr(h_.diff(x, 2).subs(x, x0))
-        positive = ask(as_boolean(second > 0), assumptions)
-        negative = ask(as_boolean(second < 0), assumptions)
+        second = h_.diff((x, 2)).subs(x, x0)
+        positive = ask(second > 0, assumptions)
+        negative = ask(second < 0, assumptions)
         if positive is not True and negative is not True:
             return None
         sign = S.One if positive else S.NegativeOne
-        phase = as_expr(t * h_.subs(x, x0) + sign * pi / 4)
-        amplitude = as_expr(phi_.subs(x, x0) * sqrt(2 * pi / (t * sign * second)))
+        phase = t * h_.subs(x, x0) + sign * pi / 4
+        amplitude = phi_.subs(x, x0) * sqrt(2 * pi / (t * sign * second))
         if kind == 'exp':
             total = total + amplitude * exp(I * phase)
         elif kind == 'cos':
             total = total + amplitude * cos(phase)
         else:
             total = total + amplitude * sin(phase)
-    return as_expr(total + Order(t**(-Rational(3, 2)), (t, oo)))
+    return total + order_term(t**_rational(-3, 2), (t, oo))
 
 
 # ---------------------------------------------------------------------------
@@ -737,16 +855,16 @@ def _real_stationary_points(h: Expr, x: Symbol, assumptions: Assumptions) -> Opt
     ordered = list(points)
     for i in range(len(ordered)):
         for j in range(len(ordered) - 1 - i):
-            if ask(as_boolean(ordered[j] > ordered[j + 1]), assumptions) is True:
+            if ask(ordered[j] > ordered[j + 1], assumptions) is True:
                 ordered[j], ordered[j + 1] = ordered[j + 1], ordered[j]
-            elif ask(as_boolean(ordered[j] < ordered[j + 1]), assumptions) is not True:
+            elif ask(ordered[j] < ordered[j + 1], assumptions) is not True:
                 return None
     return ordered
 
 
 def _in_range(p: Expr, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[bool]:
-    below = True if a == -oo else ask(as_boolean(p > a), assumptions)
-    above = True if b == oo else ask(as_boolean(p < b), assumptions)
+    below = True if a == -oo else ask(p > a, assumptions)
+    above = True if b == oo else ask(p < b, assumptions)
     if below is None or above is None:
         return None
     return bool(below and above)
@@ -757,11 +875,10 @@ def _oscillatory_form(value: Expr, kind: str) -> Expr:
     or ``sin(t h)``: the real or imaginary part, ``phi`` real."""
     if kind == 'exp':
         return value
-    from sympy.functions.elementary.complexes import im
-    return as_expr(simplify(re(value) if kind == 'cos' else im(value)))
+    return simplify(re(value) if kind == 'cos' else im(value))
 
 
-def uniform_expansion(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol, kind: str = 'exp',
+def uniform_expansion(phi: ExprLike, h: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol, kind: str = 'exp',
                       assumptions: Assumptions = None) -> Optional[Expr]:
     """The leading term of ``Integral(phi*exp(I*t*h), (x, a, b))`` (or with
     ``cos(t*h)``, ``sin(t*h)`` for ``kind='cos'``, ``'sin'``, ``phi``
@@ -802,86 +919,85 @@ def uniform_expansion(phi: Expr, h: Expr, x: Symbol, a: Expr, b: Expr, t: Symbol
     which is the stationary phase term when ``zeta_a -> -oo`` and half of
     it when the point reaches the endpoint.
 
-    >>> from sympy import symbols
+    >>> from sympy_extras.core import symbols, oo
     >>> from sympy_extras.integrals.asymptotic import uniform_expansion
     >>> x = symbols('x')
     >>> a, t = symbols('a t', positive=True)
     >>> uniform_expansion(1, x**3/3 - a*x, x, -oo, oo, t)
     2*pi*airyai(-a*t**(2/3))/t**(1/3) + O(t**(-4/3), (t, oo))
     """
-    phi_, h_ = as_expr(phi), as_expr(h)
+    phi_, h_, a_, b_ = to_expr(phi), to_expr(h), to_expr(a), to_expr(b)
     points = _real_stationary_points(h_, x, assumptions)
     if points is None:
         return None
-    inside = [p for p in points if _in_range(p, a, b, assumptions) is True]
-    if any(_in_range(p, a, b, assumptions) is None for p in points):
+    inside = [p for p in points if _in_range(p, a_, b_, assumptions) is True]
+    if any(_in_range(p, a_, b_, assumptions) is None for p in points):
         return None
     if len(inside) == 2:
         return _airy_form(phi_, h_, x, inside[0], inside[1], t, kind, assumptions)
     if len(points) == 1 and len(inside) <= 1:
         x0 = points[0]
-        if a != -oo and (b == oo or ask(as_boolean(x0 - a < b - x0), assumptions) is True):
-            return _error_function_form(phi_, h_, x, x0, a, t, 1, kind, assumptions)
-        if b != oo:
-            return _error_function_form(phi_, h_, x, x0, b, t, -1, kind, assumptions)
+        if a_ != -oo and (b_ == oo or ask(x0 - a_ < b_ - x0, assumptions) is True):
+            return _error_function_form(phi_, h_, x, x0, a_, t, 1, kind, assumptions)
+        if b_ != oo:
+            return _error_function_form(phi_, h_, x, x0, b_, t, -1, kind, assumptions)
     return None
 
 
 def _airy_form(phi: Expr, h: Expr, x: Symbol, x1: Expr, x2: Expr, t: Symbol, kind: str,
                assumptions: Assumptions) -> Optional[Expr]:
-    h1, h2 = as_expr(h.subs(x, x1)), as_expr(h.subs(x, x2))
-    difference = as_expr(simplify(h1 - h2))
-    if ask(as_boolean(difference > 0), assumptions) is True:
+    h1, h2 = h.subs(x, x1), h.subs(x, x2)
+    difference = simplify(h1 - h2)
+    if ask(difference > 0, assumptions) is True:
         s: Expr = S.One
-    elif ask(as_boolean(difference < 0), assumptions) is True:
+    elif ask(difference < 0, assumptions) is True:
         s = S.NegativeOne
     else:
         return None
-    rho = as_expr((h1 + h2) / 2)
-    alpha = as_expr(simplify((Rational(3, 4) * s * difference)**Rational(2, 3)))
+    rho = (h1 + h2) / 2
+    alpha = simplify((_rational(3, 4) * s * difference)**_rational(2, 3))
     values: list[Expr] = []
     for point in (x1, x2):
-        second = as_expr(simplify(h.diff(x, 2).subs(x, point)))
+        second = simplify(h.diff((x, 2)).subs(x, point))
         if second == 0:
             return None
-        values.append(as_expr(phi.subs(x, point) * sqrt(2 * sqrt(alpha) / Abs(second))))
-    p0 = as_expr(simplify((values[1] + values[0]) / 2))
-    q0 = as_expr(simplify((values[1] - values[0]) / (2 * sqrt(alpha))))
-    argument = as_expr(-alpha * t**Rational(2, 3))
-    value = as_expr(2 * pi * exp(I * t * rho) * (p0 * t**Rational(-1, 3) * airyai(argument)
-                                                - I * s * q0 * t**Rational(-2, 3) * airyaiprime(argument)))
-    return _with_order(_oscillatory_form(value, kind), t**Rational(-4, 3), t)
+        values.append(phi.subs(x, point) * sqrt(2 * sqrt(alpha) / abs_(second)))
+    p0 = simplify((values[1] + values[0]) / 2)
+    q0 = simplify((values[1] - values[0]) / (2 * sqrt(alpha)))
+    argument = -alpha * t**_rational(2, 3)
+    value = 2 * pi * exp(I * t * rho) * (p0 * t**_rational(-1, 3) * airyai(argument)
+                                         - I * s * q0 * t**_rational(-2, 3) * airyaiprime(argument))
+    return _with_order(_oscillatory_form(value, kind), t**_rational(-4, 3), t)
 
 
 def _error_function_form(phi: Expr, h: Expr, x: Symbol, x0: Expr, endpoint: Expr, t: Symbol, orientation: int,
                          kind: str, assumptions: Assumptions) -> Optional[Expr]:
-    from sympy.functions.special.error_functions import erfc
-    second = as_expr(simplify(h.diff(x, 2).subs(x, x0)))
-    if ask(as_boolean(second > 0), assumptions) is True:
+    second = simplify(h.diff((x, 2)).subs(x, x0))
+    if ask(second > 0, assumptions) is True:
         sigma: Expr = S.One
-    elif ask(as_boolean(second < 0), assumptions) is True:
+    elif ask(second < 0, assumptions) is True:
         sigma = S.NegativeOne
     else:
         return None
-    slope = as_expr(h.diff(x).subs(x, endpoint))
+    slope = h.diff(x).subs(x, endpoint)
     if slope == 0:
         return None
     # x = endpoint + orientation*u runs into the range: zeta increases with u
-    gap = as_expr(simplify(sigma * (h.subs(x, endpoint) - h.subs(x, x0))))
-    if ask(as_boolean(gap >= 0), assumptions) is not True:
+    gap = simplify(sigma * (h.subs(x, endpoint) - h.subs(x, x0)))
+    if ask(gap >= 0, assumptions) is not True:
         return None
-    side = ask(as_boolean(orientation * (x0 - endpoint) > 0), assumptions)
+    side = ask(orientation * (x0 - endpoint) > 0, assumptions)
     if side is None:
         return None
-    zeta = as_expr((S.NegativeOne if side else S.One) * sqrt(2 * gap))
-    p0 = as_expr(phi.subs(x, x0) / sqrt(Abs(second)))
-    endpoint_value = as_expr(phi.subs(x, endpoint) * sigma * zeta / (orientation * slope))
-    q0 = as_expr(simplify((endpoint_value - p0) / zeta))
+    zeta = (S.NegativeOne if side else S.One) * sqrt(2 * gap)
+    p0 = phi.subs(x, x0) / sqrt(abs_(second))
+    endpoint_value = phi.subs(x, endpoint) * sigma * zeta / (orientation * slope)
+    q0 = simplify((endpoint_value - p0) / zeta)
     phase = exp(I * t * h.subs(x, x0))
-    value = as_expr(phase * p0 * sqrt(pi / (2 * t)) * exp(I * sigma * pi / 4)
-                    * erfc(exp(-I * sigma * pi / 4) * sqrt(t / 2) * zeta)
-                    + I * sigma * q0 * exp(I * t * h.subs(x, endpoint)) / t)
-    return _with_order(_oscillatory_form(value, kind), t**Rational(-3, 2), t)
+    value = (phase * p0 * sqrt(pi / (2 * t)) * exp(I * sigma * pi / 4)
+             * erfc(exp(-I * sigma * pi / 4) * sqrt(t / 2) * zeta)
+             + I * sigma * q0 * exp(I * t * h.subs(x, endpoint)) / t)
+    return _with_order(_oscillatory_form(value, kind), t**_rational(-3, 2), t)
 
 
 # ---------------------------------------------------------------------------
@@ -901,7 +1017,8 @@ def asymptotic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, parame
     Examples
     ========
 
-    >>> from sympy import symbols, exp, oo, sqrt, I
+    >>> from sympy_extras.core import symbols, oo, I
+    >>> from sympy_extras.functions import exp, sqrt
     >>> from sympy_extras.integrals.asymptotic import asymptotic_integral
     >>> x = symbols('x')
     >>> t = symbols('t', positive=True)
@@ -912,7 +1029,9 @@ def asymptotic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, parame
     >>> asymptotic_integral(exp(-t*x**2 + I*t*x), x, -oo, oo, t)
     sqrt(pi)*exp(-t/4)/sqrt(t) + O(exp(-t/4)/t**(3/2), (t, oo))
     """
-    f_, a_, b_ = as_expr(f), as_expr(a), as_expr(b)
+    if not isinstance(f, (Expr, int, float, Fraction)):
+        raise TypeError("an expression is expected, got %s" % (f,))
+    f_, a_, b_ = to_expr(f), to_expr(a), to_expr(b)
     t = parameter
     if order < 1:
         raise ValueError("order must be at least 1")
@@ -927,9 +1046,9 @@ def asymptotic_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, parame
         return None
     phi, h = found
     # Watson's lemma: h = -c x on (0, b)
-    slope = as_expr(-h / x)
+    slope = -h / x
     if a_ == 0 and not slope.has(x) and slope.is_positive:
         scaled = watson_lemma(phi, x, t, order)
         if scaled is not None:
-            return as_expr(scaled.subs(t, slope * t)) if slope != 1 else scaled
+            return scaled.subs(t, slope * t) if slope != 1 else scaled
     return laplace_method(phi, h, x, a_, b_, t, order, assumptions)

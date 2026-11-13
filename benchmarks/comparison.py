@@ -79,39 +79,41 @@ from sympy_extras.assumptions.quantifiers_sympy import ForAll, Exists
 from sympy_extras.assumptions.sat_sympy import satisfiable, tautology, find_instance
 from sympy_extras.assumptions.limits_sympy import limit as xlimit, limit_seq as xlimit_seq, series as xseries
 from sympy_extras.concrete.karr_sympy import karr_sum, summation as xsummation
-from sympy_extras.concrete.convergence import sum_convergence, product_convergence
+from sympy_extras.concrete.convergence_sympy import sum_convergence, product_convergence
 from sympy_extras.concrete.dirichlet import dirichlet_series
 from sympy_extras.concrete.eulersums import polygamma_series, euler_sum
 from sympy_extras.concrete.qhyper_sympy import qgosper_sum, qzeilberger
 from sympy_extras.concrete.rational import rational_sum
-from sympy_extras.solvers.kovacic import dsolve_kovacic
-from sympy_extras.solvers.linear_ode import dsolve_linear
-from sympy_extras.solvers.special import special_solutions
-from sympy_extras.solvers.ode import dsolve_lie
-from sympy_extras.solvers.first_order import dsolve_first_order
-from sympy_extras.solvers.second_order import dsolve_second_order, integrating_factor_xy, is_linearizable
-from sympy_extras.solvers.dae import dsolve_dae, dae_matrices
-from sympy_extras.solvers.charpit import complete_integral
+from sympy_extras.solvers.kovacic_sympy import dsolve_kovacic
+from sympy_extras.solvers.linear_ode_sympy import dsolve_linear
+from sympy_extras.solvers.special_sympy import special_solutions
+from sympy_extras.solvers.ode_sympy import dsolve_lie
+from sympy_extras.solvers.first_order_sympy import dsolve_first_order
+from sympy_extras.solvers.second_order_sympy import dsolve_second_order, integrating_factor_xy, is_linearizable
+from sympy_extras.solvers.dae_sympy import dsolve_dae, dae_matrices
+from sympy_extras.solvers.charpit_sympy import complete_integral
 from sympy_extras.solvers.isolation_sympy import isolate_real_roots
-from sympy_extras.solvers.thue_equation import thue
-from sympy_extras.solvers.abel import abel_by_invariants, abel_invariants
+from sympy_extras.solvers.thue_equation_sympy import thue
+from sympy_extras.solvers.abel_sympy import abel_by_invariants, abel_invariants
 from sympy_extras.solvers.integers_sympy import linear_diophantine_system, minimal_nonnegative_solutions, cooper
-from sympy_extras.solvers.linear_systems import dsolve_linear_system, rational_system_solutions
-from sympy_extras.solvers.lie import symmetries
-from sympy_extras.solvers.pde import pde_symmetries
+from sympy_extras.solvers.linear_systems_sympy import dsolve_linear_system, rational_system_solutions
+from sympy_extras.solvers.lie_sympy import symmetries
+from sympy_extras.solvers.pde_sympy import pde_symmetries
 from sympy_extras.polys.ideals_sympy import Ideal
-from sympy_extras.polys.groebnerwalk import groebner_walk
-from sympy_extras.polys.subresultants import psc
+from sympy_extras.polys.groebnerwalk_sympy import groebner_walk
+from sympy_extras.polys.subresultants_sympy import psc
 from sympy_extras.polys.cad.qe_sympy import quantifier_elimination, solution_set
 from sympy_extras.polys.virtual_substitution_sympy import eliminate_linear
 from sympy_extras.concrete.qhyper_sympy import qpochhammer, qbinomial
-from sympy_extras.integrals import definite_integral, IntegralByRanges, mellin_transform as xmellin
+from sympy_extras.integrals.definite import definite_integral
+from sympy_extras.integrals.regions_sympy import IntegralByRanges
+from sympy_extras.integrals.mellin_sympy import mellin_transform as xmellin
 from sympy.solvers.ode import dsolve
 from sympy.series.limitseq import limit_seq
 from sympy.polys import ring, QQ, ZZ, grevlex, lex
 from sympy.polys.groebnertools import groebner as ring_groebner
 from sympy.logic.inference import satisfiable as sympy_satisfiable
-from sympy_extras.solvers.pde import pdsolve_lie
+from sympy_extras.solvers.pde_sympy import pdsolve_lie
 
 f = Function('y')(x)
 g = Function('u')(x, y)

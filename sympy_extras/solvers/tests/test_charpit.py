@@ -3,7 +3,7 @@ from __future__ import annotations
 from sympy import Function, symbols, Eq, sqrt, S
 from sympy.testing.pytest import raises
 
-from sympy_extras.solvers.charpit import complete_integral, check_complete_integral
+from sympy_extras.solvers.charpit_sympy import complete_integral, check_complete_integral
 
 x, y, a, b = symbols('x y a b')
 u = Function('u')(x, y)
@@ -11,7 +11,7 @@ p, q = u.diff(x), u.diff(y)
 
 
 def _check(equation: object, f: object = u) -> None:
-    from sympy_extras._typing import as_expr
+    from sympy_extras._typing_sympy import as_expr
     from sympy.core.function import AppliedUndef
     assert isinstance(f, AppliedUndef)
     solution = complete_integral(as_expr(equation) if not isinstance(equation, Eq) else equation, f)
