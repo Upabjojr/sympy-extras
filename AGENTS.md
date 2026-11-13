@@ -581,7 +581,12 @@ sympy_extras/
         tests/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
     calculus/                periodicity, lcim (util.py): the period of a function (ported from SymPy)
-    series/                  residue; limit_seq, difference_delta, dominant (limitseq.py) (ported from SymPy)
+    series/                  residue; limit_seq, difference_delta, dominant (limitseq.py); fps, FormalPowerSeries,
+                             FormalPowerSeriesProduct/Compose/Inverse (formal.py: the rational and hypergeometric
+                             algorithms, the full partial fractions by Taylor coefficients at the roots, rsolve_linear);
+                             fourier_series, FourierSeries, FiniteFourierSeries (fourier.py: the coefficients by the
+                             native definite_integral, the index a positive integer); SeqFormula, SeqPer, SeqAdd, SeqMul,
+                             sequence (sequences.py); SeriesBase (series_class.py) (native, ported from SymPy)
     sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
                              Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)

@@ -36,6 +36,17 @@ remove public functions. Breaking changes are listed here when they happen.
   which is not an expression rebuilds it with its arguments simplified;
   `numeric_value` of a native node without a numerical rule is `None`.
   `meijerint_inversion` stays unported: no native code calls it.
+- `sympy_extras.series.formal`, `sympy_extras.series.fourier`: native ports of SymPy's
+  formal power series (`fps`, `FormalPowerSeries` with truncate, sums, derivatives,
+  integrals, `product`, `compose`, `inverse`) and Fourier series (`fourier_series`,
+  `FourierSeries`, `FiniteFourierSeries`: truncate, sigma_approximation, shift, shiftx,
+  scale, scalex), with the sequences they use (`sympy_extras.series.sequences`:
+  `SeqFormula`, `SeqPer`, `SeqAdd`, `SeqMul`, `sequence`); `Expr.fps` and
+  `Expr.fourier_series` no longer go through SymPy (only for wrapped foreign nodes);
+  `to_sympy` converts the new classes. Unlike SymPy, `fps(1/(x**2 + x + 1))` is the
+  right series (SymPy's rational algorithm read the quadratic denominator as linear),
+  and the scaled and shifted finite Fourier series keep all their terms (SymPy's kept
+  the first three).
 - `sympy_extras.integrals.meijerint`: a native port of SymPy's Meijer
   G-function integration (`sympy/integrals/meijerint.py`, SymPy 1.14) on
   the typed core: the table of G-function representations

@@ -533,6 +533,9 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         # factor, already preprocessed) and function gives the same node
         return sympy.RootSum(sympy.Poly(to_sympy(e.expr), to_sympy(e.variable)),
                              sympy.Lambda(tuple(to_sympy(v) for v in e.fun.variables), to_sympy(e.fun.expr, evaluate)))
+    series = _series_to_sympy(e, evaluate)
+    if series is not None:
+        return series
     from sympy_extras.integrals.risch.risch import NonElementaryIntegral
     if isinstance(e, NonElementaryIntegral):
         from sympy_extras.integrals.risch.risch_sympy import NonElementaryIntegral as SymPyNonElementaryIntegral
@@ -614,6 +617,53 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         from sympy_extras.assumptions.quantifiers_sympy import sympy_quantifier
         return sympy_quantifier(e)
     raise TypeError("cannot convert %s to SymPy" % (e,))
+
+
+def _series_to_sympy(e: Basic, evaluate: bool) -> Optional[SymPyBasic]:
+    """The SymPy counterparts of the native sequences and series
+    (:mod:`sympy_extras.series.sequences`, ``formal``, ``fourier``);
+    ``None`` for the other nodes."""
+    from sympy_extras.series import sequences as seq
+    from sympy_extras.series.series_class import SeriesBase
+    if not isinstance(e, (seq.SeqBase, SeriesBase)):
+        return None
+    from sympy.series.formal import (FormalPowerSeries as SymPyFPS, FormalPowerSeriesCompose as SymPyFPSCompose,
+                                     FormalPowerSeriesInverse as SymPyFPSInverse,
+                                     FormalPowerSeriesProduct as SymPyFPSProduct)
+    from sympy.series.fourier import FiniteFourierSeries as SymPyFiniteFourier, FourierSeries as SymPyFourier
+    from sympy_extras.series import formal, fourier
+    if isinstance(e, seq.EmptySequence):
+        return sympy.S.EmptySequence
+    if isinstance(e, (seq.SeqFormula, seq.SeqPer)):
+        limits = sympy.Tuple(*[to_sympy(a) for a in e.limits.args])
+        if isinstance(e, seq.SeqFormula):
+            return sympy.SeqFormula(to_sympy(e.formula, evaluate), limits)
+        return sympy.SeqPer(sympy.Tuple(*[to_sympy(a, evaluate) for a in e.periodical]), limits)
+    if isinstance(e, (seq.SeqAdd, seq.SeqMul)):
+        parts = [to_sympy(a, evaluate) for a in e.sequences]
+        return sympy.SeqAdd(*parts) if isinstance(e, seq.SeqAdd) else sympy.SeqMul(*parts)
+    if isinstance(e, formal.FormalPowerSeries):
+        return SymPyFPS(to_sympy(e.function, evaluate), to_sympy(e.x), to_sympy(e.x0),
+                                              to_sympy(e.direction),
+                                              sympy.Tuple(to_sympy(e.ak, evaluate), to_sympy(e.xk, evaluate),
+                                                          to_sympy(e.ind, evaluate)))
+    if isinstance(e, formal.FormalPowerSeriesProduct):
+        return SymPyFPSProduct(to_sympy(e.ffps, evaluate), to_sympy(e.gfps, evaluate))
+    if isinstance(e, formal.FormalPowerSeriesCompose):
+        return SymPyFPSCompose(to_sympy(e.ffps, evaluate), to_sympy(e.gfps, evaluate))
+    if isinstance(e, formal.FormalPowerSeriesInverse):
+        return SymPyFPSInverse(to_sympy(e.ffps, evaluate))
+    limits = sympy.Tuple(*[to_sympy(a) for a in e.args[1].args])
+    if isinstance(e, fourier.FourierSeries):
+        return SymPyFourier(to_sympy(e.function, evaluate), limits,
+                                           sympy.Tuple(to_sympy(e.a0, evaluate), to_sympy(e.an, evaluate),
+                                                       to_sympy(e.bn, evaluate)))
+    if isinstance(e, fourier.FiniteFourierSeries):
+        an = sympy.Dict({to_sympy(k): to_sympy(v, evaluate) for k, v in e.an.items()})
+        bn = sympy.Dict({to_sympy(k): to_sympy(v, evaluate) for k, v in e.bn.items()})
+        return SymPyFiniteFourier(to_sympy(e.function, evaluate), limits,
+                                                 sympy.Tuple(to_sympy(e.a0, evaluate), an, bn))
+    return None
 
 
 def _sympy_predicate(p: Predicate) -> SymPyPredicate:
@@ -1236,6 +1286,9 @@ def _fill_function_tables() -> None:
                 pairs.append((native_rep, sympy_rep))
     from sympy_extras.concrete import qhyper, qhyper_sympy
     pairs.append((qhyper.QPochhammer, qhyper_sympy.QPochhammer))
+    from sympy.series.formal import Coeff as SymPyCoeff
+    from sympy_extras.series import formal
+    pairs.append((formal.Coeff, SymPyCoeff))
     for native, counterpart in pairs:
         _NATIVE_TO_SYMPY[native] = counterpart
         _SYMPY_TO_NATIVE[counterpart] = native

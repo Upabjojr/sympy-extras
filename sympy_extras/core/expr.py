@@ -1248,16 +1248,44 @@ class Expr(Basic):
             x = next(iter(syms))
         return aseries(self, x, n, bound, hir)
 
-    def fps(self, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: int = 1) -> Expr:
-        """The formal power series (SymPy's ``fps``, wrapped)."""
-        from .bridge import bridge
-        return bridge().fps(self, x, to_expr(x0), dir)
+    def fps(self, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: int = 1, hyper: bool = True, order: int = 4,
+            rational: bool = True, full: bool = False) -> Expr:
+        """The formal power series (:func:`~sympy_extras.series.formal.fps`;
+        SymPy's ``fps`` for an expression with wrapped foreign nodes).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol
+        >>> from sympy_extras.functions import sin
+        >>> x = Symbol('x')
+        >>> sin(x).fps(x).truncate()
+        x - x**3/6 + x**5/120 + O(x**6)
+        """
+        if any(node._has_foreign_class() for node in _preorder(self)):
+            from .bridge import bridge
+            return bridge().fps(self, x, to_expr(x0), dir)
+        from sympy_extras.series.formal import fps
+        return fps(self, x, x0, dir, hyper, order, rational, full)
 
     def fourier_series(self, limits: Optional[tuple[Symbol, ExprLike, ExprLike]] = None) -> Expr:
-        """The Fourier series (SymPy's ``fourier_series``, wrapped)."""
-        from .bridge import bridge
+        """The Fourier series (:func:`~sympy_extras.series.fourier.fourier_series`;
+        SymPy's ``fourier_series`` for an expression with wrapped foreign nodes).
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Symbol, pi
+        >>> x = Symbol('x')
+        >>> (x**2).fourier_series((x, -pi, pi)).truncate()
+        -4*cos(x) + cos(2*x) + pi**2/3
+        """
         bounds = None if limits is None else (limits[0], to_expr(limits[1]), to_expr(limits[2]))
-        return bridge().fourier_series(self, bounds)
+        if any(node._has_foreign_class() for node in _preorder(self)):
+            from .bridge import bridge
+            return bridge().fourier_series(self, bounds)
+        from sympy_extras.series.fourier import fourier_series
+        return fourier_series(self, bounds)
 
     def limit(self, x: Symbol, xlim: ExprLike, dir: str = '+') -> Expr:
         """The limit as ``x`` goes to ``xlim`` (:func:`~sympy_extras.core.limits.limit`).

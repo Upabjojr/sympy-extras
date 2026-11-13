@@ -3660,3 +3660,32 @@ def test_native_generic_fallbacks_do_not_load_sympy() -> None:
                          timeout=600)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_FPS_FOURIER = r'''
+import sys
+from sympy_extras.core import Symbol, pi
+from sympy_extras.core.bridge import Bridge, bridge
+from sympy_extras.functions import atan, exp, log, piecewise, sin
+assert type(bridge()) is Bridge   # no bridge registered
+x = Symbol('x')
+assert str(sin(x).fps(x).truncate()) == 'x - x**3/6 + x**5/120 + O(x**6)'
+assert str((log(1 + x)*exp(x)).fps(x).truncate(3)) == 'x + x**2/2 + O(x**3)'
+from sympy_extras.series.formal import fps
+assert str(fps(atan(x), x, full=True).truncate()) == 'x - x**3/3 + x**5/5 + O(x**6)'
+assert str(fps(exp(x)).compose(fps(sin(x)), x).truncate(4)) == '1 + x + x**2/2 + O(x**4)'
+assert str((x**2).fourier_series((x, -pi, pi)).truncate()) == '-4*cos(x) + cos(2*x) + pi**2/3'
+s = piecewise((0, x < 0), (pi, True)).fourier_series((x, -pi, pi))
+assert str(s.truncate()) == '2*sin(x) + 2*sin(3*x)/3 + pi/2', s.truncate()
+assert str((sin(x)**3).fourier_series().truncate()) == '3*sin(x)/4 - sin(3*x)/4'
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_fps_and_fourier_series_do_not_load_sympy() -> None:
+    """``Expr.fps`` and ``Expr.fourier_series`` of native expressions run
+    the native ports (:mod:`sympy_extras.series.formal`, ``fourier``;
+    SymPy's ``fps`` and ``fourier_series`` through the bridge before)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_FPS_FOURIER], capture_output=True, text=True, timeout=900)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
