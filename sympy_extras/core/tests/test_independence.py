@@ -3538,6 +3538,62 @@ def test_native_tractable_limits_do_not_load_sympy() -> None:
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
 
 
+_NATIVE_LAST_RULES = r'''
+import sys
+from sympy_extras.core import Symbol, Integer, Rational
+from sympy_extras.core.function import Derivative, Subs, expand_func
+from sympy_extras.core.logic import Or, Xor
+from sympy_extras.functions import cos, sin, exp, factorial, polygamma, harmonic
+from sympy_extras.functions.elementary import complexes as c, integers as n, trigonometric as t, hyperbolic as h
+from sympy_extras.functions.elementary.miscellaneous import Max
+from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
+from sympy_extras.functions.special import bessel as b, error_functions as er, gamma_functions as g
+from sympy_extras.functions.special.delta_functions import Heaviside
+from sympy_extras.functions.special.hyper import Hyper, hyper, meijerg
+from sympy_extras.functions.combinatorial import numbers as nb
+from sympy_extras.functions.special.polynomials import Legendre
+from sympy_extras.integrals.integral import Integral
+x, y = Symbol('x'), Symbol('y')
+r, p = Symbol('r', real=True), Symbol('p', real=True)
+assert t.Cos(x).rewrite(t.Tan) != t.Cos(x) and t.Acos(x).rewrite(t.Asin).has(t.Asin)
+assert h.Cosh(x).rewrite(h.Tanh).has(h.Tanh) and t.Cos(t.pi / 5).rewrite('sqrt').is_Atom is False
+assert c.Abs(r).rewrite(Heaviside).has(Heaviside) and c.Abs(r).rewrite('Piecewise').has(Piecewise)
+assert n.Floor(x).rewrite(n.Ceiling).has(n.Ceiling) and Max(r, p).rewrite('Piecewise').has(Piecewise)
+assert Xor(x > 0, y > 0).rewrite(Or).has(Or)
+assert er.Erf(x).rewrite(er.FresnelS).has(er.FresnelS) and er.Erf(x).rewrite('hyper').has(Hyper)
+assert er.SiNode(x).rewrite('Integral').has(Integral) and g.LowerGamma(x, y).rewrite(g.UpperGamma).has(g.UpperGamma)
+assert b.SphericalJ(x, y).rewrite(b.BesselJ).has(b.BesselJ) and b.AiryAi(x).rewrite('hyper').has(Hyper)
+assert nb.Fibonacci(x).rewrite('sqrt') != nb.Fibonacci(x) and Legendre(x, y).rewrite('Sum') != Legendre(x, y)
+assert expand_func(b.AiryAi((3 * x**3)**Rational(1, 3))) != b.AiryAi((3 * x**3)**Rational(1, 3))
+assert expand_func(meijerg([], [], [Integer(0)], [], x)) == exp(-x)
+assert not expand_func(hyper([Integer(1), Integer(1)], [Integer(2)], x)).has(Hyper)
+assert expand_func(polygamma(Rational(1, 2), x)).has(Subs)
+assert expand_func(harmonic(Rational(7, 3))) != harmonic(Rational(7, 3))
+assert factorial(x).nseries(x, n=3).getO() is not None
+assert Derivative(sin(x) * y, x).nseries(x, n=3).getO() is not None
+assert Subs(cos(y), y, x).nseries(x, n=3).getO() is not None
+assert piecewise((sin(x), y > 0), (cos(x), True)).nseries(x, n=3).has(Piecewise)
+assert Integral(exp(y), y, Integer(0), x).nseries(x, n=3).getO() is not None
+try:
+    Max(x, Integer(1)).nseries(x, n=3)
+    raise AssertionError('no NotImplementedError')
+except NotImplementedError:
+    pass
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_last_rewrites_expand_func_series_do_not_load_sympy() -> None:
+    """A sample of the rewrites, ``expand_func`` rules and series of the
+    native nodes which went to SymPy through the bridge (rules into
+    function classes, into ``Piecewise``, ``Integral``, ``Sum``, ``hyper``
+    and names; ``hyperexpand``; ``Function._eval_nseries``), with no bridge
+    registered."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_LAST_RULES], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
 _NATIVE_POLAR_NUMBERS = r'''
 import sys
 from sympy_extras.core import Symbol, I, pi, sqrt
