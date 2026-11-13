@@ -81,3 +81,24 @@ def test_derivatives_and_numbers() -> None:
         value = complex(sympy_value(e.evalf(20)))
         assert abs(value - complex(sympy.N(s, 20))) < 1e-14, e
     assert str(gamma(Float('2.5'))) == str(sympy.gamma(sympy.Float('2.5')))
+
+
+def test_asymptotic_series_of_digamma_trigamma_lowergamma_are_native() -> None:
+    # the series at oo of the nodes digamma(z), trigamma(z) and of
+    # lowergamma(s, z) in s went to SymPy through the bridge (no
+    # _eval_aseries of their own); ported, the printed series are SymPy's,
+    # computed with no bridge registered
+    from sympy_extras.core.bridge import Bridge, bridge, register_bridge
+    from sympy_extras.functions.special.gamma_functions import DiGamma, LowerGamma, TriGamma
+    X = sympy.Symbol('x')
+    cases: list[tuple[Expr, sympy.Expr, int]] = [
+        (DiGamma(x), sympy.digamma(X), 4), (TriGamma(x), sympy.trigamma(X), 4), (DiGamma(2 * x), sympy.digamma(2 * X), 5),
+        (LowerGamma(x, Integer(2)), sympy.lowergamma(X, 2), 4), (LowerGamma(2 * x, Integer(3)), sympy.lowergamma(2 * X, 3), 3)]
+    previous = bridge()
+    for ours, theirs, order in cases:
+        register_bridge(Bridge())
+        try:
+            series = ours.series(x, oo, order)
+        finally:
+            register_bridge(previous)
+        assert str(to_sympy(series)) == str(theirs.series(X, sympy.oo, order)), ours

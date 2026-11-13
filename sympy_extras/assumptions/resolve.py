@@ -193,7 +193,8 @@ def _real_relaxation(formula: Boolean, prefix: Prefix, assumptions: Assumptions)
     if len(kinds) != 1 or formula.has(Mod) or _symbols(formula) - {v for _, v in prefix}:
         return None
     try:
-        over_reals = attempt(lambda: resolve(formula, assumptions=assumptions, domain=Reals), settings.timeout)
+        over_reals = attempt(lambda: resolve(formula, assumptions=assumptions, domain=Reals), settings.timeout,
+                             native=True)
     except (NotImplementedError, ValueError, TypeError):
         return None
     if isinstance(over_reals, BooleanTrue) and kinds == {'forall'}:

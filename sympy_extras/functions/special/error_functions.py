@@ -27,7 +27,8 @@ Examples
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/special/error_functions.py (erf, erfc, erfi,
-# erfinv, erfcinv, real_to_real_as_real_imag, the integrals, _erfs, _eis) (SymPy 1.14)
+# erfinv, erfcinv, real_to_real_as_real_imag, the integrals, the Fresnel integrals and their asymptotic
+# series, _erfs, _eis) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: unevaluating classes with evaluating functions, strict typing;
@@ -879,6 +880,38 @@ class FresnelIntegral(DefinedFunction):
         raise NotImplementedError
 
     @classmethod
+    def cointegrand(cls, z: Expr) -> Expr:
+        """The other trigonometric function of the asymptotic series
+        (``cos`` for ``fresnels``, ``sin`` for ``fresnelc``)."""
+        raise NotImplementedError
+
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:fresnels._eval_aseries
+    # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:fresnelc._eval_aseries
+    def _eval_aseries(self, n: int, args0: Sequence[Expr], x: Symbol, logx: Optional[Expr]) -> Expr:
+        """The asymptotic series at ``oo`` and ``-oo``: ``1/2`` (``-1/2``)
+        plus odd powers of the argument times ``sin`` and ``cos`` of its
+        square, SymPy's expansion of ``S1(z) = S(z*sqrt(2/pi))`` rescaled."""
+        from math import factorial
+        from sympy_extras.core.order import order
+        point = args0[0]
+        if not isinstance(point, (Infinity, NegativeInfinity)):
+            return DefinedFunction._eval_aseries(self, n, args0, x, logx)
+        z = self.args[0]
+        two = Integer(2)
+        p = [Integer((-1)**k * factorial(4 * k + 1)) / (two**(2 * k + 2) * z**(4 * k + 3) * two**(2 * k)
+                                                      * Integer(factorial(2 * k)))
+             for k in range(n) if 4 * k + 3 < n]
+        q = [ONE / (two * z)] + [Integer((-1)**k * factorial(4 * k - 1))
+                                 / (two**(2 * k + 1) * z**(4 * k + 1) * two**(2 * k - 1) * Integer(factorial(2 * k - 1)))
+                                 for k in range(1, n) if 4 * k + 1 < n]
+        scale = sqrt(two / pi)
+        p = [-scale * t for t in p]
+        q = [Integer(type(self).sign) * scale * t for t in q]
+        s = ONE if isinstance(point, Infinity) else MINUS_ONE
+        series = add(mul(self.integrand(z**2), add(*p)), mul(self.cointegrand(z**2), add(*q)))
+        return s * HALF + series.subs(x, scale * x) + order(ONE / z**n, x)
+
+    @classmethod
     def eval(cls, *args: Expr) -> Optional[Expr]:
         [z] = args
         if isinstance(z, Infinity):
@@ -934,6 +967,11 @@ class FresnelS(FresnelIntegral):
         from sympy_extras.functions.elementary.trigonometric import sin
         return sin(z)
 
+    @classmethod
+    def cointegrand(cls, z: Expr) -> Expr:
+        from sympy_extras.functions.elementary.trigonometric import cos
+        return cos(z)
+
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.fresnels(values[0]))
 
@@ -957,6 +995,11 @@ class FresnelC(FresnelIntegral):
     def integrand(cls, z: Expr) -> Expr:
         from sympy_extras.functions.elementary.trigonometric import cos
         return cos(z)
+
+    @classmethod
+    def cointegrand(cls, z: Expr) -> Expr:
+        from sympy_extras.functions.elementary.trigonometric import sin
+        return sin(z)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.fresnelc(values[0]))

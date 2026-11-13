@@ -160,7 +160,8 @@ sympy_extras/
     _special_values_sympy.py the SymPy face of _special_values (used by integrals/definite, indefinite, concrete/karr_sympy;
                              not the solvers/_special_values_sympy of the ODE cases)
     _timeout.py              attempt, time_limit, remaining_time, prepare_sympy: time limits (no SymPy imported; SymPy's
-                             tables prepared lazily by limits without native=True)
+                             tables prepared lazily by limits without native=True, so native code passes native=True:
+                             test_independence checks every limit of the native modules)
     _typing.py               the type aliases which need no SymPy (Dup, Dmp, Monomial, Sign, Truth, Weights, ...)
     _typing_sympy.py         the aliases written with SymPy's classes (ExprLike, OrderSpec, QuantifierPrefix) and the
                              narrowing helpers of the SymPy-side code (as_expr, as_boolean, as_symbol, as_set,
@@ -218,11 +219,13 @@ sympy_extras/
             factorials.py    Factorial, Binomial, RisingFactorial, FallingFactorial / factorial, binomial, rf, ff, PORTED FROM SYMPY
             numbers.py       Catalan, Fibonacci, Lucas, Harmonic, Bernoulli, Euler, Bell, Genocchi, Partition / catalan, ..., PORTED FROM SYMPY
         special/
-            gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma / gamma, ..., PORTED FROM SYMPY
+            gamma_functions.py Gamma, LogGamma, PolyGamma, DiGamma, TriGamma, LowerGamma, UpperGamma / gamma, ... (with their
+                             asymptotic series), PORTED FROM SYMPY
             delta_functions.py DiracDelta, Heaviside / dirac_delta, heaviside, PORTED FROM SYMPY
             zeta_functions.py Zeta, DirichletEta, PolyLog / zeta, dirichlet_eta, polylog; Bernoulli numbers, PORTED FROM SYMPY
             error_functions.py Erf, ..., Expint, EiNode, SiNode, CiNode, ShiNode, ChiNode, LiNode, OffsetLiNode / erf, ..., Ei, Si, Ci, Shi, Chi, li, Li;
-                             Erfs, Eis / erfs, eis (SymPy's _erfs, _eis of the Gruntz algorithm), PORTED FROM SYMPY
+                             Erfs, Eis / erfs, eis (SymPy's _erfs, _eis of the Gruntz algorithm); FresnelS, FresnelC with
+                             their asymptotic series, PORTED FROM SYMPY
             beta_functions.py Beta / beta, PORTED FROM SYMPY
             bessel.py        BesselJ, ..., Hankel1, Hankel2, SphericalJ, SphericalY, AiryAi, ... / besselj, ..., jn, yn, airyai, ...;
                              BesselIs, BesselKs (SymPy's _besseli, _besselk), PORTED FROM SYMPY
@@ -241,7 +244,8 @@ sympy_extras/
                              native Order, series driver and limits (order.py, series.py, gruntz.py, limits.py; per-class _eval_nseries and
                              _eval_as_leading_term, SymPy's per node for the functions not ported),
                              factor_terms, a native rewrite (rewriting.py), SymPy's order of the arguments, to_sympy/from_sympy with generic wrappers
-                             of any SymPy object; see docs/core.md
+                             of any SymPy object; nodes pickle with their hash recomputed and the singletons
+                             (register_singleton: true, false, oo, pi, ...) unpickled as themselves; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
         _evalf.py            evalf_sum, hypsum: the numerical values of sums (native), PORTED FROM SYMPY
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
@@ -339,7 +343,8 @@ sympy_extras/
                              discontinuity (native: the native solve, ask and limits; the antiderivative a typed step,
                              AntiderivativeStep, by default the native radical table, elementary_antiderivative (polynomials
                              in elementary functions by the native manualintegrate and heuristics) and the verified methods
-                             of the native indefinite), PORTED FROM SYMPY (singularities)
+                             of the native indefinite), PORTED FROM SYMPY (singularities); generic_antiderivative: the
+                             generic branch of cases at isolated values of the parameters (the driver writes their cases)
         antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
                              (native: the native series, limits, summation, guessing, gammasimp, hyperexpand;

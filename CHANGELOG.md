@@ -48,6 +48,22 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The asymptotic series of `fresnels` and `fresnelc` at `oo` and `-oo`
+  are native (`FresnelIntegral._eval_aseries`, ported from SymPy's
+  `fresnels._eval_aseries` and `fresnelc._eval_aseries`), and so are
+  those of the nodes `DiGamma`, `TriGamma` (through `PolyGamma`) and of
+  `LowerGamma(s, z)` as `s` goes to `oo` (SymPy's `digamma`, `trigamma`,
+  `lowergamma._eval_aseries`): they went to SymPy through the bridge of
+  the core. Every class of SymPy with an `_eval_aseries` of its own now
+  has a native one.
+- The native code sets its time limits with `native=True`: the series and
+  simplifications of `solvers.kovacic`, the antiderivatives of
+  `solvers.darboux` and the transfer from the reals of
+  `assumptions.resolve` set limits which prepared SymPy's tables, and so
+  imported SymPy; `_numeric`'s check of a hidden zero by the foreign
+  minimal polynomial sets none when no foreign system is registered. A
+  test of `core/tests/test_independence.py` checks every limit of the
+  native modules.
 - `piecewise_simplify_arguments` no longer sends a condition with an
   `Xor` to SymPy: the new `sympy_extras.logic.anf` ports SymPy's
   algebraic normal form (`to_anf`, `is_anf`, `distribute_xor_over_and`,
@@ -3276,6 +3292,32 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- The case `a = b` of `sin(a*x)*sin(b*x)` over `(0, pi)` was missing
+  under some hash seeds: the antiderivative `x/2 - Piecewise((x, Eq(b, 0)),
+  ...)/2` of `sin(b*x)**2` had no branch selected for a plain `b`, and the
+  methods spent 5 s on the Mellin route of its quarter periods, beyond the
+  budget of the special values. The quick antiderivative route of
+  `definite_integral` takes the generic branch of an antiderivative whose
+  cases are isolated values of the parameters (new
+  `integrals.antiderivative.generic_antiderivative`), the driver writing
+  the cases of the integral itself: 0.8 s instead of 5.
+- The core matcher matches a product or sum pattern with a wild bound
+  already: `match(z, p*z**q, {p: 1})` gave `None` (the bound value was
+  looked for among the factors). `meijerint` no longer matches its table
+  factor by factor (`_match` removed).
+- The core `limit` of a step function away from its jump: `Heaviside(x -
+  1)` and `E*Heaviside(x - 1)` at `0+` did not finish (gruntz expanded the
+  step, whose Taylor terms at `-1` are all zero, ever further; SymPy 1.14
+  hangs as well). `Heaviside(u)` is replaced by 0 or 1 by the sign of the
+  limit of `u`, as `sign` is. The endpoint values of the definite last
+  method no longer refuse the antiderivatives with steps.
+- Core nodes survive pickling: the singletons (`true`, `false`, `oo`,
+  `zoo`, `nan`, `pi`, `E`, `I`, ...) are unpickled as themselves, so that
+  the last pair of an unpickled `Piecewise` is again the default one
+  (`cond is true` failed on it), and the hash is computed again in the
+  process which unpickles a node (it kept the hash of the pickling
+  process, wrong under another `PYTHONHASHSEED`). New
+  `core.basic.register_singleton`.
 - The native `Ei` of a positive number times `polar_lift(-1)` evaluates
   above the cut, `Ei(-x) + I*pi` (SymPy's `Ei._eval_evalf`); it gave
   `Ei(-x)`. `exp_polar` of a real number is positive (`exp_polar(0)`

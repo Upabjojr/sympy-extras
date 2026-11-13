@@ -26,7 +26,7 @@ from sympy_extras.functions.elementary.exponential import exp_polar
 from sympy_extras.functions.special.hyper import MeijerG
 from sympy_extras.integrals.indefinite import is_antiderivative
 from sympy_extras.integrals.meijerint import (_check_antecedents, _condsimp, _g, _get_coeff_exp, _inflate_g,
-                                              _match, _rewrite1, _rewrite_saxena, lookup_table,
+                                              _rewrite1, _rewrite_saxena, lookup_table,
                                               meijer_antiderivative, meijerint_definite, meijerint_indefinite,
                                               rewrite_single, z as z_dummy)
 
@@ -306,14 +306,15 @@ def test_polar_number_argument_is_positive() -> None:
 
 
 def test_product_matching() -> None:
-    # the matcher of the core gives no binding for Heaviside(z - 1)*sqrt(z - 1)
-    # against Heaviside(p*z**q - b)*(p*z**q - b)**(a - 1) (it misses z against
-    # p*z**q once p is bound to 1): the factors are matched one by one
+    # the matcher of the core gave no binding for Heaviside(z - 1)*sqrt(z - 1)
+    # against Heaviside(p*z**q - b)*(p*z**q - b)**(a - 1) (it missed z against
+    # p*z**q once p was bound to 1), and the factors were matched one by one
+    # here; the matcher does it itself now
     from sympy_extras.core.symbol import Wild
     from sympy_extras.functions import heaviside
     p, q, w, v = (Wild(n, exclude=[z_dummy]) for n in 'pqab')
     pattern = heaviside(p * z_dummy**q - v) * (p * z_dummy**q - v)**(w - 1)
-    found = _match(heaviside(z_dummy - 1) * sqrt(z_dummy - 1), pattern)
+    found = (heaviside(z_dummy - 1) * sqrt(z_dummy - 1)).match(pattern)
     assert found is not None and found[w] == Rational(3, 2) and found[v] == 1
 
 

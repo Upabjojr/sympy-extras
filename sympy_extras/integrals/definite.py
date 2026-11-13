@@ -2185,7 +2185,36 @@ class _Integrator:
             # conditions; the limits at infinity of the antiderivative
             # spent the budget on Maxima's specint 32 first
             return None
-        return self._under_budget(lambda: self._antiderivative(f, x, a, b, depth), 4)
+        return self._under_budget(lambda: self._generic_antiderivative(f, x, a, b, depth), 4)
+
+    def _generic_antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                                depth: int) -> Optional[ConditionalValue]:
+        """The antiderivative route on the generic branch of an
+        antiderivative with cases at isolated values of the parameters
+        (``x/2 - Piecewise((x, Eq(b, 0)), (sin(2*b*x)/(2*b), True))/2`` for
+        ``sin(b*x)**2``): the definite driver writes the cases of the
+        integral at those values itself. The bug: the branch could not be
+        selected, the methods spent 5 s on the Mellin route of the quarter
+        periods of ``sin(b*x)**2`` over ``(0, pi)``, and the case ``a = b``
+        of ``sin(a*x)*sin(b*x)`` missed its budget."""
+        from .antiderivative import antiderivative, generic_antiderivative
+        if a.has(x) or b.has(x):
+            return None
+        F = antiderivative(f, x, self.assumptions, False)
+        if F is None:
+            return None
+        generic = generic_antiderivative(F, x)
+        if generic == F:
+            return self._antiderivative(f, x, a, b, depth, known=F)
+        # the limits under the assumptions write the cases of the
+        # parameters again (nan at b = 0): the values at the endpoints, as
+        # the last method takes them, checked numerically
+        found = self._evaluated_antiderivative(generic, f, x, a, b)
+        if found is None or found.value.has(oo, -oo):
+            return None
+        if settings.numerical_checks and verify_numerically(found.value, f, x, a, b, self.assumptions) is not True:
+            return None
+        return self._finish(found)
 
     def _antiderivative(self, f: Expr, x: Symbol, a: Expr, b: Expr, depth: int,
                         late: bool = False, known: Optional[Expr] = None) -> Optional[ConditionalValue]:
@@ -2988,45 +3017,22 @@ class _Integrator:
 
 
 def _endpoint(F: Expr, x: Symbol, point: Expr, direction: str) -> Optional[Expr]:
-    """``F`` at an endpoint: its value when it is finite there and no step
-    function jumps there (the antiderivatives of delta functions are steps:
-    the limit of ``E*Heaviside(x - 1)`` at ``0`` does not finish), the
-    limit from inside the range otherwise; ``None`` when neither is
-    known."""
+    """``F`` at an endpoint: its value when it is finite there (a step
+    function of the antiderivative of a delta function takes its value at
+    its jump, ``Heaviside(0) = 1/2``, as in SymPy's integrate: half of a
+    delta at an endpoint), the limit from inside the range otherwise;
+    ``None`` when neither is known. (The steps were refused, or replaced
+    by the limits of their arguments at an infinite endpoint, while the
+    limit of ``E*Heaviside(x - 1)`` at ``0`` did not finish.)"""
     if point not in (oo, -oo):
-        steps = [h for h in F.atoms(Heaviside) if isinstance(h, Heaviside)]
         value = F.subs(x, point)
         if not value.has(nan, zoo, oo, -oo):
-            # a step at the endpoint takes its value there, Heaviside(0) =
-            # 1/2, as in SymPy's integrate: half of a delta at an endpoint
             return value
-        if steps:
-            return None
-    else:
-        # the steps at an infinite endpoint: 1 or 0 by the limit of their
-        # argument (the limit of Heaviside(x - 1/2)/4 at oo does not finish)
-        rule: dict[Basic, Basic] = {}
-        for h in F.atoms(Heaviside):
-            if not isinstance(h, Heaviside):
-                continue
-            side = limit(_expr_arg(h), x, point)
-            if side == oo:
-                rule[h] = S.One
-            elif side == -oo:
-                rule[h] = S.Zero
-            else:
-                return None
-        if rule:
-            F = as_expr(F.xreplace(rule))
     value = limit(F, x, point) if point in (oo, -oo) or point.is_extended_real is not True \
         else limit(F, x, point, direction)
     if isinstance(value, Limit) or value.has(nan, zoo):
         return None
     return value
-
-
-def _expr_arg(node: Heaviside) -> Expr:
-    return node.args[0]
 
 
 class DefiniteIntegrator(ParametricIntegrator):

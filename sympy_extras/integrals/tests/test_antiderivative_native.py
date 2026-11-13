@@ -118,3 +118,26 @@ def test_a_complex_limit_of_a_real_antiderivative_is_refused() -> None:
          - log(u + 1) * atanh(u) / 2 + log(u + 1) - atanh(u) / 2)
     found = antiderivative_integral(f, u, S.Zero, S.One, known=F)
     assert found is None or numerically_equal(found.value, Rational(-3, 2) + log(2))
+
+
+def test_the_generic_branch_of_cases_at_isolated_values() -> None:
+    # the bug: the antiderivative x/2 - Piecewise((x, Eq(b, 0)), ...)/2 of
+    # sin(b*x)**2 had no branch selected for a plain b, and the methods
+    # spent 5 s on the Mellin route of the quarter periods over (0, pi)
+    # before the last method found the value; the case a = b of
+    # sin(a*x)*sin(b*x) missed the budget of the special values
+    from sympy_extras.core import Eq
+    from sympy_extras.integrals.antiderivative import generic_antiderivative
+    from sympy_extras.integrals.definite import _Integrator
+    b, c = Symbol('b'), Symbol('c')
+    F = x / 2 - Piecewise((x, Eq(b, 0)), (sin(2 * b * x) / (2 * b), True)) / 2
+    assert generic_antiderivative(F, x) == x / 2 - sin(2 * b * x) / (4 * b)
+    # a case on the variable, or a set of positive measure, is kept
+    kept = Piecewise((x, x > 1), (x**2, True)) + Piecewise((x, b > 0), (x**2, True))
+    assert generic_antiderivative(kept, x) == kept
+    # nested cases of isolated values, a conjunction among them
+    nested = Piecewise((x, Eq(b, 0) & Eq(c, 0)), (Piecewise((x**2, Eq(c, 0)), (x**3, True)), True))
+    assert generic_antiderivative(nested, x) == x**3
+    found = _Integrator(None)._quick_antiderivative(sin(b * x)**2, x, S.Zero, pi, 0)
+    assert found is not None and found.condition == True
+    assert numerically_equal(found.value, pi / 2 - sin(2 * pi * b) / (4 * b))
