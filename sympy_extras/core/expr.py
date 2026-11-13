@@ -1189,12 +1189,18 @@ class Expr(Basic):
         from .series import lseries
         return lseries(self, x, to_expr(x0), dir, logx, to_expr(cdir))
 
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_nseries
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         """The terms of the series up to ``O(x**n)`` at zero from the
-        right (overridden by the classes; the classes whose expansion is
-        not ported use the foreign system's)."""
-        from .bridge import bridge
-        return bridge().nseries(self, x, n, logx, cdir)
+        right (overridden by the classes; a wrapped foreign node uses the
+        foreign system's, the other nodes raise ``NotImplementedError``,
+        as SymPy's ``Expr._eval_nseries`` does)."""
+        if self._has_foreign_class():
+            from .bridge import bridge
+            return bridge().nseries(self, x, n, logx, cdir)
+        raise NotImplementedError('The _eval_nseries method should be added to %s to give terms up to O(x**n) at '
+                                  'x=0 from the positive direction so it is available when nseries calls it.'
+                                  % (type(self).__name__,))
 
     # PORTED FROM SYMPY: sympy/core/expr.py:Expr._eval_lseries
     def _eval_lseries(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Iterator[Expr]:
@@ -1670,7 +1676,7 @@ class Expr(Basic):
             res = res * exp_polar(newexp)
         return res, n
 
-    def rewrite(self, *args: Union[Basic, FunctionClass, type], piecewise: bool = True) -> Expr:
+    def rewrite(self, *args: Union[Basic, FunctionClass, type, str], piecewise: bool = True) -> Expr:
         return as_expr(super().rewrite(*args, piecewise=piecewise))
 
     def refine(self, assumption: RefineArg = True) -> Expr:

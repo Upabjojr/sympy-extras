@@ -598,8 +598,13 @@ class DefinedFunction(Application):
             found = _generic_function_nseries(self, x, n, logx)
             if found is not None:
                 return found
-        # the classes whose expansion is not ported: the foreign system's
-        return bridge().nseries(self, x, n, logx, cdir)
+            # an argument going to an infinity logarithmically (SymPy's
+            # branch of Function._eval_nseries not ported)
+            return Application._eval_nseries(self, x, n, logx, cdir)
+        if self._has_foreign_class():
+            # a wrapped foreign function: the foreign system's expansion
+            return bridge().nseries(self, x, n, logx, cdir)
+        return Application._eval_nseries(self, x, n, logx, cdir)
 
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         if type(self).__name__ not in _SYMPY_OWN_LEADING_TERM:
@@ -1372,8 +1377,8 @@ _FUNC_RULES: dict[type, Callable[[Expr, ExpandHints], Optional[Expr]]] = {}
 # PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with the _eval_expand_func methods
 def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
     """The special functions (their arguments first) expanded by their
-    rules; a node without a ported rule is expanded by SymPy (that node
-    only) when SymPy has one."""
+    rules; a wrapped foreign node is expanded by the foreign system (that
+    node only)."""
     from .bridge import bridge
     if not _FUNC_RULES:
         from sympy_extras.functions._expand_func import rules
@@ -1386,8 +1391,8 @@ def _expand_func(e: Basic, deep: bool, hints: ExpandHints) -> Basic:
         return e
     rule = _FUNC_RULES.get(type(e))
     new: Optional[Basic] = rule(e, hints) if rule is not None else None
-    if new is None and (e._is_foreign_node() or type(e).__name__ in _SYMPY_EXPAND_FUNC):
-        # a class with a SymPy rule not ported (or a wrapped foreign node)
+    if new is None and e._has_foreign_class():
+        # a wrapped foreign node: the foreign system's rule
         new = bridge().expand_func_node(e)
     if new is not None and new != e:
         return new

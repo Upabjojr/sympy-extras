@@ -13,7 +13,7 @@ import sympy
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.symbol import Symbol
-from sympy_extras.core.bridge import bridge, register_bridge
+from sympy_extras.core.bridge import RewriteTarget, bridge, register_bridge
 from sympy_extras.interop import SymPyBridge, expr_from_sympy, to_sympy
 
 s = sympy
@@ -25,9 +25,14 @@ class _RecordingBridge(SymPyBridge):
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: type, piecewise: bool) -> Optional[Basic]:
+    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: RewriteTarget, piecewise: bool
+                     ) -> Optional[Basic]:
         self.calls.append('rewrite_node %s' % type(e).__name__)
         return SymPyBridge.rewrite_node(self, e, args, target, piecewise)
+
+    def expand_func_node(self, e: Basic) -> Optional[Basic]:
+        self.calls.append('expand_func_node %s' % type(e).__name__)
+        return SymPyBridge.expand_func_node(self, e)
 
     def rewrite_named_node(self, e: Basic, args: tuple[Basic, ...], name: str, limitvar: Optional[Symbol]
                            ) -> Optional[Basic]:

@@ -34,8 +34,8 @@ __all__ = ['Bridge', 'ForeignOperationUnavailable', 'bridge', 'register_bridge']
 
 #: a truth value of three states
 Truth = Optional[bool]
-#: the target of a rewrite: a node, a function class or a class
-RewriteTarget = Union[Basic, FunctionClass, type]
+#: the target of a rewrite: a node, a function class, a class or a name
+RewriteTarget = Union[Basic, FunctionClass, type, str]
 
 
 class ForeignOperationUnavailable(NotImplementedError):
@@ -87,6 +87,7 @@ class Bridge:
     # -- operations on nodes whose rules are not ported
 
     def nseries(self, node: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
+        """The series of a wrapped foreign node."""
         raise self._missing('the series of %s' % (type(node).__name__,))
 
     def meromorphic(self, node: Expr, x: Symbol, a: Expr, own_only: bool) -> tuple[bool, Truth]:
@@ -94,11 +95,10 @@ class Bridge:
         ``own_only``) and its answer."""
         return (False, None)
 
-    def rewrite(self, e: Basic, targets: Sequence[RewriteTarget], piecewise: bool) -> Basic:
-        raise self._missing('rewrite')
-
-    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: type, piecewise: bool) -> Optional[Basic]:
-        """The node rewritten by the foreign class's rule, ``None`` without one."""
+    def rewrite_node(self, e: Basic, args: tuple[Basic, ...], target: RewriteTarget, piecewise: bool
+                     ) -> Optional[Basic]:
+        """The wrapped foreign node, rebuilt with ``args``, rewritten by the
+        foreign class's rule, ``None`` without one."""
         return None
 
     def rewrite_named_node(self, e: Basic, args: tuple[Basic, ...], name: str, limitvar: Optional[Symbol]
@@ -106,6 +106,8 @@ class Bridge:
         return None
 
     def expand_func_node(self, e: Basic) -> Optional[Basic]:
+        """The wrapped foreign node expanded by its class's rule, ``None``
+        without one."""
         return None
 
     def solve_first(self, equation: Expr, x: Symbol) -> Optional[Expr]:

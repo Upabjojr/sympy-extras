@@ -4,26 +4,30 @@ function class.
 Ported from SymPy's ``Basic.rewrite`` and ``Basic._rewrite``: bottom up,
 each node (of the given pattern classes, all when none) is replaced by its
 rule for the target, the node rebuilt with its rewritten arguments
-otherwise. The rules ported are a typed table
-(:mod:`sympy_extras.functions.elementary._rewrites`); a node without one
-whose SymPy class has a rule for the target is rewritten by SymPy, that
-node only.
+otherwise (SymPy's behaviour when a class has no rule). The rules ported
+are typed tables keyed by the class of the node and the SymPy name of the
+target (:mod:`sympy_extras.functions.elementary._rewrites` and its
+siblings); the target is a class (a function class, ``Piecewise``,
+``Integral``, ``Sum``, ...), a node (``GoldenRatio``) or a name
+(``'sqrt'``, ``'polynomial'``), as in SymPy. Only a node wrapping a
+foreign object is rewritten by the foreign system (the bridge).
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/core/basic.py (Basic.rewrite, Basic._rewrite) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
-# Changes: typed; the rules are a table keyed by (class, target).
+# Changes: typed; the rules are tables keyed by (class, target name).
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from .basic import Basic
 from .expr import Expr
+from .function import DefinedFunction, FunctionClass
 from .symbol import Symbol
 
-__all__ = ['rewrite', 'RewriteHints']
+__all__ = ['rewrite', 'RewriteHints', 'RewriteTarget', 'target_name']
 
 
 class RewriteHints:
@@ -37,68 +41,179 @@ class RewriteHints:
         self.piecewise = piecewise
 
 
+#: a rule of an expression: the node and its (rewritten) arguments to the
+#: rewritten node, ``None`` when the rule does not apply
 Rule = Callable[[Expr, tuple[Expr, ...], RewriteHints], Optional[Expr]]
+#: a rule of a node which is not an expression (a boolean, a set), or
+#: whose result is not one
+NodeRule = Callable[[Basic, tuple[Basic, ...], RewriteHints], Optional[Basic]]
+#: the target of a rewrite: a class (native or foreign), a function
+#: object, a node (its class) or a SymPy name
+RewriteTarget = Union[Basic, FunctionClass, type, str]
+#: the key of a rule table: the class of the node and the target, a class
+#: or the SymPy name of a target without a native class
+RuleKey = tuple[type, Union[type, str]]
 
-_RULES: dict[tuple[type, type], Rule] = {}
+_RULES: dict[tuple[type, str], Rule] = {}
+_NODE_RULES: dict[tuple[type, str], NodeRule] = {}
+
+#: the SymPy names of the native classes whose name differs from SymPy's
+_SYMPY_NAMES: dict[str, str] = {
+    'Hyper': 'hyper', 'MeijerG': 'meijerg', 'AppellF1': 'appellf1', 'GoldenRatioType': 'GoldenRatio',
+    'TribonacciConstantType': 'TribonacciConstant', 'PointSet': 'FiniteSet'}
 
 
-def _rules() -> dict[tuple[type, type], Rule]:
+def target_name(target: RewriteTarget) -> str:
+    """The SymPy name of a rewrite target (what follows
+    ``_eval_rewrite_as_`` in the name of SymPy's rule): the
+    ``function_name`` of a function class, the SymPy name of another
+    class, the class name of a node, the name itself.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core.rewriting import target_name
+    >>> from sympy_extras.functions.elementary.piecewise import Piecewise
+    >>> from sympy_extras.functions.elementary.trigonometric import Cos
+    >>> from sympy_extras.functions.special.hyper import Hyper
+    >>> from sympy_extras.core.numbers import GoldenRatio
+    >>> target_name(Cos), target_name(Piecewise), target_name(Hyper), target_name(GoldenRatio), target_name('sqrt')
+    ('cos', 'Piecewise', 'hyper', 'GoldenRatio', 'sqrt')
+    """
+    if isinstance(target, str):
+        return target
+    if isinstance(target, FunctionClass):
+        return target.name
+    if isinstance(target, Basic):
+        return _class_name(type(target))
+    return _class_name(target)
+
+
+def _class_name(cls: type) -> str:
+    if issubclass(cls, DefinedFunction):
+        return cls.function_name
+    if issubclass(cls, Basic):
+        return _SYMPY_NAMES.get(cls.__name__, cls.__name__)
+    return cls.__name__  # a foreign class: SymPy's name
+
+
+def _name_key(t: Union[type, str]) -> str:
+    return t if isinstance(t, str) else _class_name(t)
+
+
+def _rules() -> dict[tuple[type, str], Rule]:
     if not _RULES:
         from sympy_extras.functions.combinatorial._rewrites import rules as combinatorial_rules
         from sympy_extras.functions.elementary._rewrites import rules
         from sympy_extras.functions.special._rewrites import rules as special_rules
-        _RULES.update(rules())
-        _RULES.update(combinatorial_rules())
-        _RULES.update(special_rules())
+        from sympy_extras.functions._rewrites_misc import rules as misc_rules
+        from sympy_extras.functions.special._rewrites_bessel import rules as bessel_rules
+        from sympy_extras.functions.special._rewrites_polynomials import rules as polynomial_rules
+        for table in (rules(), combinatorial_rules(), special_rules(), bessel_rules(), polynomial_rules(),
+                      misc_rules()):
+            for (cls, t), rule in table.items():
+                _RULES[(cls, _name_key(t))] = rule
     return _RULES
 
 
-def _rule_for(cls: type, target: type) -> Optional[Rule]:
+def _node_rules() -> dict[tuple[type, str], NodeRule]:
+    if not _NODE_RULES:
+        from sympy_extras.functions._rewrites_misc import node_rules
+        for (cls, t), rule in node_rules().items():
+            _NODE_RULES[(cls, _name_key(t))] = rule
+    return _NODE_RULES
+
+
+def _rule_for(cls: type, target: RewriteTarget) -> Optional[Rule]:
+    """The rule of an expression of class ``cls`` for the target (that of
+    the first class of its MRO with one), ``None`` without one."""
     table = _rules()
+    name = target_name(target)
     for k in cls.__mro__:
-        rule = table.get((k, target))
+        rule = table.get((k, name))
         if rule is not None:
             return rule
     return None
 
 
-def _without_rules(e: Basic) -> bool:
-    """The core nodes SymPy has no rewrite rules for (the applied undefined
-    functions have none either: no class of their MRO but ``Basic``
-    defines a rule)."""
-    from .add import Add
-    from .function import AppliedUndef
-    from .mul import Mul
-    return not e.args or isinstance(e, (Add, Mul, AppliedUndef))
+def _node_rule_for(cls: type, target: RewriteTarget) -> Optional[NodeRule]:
+    """The rule of a node which is not an expression, or into a node which
+    is not one, ``None`` without one."""
+    table = _node_rules()
+    name = target_name(target)
+    for k in cls.__mro__:
+        rule = table.get((k, name))
+        if rule is not None:
+            return rule
+    return None
+
+
+def has_rule(cls: type, target: RewriteTarget) -> bool:
+    """Whether the native class has a rule for the target."""
+    return _rule_for(cls, target) is not None or _node_rule_for(cls, target) is not None
+
+
+#: a pattern of a rewrite: a class (native: by ``isinstance``; foreign:
+#: by its name), or a function object
+Pattern = Union[type, FunctionClass]
+
+
+def _matches(e: Basic, p: Pattern) -> bool:
+    if isinstance(p, FunctionClass):
+        return e.func == p
+    if issubclass(p, Basic):
+        return isinstance(e, p)
+    # a foreign class: the nodes of that SymPy name
+    if isinstance(e, DefinedFunction):
+        return e.function_name == p.__name__
+    f = e.func
+    if isinstance(f, FunctionClass):
+        return f.name == p.__name__
+    return False
+
+
+def _has_pattern(e: Basic, p: Pattern) -> bool:
+    return _matches(e, p) or any(_has_pattern(a, p) for a in e.args)
 
 
 # PORTED FROM SYMPY: sympy/core/basic.py:Basic.rewrite
-def rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: Optional[RewriteHints] = None) -> Basic:
-    """``e`` with its nodes (instances of ``patterns``, all when empty)
+def rewrite(e: Basic, patterns: tuple[Pattern, ...], target: RewriteTarget, hints: Optional[RewriteHints] = None
+            ) -> Basic:
+    """``e`` with its nodes (those matching ``patterns``, all when empty)
     rewritten in terms of ``target``."""
+    if isinstance(target, str) and target in ('tractable', 'intractable'):
+        return rewrite_tractable(e, None, target == 'intractable')
     if patterns:
-        patterns = tuple(p for p in patterns if e.has(p))
+        patterns = tuple(p for p in patterns if _has_pattern(e, p))
         if not patterns:
             return e
     return _rewrite(e, patterns, target, hints if hints is not None else RewriteHints())
 
 
 # PORTED FROM SYMPY: sympy/core/basic.py:Basic._rewrite
-def _rewrite(e: Basic, patterns: tuple[type, ...], target: type, hints: RewriteHints) -> Basic:
+def _rewrite(e: Basic, patterns: tuple[Pattern, ...], target: RewriteTarget, hints: RewriteHints) -> Basic:
     from .bridge import bridge
     args = tuple(_rewrite(a, patterns, target, hints) for a in e.args)
-    if not patterns or isinstance(e, patterns):
+    if not patterns or any(_matches(e, p) for p in patterns):
         rule = _rule_for(type(e), target)
-        if rule is not None and isinstance(e, Expr):
-            expr_args = tuple(a for a in args if isinstance(a, Expr))
-            if len(expr_args) == len(args):
-                rewritten = rule(e, expr_args, hints)
-                if rewritten is not None:
-                    return rewritten
-        elif rule is None and not _without_rules(e) and _sympy_may_rewrite(e, target):
-            through = bridge().rewrite_node(e, args, target, hints.piecewise)
-            if through is not None:
-                return through
+        if rule is not None:
+            if isinstance(e, Expr):
+                expr_args = tuple(a for a in args if isinstance(a, Expr))
+                if len(expr_args) == len(args):
+                    rewritten = rule(e, expr_args, hints)
+                    if rewritten is not None:
+                        return rewritten
+        else:
+            node_rule = _node_rule_for(type(e), target)
+            if node_rule is not None:
+                rewritten_node = node_rule(e, args, hints)
+                if rewritten_node is not None:
+                    return rewritten_node
+            elif e.args and e._has_foreign_class():
+                # a wrapped foreign node: the foreign system's rule
+                through = bridge().rewrite_node(e, args, target, hints.piecewise)
+                if through is not None:
+                    return through
     if not args:
         return e
     return e._evaluated(args)
@@ -313,19 +428,3 @@ _SYMPY_NAMED_RULES: dict[str, frozenset[str]] = {
         'Sech', 'Sinh', 'Tanh', 'UpperGamma'}),
     'intractable': frozenset({'BesselIs', 'BesselKs', 'Eis', 'Erfs', 'LogGamma'}),
 }
-
-
-def _sympy_may_rewrite(e: Basic, target: type) -> bool:
-    """Whether SymPy has a rule rewriting the node into ``target`` (its
-    ``_eval_rewrite_as_<target>``): only then is the bridge asked. Wrapped
-    foreign nodes and the classes not in the table are asked always."""
-    from ._rewrite_rules import OWN_REWRITE, REWRITE_TARGETS
-    from .function import DefinedFunction
-    if e._is_foreign_node():
-        return True
-    name = type(e).__name__
-    if name in OWN_REWRITE or name not in REWRITE_TARGETS:
-        return True
-    if not issubclass(target, DefinedFunction):
-        return False  # the bridge rewrites only into functions with a SymPy class
-    return target.function_name in REWRITE_TARGETS[name]
