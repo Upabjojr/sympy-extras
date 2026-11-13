@@ -31,8 +31,8 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import (Callable, Final, Iterable, Iterator, Literal, Mapping, Optional, Protocol, TYPE_CHECKING, Union,
-    overload)
+from typing import (Callable, Final, Iterable, Iterator, Literal, Mapping, Optional, Protocol, SupportsIndex,
+    TYPE_CHECKING, Union, overload)
 
 from .kind import Kind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, CompareItem, CompareKey, SortKey, class_rank
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from .symbol import Dummy, Symbol
 
 __all__ = ['Basic', 'Atom', 'preorder_traversal', 'SubsValue', 'SubsMapping', 'SubsRules',
-    'SubsArg', 'ReplacementRule', 'MatchDict', 'Query', 'Replacement']
+    'SubsArg', 'ReplacementRule', 'MatchDict', 'Query', 'Replacement', 'register_singleton']
 
 #: a type pattern for :meth:`Basic.atoms` and :meth:`Basic.has`
 TypePattern = type['Basic']
@@ -70,6 +70,26 @@ Query = Union['Basic', type['Basic'], 'FunctionClass', Callable[['Basic'], bool]
 Replacement = Union['Basic', 'FunctionClass', Callable[..., 'Basic']]
 
 _ONE_KEY = Fraction(1)
+
+#: the unique instances of the classes whose nodes are compared by
+#: identity (``cond is true``, ``e is oo``), by class
+_SINGLETONS: dict[type['Basic'], 'Basic'] = {}
+
+#: the slots which are not pickled: the hash, which depends on the hash
+#: seed of the process (``PYTHONHASHSEED``), and the lazily filled caches
+_UNPICKLED: Final[frozenset[str]] = frozenset({'_hash', '_compare_key_cache', '_sort_key_cache', '_facts_cache'})
+
+
+def register_singleton(node: 'Basic') -> None:
+    """Make ``node`` the unique instance of its class for pickling: an
+    unpickled node of that class is ``node`` itself, so that the tests of
+    identity (``cond is true``) still hold."""
+    _SINGLETONS[type(node)] = node
+
+
+def _singleton(cls: type['Basic']) -> 'Basic':
+    """The registered instance of ``cls`` (the unpickling of a singleton)."""
+    return _SINGLETONS[cls]
 
 
 class ReplacementRule(Protocol):
@@ -242,6 +262,38 @@ class Basic:
 
     def __hash__(self) -> int:
         return self._hash
+
+    # ------------------------------------------------------------------
+    # pickling
+
+    def __reduce_ex__(self, protocol: SupportsIndex) -> Union[str, tuple[object, ...]]:
+        # a singleton is unpickled as the registered instance (the bug: an
+        # unpickled Piecewise had a last condition which was not ``true``
+        # itself, so that its last pair was no longer the default one)
+        if type(self) in _SINGLETONS:
+            return (_singleton, (type(self),))
+        reduced = super().__reduce_ex__(protocol)
+        # the slots without the hash and the caches: the hash is computed
+        # again in the process which unpickles the node (the bug: a node
+        # pickled under one hash seed kept its hash under another, and was
+        # not found in a dict or a set there)
+        if isinstance(reduced, tuple) and len(reduced) >= 3:
+            state = reduced[2]
+            if isinstance(state, tuple) and len(state) == 2 and isinstance(state[1], dict):
+                slots = {name: value for name, value in state[1].items() if name not in _UNPICKLED}
+                return reduced[:2] + ((state[0], slots),) + reduced[3:]
+        return reduced
+
+    def __setstate__(self, state: object) -> None:
+        if isinstance(state, tuple) and len(state) == 2:
+            for part in state:
+                if isinstance(part, dict):
+                    for name, value in part.items():
+                        object.__setattr__(self, name, value)
+        object.__setattr__(self, '_hash', self._compute_hash())
+        object.__setattr__(self, '_compare_key_cache', None)
+        object.__setattr__(self, '_sort_key_cache', None)
+        self._after_init()
 
     # ------------------------------------------------------------------
     # printing

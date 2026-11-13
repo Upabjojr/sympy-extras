@@ -86,7 +86,6 @@ from sympy_extras.core.exprtools import factor_terms
 from sympy_extras.core.function import expand, expand_mul, expand_power_base, expand_trig
 from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanFunction, BooleanLike, Or, and_, false, or_,
                                      to_boolean, true)
-from sympy_extras.core.matching import match
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import I, Infinity, Integer, NegativeInfinity, Rational, oo, pi
 from sympy_extras.core.power import Pow, sqrt
@@ -1192,40 +1191,6 @@ def _int0oo(g1: MeijerG, g2: MeijerG, x: Symbol) -> Expr:
 # ---------------------------------------------------------------------------
 # the rewriting as G-functions
 
-def _match(f: Expr, pattern: Expr) -> Optional[MatchDict]:
-    """The bindings of ``pattern`` for ``f``: the matcher of the core, and
-    for a product the factors matched one by one, the bindings substituted
-    into the factors left (the matcher misses ``z`` against ``p*z**q`` with
-    ``p`` bound to 1)."""
-    found = f.match(pattern)
-    if found is not None:
-        return found
-    if not isinstance(pattern, Mul) or not isinstance(f, Mul):
-        return None
-    patterns = list(Mul.make_args(pattern))
-    factors = list(Mul.make_args(f))
-    if len(patterns) != len(factors):
-        return None
-
-    def assign(i: int, used: frozenset[int], bindings: MatchDict) -> Optional[MatchDict]:
-        if i == len(patterns):
-            return bindings
-        pat = _expr(patterns[i]._xreplace_evaluated(bindings)) if bindings else patterns[i]
-        for j, factor_ in enumerate(factors):
-            if j in used:
-                continue
-            m = match(factor_, pat)
-            if m is None:
-                continue
-            merged = dict(bindings)
-            merged.update(m)
-            result = assign(i + 1, used | {j}, merged)
-            if result is not None:
-                return result
-        return None
-    return assign(0, frozenset(), {})
-
-
 def _polar_binding(value: Basic) -> Basic:
     """A binding with its numbers lifted to polar ones and its exponents
     unpolarified (SymPy's ``unpolarify(polarify(to, lift=True),
@@ -1242,7 +1207,7 @@ def _rewrite_table(f: Expr, x: Symbol) -> Optional[Rewriting]:
     if entries is None:
         return None
     for entry in entries:
-        matched = _match(fz, entry.formula)
+        matched = fz.match(entry.formula)
         if not matched:
             continue
         subs: MatchDict = {k: _polar_binding(v) for k, v in matched.items()}

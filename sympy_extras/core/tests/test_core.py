@@ -327,6 +327,47 @@ def test_pattern_matching() -> None:
     assert result == x + y + 3 and mapping[x] == x + 1  # the rebuilt sum matches too, as in SymPy
 
 
+def test_a_product_pattern_with_a_bound_wild() -> None:
+    # the bug: z against p*z**q with p bound to 1 gave None, the 1 being
+    # looked for among the factors of z (meijerint matched its table
+    # factor by factor instead)
+    from sympy_extras.core import Wild
+    from sympy_extras.core.matching import match
+    p, q = Wild('p'), Wild('q')
+    assert match(z, p * z**q, {p: Integer(1)}) == {p: 1, q: 1}
+    assert match(z**3, p * z**q, {p: Integer(1)}) == {p: 1, q: 3}
+    assert match(2 * z, p * z**q, {p: Integer(2)}) == {p: 2, q: 1}
+    assert match(x * y * z, p * z**q, {p: x * y}) == {p: x * y, q: 1}
+    assert match(z, p * z**q, {p: Integer(2)}) is None
+    # a sum with a bound wild, bound to the identity
+    assert match(z, p + z**q, {p: Integer(0)}) == {p: 0, q: 1}
+
+
+def test_pickling_keeps_singletons_and_hashes() -> None:
+    # the bug: an unpickled Piecewise had a last condition which was a new
+    # BooleanTrue, not true itself, so that every test of identity (cond
+    # is true) failed on it; and a node kept the hash of the process which
+    # pickled it, wrong under another hash seed
+    import os
+    import pickle
+    import subprocess
+    import sys
+    from sympy_extras.functions import Piecewise
+    from sympy_extras.functions.elementary.piecewise import ExprCondPair
+    pw = Piecewise((x, x > 1), (x**2, True))
+    back = pickle.loads(pickle.dumps(pw))
+    assert back == pw and all(isinstance(pair, ExprCondPair) for pair in back.args)
+    assert back.args[-1].cond is true and pickle.loads(pickle.dumps(false)) is false
+    assert all(pickle.loads(pickle.dumps(c)) is c for c in (oo, zoo, nan, pi, E, I))
+    assert pickle.loads(pickle.dumps(x + 2*y)) == x + 2*y
+    code = ('import pickle, sys; from sympy_extras.core import Symbol; from sympy_extras.functions import Piecewise; '
+            'x = Symbol("x"); sys.stdout.buffer.write(pickle.dumps(Piecewise((x, x > 1), (x**2, True))))')
+    env = dict(os.environ, PYTHONHASHSEED='1' if os.environ.get('PYTHONHASHSEED') == '2' else '2')
+    data = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, check=True).stdout
+    other = pickle.loads(data)
+    assert other == pw and hash(other) == hash(pw) and other in {pw}
+
+
 def test_mod() -> None:
     from sympy_extras.core import Mod, mod
     assert Mod(7, 3).args == (Integer(7), Integer(3)) and Mod(7, 3).doit() == 1 and mod(7, 3) == 1

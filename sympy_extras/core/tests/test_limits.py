@@ -74,3 +74,16 @@ def test_logarithms_of_products_cancel_in_the_leading_term() -> None:
     e = -a*(-I*log(-I*a + r)/2 + I*log(I*a + r)/2)
     from sympy_extras.core.numbers import pi
     assert limit(e, t, 0, '+') == -pi*a/4
+
+
+def test_a_step_away_from_its_jump() -> None:
+    # the bug (SymPy 1.14's too): limit(Heaviside(x - 1), x, 0, '+') and
+    # E*Heaviside(x - 1) did not finish, gruntz expanding the step at -1,
+    # whose Taylor terms are all zero, ever further
+    from sympy_extras.core import E, Integer
+    from sympy_extras.functions import Heaviside
+    assert limit(E * Heaviside(X - 1), X, Integer(0), '+') == 0
+    assert limit(Heaviside(X - 1), X, Integer(0), '-') == 0
+    assert limit(X * Heaviside(X - 1), X, Integer(2), '-') == 2
+    assert limit(Heaviside(1 / X), X, Integer(0), '-') == 0
+    assert limit(Heaviside(1 / X), X, Integer(0), '+') == 1

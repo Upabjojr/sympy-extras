@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Final, Iterable, TYPE_CHECKING, Union
 
-from .basic import Atom, Basic
+from .basic import Atom, Basic, register_singleton
 from .kind import BooleanKind, Kind
 from .operations import LatticeOp
 from .sorting import ClassKey
@@ -193,6 +193,8 @@ class BooleanFalse(BooleanAtom):
 
 true = BooleanTrue()
 false = BooleanFalse()
+register_singleton(true)
+register_singleton(false)
 
 
 class BooleanFunction(Boolean):

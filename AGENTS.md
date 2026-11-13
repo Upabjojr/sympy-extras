@@ -241,7 +241,8 @@ sympy_extras/
                              native Order, series driver and limits (order.py, series.py, gruntz.py, limits.py; per-class _eval_nseries and
                              _eval_as_leading_term, SymPy's per node for the functions not ported),
                              factor_terms, a native rewrite (rewriting.py), SymPy's order of the arguments, to_sympy/from_sympy with generic wrappers
-                             of any SymPy object; see docs/core.md
+                             of any SymPy object; nodes pickle with their hash recomputed and the singletons
+                             (register_singleton: true, false, oo, pi, ...) unpickled as themselves; see docs/core.md
     concrete/                summation algorithms extending sympy.concrete
         _evalf.py            evalf_sum, hypsum: the numerical values of sums (native), PORTED FROM SYMPY
         pisigma.py           PiSigmaField: the tower, sigma, the parameterized first order solver (typed, no SymPy)
@@ -339,7 +340,8 @@ sympy_extras/
                              discontinuity (native: the native solve, ask and limits; the antiderivative a typed step,
                              AntiderivativeStep, by default the native radical table, elementary_antiderivative (polynomials
                              in elementary functions by the native manualintegrate and heuristics) and the verified methods
-                             of the native indefinite), PORTED FROM SYMPY (singularities)
+                             of the native indefinite), PORTED FROM SYMPY (singularities); generic_antiderivative: the
+                             generic branch of cases at isolated values of the parameters (the driver writes their cases)
         antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
                              (native: the native series, limits, summation, guessing, gammasimp, hyperexpand;

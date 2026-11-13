@@ -124,6 +124,14 @@ def _match_assoc(expr: Expr, pattern: Expr, bindings: MatchDict, exact: bool, so
     from .numbers import Integer, Number
     from .sorting import default_sort_key
     from .symbol import Wild
+    if any(isinstance(p, Wild) and p in bindings for p in pattern.args):
+        # the wilds bound already are replaced by their values and the
+        # pattern evaluated (the bug: z against p*z**q with p bound to 1
+        # gave nothing, the 1 being looked for among the factors of z)
+        substituted = _combine([_as_expr(bindings[p]) if isinstance(p, Wild) and p in bindings else _as_expr(p)
+                                for p in pattern.args], is_add)
+        yield from _matches(expr, substituted, bindings, exact, solve)
+        return
     if not is_add:
         # PORTED FROM SYMPY: sympy/core/mul.py:Mul._matches_simple: a number
         # times a single factor matches that factor against expr divided

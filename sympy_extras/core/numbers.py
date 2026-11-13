@@ -38,7 +38,7 @@ from typing import Final, Iterable, Optional, TYPE_CHECKING, Union
 
 import mpmath
 
-from .basic import Basic
+from .basic import Basic, register_singleton
 from .expr import AtomicExpr, Expr, ExprLike, to_expr
 from .sorting import ClassKey, CompareItem, SortKey
 
@@ -687,6 +687,8 @@ RealNumber = Float
 oo = Infinity()
 zoo = ComplexInfinity()
 nan = NaN()
+for _constant in (pi, E, EulerGamma, Catalan, GoldenRatio, TribonacciConstant, I, oo, zoo, nan):
+    register_singleton(_constant)
 
 
 def number_add(a: Number, b: Number) -> Number:

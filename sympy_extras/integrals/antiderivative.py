@@ -90,11 +90,11 @@ from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
 from sympy_extras.core.function import Application, expand
 from sympy_extras.core.limits import Limit
-from sympy_extras.core.logic import Boolean, to_boolean, true
+from sympy_extras.core.logic import And, Boolean, Or, to_boolean, true
 from sympy_extras.core.mul import Mul
 from sympy_extras.core.numbers import Integer, Rational, nan, oo, pi, zoo
 from sympy_extras.core.power import Pow, sqrt
-from sympy_extras.core.relational import Relational
+from sympy_extras.core.relational import Eq, Relational
 from sympy_extras.core.singleton import S
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.functions.elementary.complexes import Abs, Im, Sign, abs_, im
@@ -114,6 +114,7 @@ from .conditions import ConditionalValue, sample_values
 
 __all__ = ['AntiderivativeStep', 'antiderivative', 'elementary_antiderivative', 'elementary_polynomial', 'quick_shape', 'by_parts_shape',
            'singularities', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch',
+           'generic_antiderivative',
            'real_logarithms', 'principal_value_integral', 'finite_part_integral']
 
 
@@ -654,6 +655,47 @@ def select_branch(F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions
             return None
         result = as_expr(result._xreplace_evaluated({node: chosen}))
     return result
+
+
+def _equalities_of_parameters(condition: Boolean, x: Symbol) -> bool:
+    """Whether ``condition`` is built of equations (``Eq(b, 0)``,
+    ``Eq(a, b) & Eq(b, 0)``) free of ``x``: it holds on a set of measure
+    zero of the parameters."""
+    if condition.has(x):
+        return False
+    if isinstance(condition, Eq):
+        return True
+    if isinstance(condition, (And, Or)):
+        return all(isinstance(c, Boolean) and _equalities_of_parameters(c, x) for c in condition.args)
+    return False
+
+
+def generic_antiderivative(F: Expr, x: Symbol) -> Expr:
+    """``F`` with each ``Piecewise`` whose cases before the last are
+    isolated values of the parameters (``Eq(b, 0)``) replaced by its
+    last, generic branch: the antiderivative for the generic values of
+    the parameters, whose isolated values the definite driver gives cases
+    of their own (:mod:`sympy_extras._special_values`).
+
+    >>> from sympy_extras.core import symbols, Eq
+    >>> from sympy_extras.functions import Piecewise, sin
+    >>> from sympy_extras.integrals.antiderivative import generic_antiderivative
+    >>> x, b = symbols('x b')
+    >>> generic_antiderivative(x/2 - Piecewise((x, Eq(b, 0)), (sin(2*b*x)/(2*b), True))/2, x)
+    x/2 - sin(2*b*x)/(4*b)
+    """
+    replacement: dict[Basic, Basic] = {}
+    for node in F.atoms(Piecewise):
+        pairs = [pair for pair in node.args if isinstance(pair, ExprCondPair)]
+        if len(pairs) != len(node.args) or len(pairs) < 2 or pairs[-1].cond is not true:
+            continue
+        if all(_equalities_of_parameters(pair.cond, x) for pair in pairs[:-1]):
+            replacement[node] = pairs[-1].expr
+    if not replacement:
+        return F
+    generic = as_expr(F._xreplace_evaluated(replacement))
+    # a nested Piecewise of the same kind inside a generic branch
+    return generic if generic == F else generic_antiderivative(generic, x)
 
 
 def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
