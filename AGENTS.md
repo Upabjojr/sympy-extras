@@ -355,7 +355,8 @@ sympy_extras/
                              AntiderivativeStep, by default the native radical table, elementary_antiderivative (polynomials
                              in elementary functions by the native manualintegrate and heuristics) and the verified methods
                              of the native indefinite), PORTED FROM SYMPY (singularities); generic_antiderivative: the
-                             generic branch of cases at isolated values of the parameters (the driver writes their cases)
+                             generic branch of cases at isolated values of the parameters (the driver writes their cases);
+                             continuous_at (continuity at a symbolic point by the tree), cancelled_logarithms
         antiderivative_sympy.py the SymPy face of antiderivative, used by definite and series
         brackets.py          Ramanujan's master theorem and the method of brackets (Mellin transforms from series)
                              (native: the native series, limits, summation, guessing, gammasimp, hyperexpand;

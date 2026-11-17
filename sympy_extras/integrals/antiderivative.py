@@ -88,7 +88,7 @@ from sympy_extras.core.accumbounds import AccumBounds
 from sympy_extras.core.add import Add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
-from sympy_extras.core.function import Application, expand
+from sympy_extras.core.function import Application, count_ops, expand
 from sympy_extras.core.limits import Limit
 from sympy_extras.core.logic import And, Boolean, Or, to_boolean, true
 from sympy_extras.core.mul import Mul
@@ -99,8 +99,8 @@ from sympy_extras.core.singleton import S
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.functions.elementary.complexes import Abs, Im, Sign, abs_, im
 from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
-from sympy_extras.functions.elementary.hyperbolic import (Acoth, Acsch, Asech, Atanh, Cosh, Coth, Csch, Sech, Sinh,
-                                                          Tanh, cosh, sinh)
+from sympy_extras.functions.elementary.hyperbolic import (Acoth, Acsch, Asech, Asinh, Atanh, Cosh, Coth, Csch, Sech,
+                                                          Sinh, Tanh, cosh, sinh)
 from sympy_extras.functions.elementary.piecewise import ExprCondPair, Piecewise
 from sympy_extras.functions.elementary.trigonometric import Acot, Atan, Cos, Cot, Csc, Sec, Sin, Tan, cos, sin
 from sympy_extras.functions.special.delta_functions import Heaviside
@@ -113,7 +113,7 @@ from sympy_extras.simplify.powsimp import powsimp
 from .conditions import ConditionalValue, sample_values
 
 __all__ = ['AntiderivativeStep', 'antiderivative', 'elementary_antiderivative', 'elementary_polynomial', 'quick_shape', 'by_parts_shape',
-           'singularities', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'select_branch',
+           'singularities', 'discontinuities', 'antiderivative_integral', 'one_sided_limit', 'continuous_at', 'cancelled_logarithms', 'select_branch',
            'generic_antiderivative',
            'real_logarithms', 'principal_value_integral', 'finite_part_integral']
 
@@ -698,6 +698,65 @@ def generic_antiderivative(F: Expr, x: Symbol) -> Expr:
     return generic if generic == F else generic_antiderivative(generic, x)
 
 
+#: the functions continuous at every complex argument, and those
+#: continuous at every real one (their branch points off the real line)
+_ENTIRE: Final[tuple[type[Basic], ...]] = (Exp, Sin, Cos, Sinh, Cosh)
+_CONTINUOUS_ON_REALS: Final[tuple[type[Basic], ...]] = (Atan, Tanh, Asinh)
+
+
+def continuous_at(F: Expr, x: Symbol, point: Expr, assumptions: Assumptions = None) -> bool:
+    """Whether ``F``, as a function of a real ``x``, is proved continuous
+    at ``x = point`` under the assumptions, by its tree: sums, products,
+    ``Abs``, the entire functions, ``atan``, ``tanh`` and ``asinh`` of a
+    real argument, integer powers of a base nonzero at the point, other
+    powers and logarithms of a base positive there, ``log(Abs(u))`` with
+    ``u`` nonzero there. Anything else is not claimed (``False``).
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import log, abs_
+    >>> from sympy_extras.integrals.antiderivative import continuous_at
+    >>> x, a = symbols('x a')
+    >>> continuous_at(log(abs_(x - 1)), x, a, a > 1), continuous_at(log(abs_(x - 1)), x, a, a > 0)
+    (True, False)
+    """
+    def nonzero(u: Expr) -> bool:
+        at = u.subs(x, point)
+        return ask(at > 0, assumptions) is True or ask(at < 0, assumptions) is True
+
+    def positive(u: Expr) -> bool:
+        return ask(u.subs(x, point) > 0, assumptions) is True
+
+    def real(u: Expr) -> bool:
+        return ask(element(u.subs(x, point), Reals), assumptions) is True
+
+    def continuous(e: Expr) -> bool:
+        if not e.has(x) or e == x:
+            return True
+        if isinstance(e, (Add, Mul)):
+            return all(continuous(as_expr(arg)) for arg in e.args)
+        if isinstance(e, Pow):
+            base, exponent = e.base, e.exp
+            if not continuous(base) or not continuous(exponent):
+                return False
+            if exponent.has(x) or not isinstance(exponent, Integer):
+                return positive(base)
+            return exponent.is_nonnegative is True or nonzero(base)
+        if not isinstance(e, Application) or len(e.args) != 1:
+            return False
+        u = as_expr(e.args[0])
+        if not continuous(u):
+            return False
+        if isinstance(e, (Abs,) + _ENTIRE):
+            return True
+        if isinstance(e, _CONTINUOUS_ON_REALS):
+            return real(u)
+        if isinstance(e, Log):
+            return nonzero(as_expr(u.args[0])) if isinstance(u, Abs) else positive(u)
+        return False
+
+    return continuous(F)
+
+
 def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
                     assumptions: Assumptions = None) -> Optional[Expr]:
     """``lim F(x)`` as ``x`` tends to ``point`` from the side ``'+'`` or
@@ -717,6 +776,12 @@ def one_sided_limit(F: Expr, x: Symbol, point: Expr, direction: str,
     """
     if point == oo or point == -oo:
         value = attempt(lambda: limit(F, x, point, assumptions=assumptions), settings.timeout, native=True)
+    elif not point.is_number and continuous_at(F, x, point, assumptions):
+        # a symbolic point at which F is continuous: its value there,
+        # without the limit (the series of the limit at a symbolic point
+        # took seconds for log(Abs(x - 1)) at x = a with a > 1, and the
+        # cases of 1/(x**2 - 1) over (a, b) ran out of their budget)
+        value = F.subs(x, point)
     else:
         value = attempt(lambda: limit(F, x, point, direction, assumptions=assumptions), settings.timeout,
                         native=True)
@@ -751,9 +816,40 @@ def _prepared(f: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions, la
         F = antiderivative(f, x, assumptions, late)
     if F is None:
         return None
+    F = cancelled_logarithms(F, x)
     if F.has(Piecewise):
         return select_branch(F, x, a, b, assumptions)
     return F
+
+
+def cancelled_logarithms(F: Expr, x: Symbol) -> Expr:
+    """``F`` with the rational arguments of its logarithms in ``x``
+    cancelled when that makes them smaller: the same function, whose
+    singularities the solver and ``ask`` find at once (the rational
+    integrator's ``log(x - a/2 - b/2 + (a - b)/2)`` for ``1/((x - a)*(x -
+    b))`` with ``a < b`` is ``log(x - b)``, and the cases of the integral
+    over ``(0, 1)`` ran out of their budget on the first form).
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import log
+    >>> from sympy_extras.integrals.antiderivative import cancelled_logarithms
+    >>> x, a, b = symbols('x a b')
+    >>> cancelled_logarithms(log(x - a/2 - b/2 - (-a**2/2 + a*b - b**2/2)/(a - b)), x)
+    log(-b + x)
+    """
+    def query(node: Basic) -> bool:
+        return isinstance(node, Log) and node.has(x) and as_expr(node.args[0]).is_rational_function(x) is True
+
+    def value(node: Basic) -> Basic:
+        argument = as_expr(node.args[0])
+        cancelled = cancel(argument)
+        return log(cancelled) if _ops(cancelled) < _ops(argument) else node
+
+    return as_expr(F.replace(query, value))
+
+
+def _ops(e: Expr) -> int:
+    return int(as_expr(count_ops(e)))
 
 
 def _cut_points(f: Expr, F: Expr, x: Symbol, a: Expr, b: Expr, assumptions: Assumptions) -> Optional[list[Expr]]:
