@@ -26,12 +26,12 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Final, Optional, Union
+from typing import Final, Optional
 
 from .basic import Basic, NodePrinter
 from .expr import Expr, ExprLike, as_expr, to_expr
 from .kind import Kind, NumberKind
-from .numbers import ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, nan, oo, zoo
+from .numbers import ComplexInfinity, Infinity, Integer, NegativeInfinity, nan, oo, zoo
 from .sorting import ClassKey
 
 __all__ = ['AccumBounds', 'AccumulationBounds', 'accum_bounds']

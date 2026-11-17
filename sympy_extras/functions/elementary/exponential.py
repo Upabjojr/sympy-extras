@@ -513,7 +513,6 @@ class Log(DefinedFunction):
         from sympy_extras.core.series import _less
         from sympy_extras.core.symbol import Dummy, Wild
         from sympy_extras.functions.elementary.complexes import im
-        from sympy_extras.functions.special.delta_functions import heaviside
         from sympy_extras.simplify.simplify import logcombine
         arg = self.args[0]
         if arg == x:

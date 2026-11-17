@@ -768,7 +768,6 @@ def factor_nc(expr: ExprLike) -> Expr:
             if not args[0][1]:
                 break
             b, ex = args[0][1][0].as_base_exp()
-            ok = False
             if isinstance(ex, Integer):
                 least = ex.p
                 for t in args:
@@ -780,7 +779,7 @@ def factor_nc(expr: ExprLike) -> Expr:
                     else:
                         break
                 else:
-                    ok = hit = True
+                    hit = True
                     lft = pow(b, Integer(least))
                     il = pow(b, Integer(-least))
                     for t in args:

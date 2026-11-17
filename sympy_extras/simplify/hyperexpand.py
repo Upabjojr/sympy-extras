@@ -2056,7 +2056,7 @@ def hyperexpand(f: ExprLike, allow_hyper: bool = False, rewrite: Rewrite = 'defa
     """
     from sympy_extras.core.containers import Tuple
     from sympy_extras.core.numbers import nan, oo, zoo
-    from sympy_extras.functions.special.hyper import Hyper, MeijerG, hyper, meijerg
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG, meijerg
     e = to_expr(f)
 
     def tup(b: Basic) -> list[Expr]:

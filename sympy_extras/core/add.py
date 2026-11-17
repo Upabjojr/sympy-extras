@@ -131,7 +131,7 @@ class Add(AssocOp):
     # PORTED FROM SYMPY: sympy/core/add.py:Add._eval_as_leading_term
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         from .function import _expand_logs, expand_mul
-        from .order import Order, order
+        from .order import order
         from .symbol import Dummy, Symbol as _Symbol
         from sympy_extras.functions.elementary.exponential import Log, log
         from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise_fold

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-import sympy
 import sympy.functions.special.hyper as sympy_hyper
 
 from sympy_extras.core import I, Rational, Symbol, pi

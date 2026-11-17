@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import mpmath
 
-from typing import Callable, Iterable, Optional
+from typing import Iterable, Optional
 
 
 from .expr import Expr

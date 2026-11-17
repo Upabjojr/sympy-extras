@@ -237,7 +237,7 @@ def refine_Pow(expr: Expr, assumptions: Boolean) -> Optional[Basic]:
 # PORTED FROM SYMPY: sympy/assumptions/refine.py:refine_atan2
 def refine_atan2(expr: Expr, assumptions: Boolean) -> Optional[Basic]:
     from .ask import Q
-    from .numbers import Integer, nan, pi
+    from .numbers import nan, pi
     from sympy_extras.functions.elementary.trigonometric import atan
     y, x = expr.args
     if not (isinstance(y, Expr) and isinstance(x, Expr)):

@@ -230,7 +230,7 @@ def _order(expr: Expr, given: tuple[tuple[Symbol, Expr], ...], explicit: bool) -
     from .add import Add, add
     from .function import Application, expand_log, expand_power_base
     from .mul import Mul, mul
-    from .numbers import ImaginaryUnit, Infinity, NaN, NegativeInfinity, nan
+    from .numbers import Infinity, NaN, NegativeInfinity, nan
     from .power import Pow, pow
     from .sorting import default_sort_key
     from .symbol import Dummy
@@ -498,7 +498,6 @@ def _contains(self: Order, expr: Expr) -> Optional[bool]:
 
 # PORTED FROM SYMPY: sympy/series/order.py:Order._eval_subs
 def _subs_variable(self: Order, old: Symbol, new: Expr) -> Optional[Expr]:
-    from .function import Subs
     from .symbol import Dummy
     if old not in self.variables:
         return None
@@ -544,7 +543,6 @@ def _solve_for(equation: Expr, d: Symbol) -> Optional[Expr]:
     ``d``, from the roots in radicals when it is rational in ``d``, by the
     native ``solveset`` otherwise (by the foreign one only for an
     equation with wrapped foreign nodes)."""
-    from .add import add
     from .mul import mul
     from .power import pow
     from .function import diff

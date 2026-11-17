@@ -25,6 +25,7 @@ x + x
 """
 from __future__ import annotations
 
+import importlib
 import re
 from typing import Callable, Optional, Union
 
@@ -230,7 +231,7 @@ _CLASSES: dict[str, type[DefinedFunction]] = {}
 
 def _classes_by_name() -> dict[str, type[DefinedFunction]]:
     if not _CLASSES:
-        import sympy_extras.functions  # noqa: F401 (the classes register by being defined)
+        importlib.import_module('sympy_extras.functions')  # the classes register by being defined
 
         def walk(c: type) -> None:
             for s in c.__subclasses__():
