@@ -60,7 +60,7 @@ _NODE_RULES: dict[tuple[type, str], NodeRule] = {}
 #: the SymPy names of the native classes whose name differs from SymPy's
 _SYMPY_NAMES: dict[str, str] = {
     'Hyper': 'hyper', 'MeijerG': 'meijerg', 'AppellF1': 'appellf1', 'GoldenRatioType': 'GoldenRatio',
-    'TribonacciConstantType': 'TribonacciConstant', 'PointSet': 'FiniteSet'}
+    'TribonacciConstantType': 'TribonacciConstant', 'PointSet': 'FiniteSet', 'SetOfSets': 'FiniteSet'}
 
 
 def target_name(target: RewriteTarget) -> str:

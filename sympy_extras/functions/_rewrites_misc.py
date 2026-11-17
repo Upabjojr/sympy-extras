@@ -8,11 +8,18 @@ typed tables for :func:`sympy_extras.core.rewriting.rewrite`. Ported from
 the ``_eval_rewrite_as_<name>`` methods of SymPy's classes (the modules
 are listed below).
 
-Left out: ``Piecewise._eval_rewrite_as_ITE`` and
-``ITE._eval_rewrite_as_Piecewise`` (they need a piecewise function with
-boolean values, which the native ``Piecewise``, an expression, cannot
-hold), ``FiniteSet._eval_rewrite_as_PowerSet`` (there is no native
-``PowerSet``).
+``Piecewise.rewrite(ITE)`` needs values which are truth values (symbols,
+which are both); ``ITE.rewrite(Piecewise)`` needs branches which are
+expressions (symbols again): the native ``Piecewise`` is an expression
+and holds no truth values, where SymPy's holds both (the rules do not
+apply then). ``PowerSet.rewrite(FiniteSet)`` gives the finite set of the
+subsets (a :class:`~sympy_extras.sets.sets.SetOfSets`), which
+``rewrite(PowerSet)`` turns back into the power set. Two SymPy bugs are
+not ported: a condition which is a symbol is not the universal set (SymPy
+rewrites ``Piecewise((a, p), (b, True))`` as ``a``), and a finite set of
+sets is a power set only if it has ``2**n`` elements for the largest of
+them with ``n`` elements (SymPy rewrites ``{EmptySet, {1}, {2}, {3}}`` as
+``PowerSet({1})``).
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py, sympy/functions/elementary/trigonometric.py
@@ -20,11 +27,13 @@ hold), ``FiniteSet._eval_rewrite_as_PowerSet`` (there is no native
 # sympy/core/mod.py, sympy/functions/elementary/piecewise.py, sympy/functions/special/delta_functions.py,
 # sympy/functions/special/singularity_functions.py, sympy/functions/special/tensor_functions.py,
 # sympy/logic/boolalg.py, sympy/core/relational.py, sympy/concrete/summations.py,
-# sympy/concrete/products.py (the _eval_rewrite_as_<name> methods) (SymPy 1.14)
+# sympy/concrete/products.py, sympy/sets/powerset.py, sympy/sets/sets.py (FiniteSet), Boolean.as_set
+# and the _eval_as_set methods of sympy/logic/boolalg.py (the _eval_rewrite_as_<name> methods) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; tables keyed by (class, target) in place of methods; the
-# rules of the nodes which are not expressions take and give any node.
+# rules of the nodes which are not expressions take and give any node;
+# the sets of the conditions by the native solveset; two SymPy bugs fixed.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -38,6 +47,7 @@ from sympy_extras.core.mul import mul, neg
 from sympy_extras.core.numbers import I, Integer, Rational
 from sympy_extras.core.rewriting import NodeRule, RewriteHints, Rule, RuleKey
 from sympy_extras.core.symbol import Symbol
+from sympy_extras.sets.sets import Set
 
 __all__ = ['rules', 'node_rules']
 
@@ -545,17 +555,175 @@ def _product_sum(node: Basic, args: tuple[Basic, ...], hints: RewriteHints) -> O
     return exp(sum_(log(node.function), *node.limits))
 
 
+# -- Piecewise and ITE
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:Boolean.as_set, And._eval_as_set, Or._eval_as_set,
+# Not._eval_as_set, ITE._eval_as_set, BooleanTrue.as_set, BooleanFalse.as_set
+def _condition_set(c: Boolean, x: Symbol) -> Set:
+    """The real values of ``x`` where the condition of one variable holds
+    (SymPy's ``as_set``); ``NotImplementedError`` when it is not known (a
+    condition which is a symbol: SymPy's universal set, a bug)."""
+    from sympy_extras.core.logic import ITE, And, BooleanFalse, BooleanTrue, Not, Or
+    from sympy_extras.core.relational import Relational
+    from sympy_extras.logic.boolalg import to_nnf
+    from sympy_extras.sets import ConditionSet, EmptySet, Reals, UniversalSet, complement, intersection, union
+    from sympy_extras.solvers.solveset import solveset
+    if isinstance(c, BooleanTrue):
+        return UniversalSet
+    if isinstance(c, BooleanFalse):
+        return EmptySet
+    if isinstance(c, And):
+        return intersection(*[_condition_set(a, x) for a in c.args])
+    if isinstance(c, Or):
+        return union(*[_condition_set(a, x) for a in c.args])
+    if isinstance(c, Not):
+        return complement(Reals, _condition_set(c.arg, x))
+    if isinstance(c, ITE):
+        return _condition_set(to_nnf(c), x)
+    if isinstance(c, Relational):
+        found = solveset(c, x, Reals)
+        if isinstance(found, ConditionSet):
+            raise NotImplementedError('the set of %s' % (c,))
+        return found
+    raise NotImplementedError('the set of %s' % (c,))
+
+
+def _as_set(c: Boolean) -> Set:
+    """SymPy's ``Boolean.as_set``: conditions of one variable only."""
+    from sympy_extras.core.sorting import ordered
+    free = [s for s in ordered(c.free_symbols) if isinstance(s, Symbol)]
+    if len(free) != 1:
+        raise NotImplementedError('Sorry, as_set has not yet been implemented for multivariate expressions')
+    return _condition_set(c, free[0])
+
+
+def _canonical(b: Boolean) -> Boolean:
+    """SymPy's ``_canonical``: the relations in canonical form."""
+    from sympy_extras.core.logic import to_boolean
+    from sympy_extras.core.relational import Relational
+    reps: dict[Basic, Basic] = {r: r.canonical for r in b.atoms(Relational) if isinstance(r, Relational)}
+    return to_boolean(b._xreplace_evaluated(reps))
+
+
+# PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py:Piecewise._eval_rewrite_as_ITE
+def _piecewise_ite(node: Basic, args: tuple[Basic, ...], hints: RewriteHints) -> Optional[Basic]:
+    from sympy_extras.core.logic import Or, ite
+    from sympy_extras.core.sorting import ordered
+    from sympy_extras.functions.elementary.piecewise import ExprCondPair
+    from sympy_extras.sets import EmptySet, Reals, UniversalSet, union
+    pairs = [p for p in args if isinstance(p, ExprCondPair)]
+    if len(pairs) != len(args):
+        return None
+    items: list[tuple[Boolean, Boolean]] = []
+    for p in pairs:
+        if not isinstance(p.expr, Boolean):
+            return None  # SymPy's TypeError: the values must be truth values
+        items.append((p.expr, p.cond))
+    default = any(c == true for _, c in items)
+    byfree: dict[Symbol, Set] = {}
+    end: Optional[int] = None
+    for i, (_, cond) in enumerate(items):
+        if cond == true:
+            end = i
+            break
+        covers = False
+        for c in cond.args if isinstance(cond, Or) else (cond,):
+            if not isinstance(c, Boolean):
+                return None
+            free = [s for s in ordered(c.free_symbols) if isinstance(s, Symbol)]
+            if not free:
+                return None  # SymPy pops from an empty set
+            x = free[0]
+            byfree.setdefault(x, EmptySet)
+            try:
+                byfree[x] = union(byfree[x], _as_set(c))
+            except NotImplementedError:
+                if not default:
+                    return None  # SymPy's NotImplementedError: multivariate conditions without a default
+            if byfree[x] == UniversalSet or byfree[x] == Reals:
+                # the condition collapses to True
+                covers = True
+                break
+        if covers:
+            end = i
+            break
+    if end is None:
+        return None  # SymPy's ValueError: the conditions do not cover the reals
+    last: Boolean = items[end][0]
+    for a, c in reversed(items[:end]):
+        last = ite(c, a, last)
+    return _canonical(last)
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:ITE._eval_rewrite_as_Piecewise
+def _ite_piecewise(node: Basic, args: tuple[Basic, ...], hints: RewriteHints) -> Optional[Basic]:
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    if len(args) != 3:
+        return None
+    c, a, b = args
+    if isinstance(c, Boolean) and isinstance(a, Expr) and isinstance(b, Expr):
+        return piecewise((a, c), (b, true))
+    if not all(isinstance(t, Boolean) for t in args):
+        # a branch rewritten into a Piecewise beside a branch which is not
+        # an expression: the node as it is (SymPy's Piecewise holds both)
+        return node
+    return None  # the native Piecewise holds expressions only
+
+
+# -- PowerSet and the finite sets of sets
+
+# PORTED FROM SYMPY: sympy/sets/powerset.py:PowerSet._eval_rewrite_as_FiniteSet
+def _powerset_finiteset(node: Basic, args: tuple[Basic, ...], hints: RewriteHints) -> Optional[Basic]:
+    from sympy_extras.sets import PowerSet, finite_elements
+    if not isinstance(node, PowerSet):
+        return None
+    # SymPy's rule looks at the argument of the node, not at the argument
+    # rewritten: PowerSet(PowerSet(EmptySet)) is PowerSet({EmptySet})
+    if finite_elements(node.arg) is None:
+        return None
+    return node.arg.powerset()
+
+
+# PORTED FROM SYMPY: sympy/sets/sets.py:FiniteSet._eval_rewrite_as_PowerSet
+def _finiteset_powerset(node: Basic, args: tuple[Basic, ...], hints: RewriteHints) -> Optional[Basic]:
+    from itertools import combinations
+    from sympy_extras.sets import PowerSet, finite_elements
+    from sympy_extras.sets.sets import _finite_of
+    n = len(args)
+    if not (n and not n & (n - 1)):
+        return None
+    sets: list[Set] = []
+    for a in args:
+        if not isinstance(a, Set) or finite_elements(a) is None:
+            return None
+        sets.append(a)
+    biggest = max(sets, key=lambda s: len(finite_elements(s) or ()))
+    elements = finite_elements(biggest) or ()
+    if n != 2**len(elements):
+        return None  # SymPy's bug: {EmptySet, {1}, {2}, {3}} is not PowerSet({1})
+    for k in range(len(elements) + 1):
+        for sub in combinations(elements, k):
+            if _finite_of(sub) not in sets:
+                return None
+    return PowerSet(biggest)
+
+
 def node_rules() -> dict[RuleKey, NodeRule]:
     """The rules of the nodes which are not expressions, or whose result
     is not one, keyed by (the class of the node, the target)."""
     from sympy_extras.concrete.expr_with_limits import Product, Sum
-    from sympy_extras.core.logic import And, Or, Xor
+    from sympy_extras.core.logic import ITE, And, Or, Xor
     from sympy_extras.core.relational import Eq
     from sympy_extras.functions.elementary.piecewise import Piecewise
     from sympy_extras.functions.special.tensor_functions import KroneckerDeltaNode
+    from sympy_extras.sets import FiniteSet, PointSet, PowerSet, SetOfSets
     table: dict[RuleKey, NodeRule] = {
         (Piecewise, KroneckerDeltaNode): _piecewise_kronecker, (And, 'Nor'): _and_nor, (Or, 'Nand'): _or_nand,
         (Xor, Or): _xor_or, (Xor, And): _xor_and, (Eq, 'Add'): _eq_add, (Sum, Product): _sum_product,
-        (Product, Sum): _product_sum}
+        (Product, Sum): _product_sum, (Piecewise, ITE): _piecewise_ite, (ITE, 'Piecewise'): _ite_piecewise,
+        (PowerSet, 'FiniteSet'): _powerset_finiteset, (SetOfSets, PowerSet): _finiteset_powerset,
+        # the elements of these finite sets are expressions or tuples, never
+        # finite sets: SymPy's rule gives nothing
+        (FiniteSet, PowerSet): _finiteset_powerset, (PointSet, PowerSet): _finiteset_powerset}
     return table
 

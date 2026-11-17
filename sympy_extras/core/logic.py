@@ -21,6 +21,14 @@ References
 .. [1] SymPy Development Team, *SymPy documentation: Boolean algebra*,
        https://docs.sympy.org/latest/modules/logic.html
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/logic/boolalg.py (ITE.__new__, ITE.eval) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the rules of the evaluating function ite, the class ITE
+# never evaluates; no Eq(x, True) (the equations of the core relate
+# expressions). The rest of the module is original.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from typing import Final, Iterable, Union
@@ -600,20 +608,44 @@ def equivalent(*args: BooleanLike) -> Boolean:
     return Equivalent(*sorted(items, key=default_sort_key))
 
 
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:ITE.__new__, ITE.eval
 def ite(condition: BooleanLike, then: BooleanLike, otherwise: BooleanLike) -> Boolean:
-    """The evaluated ``ITE``: the branch chosen by a known condition.
+    """The evaluated ``ITE``, by SymPy's rules: the branch chosen by a
+    known condition, the branch when both are equal, the condition (or its
+    negation) when the branches are ``true`` and ``false``; an equation
+    ``Eq(p, e)`` between a symbol ``p`` used as a truth value in a branch
+    and something else is false (``p`` is ``true`` or ``false``), as in
+    SymPy.
 
     Examples
     ========
 
-    >>> from sympy_extras.core import symbols, ite
+    >>> from sympy_extras.core import symbols, ite, Eq, Ne
     >>> x, y, z = symbols('x y z')
-    >>> ite(x, y, z), ite(x > 0, y, z), ite(1 > 0, y, z)
-    (ITE(x, y, z), ITE(x > 0, y, z), y)
+    >>> ite(x, y, z), ite(x > 0, y, z), ite(1 > 0, y, z), ite(x, y, y)
+    (ITE(x, y, z), ITE(x > 0, y, z), y, y)
+    >>> ite(x, True, False), ite(x > 0, False, True), ite(Eq(y, 2), y, z), ite(Ne(y, 2), y, z)
+    (x, x <= 0, z, y)
     """
+    from .relational import Eq, Ne
     c, a, b = to_boolean(condition), to_boolean(then), to_boolean(otherwise)
-    if isinstance(c, BooleanAtom):
-        return a if c else b
+    if isinstance(c, (Eq, Ne)):
+        # SymPy's binary symbols: an equation of the core never has a truth
+        # value as a side, so a symbol used as a truth value in a branch
+        # equals nothing else (SymPy's `a = false`)
+        binary = a.binary_symbols | b.binary_symbols
+        if len(set(c.args) - binary) == 1:
+            c = true if isinstance(c, Ne) else false
+    if isinstance(c, BooleanTrue):
+        return a
+    if isinstance(c, BooleanFalse):
+        return b
+    if a == b:
+        return a
+    if isinstance(a, BooleanTrue) and isinstance(b, BooleanFalse):
+        return c
+    if isinstance(a, BooleanFalse) and isinstance(b, BooleanTrue):
+        return not_(c)
     return ITE(c, a, b)
 
 

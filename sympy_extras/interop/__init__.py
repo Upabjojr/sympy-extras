@@ -1325,8 +1325,11 @@ def _set_to_sympy(e: Basic, args: list[SymPyBasic], evaluate: bool) -> SymPyBasi
         return sympy.Contains(args[0], args[1], evaluate=False)
     if isinstance(e, native_sets.ProductSet):
         return sympy.ProductSet(*args)
-    if isinstance(e, native_sets.PointSet):
+    if isinstance(e, (native_sets.PointSet, native_sets.SetOfSets)):
         return sympy.FiniteSet(*args, evaluate=evaluate)
+    from sympy_extras.sets.powerset import PowerSet
+    if isinstance(e, PowerSet):
+        return sympy.PowerSet(args[0])
     from sympy_extras.sets.conditionset import ConditionSet
     if isinstance(e, ConditionSet):
         return sympy.ConditionSet(*args)
@@ -1363,6 +1366,15 @@ def _set_from_sympy(e: SymPyBasic) -> Basic:
         points = [from_sympy(a) for a in e.args]
         if all(isinstance(p, Tuple) and all(isinstance(c, Expr) for c in p.args) for p in points):
             return native_sets.PointSet(*[p for p in points if isinstance(p, Tuple)])
+    if isinstance(e, sympy.FiniteSet) and all(isinstance(a, sympy.Set) for a in e.args):
+        elements = [from_sympy(a) for a in e.args]
+        if all(isinstance(a, native_sets.Set) for a in elements):
+            return native_sets.SetOfSets(*[a for a in elements if isinstance(a, native_sets.Set)])
+    if isinstance(e, sympy.PowerSet):
+        from sympy_extras.sets.powerset import PowerSet
+        arg = from_sympy(e.args[0])
+        if isinstance(arg, native_sets.Set):
+            return PowerSet(arg)
     if isinstance(e, sympy.ImageSet) and all(isinstance(v, sympy.Symbol) for v in e.lamda.signature):
         from sympy_extras.sets.fancysets import ImageSet
         image = from_sympy(e.lamda.expr)
@@ -1387,7 +1399,8 @@ def _set_from_sympy(e: SymPyBasic) -> Basic:
         return native_sets.Complement(sets[0], sets[1])
     if isinstance(e, sympy.ProductSet) and len(sets) == len(parts):
         return native_sets.ProductSet(*sets)
-    if isinstance(e, sympy.Contains) and isinstance(parts[0], Expr) and isinstance(parts[1], native_sets.Set):
+    if isinstance(e, sympy.Contains) and isinstance(parts[0], (Expr, native_sets.Set)) \
+            and isinstance(parts[1], native_sets.Set):
         return native_sets.Contains(parts[0], parts[1])
     # a set not ported, or with a part not ported
     if isinstance(e, SymPyBoolean):

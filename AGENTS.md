@@ -575,8 +575,9 @@ sympy_extras/
         hyperexpand.py       hyperexpand: formula tables, shift operators, plans, Slater's theorem (ported from SymPy)
         tests/
     logic/                   propositional logic on the core's Booleans (exports nothing: import the modules)
-        boolalg.py           simplify_logic, SOPform, POSform: minimal two-level forms by Quine-McCluskey (native,
-                             PORTED FROM SYMPY logic/boolalg)
+        boolalg.py           simplify_logic, SOPform, POSform: minimal two-level forms by Quine-McCluskey; to_nnf,
+                             is_nnf, to_cnf, to_dnf, eliminate_implications, distribute_and_over_or, distribute_or_over_and
+                             (the to_nnf methods of the connectives, ITE's too) (native, PORTED FROM SYMPY logic/boolalg)
         boolsimp.py          simplify_boolean, simplify_univariate: SymPy's simplify of Boolean formulas (native, PORTED
                              FROM SYMPY boolalg's _eval_simplify; the univariate intervals computed natively, maximal,
                              or SymPy's from piecewise_intervals (sympy_intervals, for piecewise), endpoints decided on
@@ -622,8 +623,10 @@ sympy_extras/
                              approximants.py: pade, rational_interpolate, series_reversion (Euclid, Lagrange inversion);
                              fouriercoefficients.py: fourier_coefficients, fourier_partial_sum (piecewise polynomials by repeated
                              integration by parts, symbolic index)
-    sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples);
-                             Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py) (ported from SymPy)
+    sets/                    Interval, FiniteSet, Union, Intersection, Complement, Reals, Contains, ProductSet, PointSet (finite sets of tuples),
+                             SetOfSets (finite sets of sets; Contains and Set.contains take a set as the element);
+                             Naturals, Naturals0, Integers, Rationals, Complexes, ImageSet (fancysets.py); ConditionSet (conditionset.py);
+                             PowerSet (powerset.py, Set.powerset) (ported from SymPy)
     ntheory/                 number theory without SymPy: isprime (BPSW), nextprime/prevprime, factorint (Pollard-Brent)
     polys/
         domains/             the typed coefficient domains of the standalone layer (Domain[T]: ZZ, QQ, GF, AlgebraicField, PolynomialRing, FractionField, SparsePolynomialRing with SymPy's PolyElement gcd, RationalPolynomialRing, IteratedPolynomialRing for dmp_rr_prs_gcd, ExpressionDomain EX: expressions of the core, PORTED FROM SYMPY); see docs/dense.md

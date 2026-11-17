@@ -3745,3 +3745,36 @@ def test_native_fps_and_fourier_series_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_FPS_FOURIER], capture_output=True, text=True, timeout=900)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_ITE_POWERSET = r'''
+import sys
+from sympy_extras.core import Basic, ITE, ite, symbols, Eq
+from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
+from sympy_extras.logic.boolalg import to_cnf, to_dnf, to_nnf
+from sympy_extras.sets import EmptySet, FiniteSet, PowerSet, finite_set, set_of_sets
+from sympy_extras.core.bridge import Bridge, bridge
+assert type(bridge()) is Bridge   # no bridge registered
+x, y, z, a, b = symbols('x y z a b')
+assert ite(x, True, False) == x and ite(Eq(y, 2), y, z) == z and ite(x, y, y) == y
+assert str(to_cnf(ITE(x, y, z))) == '(x | z) & (y | ~x)' and str(to_nnf(~ITE(x, y, z))) == '(x | ~z) & (~x | ~y)'
+assert str(to_dnf(ITE(x, y, z), True)) == '(x & y) | (z & ~x)'
+pw = piecewise((a, x > 0), (b, x < 0), (z, True))
+assert str(Basic.rewrite(pw, ITE)) == 'ITE(x > 0, a, ITE(x < 0, b, z))'
+assert str(Basic.rewrite(Basic.rewrite(pw, ITE), Piecewise)) == 'Piecewise((a, x > 0), (Piecewise((b, x < 0), (z, True)), True))'
+p = PowerSet(finite_set(1, 2))
+assert str(Basic.rewrite(p, FiniteSet)) == 'FiniteSet(EmptySet, {1}, {2}, {1, 2})' and len(p) == 4
+assert Basic.rewrite(Basic.rewrite(p, FiniteSet), PowerSet) == p
+assert p.contains(finite_set(1)) and not p.contains(finite_set(3)) and p.is_subset(PowerSet(finite_set(1, 2, 3)))
+assert set_of_sets(EmptySet).contains(EmptySet)
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_ite_and_powerset_do_not_load_sympy() -> None:
+    """``ite``, the normal forms, ``Piecewise`` to ``ITE`` and back,
+    ``PowerSet`` and the finite sets of sets are native (the rewrites were
+    left out: there was no PowerSet, and the ITE rules went nowhere)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_ITE_POWERSET], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

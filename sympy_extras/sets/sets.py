@@ -35,10 +35,11 @@ Examples
 # their own modules, ProductSet has no rules); SymPy's Python sets of
 # arguments are lists without duplicates (deterministic order); Reals is
 # an Interval subclass equal to Interval(-oo, oo), as in SymPy; a finite
-# set of tuples is a PointSet.
+# set of tuples is a PointSet, a finite set of sets a SetOfSets.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
+from itertools import combinations
 from typing import Final, Iterator, Optional, Sequence, Union as TUnion
 
 from sympy_extras.core.basic import Basic, NodePrinter
@@ -51,7 +52,8 @@ from sympy_extras.core.sorting import ClassKey, default_sort_key, ordered
 
 __all__ = ['Set', 'EmptySetClass', 'UniversalSetClass', 'Interval', 'RealsClass', 'FiniteSet', 'Union',
            'Intersection', 'Complement', 'Contains', 'EmptySet', 'UniversalSet', 'Reals', 'interval', 'finite_set',
-           'union', 'intersection', 'complement', 'contains', 'ProductSet', 'product_set', 'PointSet', 'point_set']
+           'union', 'intersection', 'complement', 'contains', 'ProductSet', 'product_set', 'PointSet', 'point_set',
+           'SetOfSets', 'set_of_sets', 'finite_elements']
 
 Truth = Optional[bool]
 
@@ -105,9 +107,15 @@ class Set(Basic):
         return complement(self, other)
 
     # PORTED FROM SYMPY: sympy/sets/sets.py:Set.contains
-    def contains(self, other: ExprLike) -> Boolean:
-        """Whether ``other`` is an element: ``true``, ``false``, a condition
-        or an unevaluated :class:`Contains`."""
+    def contains(self, other: TUnion[ExprLike, Set]) -> Boolean:
+        """Whether ``other`` (an expression or a set) is an element:
+        ``true``, ``false``, a condition or an unevaluated
+        :class:`Contains`."""
+        if isinstance(other, Set):
+            s = self._contains_set(other)
+            if s is None:
+                return Contains(other, self)
+            return s
         element = to_expr(other)
         c = self._contains(element)
         if c is None:
@@ -116,6 +124,31 @@ class Set(Basic):
 
     def _contains(self, other: Expr) -> Optional[Boolean]:
         raise NotImplementedError('%s._contains' % type(self).__name__)
+
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        """Whether the set ``other`` is an element (SymPy's ``_contains``
+        of a set), ``None`` when it is not decided; the sets of numbers and
+        of points have no set as an element."""
+        return None
+
+    # PORTED FROM SYMPY: sympy/sets/sets.py:Set.powerset, Set._eval_powerset
+    def powerset(self) -> Set:
+        """The set of the subsets: the finite set of them for a finite
+        set, a :class:`~sympy_extras.sets.powerset.PowerSet` otherwise.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.sets import EmptySet, finite_set, interval
+        >>> EmptySet.powerset(), finite_set(1, 2).powerset(), interval(1, 2).powerset()
+        ({EmptySet}, FiniteSet(EmptySet, {1}, {2}, {1, 2}), PowerSet(Interval(1, 2)))
+        """
+        elements = finite_elements(self)
+        if elements is None:
+            from .powerset import PowerSet
+            return PowerSet(self)
+        return set_of_sets(*[_finite_of(sub) for k in range(len(elements) + 1)
+                             for sub in combinations(elements, k)])
 
     # PORTED FROM SYMPY: sympy/sets/sets.py:Set._complement
     def _complement(self, other: Set) -> Optional[Set]:
@@ -255,6 +288,9 @@ class EmptySetClass(Set):
     def _contains(self, other: Expr) -> Optional[Boolean]:
         return false
 
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        return false
+
     def _complement(self, other: Set) -> Optional[Set]:
         return other
 
@@ -295,6 +331,9 @@ class UniversalSetClass(Set):
         return False
 
     def _contains(self, other: Expr) -> Optional[Boolean]:
+        return true
+
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
         return true
 
     def _complement(self, other: Set) -> Optional[Set]:
@@ -432,6 +471,10 @@ class Interval(Set):
         return and_(left, right)
 
     # PORTED FROM SYMPY: sympy/sets/sets.py:Interval._contains
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        # PORTED FROM SYMPY: sympy/sets/sets.py:Interval._contains (not an expression)
+        return false
+
     def _contains(self, other: Expr) -> Optional[Boolean]:
         if isinstance(other, NaN) or other.is_real is False or other.has(ComplexInfinity):
             return false
@@ -570,6 +613,10 @@ class FiniteSet(Set):
         return max_(*self._elements)
 
     # PORTED FROM SYMPY: sympy/sets/sets.py:FiniteSet._contains
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        # SymPy's Eq of an expression and a set is false
+        return false
+
     def _contains(self, other: Expr) -> Optional[Boolean]:
         from sympy_extras.core.relational import eq
         if other in self._elements:
@@ -708,6 +755,9 @@ class Union(Set):
     def _contains(self, other: Expr) -> Optional[Boolean]:
         return or_(*[s.contains(other) for s in self._sets])
 
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        return or_(*[s.contains(other) for s in self._sets])
+
     # PORTED FROM SYMPY: sympy/sets/sets.py:Union.is_subset
     def is_subset(self, other: Set) -> Truth:
         return fuzzy_and(s.is_subset(other) for s in self._sets)
@@ -769,6 +819,9 @@ class Intersection(Set):
     def _contains(self, other: Expr) -> Optional[Boolean]:
         return and_(*[s.contains(other) for s in self._sets])
 
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        return and_(*[s.contains(other) for s in self._sets])
+
     def as_relational(self, x: Expr) -> Boolean:
         return and_(*[s.as_relational(x) for s in self._sets])
 
@@ -816,18 +869,22 @@ class Complement(Set):
     def _contains(self, other: Expr) -> Optional[Boolean]:
         return and_(self._a.contains(other), not_(self._b.contains(other)))
 
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        return and_(self._a.contains(other), not_(self._b.contains(other)))
+
     def as_relational(self, x: Expr) -> Boolean:
         return and_(self._a.as_relational(x), not_(self._b.as_relational(x)))
 
 
 # PORTED FROM SYMPY: sympy/sets/contains.py:Contains
 class Contains(Boolean):
-    """The unevaluated membership ``x`` in ``s``."""
+    """The unevaluated membership ``x`` in ``s`` (``x`` an expression or a
+    set)."""
 
     __slots__ = ('_x', '_s')
 
-    def __init__(self, x: ExprLike, s: Set) -> None:
-        self._x: Final[Expr] = to_expr(x)
+    def __init__(self, x: TUnion[ExprLike, Set], s: Set) -> None:
+        self._x: Final[Basic] = x if isinstance(x, Set) else to_expr(x)
         self._s: Final[Set] = s
         Basic.__init__(self)
 
@@ -841,15 +898,15 @@ class Contains(Boolean):
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         x, s = args
-        if not isinstance(x, Expr) or not isinstance(s, Set):
-            raise TypeError('Contains takes an expression and a set')
+        if not isinstance(x, (Expr, Set)) or not isinstance(s, Set):
+            raise TypeError('Contains takes an expression or a set and a set')
         return contains(x, s)
 
     def _sympystr(self, printer: NodePrinter) -> str:
         return 'Contains(%s, %s)' % (printer.doprint(self._x), printer.doprint(self._s))
 
 
-def contains(x: ExprLike, s: Set) -> Boolean:
+def contains(x: TUnion[ExprLike, Set], s: Set) -> Boolean:
     """Whether ``x`` is an element of ``s``, evaluated."""
     return s.contains(x)
 
@@ -1211,6 +1268,9 @@ class ProductSet(Set):
         from sympy_extras.core.symbol import Symbol
         return None if isinstance(other, Symbol) else false
 
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        return false
+
 
 # PORTED FROM SYMPY: sympy/sets/sets.py:ProductSet.__new__
 def product_set(*sets: Set) -> Set:
@@ -1270,6 +1330,23 @@ class PointSet(Set):
         # SymPy's Eq of a tuple and an expression is false
         return false
 
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        return false
+
+    def _eval_is_subset(self, other: Set) -> Truth:
+        # SymPy's FiniteSet._eval_is_subset between finite sets of points:
+        # a point of rational numbers is in another such set of points only
+        # if it is one of them; a point is not a number (SymPy's Eq of a
+        # tuple and an expression is false)
+        if isinstance(other, (FiniteSet, Interval)) and self._points:
+            return False
+        if not isinstance(other, PointSet):
+            return None
+        if all(p in other.points for p in self._points):
+            return True
+        numeric = all(all(isinstance(c, Expr) and c.is_Rational for c in q.args) for q in self._points + other.points)
+        return False if numeric else None
+
 
 def _as_point(b: Basic) -> Tuple:
     if not isinstance(b, Tuple):
@@ -1288,3 +1365,136 @@ def point_set(*points: Tuple) -> Set:
     if not unique:
         return EmptySet
     return PointSet(*[p for p in ordered(unique) if isinstance(p, Tuple)])
+
+
+def _set_equal(a: Set, b: Set) -> Truth:
+    """Whether two sets are equal (each a subset of the other)."""
+    if a == b:
+        return True
+    return fuzzy_and([a.is_subset(b), b.is_subset(a)])
+
+
+# PORTED FROM SYMPY: sympy/sets/sets.py:FiniteSet (of sets)
+class SetOfSets(Set):
+    """A finite set of sets (SymPy's ``FiniteSet`` of sets, as the power
+    set of a finite set rewritten; ``set_of_sets`` evaluates: no
+    duplicates, empty is :data:`EmptySet`).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.sets import EmptySet, finite_set, interval, set_of_sets
+    >>> x = Symbol('x')
+    >>> s = set_of_sets(finite_set(1), EmptySet, finite_set(1))
+    >>> s, set_of_sets(EmptySet, interval(0, 1)), len(s)
+    (FiniteSet(EmptySet, {1}), {EmptySet, Interval(0, 1)}, 2)
+    >>> s.contains(EmptySet), s.contains(finite_set(2)), s.contains(finite_set(x)), s.contains(x)
+    (True, False, Contains({x}, FiniteSet(EmptySet, {1})), False)
+    """
+
+    __slots__ = ('_elements',)
+
+    def __init__(self, *elements: Set) -> None:
+        self._elements: Final[tuple[Set, ...]] = elements
+        Basic.__init__(self)
+
+    @property
+    def args(self) -> tuple[Basic, ...]:
+        return self._elements
+
+    @property
+    def elements(self) -> tuple[Set, ...]:
+        return self._elements
+
+    def _rebuild(self, args: tuple[Basic, ...]) -> Basic:
+        return SetOfSets(*[_as_set(a) for a in args])
+
+    def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
+        return set_of_sets(*[_as_set(a) for a in args])
+
+    # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_FiniteSet
+    def _sympystr(self, printer: NodePrinter) -> str:
+        items = sorted(self._elements, key=default_sort_key)
+        body = ', '.join(printer.doprint(e) for e in items)
+        if any(e.has(FiniteSet, PointSet, SetOfSets) for e in items):
+            return 'FiniteSet(%s)' % body
+        return '{' + body + '}'
+
+    def __iter__(self) -> Iterator[Set]:
+        return iter(self._elements)
+
+    def __len__(self) -> int:
+        return len(self._elements)
+
+    @property
+    def is_empty(self) -> Truth:
+        return len(self._elements) == 0
+
+    @property
+    def is_finite_set(self) -> Truth:
+        return True
+
+    def _contains(self, other: Expr) -> Optional[Boolean]:
+        # the elements are sets: SymPy's Eq of a set and an expression is
+        # false (a symbol too)
+        return false
+
+    # PORTED FROM SYMPY: sympy/sets/sets.py:FiniteSet._contains (the equations of sets decided by inclusion)
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        if other in self._elements:
+            return true
+        found = [_set_equal(e, other) for e in self._elements]
+        if any(f is True for f in found):
+            return true
+        if all(f is False for f in found):
+            return false
+        return None
+
+    # PORTED FROM SYMPY: sympy/sets/sets.py:FiniteSet._eval_is_subset
+    def _eval_is_subset(self, other: Set) -> Truth:
+        results: list[Truth] = []
+        for e in self._elements:
+            c = other._contains_set(e)
+            results.append(None if c is None else _fuzzy_bool(c))
+        return fuzzy_and(results)
+
+
+def _as_set(b: Basic) -> Set:
+    if not isinstance(b, Set):
+        raise TypeError('an element of a set of sets is a set, got %s' % (b,))
+    return b
+
+
+# PORTED FROM SYMPY: sympy/sets/sets.py:FiniteSet.__new__
+def set_of_sets(*elements: Set) -> Set:
+    """The finite set of sets, evaluated: duplicates removed, in SymPy's
+    order (by infimum), empty is :data:`EmptySet`."""
+    unique: list[Set] = []
+    for e in elements:
+        if e not in unique:
+            unique.append(e)
+    if not unique:
+        return EmptySet
+    return SetOfSets(*_sorted_sets(unique))
+
+
+def finite_elements(s: Set) -> Optional[tuple[Basic, ...]]:
+    """The elements of a finite set given by its elements (the empty set,
+    a :class:`FiniteSet`, a :class:`PointSet`, a :class:`SetOfSets`),
+    ``None`` for another set."""
+    if isinstance(s, (EmptySetClass, FiniteSet, PointSet, SetOfSets)):
+        return s.args
+    return None
+
+
+def _finite_of(elements: Sequence[Basic]) -> Set:
+    """The finite set of ``elements``, of their kind (SymPy's
+    ``self.func(*elements)``)."""
+    if not elements:
+        return EmptySet
+    if all(isinstance(e, Set) for e in elements):
+        return set_of_sets(*[e for e in elements if isinstance(e, Set)])
+    if all(isinstance(e, Tuple) for e in elements):
+        return point_set(*[e for e in elements if isinstance(e, Tuple)])
+    return finite_set(*[e for e in elements if isinstance(e, Expr)])

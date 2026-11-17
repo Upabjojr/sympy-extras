@@ -361,8 +361,33 @@ remove public functions. Breaking changes are listed here when they happen.
   arguments, by the native `manualintegrate` (checked) and the native
   exponential and heuristic Risch methods.
 
+- Native `PowerSet` (`sympy_extras.sets.powerset`, a port of
+  `sympy/sets/powerset.py`: membership of a set by inclusion, `is_subset`
+  of two power sets, `len`, iteration over the subsets) and `SetOfSets`
+  / `set_of_sets` (SymPy's `FiniteSet` of sets) with `Set.powerset()`;
+  `Set.contains` and `Contains` take a set as the element (the sets of
+  numbers and of points have none). The rewrites `PowerSet.rewrite(FiniteSet)`
+  and `FiniteSet.rewrite(PowerSet)`, `Piecewise` into `ITE` and `ITE`
+  into `Piecewise` are native (issue #75: they were the last SymPy rules
+  not ported); `Basic.rewrite(pw, ITE)` gives the `ITE`
+  (`Expr.rewrite` gives expressions only). Two SymPy bugs not ported:
+  `Piecewise((a, p), (b, True))` is `ITE(p, a, b)` (SymPy: `a`), and
+  `{EmptySet, {1}, {2}, {3}}` is no power set (SymPy: `PowerSet({1})`).
+  The interop converts SymPy's `PowerSet` and finite sets of sets.
+- `sympy_extras.logic.boolalg`: `to_nnf`, `is_nnf`, `to_cnf`, `to_dnf`,
+  `eliminate_implications`, `distribute_and_over_or`,
+  `distribute_or_over_and` (ports of SymPy's, `ITE` included; with
+  `simplify=True` the relations are not simplified, SymPy's `deep`).
+
 ### Changed
 
+- `ite` evaluates as SymPy's `ITE` constructor: equal branches give the
+  branch, `true`/`false` branches the condition or its negation, and an
+  equation between a symbol used as a truth value and something else is
+  false (`ite(Eq(y, 2), y, z)` is `z`); the class `ITE` still never
+  evaluates. A finite set of points is a subset of a finite set of
+  numbers or of an interval never, of another finite set of points of
+  rationals only when its points are among them (SymPy's answers).
 - The import cycles hidden behind `TYPE_CHECKING` imports are broken
   (internal change): the `_sympystr` methods take the `NodePrinter`
   protocol of `core.basic` (`StrPrinter` prints `Add`, `Mul` and `Pow`

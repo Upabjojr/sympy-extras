@@ -1,5 +1,8 @@
 """Minimal sums of products and products of sums of the Booleans of the
-core: ``simplify_logic``, ``SOPform`` and ``POSform``.
+core: ``simplify_logic``, ``SOPform`` and ``POSform``; the negation,
+conjunctive and disjunctive normal forms ``to_nnf``, ``to_cnf`` and
+``to_dnf`` (SymPy's, by the ``to_nnf`` rules of each connective and the
+distribution of ``And`` over ``Or`` or of ``Or`` over ``And``).
 
 A typed port of the two-level minimisation of SymPy's
 ``sympy.logic.boolalg``: the relations of the formula are replaced by
@@ -48,27 +51,31 @@ References
    System Technical Journal 35 (1956), 1417-1444.
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/logic/boolalg.py (simplify_logic, SOPform, POSform) (SymPy 1.14)
+# PORTED FROM SYMPY: sympy/logic/boolalg.py (simplify_logic, SOPform, POSform, to_nnf, is_nnf,
+# to_cnf, to_dnf, eliminate_implications, distribute_and_over_or, distribute_or_over_and and the
+# to_nnf methods of the connectives) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: strict typing, the terms as lists of 0, 1 and 3 only (no dict or
 # integer forms), the relations numbered in ordered order, deep=False only
-# (no simplification of the relations).
+# (no simplification of the relations, in to_cnf and to_dnf with
+# simplify=True too); the to_nnf methods are one function over the classes.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
 from collections import defaultdict
-from itertools import product
+from itertools import combinations, product
 from typing import Optional, Sequence
 
 from sympy_extras.core.basic import Basic
-from sympy_extras.core.logic import (And, Boolean, BooleanAtom, BooleanFalse, BooleanFunction, BooleanTrue, Not, Or,
-    and_, false, not_, or_, to_boolean, true)
+from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, BooleanFalse, BooleanFunction, BooleanLike,
+    BooleanTrue, Equivalent, Implies, Not, Or, Xor, and_, false, not_, or_, to_boolean, true)
 from sympy_extras.core.relational import Relational
 from sympy_extras.core.sorting import ordered
 from sympy_extras.core.symbol import Dummy
 
-__all__ = ['simplify_logic', 'SOPform', 'POSform', 'is_literal', 'is_cnf', 'is_dnf']
+__all__ = ['simplify_logic', 'SOPform', 'POSform', 'is_literal', 'is_cnf', 'is_dnf', 'is_nnf', 'to_nnf', 'to_cnf',
+           'to_dnf', 'eliminate_implications', 'distribute_and_over_or', 'distribute_or_over_and']
 
 #: a term of the truth table: 0, 1, or 3 for a variable which does not matter
 Term = list[int]
@@ -427,3 +434,268 @@ def simplify_logic(expr: Boolean, form: Optional[str] = None, force: bool = Fals
     if not truthtable:
         return false
     return _replaced(_pos_form(all_variables, truthtable, dctruthtable), undo)
+
+
+# ---------------------------------------------------------------------
+# the normal forms
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:BooleanFunction._to_nnf
+def _lattice_nnf(conjunction: bool, args: Sequence[Boolean], simplify: bool) -> Boolean:
+    """SymPy's ``And._to_nnf`` and ``Or._to_nnf``: the arguments in
+    negation normal form; with ``simplify``, flattened, and the zero of the
+    connective when an argument and its negation occur."""
+    cls: type[BooleanFunction] = And if conjunction else Or
+    kept: list[Boolean] = []
+    seen: set[Boolean] = set()
+    for arg in args:
+        if not is_literal(arg):
+            arg = _nnf(arg, simplify)
+        if simplify:
+            parts: tuple[Boolean, ...] = arg.args if isinstance(arg, cls) else (arg,)
+            for a in parts:
+                if not_(a) in seen:
+                    return false if conjunction else true
+                if a not in seen:
+                    seen.add(a)
+                    kept.append(a)
+        elif arg not in seen:
+            seen.add(arg)
+            kept.append(arg)
+    return and_(*kept) if conjunction else or_(*kept)
+
+
+def _xor_clauses(args: Sequence[Boolean], first: int) -> list[Boolean]:
+    """The clauses of ``Xor`` (``first = 0``) or of its negation
+    (``first = 1``): one for each choice of an even (odd) number of negated
+    arguments."""
+    clauses: list[Boolean] = []
+    for i in range(first, len(args) + 1, 2):
+        for negated in combinations(args, i):
+            clauses.append(or_(*[not_(a) if a in negated else a for a in args]))
+    return clauses
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:And.to_nnf, Or.to_nnf, Not.to_nnf, Xor.to_nnf,
+# Implies.to_nnf, Equivalent.to_nnf, ITE.to_nnf
+def _nnf(expr: Boolean, simplify: bool) -> Boolean:
+    """The ``to_nnf`` method of the class of ``expr``."""
+    if isinstance(expr, And):
+        return _lattice_nnf(True, expr.args, simplify)
+    if isinstance(expr, Or):
+        return _lattice_nnf(False, expr.args, simplify)
+    if isinstance(expr, Not):
+        if is_literal(expr):
+            return expr
+        inner = expr.arg
+        args: tuple[Boolean, ...] = inner.args if isinstance(inner, BooleanFunction) else ()
+        if isinstance(inner, And):
+            return _lattice_nnf(False, [not_(a) for a in args], simplify)
+        if isinstance(inner, Or):
+            return _lattice_nnf(True, [not_(a) for a in args], simplify)
+        if isinstance(inner, Implies):
+            return _lattice_nnf(True, [args[0], not_(args[1])], simplify)
+        if isinstance(inner, Equivalent):
+            return _lattice_nnf(True, [or_(*args), or_(*[not_(a) for a in args])], simplify)
+        if isinstance(inner, Xor):
+            return _lattice_nnf(True, _xor_clauses(args, 1), simplify)
+        if isinstance(inner, ITE):
+            a, b, c = args
+            return _lattice_nnf(True, [or_(a, not_(c)), or_(not_(a), not_(b))], simplify)
+        raise ValueError('Illegal operator %s in expression' % (type(inner).__name__,))
+    if isinstance(expr, Xor):
+        return _lattice_nnf(True, _xor_clauses(expr.args, 0), simplify)
+    if isinstance(expr, Implies):
+        p, q = expr.args
+        return _lattice_nnf(False, [not_(p), q], simplify)
+    if isinstance(expr, Equivalent):
+        eargs = expr.args
+        clauses = [or_(not_(p), q) for p, q in zip(eargs, eargs[1:])]
+        clauses.append(or_(not_(eargs[-1]), eargs[0]))
+        return _lattice_nnf(True, clauses, simplify)
+    if isinstance(expr, ITE):
+        a, b, c = expr.args
+        return _lattice_nnf(True, [or_(not_(a), b), or_(a, c)], simplify)
+    return expr
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:is_nnf
+def is_nnf(expr: Boolean, simplified: bool = True) -> bool:
+    """Whether ``expr`` is in negation normal form: ``And``, ``Or`` and
+    ``Not`` of literals only; with ``simplified``, no ``And`` or ``Or``
+    with an argument and its negation.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.logic.boolalg import is_nnf
+    >>> a, b, c = symbols('a b c')
+    >>> is_nnf(a & b | ~c), is_nnf((a | ~a) & (b | c)), is_nnf((a | ~a) & (b | c), False), is_nnf(~(a & b) | c)
+    (True, False, True, False)
+    """
+    if is_literal(expr):
+        return True
+    stack = [expr]
+    while stack:
+        e = stack.pop()
+        if isinstance(e, (And, Or)):
+            args = e.args
+            if simplified and any(not_(a) in args for a in args):
+                return False
+            stack.extend(args)
+        elif not is_literal(e):
+            return False
+    return True
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:to_nnf
+def to_nnf(expr: BooleanLike, simplify: bool = True) -> Boolean:
+    """The negation normal form: ``Xor``, ``Implies``, ``Equivalent`` and
+    ``ITE`` written with ``And`` and ``Or``, and the negations pushed to
+    the literals; with ``simplify``, no redundant clauses.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, Equivalent, ITE, Not
+    >>> from sympy_extras.logic.boolalg import to_nnf
+    >>> a, b, c, d = symbols('a b c d')
+    >>> to_nnf(~((~a & ~b) | (c & d))), to_nnf(ITE(a, b, c)), to_nnf(Not(ITE(a, b, c)))
+    ((a | b) & (~c | ~d), (a | c) & (b | ~a), (a | ~c) & (~a | ~b))
+    >>> to_nnf(Equivalent(a >> b, b >> a))
+    (a | ~b | (a & ~b)) & (b | ~a | (b & ~a))
+    """
+    e = to_boolean(expr)
+    if is_nnf(e, simplify):
+        return e
+    return _nnf(e, simplify)
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:eliminate_implications
+def eliminate_implications(expr: BooleanLike) -> Boolean:
+    """``Implies``, ``Equivalent``, ``Xor`` and ``ITE`` written with
+    ``And``, ``Or`` and ``Not`` (``to_nnf`` without simplification).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, Implies
+    >>> from sympy_extras.logic.boolalg import eliminate_implications
+    >>> a, b = symbols('a b')
+    >>> eliminate_implications(Implies(a, b))
+    b | ~a
+    """
+    return to_nnf(expr, simplify=False)
+
+
+def _build(conjunction: bool, args: Sequence[Boolean]) -> Boolean:
+    return and_(*args) if conjunction else or_(*args)
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:_distribute
+def _distribute(e: Boolean, conjunction: bool) -> Boolean:
+    """``distribute_and_over_or`` (``conjunction``: into an ``And`` of
+    ``Or``) and ``distribute_or_over_and``."""
+    outer: type[BooleanFunction] = And if conjunction else Or
+    inner: type[BooleanFunction] = Or if conjunction else And
+    if isinstance(e, inner):
+        for arg in e.args:
+            if isinstance(arg, outer):
+                rest = _build(not conjunction, [a for a in e.args if a is not arg])
+                return _build(conjunction, [_distribute(_build(not conjunction, [c, rest]), conjunction)
+                                            for c in arg.args])
+        return e
+    if isinstance(e, outer):
+        return _build(conjunction, [_distribute(a, conjunction) for a in e.args])
+    return e
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:distribute_and_over_or
+def distribute_and_over_or(expr: BooleanLike) -> Boolean:
+    """An ``Or`` of ``And`` distributed into an ``And`` of ``Or``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.logic.boolalg import distribute_and_over_or
+    >>> a, b, c = symbols('a b c')
+    >>> distribute_and_over_or((a & b) | c)
+    (a | c) & (b | c)
+    """
+    return _distribute(to_boolean(expr), True)
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:distribute_or_over_and
+def distribute_or_over_and(expr: BooleanLike) -> Boolean:
+    """An ``And`` of ``Or`` distributed into an ``Or`` of ``And``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.logic.boolalg import distribute_or_over_and
+    >>> a, b, c = symbols('a b c')
+    >>> distribute_or_over_and((a | b) & c)
+    (a & c) | (b & c)
+    """
+    return _distribute(to_boolean(expr), False)
+
+
+def _check_size(expr: Boolean, force: bool) -> None:
+    if not force and len(_find_predicates(expr)) > _MAX_VARIABLES:
+        raise ValueError('To simplify a logical expression with more than 8 variables may take a long time '
+                         'and requires the use of `force=True`.')
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:to_cnf
+def to_cnf(expr: BooleanLike, simplify: bool = False, force: bool = False) -> Boolean:
+    """The conjunctive normal form; with ``simplify``, the minimal one by
+    :func:`simplify_logic` (more than eight variables need ``force``; the
+    relations are not simplified: SymPy's ``deep=True`` is not ported).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, ITE
+    >>> from sympy_extras.logic.boolalg import to_cnf
+    >>> a, b, d = symbols('a b d')
+    >>> to_cnf(~(a | b) | d), to_cnf((a | b) & (a | ~a), True), to_cnf(ITE(a, b, d))
+    ((d | ~a) & (d | ~b), a | b, (a | d) & (b | ~a))
+    """
+    e = to_boolean(expr)
+    if not isinstance(e, BooleanFunction):
+        return e
+    if simplify:
+        _check_size(e, force)
+        return simplify_logic(e, 'cnf', force=force)
+    if is_cnf(e):
+        return e
+    return distribute_and_over_or(eliminate_implications(e))
+
+
+# PORTED FROM SYMPY: sympy/logic/boolalg.py:to_dnf
+def to_dnf(expr: BooleanLike, simplify: bool = False, force: bool = False) -> Boolean:
+    """The disjunctive normal form; with ``simplify``, the minimal one by
+    :func:`simplify_logic` (more than eight variables need ``force``).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols, ITE
+    >>> from sympy_extras.logic.boolalg import to_dnf
+    >>> a, b, c = symbols('a b c')
+    >>> to_dnf(b & (a | c)), to_dnf((a & b) | (a & ~b) | (b & c) | (~b & c), True)
+    ((a & b) | (b & c), a | c)
+    >>> to_dnf(ITE(a, b, c))
+    (a & b) | (b & c) | (a & ~a) | (c & ~a)
+    """
+    e = to_boolean(expr)
+    if not isinstance(e, BooleanFunction):
+        return e
+    if simplify:
+        _check_size(e, force)
+        return simplify_logic(e, 'dnf', force=force)
+    if is_dnf(e):
+        return e
+    return distribute_or_over_and(eliminate_implications(e))
