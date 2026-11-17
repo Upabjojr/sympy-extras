@@ -20,12 +20,13 @@ See ``docs/core.md`` for the design and the differences with
 """
 from __future__ import annotations
 
+# first: basic and expr import the classes of their annotations at their end
+from .basic import Atom, Basic, preorder_traversal
 from .add import Add, add, sub
 from .ask import AssumptionKeys, Q, ask
 from .assume import AppliedPredicate, AssumptionsContext, Predicate, assuming, global_assumptions
 from .alphabets import greeks
 from .assumptions import (Truth, assumptions, check_assumptions, common_assumptions, failing_assumptions)
-from .basic import Atom, Basic, preorder_traversal
 from .cache import cacheit, clear_cache
 from .containers import Dict, Tuple
 from .coreerrors import BaseCoreError, NonCommutativeExpression, PoleError, PrecisionExhausted

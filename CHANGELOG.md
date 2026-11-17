@@ -369,9 +369,13 @@ remove public functions. Breaking changes are listed here when they happen.
   itself), the keys of `core.sorting` the `Sortable` protocol (`ordered`
   returns the type of its items), `Expr.as_poly` and
   `AlgebraicNumber.minpoly` the `PolyLike` protocol of `core.expr`; the
-  type-only imports which formed no cycle are module-level imports. Only
-  `core.basic` and `core.expr` keep theirs, for the subclasses named in
-  their signatures (`Symbol`, `Number`, `Boolean`, ...).
+  type-only imports which formed no cycle are module-level imports.
+  `core.basic` and `core.expr`, whose signatures name their own
+  subclasses (`Expr`, `Symbol`, `Dummy`, `Number`, `Boolean`,
+  `FunctionClass`, `DiffSpec`), import them at module level at their end,
+  once their classes are defined; `sympy_extras.core` imports `core.basic`
+  first so that this order holds whichever submodule is imported. No
+  `TYPE_CHECKING` import is left in the core.
 - The asymptotic series of `fresnels` and `fresnelc` at `oo` and `-oo`
   are native (`FresnelIntegral._eval_aseries`, ported from SymPy's
   `fresnels._eval_aseries` and `fresnelc._eval_aseries`), and so are

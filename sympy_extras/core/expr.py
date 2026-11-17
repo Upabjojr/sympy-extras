@@ -21,7 +21,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Final, Iterator, Literal, Optional, Protocol, Sequence, TYPE_CHECKING, Union, overload
+from typing import Final, Iterator, Literal, Optional, Protocol, Sequence, Union, overload
 
 import mpmath
 
@@ -31,12 +31,6 @@ from .basic import Atom, Basic, NodePrinter, RefineArg, ReplacementRule, SubsArg
 from .cache import cacheit
 from .kind import Kind, NumberKind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, SortKey
-
-if TYPE_CHECKING:
-    from .logic import Boolean
-    from .function import DiffSpec, FunctionClass
-    from .numbers import Number
-    from .symbol import Symbol
 
 __all__ = ['Expr', 'AtomicExpr', 'ExprLike', 'UnevaluatedExpr', 'as_expr', 'to_expr', 'terms_of',
     'factors_of', 'IntegrationSpec', 'TermInfo', 'PolyLike']
@@ -2522,3 +2516,12 @@ def _integrate_terms(e: Expr, spec: Union[Symbol, tuple[Symbol, Expr, Expr]]) ->
         return None
     _, lower, upper = spec
     return antiderivative.subs(x, upper) - antiderivative.subs(x, lower)
+
+
+# The subclasses named in the annotations above. Their modules import this
+# one (the cycle of the core), so they are imported once its classes exist;
+# ``sympy_extras.core`` imports ``basic``, and so this module, first.
+from .function import DiffSpec, FunctionClass  # noqa: E402
+from .logic import Boolean  # noqa: E402
+from .numbers import Number  # noqa: E402
+from .symbol import Symbol  # noqa: E402

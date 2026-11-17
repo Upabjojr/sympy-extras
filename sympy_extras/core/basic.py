@@ -32,16 +32,10 @@ from __future__ import annotations
 
 from fractions import Fraction
 from typing import (Callable, Final, Iterable, Iterator, Literal, Mapping, Optional, Protocol, SupportsIndex,
-    TYPE_CHECKING, Union, overload)
+    Union, overload)
 
 from .kind import Kind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, CompareItem, CompareKey, SortKey, class_rank
-
-if TYPE_CHECKING:
-    from .expr import Expr
-    from .logic import Boolean
-    from .function import FunctionClass
-    from .symbol import Dummy, Symbol
 
 __all__ = ['Basic', 'Atom', 'preorder_traversal', 'SubsValue', 'SubsMapping', 'SubsRules',
     'SubsArg', 'ReplacementRule', 'NodePrinter', 'MatchDict', 'Query', 'Replacement', 'register_singleton']
@@ -1051,3 +1045,12 @@ def _node_count(e: Basic) -> float:
     if isinstance(e, Float):
         return 0.5
     return 1 + sum(_node_count(a) for a in e.args)
+
+
+# The subclasses named in the annotations above. Their modules import this
+# one (the cycle of the core), so they are imported once its classes exist;
+# ``sympy_extras.core`` imports this module before the others.
+from .expr import Expr  # noqa: E402
+from .function import FunctionClass  # noqa: E402
+from .logic import Boolean  # noqa: E402
+from .symbol import Dummy, Symbol  # noqa: E402
