@@ -637,6 +637,10 @@ def _series_to_sympy(e: Basic, evaluate: bool) -> Optional[SymPyBasic]:
         if isinstance(e, seq.SeqFormula):
             return sympy.SeqFormula(to_sympy(e.formula, evaluate), limits)
         return sympy.SeqPer(sympy.Tuple(*[to_sympy(a, evaluate) for a in e.periodical]), limits)
+    if isinstance(e, seq.RecursiveSeq):
+        from sympy.series.sequences import RecursiveSeq as SymPyRecursiveSeq
+        return SymPyRecursiveSeq(to_sympy(e.args[0], evaluate), to_sympy(e.yn), to_sympy(e.n),
+                                 [to_sympy(a, evaluate) for a in e.initial.args], to_sympy(e.start))
     if isinstance(e, (seq.SeqAdd, seq.SeqMul)):
         parts = [to_sympy(a, evaluate) for a in e.sequences]
         return sympy.SeqAdd(*parts) if isinstance(e, seq.SeqAdd) else sympy.SeqMul(*parts)

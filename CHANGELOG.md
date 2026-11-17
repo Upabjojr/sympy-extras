@@ -10,6 +10,16 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.series.sequences`: native `RecursiveSeq` (a recurrence
+  `y(n) = f(y(n - 1), ..., y(n - d))` with initial values, dummies
+  `c_0, ...` by default; indexing, slicing, iteration, the cache of the
+  terms computed, `recurrence`, `degree`, `interval`) and
+  `SeqBase.find_linear_recurrence` (the shortest linear recurrence of the
+  first terms, with `gfvar` the ordinary generating function too), ported
+  from SymPy; `to_sympy` converts `RecursiveSeq`. Unlike SymPy 1.14, a
+  `RecursiveSeq` with `start != 0` gives the right terms, and
+  `find_linear_recurrence` recognises the recurrences with symbolic
+  coefficients (it compares the terms up to simplification).
 - `sympy_extras.steps`: step-by-step solutions (SymPy issue 11088) on
   the architecture of `manualintegrate` in SymPy master. `steps.core`:
   steps as frozen dataclasses, rules as generators which yield their
