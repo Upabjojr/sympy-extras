@@ -252,7 +252,9 @@ sympy_extras/
                              _eval_as_leading_term, SymPy's per node for the functions not ported),
                              factor_terms, a native rewrite (rewriting.py), SymPy's order of the arguments, to_sympy/from_sympy with generic wrappers
                              of any SymPy object; nodes pickle with their hash recomputed and the singletons
-                             (register_singleton: true, false, oo, pi, ...) unpickled as themselves; see docs/core.md
+                             (register_singleton: true, false, oo, pi, ...) unpickled as themselves; see docs/core.md;
+                             no TYPE_CHECKING: basic.py and expr.py import the subclasses of their annotations at their
+                             end, and core/__init__.py imports basic first (keep it first)
     concrete/                summation algorithms extending sympy.concrete
         _evalf.py            evalf_sum, hypsum, euler_maclaurin: the numerical values of sums, Euler–Maclaurin summation
                              (Sum.euler_maclaurin) (native), PORTED FROM SYMPY
