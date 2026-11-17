@@ -382,6 +382,22 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::functions::combinatorial::numbers::number_value(*g, &values, prec)
         }
         Head::Hyper => crate::functions::special::hyper::hyper_node_value(e, prec),
+        Head::Function(
+            g @ (super::basic::Function::BesselJ
+            | super::basic::Function::BesselY
+            | super::basic::Function::BesselI
+            | super::basic::Function::BesselK
+            | super::basic::Function::Hankel1
+            | super::basic::Function::Hankel2
+            | super::basic::Function::BesselIs
+            | super::basic::Function::BesselKs),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::bessel::bessel_value(*g, &values, prec)
+        }
         // mpmath's meijerg is not ported
         Head::MeijerG => None,
         Head::Function(
@@ -585,6 +601,15 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::HermiteProb => return None,
                 // mpmath's appellf1 is not ported
                 super::basic::Function::AppellF1 => return None,
+                // evaluated above
+                super::basic::Function::BesselJ
+                | super::basic::Function::BesselY
+                | super::basic::Function::BesselI
+                | super::basic::Function::BesselK
+                | super::basic::Function::Hankel1
+                | super::basic::Function::Hankel2
+                | super::basic::Function::BesselIs
+                | super::basic::Function::BesselKs => return None,
                 // no numerical value (neither SymPy nor mpmath has one)
                 super::basic::Function::MathieuS
                 | super::basic::Function::MathieuC

@@ -283,6 +283,14 @@ pub enum Function {
     AssocLegendre,
     HermiteProb,
     AppellF1,
+    BesselJ,
+    BesselY,
+    BesselI,
+    BesselK,
+    Hankel1,
+    Hankel2,
+    BesselIs,
+    BesselKs,
     EllipticK,
     EllipticF,
     EllipticE,
@@ -418,6 +426,14 @@ impl Function {
             Function::AssocLegendre => "assoc_legendre",
             Function::HermiteProb => "hermite_prob",
             Function::AppellF1 => "appellf1",
+            Function::BesselJ => "besselj",
+            Function::BesselY => "bessely",
+            Function::BesselI => "besseli",
+            Function::BesselK => "besselk",
+            Function::Hankel1 => "hankel1",
+            Function::Hankel2 => "hankel2",
+            Function::BesselIs => "_besseli",
+            Function::BesselKs => "_besselk",
             Function::EllipticK => "elliptic_k",
             Function::EllipticF => "elliptic_f",
             Function::EllipticE => "elliptic_e",
@@ -552,6 +568,14 @@ impl Function {
             Function::AssocLegendre => "AssocLegendre",
             Function::HermiteProb => "HermiteProb",
             Function::AppellF1 => "AppellF1",
+            Function::BesselJ => "BesselJ",
+            Function::BesselY => "BesselY",
+            Function::BesselI => "BesselI",
+            Function::BesselK => "BesselK",
+            Function::Hankel1 => "Hankel1",
+            Function::Hankel2 => "Hankel2",
+            Function::BesselIs => "BesselIs",
+            Function::BesselKs => "BesselKs",
             Function::EllipticK => "EllipticK",
             Function::EllipticF => "EllipticF",
             Function::EllipticE => "EllipticE",
@@ -707,6 +731,14 @@ impl Function {
             | Function::AssocLegendre
             | Function::HermiteProb
             | Function::AppellF1
+            | Function::BesselJ
+            | Function::BesselY
+            | Function::BesselI
+            | Function::BesselK
+            | Function::Hankel1
+            | Function::Hankel2
+            | Function::BesselIs
+            | Function::BesselKs
             | Function::EllipticK
             | Function::EllipticF
             | Function::EllipticE

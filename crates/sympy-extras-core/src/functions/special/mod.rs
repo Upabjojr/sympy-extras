@@ -1,5 +1,6 @@
 //! Port of `sympy_extras/functions/special`.
 
+pub mod bessel;
 pub mod beta_functions;
 pub mod bsplines;
 pub mod delta_functions;

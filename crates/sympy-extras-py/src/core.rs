@@ -216,6 +216,14 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "AssocLegendre" => Basic::new(Head::Function(Function::AssocLegendre), args()?),
         "HermiteProb" => Basic::new(Head::Function(Function::HermiteProb), args()?),
         "AppellF1" => Basic::new(Head::Function(Function::AppellF1), args()?),
+        "BesselJ" => Basic::new(Head::Function(Function::BesselJ), args()?),
+        "BesselY" => Basic::new(Head::Function(Function::BesselY), args()?),
+        "BesselI" => Basic::new(Head::Function(Function::BesselI), args()?),
+        "BesselK" => Basic::new(Head::Function(Function::BesselK), args()?),
+        "Hankel1" => Basic::new(Head::Function(Function::Hankel1), args()?),
+        "Hankel2" => Basic::new(Head::Function(Function::Hankel2), args()?),
+        "BesselIs" => Basic::new(Head::Function(Function::BesselIs), args()?),
+        "BesselKs" => Basic::new(Head::Function(Function::BesselKs), args()?),
         "Hyper" => Basic::new(Head::Hyper, args()?),
         "MeijerG" => Basic::new(Head::MeijerG, args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
@@ -531,6 +539,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::AssocLegendre
                 | Function::HermiteProb => "polynomials",
                 Function::AppellF1 => "hyper",
+                f if sympy_extras_core::functions::special::bessel::is_bessel(*f) => "bessel",
                 Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
                     "elliptic_integrals"
                 }
@@ -569,6 +578,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::mathieu_functions::is_mathieu(*f)
                 || sympy_extras_core::functions::special::polynomials::is_orthogonal(*f)
                 || *f == Function::AppellF1
+                || sympy_extras_core::functions::special::bessel::is_bessel(*f)
                 || sympy_extras_core::functions::special::elliptic_integrals::is_elliptic(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
@@ -2427,6 +2437,23 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
                 _ => return Err(wrong()),
             }
+        }
+        "besselj" | "bessely" | "besseli" | "besselk" | "hankel1" | "hankel2" | "besselis" | "besselks" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match name {
+                "besselj" => F::BesselJ,
+                "bessely" => F::BesselY,
+                "besseli" => F::BesselI,
+                "besselk" => F::BesselK,
+                "hankel1" => F::Hankel1,
+                "hankel2" => F::Hankel2,
+                "besselis" => F::BesselIs,
+                _ => F::BesselKs,
+            };
+            if a.len() != 2 {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
+            }
+            sympy_extras_core::functions::special::bessel::bessel(f, &a).map_err(e)?
         }
         "chebyshevt_root" | "chebyshevu_root" | "jacobi_normalized" => {
             use sympy_extras_core::functions::special::polynomials as op;

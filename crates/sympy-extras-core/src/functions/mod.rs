@@ -101,6 +101,14 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         }
         Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
         Function::AppellF1 => special::hyper::appellf1_fdiff(e, argindex),
+        g @ (Function::BesselJ
+        | Function::BesselY
+        | Function::BesselI
+        | Function::BesselK
+        | Function::Hankel1
+        | Function::Hankel2
+        | Function::BesselIs
+        | Function::BesselKs) => special::bessel::bessel_fdiff(g, e, argindex),
         g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
         g @ (Function::Legendre
         | Function::ChebyshevT
@@ -258,6 +266,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::elliptic_integrals::is_elliptic(f) && special::elliptic_integrals::arity_fits(f, args.len()) {
         return special::elliptic_integrals::elliptic(f, args);
     }
+    if special::bessel::is_bessel(f) && args.len() == 2 {
+        return special::bessel::bessel(f, args);
+    }
     if f == Function::AppellF1 && args.len() == 6 {
         return special::hyper::appellf1(args);
     }
@@ -381,6 +392,14 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         }
         Function::SingularityFunction => unreachable!("evaluated above with all their arguments"),
         Function::AppellF1 => unreachable!("evaluated above with all their arguments"),
+        Function::BesselJ
+        | Function::BesselY
+        | Function::BesselI
+        | Function::BesselK
+        | Function::Hankel1
+        | Function::Hankel2
+        | Function::BesselIs
+        | Function::BesselKs => unreachable!("evaluated above with all their arguments"),
         Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
         Function::Legendre
         | Function::ChebyshevT

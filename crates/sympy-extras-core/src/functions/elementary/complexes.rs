@@ -144,6 +144,14 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         }
         g @ (Function::Gamma | Function::LogGamma) => crate::functions::special::gamma_functions::gamma_conjugate(g, e),
         Function::Ynm => crate::functions::special::spherical_harmonics::spherical_conjugate(e),
+        g @ (Function::BesselJ
+        | Function::BesselY
+        | Function::BesselI
+        | Function::BesselK
+        | Function::Hankel1
+        | Function::Hankel2
+        | Function::BesselIs
+        | Function::BesselKs) => crate::functions::special::bessel::bessel_conjugate(g, e),
         g @ (Function::Legendre
         | Function::ChebyshevT
         | Function::ChebyshevU
@@ -592,6 +600,14 @@ fn function_real_imag(
         | Function::MathieuCPrime
         | Function::Znm
         | Function::AppellF1
+        | Function::BesselJ
+        | Function::BesselY
+        | Function::BesselI
+        | Function::BesselK
+        | Function::Hankel1
+        | Function::Hankel2
+        | Function::BesselIs
+        | Function::BesselKs
         | Function::LowerGamma
         | Function::UpperGamma
         | Function::MultiGamma

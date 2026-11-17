@@ -1404,6 +1404,14 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::AssocLegendre
         | super::basic::Function::HermiteProb => crate::functions::special::polynomials::orthogonal_facts(),
         super::basic::Function::AppellF1 => crate::functions::special::hyper::appellf1_facts(),
+        g @ (super::basic::Function::BesselJ
+        | super::basic::Function::BesselY
+        | super::basic::Function::BesselI
+        | super::basic::Function::BesselK
+        | super::basic::Function::Hankel1
+        | super::basic::Function::Hankel2
+        | super::basic::Function::BesselIs
+        | super::basic::Function::BesselKs) => crate::functions::special::bessel::bessel_facts(g, e.args()),
         super::basic::Function::Ynm | super::basic::Function::Znm => {
             crate::functions::special::spherical_harmonics::spherical_facts()
         }
