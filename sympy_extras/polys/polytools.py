@@ -1,5 +1,6 @@
 """SymPy's ``Poly`` on the typed core: polynomials in generators with
-coefficients in ``ZZ``, ``QQ``, ``ZZ[a, b, ...]`` or ``QQ[a, b, ...]``.
+coefficients in ``ZZ``, ``QQ``, ``ZZ[a, b, ...]``, ``QQ[a, b, ...]`` or the
+fraction fields ``ZZ(a, b, ...)``, ``QQ(a, b, ...)``.
 
 Ported from SymPy's ``sympy.polys.polytools`` and the expression
 conversion of ``sympy.polys.polyutils``: the expression is expanded and
@@ -8,9 +9,18 @@ coefficients, without generators every factor which is not a number
 (``I`` aside) becomes a generator (``sqrt(2)``, ``sin(z)``), sorted as
 SymPy sorts them (``x, y, z`` first, then ``p`` to ``w``, then ``a`` to
 ``o``, then the rest by name); the domain is SymPy's ``construct_domain``
-for coefficients which are polynomials in symbols. The representation is
-a sparse polynomial over ``QQ`` in the generators followed by the
-symbols of the domain; the gcd and the resultant run on the typed
+for coefficients which are polynomials in symbols, ``ZZ(a, b)`` (or
+``QQ(a, b)``) when a denominator is not a number (``x/y``, the numerators
+and denominators of ``as_numer_denom`` deciding between ``ZZ`` and
+``QQ``); a domain can be named (``Poly(x, x, domain='ZZ(y)')``). The
+representation is a sparse polynomial over ``QQ`` in the generators
+followed by the symbols of the domain; over a fraction field the
+polynomial is ``rep/den``, ``den`` a polynomial in the symbols of the
+domain (reduced: integer coefficients, no common factor, a positive
+leading coefficient), and the operations run on the numerators (the gcd
+made monic, the division by pseudo-division, the factorisation over
+``ZZ[a]``, SymPy's ``dmp_cancel`` clearing the denominators), every
+coefficient printed as SymPy prints its element of the field; the gcd and the resultant run on the typed
 recursive gcd (:mod:`~sympy_extras.polys.domains.sparsepolynomialring`),
 the factorisation and the square-free decomposition of univariate
 polynomials over ``ZZ`` and ``QQ`` on the typed dense layer. Printed as
@@ -18,11 +28,12 @@ SymPy prints ``Poly``.
 
 Not ported yet (``CoercionFailed`` or ``OperationNotSupported``): the
 domains ``EX`` (coefficients like ``exp(y)`` with explicit generators),
-``RR``, fraction fields (``ZZ(a)``), ``ZZ_I`` and algebraic extensions
-in ``Poly`` (``factor`` without generators factors over ``ZZ_I``/``QQ_I``,
+``RR``, ``ZZ_I`` and algebraic extensions in ``Poly`` (``factor`` without generators factors over ``ZZ_I``/``QQ_I``,
 :mod:`~sympy_extras.polys.gaussianfactor`, and ``RR``); the division of
-multivariate polynomials and of polynomials with symbolic coefficients.
-``cancel``, ``factor`` and ``invert`` of expressions which need such a
+multivariate polynomials (over ``ZZ[a]`` only when the leading
+coefficient of the divisor is a number, over ``ZZ(a)`` not at all);
+``monic`` over ``ZZ[a]`` with a numerical leading coefficient stays in
+``QQ[a]`` (SymPy goes to ``ZZ(a)``). ``cancel``, ``factor`` and ``invert`` of expressions which need such a
 domain are computed natively all the same: ``cancel`` over ``CC`` (the gcd
 over the exact ``QQ_I``, as SymPy's inexact domains do), over ``EX``
 (numbers such as ``zoo`` among the coefficients) and with generators over
@@ -49,18 +60,30 @@ Poly(x*y + (sin(z)) + (sqrt(2)), x, y, sin(z), sqrt(2), domain='ZZ')
 >>> f, g = Poly((x + 1)*(x - 2)**2, x), Poly((x - 2)*(x + 3), x)
 >>> f.gcd(g), f.degree(), f.LC(), f.resultant(g)
 (Poly(x - 2, x, domain='ZZ'), 3, 1, 0)
+>>> p, q = Poly(x**2/y - 1/(y + 1), x), Poly(x/y + 1, x)
+>>> p
+Poly(1/y*x**2 - 1/(y + 1), x, domain='ZZ(y)')
+>>> p.div(q)
+(Poly(x - y, x, domain='ZZ(y)'), Poly((y**2 + y - 1)/(y + 1), x, domain='ZZ(y)'))
+>>> p.cancel(q), p.eval(x, 2)
+((1/(y + 1), Poly((y + 1)*x**2 - y, x, domain='ZZ(y)'), Poly(x + y, x, domain='ZZ(y)')), (3*y + 4)/(y**2 + y))
+>>> Poly(x**2 - y**2, x, domain='ZZ(y)').gcd(Poly(y*x + y**2, x))
+Poly(x + y, x, domain='ZZ(y)')
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/polys/polytools.py (Poly), sympy/polys/polyutils.py
 # (_sort_gens, _parallel_dict_from_expr),
-# sympy/polys/constructor.py (construct_domain, the polynomial-ring case),
-# sympy/printing/str.py (_print_Poly) (SymPy 1.14)
+# sympy/polys/constructor.py (construct_domain, the polynomial-ring and
+# fraction-field cases), sympy/polys/domains/domain.py (unify_composite),
+# sympy/polys/euclidtools.py (dmp_cancel), sympy/polys/densetools.py
+# (dmp_ground_content, dmp_ground_monic), sympy/printing/str.py (_print_Poly)
+# (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: a typed sparse representation over QQ with the domain label
-# kept beside it; the domains EX, RR, fraction fields, ZZ_I and
-# algebraic extensions, the multivariate division and factorisation not
-# ported yet.
+# kept beside it, over a fraction field a numerator and a common
+# denominator; the domains EX, RR, ZZ_I and algebraic extensions and the
+# multivariate division not ported yet.
 # ---------------------------------------------------------------------
 
 from __future__ import annotations
@@ -68,7 +91,7 @@ from __future__ import annotations
 import re
 from fractions import Fraction
 from math import gcd as integer_gcd
-from typing import Final, Literal, Optional, Sequence, Union
+from typing import Final, Literal, Optional, Sequence, TypeVar, Union
 
 import mpmath
 
@@ -87,10 +110,11 @@ from builtins import pow as builtins_pow
 from . import densearith, densebasic, densetools, euclidtools, factortools, sqfreetools
 from .domains import QQ, ZZ
 from .domains.gaussiandomains import QQ_I, ZZ_I, GaussianInteger, GaussianRational
+from .domains.sparsefractionfield import SparseFracElement, SparseFractionField
 from .domains.sparsepolynomialring import (IntegerPolynomialRing, IteratedPolynomialRing, RationalPolynomialRing,
                                            SparsePolynomialRing)
-from .polyerrors import (CoercionFailed, GeneratorsError, GeneratorsNeeded, OperationNotSupported, PolynomialDivisionFailed,
-                         PolynomialError)
+from .polyerrors import (CoercionFailed, GeneratorsError, GeneratorsNeeded, OperationNotSupported, OptionError,
+                         PolynomialDivisionFailed, PolynomialError)
 from .polyutils import dict_from_expr
 from .rings import Monomial, PolyElement, PolyRing
 
@@ -213,36 +237,86 @@ def _decompose_without_gens(e: Expr) -> tuple[Decomposed, tuple[Expr, ...]]:
 
 class _Domain:
     """SymPy's domain of a ``Poly`` restricted to ``ZZ``, ``QQ``,
-    ``ZZ[params]``, ``QQ[params]``: integral or rational coefficients,
-    polynomial in the symbols ``params``."""
+    ``ZZ[params]``, ``QQ[params]`` and the fraction fields ``ZZ(params)``,
+    ``QQ(params)``: integral or rational coefficients, polynomial (or
+    rational, ``fraction``) in the symbols ``params``."""
 
-    __slots__ = ('integral', 'params')
+    __slots__ = ('integral', 'params', 'fraction')
 
-    def __init__(self, integral: bool, params: tuple[Symbol, ...]) -> None:
+    def __init__(self, integral: bool, params: tuple[Symbol, ...], fraction: bool = False) -> None:
         self.integral: Final[bool] = integral
         self.params: Final[tuple[Symbol, ...]] = params
+        self.fraction: Final[bool] = fraction and bool(params)
 
     @property
     def name(self) -> str:
         ground = 'ZZ' if self.integral else 'QQ'
         if not self.params:
             return ground
-        return '%s[%s]' % (ground, ','.join(str(p) for p in self.params))
+        template = '%s(%s)' if self.fraction else '%s[%s]'
+        return template % (ground, ','.join(str(p) for p in self.params))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, _Domain) and other.integral == self.integral and other.params == self.params
+        return (isinstance(other, _Domain) and other.integral == self.integral and other.params == self.params
+                and other.fraction == self.fraction)
 
     def __hash__(self) -> int:
-        return hash(('_Domain', self.integral, self.params))
+        return hash(('_Domain', self.integral, self.params, self.fraction))
+
+    def to_field(self) -> _Domain:
+        """The fraction field of a polynomial domain (``ZZ[y]`` to
+        ``ZZ(y)``; ``ZZ`` to ``QQ``), the domain itself for a field."""
+        if not self.params:
+            return _Domain(False, ())
+        return _Domain(self.integral, self.params, True)
 
 
+_DOMAIN_NAME = re.compile(r'^\s*(ZZ|QQ)\s*(?:\[([^\]]*)\]|\(([^)]*)\))?\s*$')
+
+
+def _parse_domain(name: str, symbols: set[Basic]) -> _Domain:
+    """The domain named ``ZZ``, ``QQ``, ``ZZ[a,b]``, ``QQ[a]``, ``ZZ(a,b)``
+    or ``QQ(a)``; the parameters are the symbols of ``symbols`` with those
+    names (new symbols otherwise)."""
+    match = _DOMAIN_NAME.match(name)
+    if match is None:
+        raise OptionError('the domain %s is not ported (ZZ, QQ, ZZ[...], QQ[...], ZZ(...), QQ(...))' % (name,))
+    ground, ring, field = match.group(1), match.group(2), match.group(3)
+    names = [n.strip() for n in (ring if ring is not None else field or '').split(',') if n.strip()]
+    if (ring is not None or field is not None) and not names:
+        raise OptionError('the domain %s has no generators' % (name,))
+    by_name = {s.name: s for s in symbols if isinstance(s, Symbol)}
+    params = tuple(by_name.get(n, Symbol(n)) for n in names)
+    if len(set(params)) != len(params):
+        raise OptionError('duplicated generators in the domain %s' % (name,))
+    return _Domain(ground == 'ZZ', params, field is not None)
+
+
+# PORTED FROM SYMPY: sympy/polys/domains/domain.py:Domain.unify_composite
 def _unify_domains(a: _Domain, b: _Domain) -> _Domain:
     params = sort_gens(list(dict.fromkeys(a.params + b.params)))
     symbols = tuple(p for p in params if isinstance(p, Symbol))
-    return _Domain(a.integral and b.integral, symbols)
+    integral = a.integral and b.integral
+    if a.fraction != b.fraction and (a.params if b.fraction else b.params) and not (
+            not a.integral and not b.integral):
+        # ZZ[x] and QQ(x), QQ[x] and ZZ(x): ZZ(x)
+        integral = True
+    return _Domain(integral, symbols, a.fraction or b.fraction)
 
 
-# PORTED FROM SYMPY: sympy/polys/constructor.py:construct_domain (rationals and polynomial rings)
+def _coefficient_dicts(c: Expr, names: list[str]) -> Optional[tuple[dict[Monomial, Fraction], dict[Monomial, Fraction]]]:
+    """The numerator and the denominator of a coefficient as polynomials in
+    the parameters named ``names`` (``as_numer_denom``), ``None`` when they
+    are not polynomials."""
+    numer, denom = c.as_numer_denom()
+    try:
+        return dict_from_expr(_expanded(numer), names, QQ), dict_from_expr(_expanded(denom), names, QQ)
+    except (ValueError, CoercionFailed):
+        return None
+
+
+# PORTED FROM SYMPY: sympy/polys/constructor.py:construct_domain (rationals, polynomial rings and
+# fraction fields, _construct_composite)
 def _construct_domain(coefficients: Sequence[Expr]) -> _Domain:
     symbols: set[Expr] = set()
     for c in coefficients:
@@ -253,19 +327,34 @@ def _construct_domain(coefficients: Sequence[Expr]) -> _Domain:
     params = tuple(p for p in sort_gens(list(symbols)) if isinstance(p, Symbol))
     names = [p.name for p in params]
     integral = True
+    polynomial_values: list[Fraction] = []
+    fraction = False
     for c in coefficients:
         if names:
             try:
                 terms = dict_from_expr(c, names, QQ)
             except ValueError:
-                raise CoercionFailed('the domain of %s (EX or a fraction field) is not ported yet' % (c,))
-            values: list[Fraction] = list(terms.values())
+                if _coefficient_dicts(c, names) is None:
+                    raise CoercionFailed('the domain of %s (EX) is not ported yet' % (c,))
+                fraction = True
+                continue
+            polynomial_values.extend(terms.values())
         else:
             if not isinstance(c, Rational):
                 raise CoercionFailed('the domain of %s (EX, RR or an extension) is not ported yet' % (c,))
-            values = [c.as_fraction()]
-        if any(v.denominator != 1 for v in values):
-            integral = False
+            polynomial_values.append(c.as_fraction())
+    if fraction:
+        # SymPy's _construct_composite: the coefficients of every numerator
+        # and denominator decide between ZZ(params) and QQ(params)
+        for c in coefficients:
+            parts = _coefficient_dicts(c, names)
+            if parts is None:
+                raise CoercionFailed('the domain of %s (EX) is not ported yet' % (c,))
+            if any(v.denominator != 1 for part in parts for v in part.values()):
+                integral = False
+        return _Domain(integral, params, True)
+    if any(v.denominator != 1 for v in polynomial_values):
+        integral = False
     return _Domain(integral, params)
 
 
@@ -279,18 +368,28 @@ def _internal_names(n_gens: int, n_params: int) -> list[str]:
 # PORTED FROM SYMPY: sympy/polys/polytools.py:Poly
 class Poly:
     """A polynomial in ``gens`` with coefficients in a domain (``ZZ``,
-    ``QQ``, ``ZZ[a, b]``, ``QQ[a, b]``)."""
+    ``QQ``, ``ZZ[a, b]``, ``QQ[a, b]``, ``ZZ(a, b)``, ``QQ(a, b)``; the
+    domain named by ``domain`` when it is given).
 
-    __slots__ = ('_rep', '_gens', '_domain')
+    Over a fraction field the polynomial is ``rep/den``: ``rep`` a
+    polynomial in the generators and the parameters, ``den`` one in the
+    parameters only, both with integer coefficients, without common factor
+    and the leading coefficient of ``den`` positive."""
 
-    def __init__(self, expr: PolyLike, *gens: ExprLike) -> None:
+    __slots__ = ('_rep', '_gens', '_domain', '_den')
+
+    def __init__(self, expr: PolyLike, *gens: ExprLike, domain: Optional[str] = None) -> None:
         if isinstance(expr, Poly):
             if gens and tuple(to_expr(g) for g in gens) != expr.gens:
                 expr = expr.as_expr()
             else:
-                self._rep: PolyElement[Fraction] = expr._rep
-                self._gens: tuple[Expr, ...] = expr._gens
-                self._domain: _Domain = expr._domain
+                source = expr
+                if domain is not None:
+                    source = expr._set_domain(_parse_domain(domain, expr.free_symbols))
+                self._rep: PolyElement[Fraction] = source._rep
+                self._gens: tuple[Expr, ...] = source._gens
+                self._domain: _Domain = source._domain
+                self._den: Optional[PolyElement[Fraction]] = source._den
                 return
         e = to_expr(expr)
         if e.is_commutative is False:
@@ -305,20 +404,61 @@ class Poly:
             if not generators:
                 raise GeneratorsNeeded('specify generators to give %s a polynomial representation' % (e,))
         coefficients = {m: add(*cs) for m, cs in decomposed.items()}
-        domain = _construct_domain(list(coefficients.values()))
+        natural = _construct_domain(list(coefficients.values()))
         self._gens = generators
-        self._domain = domain
-        self._rep = _rep_from_coefficients(coefficients, generators, domain)
+        self._domain = natural
+        if natural.fraction:
+            self._rep, self._den = _fraction_from_coefficients(coefficients, generators, natural)
+        else:
+            self._rep = _rep_from_coefficients(coefficients, generators, natural)
+            self._den = None
+        if domain is not None:
+            converted = self._set_domain(_parse_domain(domain, set(e.free_symbols)))
+            self._rep, self._domain, self._den = converted._rep, converted._domain, converted._den
 
     @classmethod
-    def _new(cls, rep: PolyElement[Fraction], gens: tuple[Expr, ...], domain: _Domain) -> Poly:
+    def _new(cls, rep: PolyElement[Fraction], gens: tuple[Expr, ...], domain: _Domain,
+             den: Optional[PolyElement[Fraction]] = None) -> Poly:
         """The polynomial of a representation (its ring having the
-        internal names of ``gens`` and the domain's parameters)."""
+        internal names of ``gens`` and the domain's parameters); over a
+        fraction field ``rep/den`` (``den`` one when it is not given),
+        which must be reduced (:func:`_reduce_fraction`)."""
         obj = cls.__new__(cls)
         obj._rep = rep
         obj._gens = gens
         obj._domain = domain
+        obj._den = (den if den is not None else rep.ring.one) if domain.fraction else None
         return obj
+
+    def _fraction(self, rep: PolyElement[Fraction], den: PolyElement[Fraction],
+                  domain: Optional[_Domain] = None) -> Poly:
+        """``rep/den`` reduced, over the fraction field of the domain (or
+        over ``domain``)."""
+        target = domain if domain is not None else self._domain.to_field()
+        p, q = _reduce_fraction(rep, den)
+        return Poly._new(p, self._gens, target, q)
+
+    @property
+    def den(self) -> PolyElement[Fraction]:
+        """The denominator of the representation, a polynomial in the
+        parameters of a fraction field (``1`` over the other domains)."""
+        return self._den if self._den is not None else self._rep.ring.one
+
+    def _numerator(self) -> Poly:
+        """``rep`` as a polynomial over ``ZZ[params]`` (``self`` times the
+        denominator of a fraction field)."""
+        return Poly._new(self._rep, self._gens, _Domain(True, self._domain.params))
+
+    def _set_domain(self, domain: _Domain) -> Poly:
+        """The polynomial over ``domain``, which must contain its domain
+        (SymPy's ``Poly(..., domain=...)``; ``CoercionFailed`` otherwise)."""
+        if domain == self._domain:
+            return self
+        own = self._domain
+        if (not set(own.params) <= set(domain.params) or (own.fraction and not domain.fraction)
+                or (domain.integral and not domain.fraction and not own.integral)):
+            raise CoercionFailed('cannot convert %s into %s' % (self, domain.name))
+        return self._converted(domain)
 
     @classmethod
     def from_dict(cls, terms: dict[Monomial, Union[int, Fraction]], *gens: ExprLike) -> Poly:
@@ -344,8 +484,15 @@ class Poly:
     def rep(self) -> PolyElement[Fraction]:
         """The representation: a sparse polynomial over ``QQ`` in the
         generators followed by the parameters of the domain (internal
-        variable names)."""
+        variable names); over a fraction field the numerator, the
+        polynomial being ``rep/den``."""
         return self._rep
+
+    @property
+    def is_fraction_field(self) -> bool:
+        """Whether the domain is a fraction field ``ZZ(params)`` or
+        ``QQ(params)``."""
+        return self._domain.fraction
 
     @property
     def is_integral(self) -> bool:
@@ -405,10 +552,39 @@ class Poly:
             parts.append(mul(*factors))
         return add(*parts)
 
+    def _param_terms(self, f: PolyElement[Fraction]) -> dict[Monomial, Fraction]:
+        """The terms of a polynomial of the ring which is free of the
+        generators, as terms in the parameters."""
+        n = len(self._gens)
+        return {m[n:]: c for m, c in f.terms.items()}
+
+    # PORTED FROM SYMPY: sympy/polys/fields.py:FracElement.as_expr (in lowest terms by PolyElement.cancel)
+    def _fraction_expr(self, numer: dict[Monomial, Fraction], denom: dict[Monomial, Fraction]) -> Expr:
+        """``numer/denom`` (terms in the parameters) in lowest terms, as
+        SymPy writes an element of ``ZZ(params)``: ``p/q`` with integer
+        polynomials, the leading coefficient of ``q`` positive."""
+        if not numer:
+            return Integer(0)
+        if len(denom) == 1 and not any(next(iter(denom))):
+            d = next(iter(denom.values()))
+            if d == 1:
+                return self._coefficient_expr(numer)
+        Z = IntegerPolynomialRing(['_p%d' % i for i in range(len(self._domain.params))])
+        scale = _denominators_lcm_of(list(numer.values()) + list(denom.values()))
+        p, q = Z.cancel(Z.ring.from_dict({m: int(c * scale) for m, c in numer.items()}),
+                        Z.ring.from_dict({m: int(c * scale) for m, c in denom.items()}))
+        numer_expr = self._coefficient_expr({m: Fraction(c) for m, c in p.terms.items()})
+        if Z.is_one(q):
+            return numer_expr
+        return mul(numer_expr, pow(self._coefficient_expr({m: Fraction(c) for m, c in q.terms.items()}), Integer(-1)))
+
     def terms(self) -> list[tuple[Monomial, Expr]]:
         """The terms ``(monomial, coefficient)`` in lex order, the
         coefficients as expressions."""
         grouped = self._split()
+        if self._den is not None:
+            denom = self._param_terms(self._den)
+            return [(m, self._fraction_expr(grouped[m], denom)) for m in sorted(grouped, reverse=True)]
         return [(m, self._coefficient_expr(grouped[m])) for m in sorted(grouped, reverse=True)]
 
     def monoms(self) -> list[Monomial]:
@@ -493,7 +669,7 @@ class Poly:
 
     @property
     def is_one(self) -> bool:
-        return self._rep == self._rep.ring.one
+        return self._rep == self._rep.ring.one and (self._den is None or self._den == self._rep.ring.one)
 
     @property
     def is_ground(self) -> bool:
@@ -557,8 +733,13 @@ class Poly:
                 return False
             if self._domain.params == other._domain.params:
                 # one ring: the representations are equal exactly when the
-                # polynomials are (whatever ZZ or QQ says)
-                return self._rep.terms == other._rep.terms
+                # polynomials are (whatever ZZ or QQ says; the fractions
+                # reduced)
+                if self._den is None and other._den is None:
+                    return self._rep.terms == other._rep.terms
+                a = self if self._den is not None else self._converted(self._domain.to_field())
+                b = other if other._den is not None else other._converted(other._domain.to_field())
+                return a._rep.terms == b._rep.terms and a.den.terms == b.den.terms
             return self.as_expr() == other.as_expr()
         return NotImplemented
 
@@ -583,28 +764,51 @@ class Poly:
         return self._converted(domain), other._converted(domain)
 
     def _converted(self, domain: _Domain) -> Poly:
-        """The polynomial over a larger domain (more parameters, or ``QQ``
-        for ``ZZ``)."""
+        """The polynomial over a larger domain (more parameters, ``QQ`` for
+        ``ZZ``, the fraction field of a polynomial ring)."""
         n = len(self._gens)
         position = {p: i for i, p in enumerate(domain.params)}
         ring = PolyRing(QQ, _internal_names(n, len(domain.params)))
-        terms: dict[Monomial, Fraction] = {}
-        for m, c in self._rep.terms.items():
-            exponents = [0] * len(domain.params)
-            for p, k in zip(self._domain.params, m[n:]):
-                exponents[position[p]] = k
-            terms[m[:n] + tuple(exponents)] = c
-        return Poly._new(ring.from_dict(terms), self._gens, domain)
+        if domain.params == self._domain.params:
+            rep, den = self._rep, self._den
+        else:
+            def moved(f: PolyElement[Fraction]) -> PolyElement[Fraction]:
+                terms: dict[Monomial, Fraction] = {}
+                for m, c in f.terms.items():
+                    exponents = [0] * len(domain.params)
+                    for p, k in zip(self._domain.params, m[n:]):
+                        exponents[position[p]] = k
+                    terms[m[:n] + tuple(exponents)] = c
+                return ring.from_dict(terms)
+            rep = moved(self._rep)
+            den = moved(self._den) if self._den is not None else None
+        if not domain.fraction:
+            return Poly._new(rep, self._gens, domain)
+        if den is not None:
+            return Poly._new(rep, self._gens, domain, den)
+        p, q = _reduce_fraction(rep, rep.ring.one)
+        return Poly._new(p, self._gens, domain, q)
 
     def _same_ring(self, rep: PolyElement[Fraction], integral: Optional[bool] = None) -> Poly:
-        domain = self._domain if integral is None else _Domain(integral, self._domain.params)
+        """A polynomial over the domain of ``self`` (or its ``ZZ``/``QQ``
+        variant); over a fraction field the polynomial ``rep`` itself."""
+        domain = self._domain if integral is None else _Domain(integral, self._domain.params, self._domain.fraction)
+        if domain.fraction:
+            p, q = _reduce_fraction(rep, rep.ring.one)
+            return Poly._new(p, self._gens, domain, q)
         return Poly._new(rep, self._gens, domain)
 
     def __neg__(self) -> Poly:
+        if self._den is not None:
+            return Poly._new(-self._rep, self._gens, self._domain, self._den)
         return self._same_ring(-self._rep)
 
     def __add__(self, other: PolyLike) -> Poly:
         a, b = self._unified(other)
+        if a._den is not None and b._den is not None:
+            if a._den == b._den:
+                return a._fraction(a._rep + b._rep, a._den)
+            return a._fraction(a._rep * b._den + b._rep * a._den, a._den * b._den)
         return a._same_ring(a._rep + b._rep)
 
     def __radd__(self, other: PolyLike) -> Poly:
@@ -612,6 +816,8 @@ class Poly:
 
     def __sub__(self, other: PolyLike) -> Poly:
         a, b = self._unified(other)
+        if a._den is not None:
+            return a.__add__(-b)
         return a._same_ring(a._rep - b._rep)
 
     def __rsub__(self, other: PolyLike) -> Poly:
@@ -619,6 +825,8 @@ class Poly:
 
     def __mul__(self, other: PolyLike) -> Poly:
         a, b = self._unified(other)
+        if a._den is not None and b._den is not None:
+            return a._fraction(a._rep * b._rep, a._den * b._den)
         return a._same_ring(a._rep * b._rep)
 
     def __rmul__(self, other: PolyLike) -> Poly:
@@ -627,9 +835,14 @@ class Poly:
     def __pow__(self, n: int) -> Poly:
         if n < 0:
             raise PolynomialError('negative powers of a polynomial')
+        if self._den is not None:
+            # the powers of a reduced fraction are reduced
+            return Poly._new(self._rep ** n, self._gens, self._domain, self._den ** n)
         return self._same_ring(self._rep ** n)
 
     def diff(self, gen: Union[int, ExprLike] = 0) -> Poly:
+        if self._den is not None:
+            return self._fraction(self._rep.diff(self._gen_index(gen)), self._den)
         return self._same_ring(self._rep.diff(self._gen_index(gen)))
 
     def eval(self, gen: Union[int, ExprLike], value: ExprLike) -> Union[Poly, Expr]:
@@ -645,9 +858,29 @@ class Poly:
             raise TypeError("an expression is expected")
         rest = self._gens[:i] + self._gens[i + 1:]
         result = _expanded(result)
+        if self._den is not None:
+            # SymPy evaluates in the fraction field: an element of it, a
+            # polynomial over it
+            if not rest:
+                return self._domain_element_expr(result)
+            evaluated = Poly(result, *rest)
+            try:
+                return evaluated._set_domain(self._domain)
+            except CoercionFailed:
+                return evaluated
         if not rest:
             return result
         return Poly(result, *rest)
+
+    def _domain_element_expr(self, e: Expr) -> Expr:
+        """A rational function of the parameters in lowest terms, as SymPy
+        writes the element of the fraction field (``e`` itself when it is
+        not one)."""
+        parts = _coefficient_dicts(e, [p.name for p in self._domain.params])
+        if parts is None:
+            return e
+        numer, denom = parts
+        return self._fraction_expr(numer, denom)
 
     # -- algorithms on the representation
 
@@ -679,8 +912,11 @@ class Poly:
     def gcd(self, other: PolyLike) -> Poly:
         """SymPy's gcd: positive leading coefficient over ``ZZ``, monic over
         ``QQ``, ``dmp_rr_prs_gcd`` over ``ZZ[y]`` and ``QQ[y]`` (contents
-        by the gcd of the parameter ring)."""
+        by the gcd of the parameter ring), monic (``dmp_ff_prs_gcd``) over
+        a fraction field."""
         a, b = self._unified(other)
+        if a._den is not None:
+            return a._ground_monic(a._numerator().gcd(b._numerator())._rep)
         if a._domain.integral:
             Z = a._integer_ring()
             return a._from_integers(Z.gcd(a._integer_rep(Z), b._integer_rep(Z)))
@@ -695,6 +931,8 @@ class Poly:
         a, b = self._unified(other)
         if a.is_zero or b.is_zero:
             return a._same_ring(a._rep.ring.zero)
+        if a._den is not None:
+            return a._ground_monic(a._numerator().lcm(b._numerator())._rep)
         if a._domain.params:
             if a._domain.integral:
                 Z = a._integer_ring()
@@ -717,19 +955,49 @@ class Poly:
         g = a.gcd(b)
         if g.is_zero:
             return g, a, b
+        if a._den is not None:
+            return g, a.exquo(g), b.exquo(g)
         return g, a._same_ring(a._rep.exquo(g._rep)), b._same_ring(b._rep.exquo(g._rep))
 
+    def _ground_LC_rep(self, f: PolyElement[Fraction]) -> PolyElement[Fraction]:
+        """The leading coefficient of ``f`` in the generators (lex, SymPy's
+        ``dmp_ground_LC``) as a polynomial of the ring in the parameters."""
+        n = len(self._gens)
+        top = max(m[:n] for m in f.terms)
+        zeros = tuple(0 for _ in range(n))
+        return f.ring.from_dict({zeros + m[n:]: c for m, c in f.terms.items() if m[:n] == top})
+
+    # PORTED FROM SYMPY: sympy/polys/densetools.py:dmp_ground_monic (over a fraction field)
+    def _ground_monic(self, f: PolyElement[Fraction]) -> Poly:
+        """``f`` divided by its leading coefficient in the generators, over
+        the fraction field of the domain."""
+        if not f.terms:
+            return self._fraction(f, f.ring.one)
+        return self._fraction(f, self._ground_LC_rep(f))
+
     def monic(self) -> Poly:
+        """The polynomial divided by its leading coefficient: over the
+        fraction field when that is not a number (SymPy's ``to_field``)."""
         if self.is_zero:
             return self
+        if self._den is not None:
+            return self._ground_monic(self._rep)
         lc = self._rep.LC
         if self._domain.params:
             lead = self._split()[max(self._split())]
             if list(lead) != [tuple(0 for _ in self._domain.params)]:
-                raise CoercionFailed('monic of %s needs the fraction field (not ported yet)' % (self,))
+                return self._ground_monic(self._rep)
         return self._same_ring(self._rep.exquo_ground(lc), integral=False if lc != 1 else None)
 
     def content(self) -> Expr:
+        """The gcd of the coefficients (over a fraction field the gcd of
+        their numerators over the lcm of their denominators, SymPy's
+        ``Field.gcd``)."""
+        if self._den is not None:
+            if self.is_zero:
+                return Integer(0)
+            numer, denom = self._field_content()
+            return self._ratio_expr(numer, denom)
         if self._domain.params:
             raise OperationNotSupported('the content over a polynomial domain is not ported yet')
         values = list(self._rep.terms.values())
@@ -739,11 +1007,68 @@ class Poly:
             return Integer(_terms_gcd(values))
         return Integer(1) if values else Integer(0)
 
+    def _ground_content_rep(self) -> PolyElement[Fraction]:
+        """The content of ``rep`` (integer coefficients) in ``ZZ[params]``,
+        with a positive leading coefficient, as a polynomial of the ring."""
+        n = len(self._gens)
+        names = self._rep.ring.names
+        Z = IteratedPolynomialRing(IntegerPolynomialRing(names[n:]), names[:n])
+        content = Z.ground_content(Z.ring.from_dict({m: int(c) for m, c in self._rep.terms.items()}))
+        if content.terms and content.LC < 0:
+            content = -content
+        zeros = tuple(0 for _ in range(n))
+        return self._rep.ring.from_dict({zeros + m: Fraction(c) for m, c in content.terms.items()})
+
+    # -- the elements of SymPy's FracField: ZZ(params) and QQ(params), whose gcd
+    # and lcm are those of ZZ[params] and QQ[params]
+
+    def _embedded(self, f: PolyElement[Fraction]) -> PolyElement[Fraction]:
+        """A polynomial in the parameters as one of the ring of ``rep``."""
+        zeros = tuple(0 for _ in self._gens)
+        return self._rep.ring.from_dict({zeros + m: c for m, c in f.terms.items()})
+
+    def _ratio_expr(self, numer: dict[Monomial, Fraction], denom: dict[Monomial, Fraction]) -> Expr:
+        """SymPy's ``FracElement.as_expr`` of an element in its normal form:
+        ``numer/denom``."""
+        numer_expr = self._coefficient_expr(numer)
+        if denom == {tuple(0 for _ in self._domain.params): Fraction(1)}:
+            return numer_expr
+        return mul(numer_expr, pow(self._coefficient_expr(denom), Integer(-1)))
+
+    def _field_content(self) -> tuple[dict[Monomial, Fraction], dict[Monomial, Fraction]]:
+        """The content over the fraction field, as SymPy computes it
+        (:func:`_folded_field_content`): its numerator and denominator as
+        terms in the parameters."""
+        names = _internal_names(0, len(self._domain.params))
+        den = self._param_terms(self.den)
+        if self._domain.integral:
+            FZ = SparseFractionField(IntegerPolynomialRing(names))
+            dz = FZ.ring.ring.from_dict({m: int(c) for m, c in den.items()})
+            cz = _folded_field_content(FZ, {m: FZ.new(FZ.ring.ring.from_dict({k: int(v) for k, v in terms.items()}), dz)
+                                            for m, terms in self._split().items()})
+            return ({m: Fraction(c) for m, c in cz.numer.terms.items()},
+                    {m: Fraction(c) for m, c in cz.denom.terms.items()})
+        FQ = SparseFractionField(RationalPolynomialRing(names))
+        dq = FQ.ring.ring.from_dict(den)
+        cq = _folded_field_content(FQ, {m: FQ.new(FQ.ring.ring.from_dict(terms), dq)
+                                        for m, terms in self._split().items()})
+        return dict(cq.numer.terms), dict(cq.denom.terms)
+
     def primitive(self) -> tuple[Expr, Poly]:
-        c = self.content()
-        if not isinstance(c, Rational) or c.p in (0, 1):
-            return c, self
-        return c, self._same_ring(self._rep.exquo_ground(c.as_fraction()))
+        if self._den is not None:
+            if self.is_zero:
+                return Integer(0), self
+            numer, denom = self._field_content()
+            if numer == denom:
+                return Integer(1), self
+            ring = PolyRing(QQ, _internal_names(0, len(self._domain.params)))
+            return (self._ratio_expr(numer, denom),
+                    self._fraction(self._rep * self._embedded(ring.from_dict(denom)),
+                                   self.den * self._embedded(ring.from_dict(numer)), self._domain))
+        value = self.content()
+        if not isinstance(value, Rational) or value.p in (0, 1):
+            return value, self
+        return value, self._same_ring(self._rep.exquo_ground(value.as_fraction()))
 
     def _univariate_rational(self) -> list[Fraction]:
         if len(self._gens) != 1 or self._domain.params:
@@ -757,17 +1082,68 @@ class Poly:
     def div(self, other: PolyLike) -> tuple[Poly, Poly]:
         """Division with remainder of univariate polynomials (SymPy's
         ``div(auto=True)``: over ``QQ`` when the coefficients are integers;
-        over a polynomial domain only when the leading coefficient of the
-        divisor is a number, SymPy's fraction field ``ZZ(a)`` not being
-        ported)."""
+        over a polynomial domain ``ZZ[a]`` over itself when the leading
+        coefficient of the divisor is a number, over the fraction field
+        ``ZZ(a)`` otherwise, the results brought back to ``ZZ[a]`` when
+        they are polynomials there)."""
         a, b = self._unified(other)
         if b.is_zero:
             raise ZeroDivisionError('polynomial division by zero')
+        if a._den is not None:
+            return a._div_fraction(b)
         if a._domain.params:
+            if len(a._gens) == 1:
+                lead = b._split()[(b.degree(),)]
+                if list(lead) != [tuple(0 for _ in a._domain.params)]:
+                    field = a._domain.to_field()
+                    fq, fr = a._converted(field)._div_fraction(b._converted(field))
+                    q_ring, r_ring = fq._retracted(a._domain), fr._retracted(a._domain)
+                    if q_ring is not None and r_ring is not None:
+                        return q_ring, r_ring
+                    return fq, fr
             return a._div_over_parameters(b)
         q, r = densearith.dup_div(a._univariate_rational(), b._univariate_rational(), QQ)
         integral = a._domain.integral and all(c.denominator == 1 for c in q + r)
         return a._from_univariate(q, integral), a._from_univariate(r, integral)
+
+    def _retracted(self, ring: _Domain) -> Optional[Poly]:
+        """The polynomial over the polynomial domain ``ring`` (SymPy's
+        ``to_ring``), ``None`` when its coefficients are not in it."""
+        den = self.den
+        if any(any(m) for m in den.terms):
+            return None
+        d = den.LC
+        if ring.integral and d != 1:
+            return None
+        return Poly._new(self._rep.exquo_ground(d), self._gens, ring)
+
+    # PORTED FROM SYMPY: sympy/polys/densearith.py:dup_pdiv (the division over a fraction field by the
+    # pseudo-division of the numerators)
+    def _div_fraction(self, b: Poly) -> tuple[Poly, Poly]:
+        """``self = q b + r`` over the fraction field: ``lc^k P = Q B + R``
+        on the numerators, ``q = Q den(b)/(lc^k den)``, ``r = R/(lc^k den)``."""
+        if len(self._gens) != 1:
+            raise OperationNotSupported('division of multivariate polynomials is not ported yet')
+        ring = self._rep.ring
+        P, B = self._rep, b._rep
+        m = b.degree()
+        n = self.degree()
+        if n < m:
+            return self._fraction(ring.zero, ring.one, self._domain), self
+        lc = self._ground_LC_rep(B)
+        Q, R = ring.zero, P
+        k = n - m + 1
+        while R.terms and R.degree_in(0) >= m:
+            d = R.degree_in(0)
+            lr = ring.from_dict({(0,) + mm[1:]: c for mm, c in R.terms.items() if mm[0] == d})
+            shift = tuple(d - m if i == 0 else 0 for i in range(ring.ngens))
+            Q = Q * lc + lr.mul_monom(shift)
+            R = R * lc - (lr * B).mul_monom(shift)
+            k -= 1
+        scale = lc ** k
+        Q, R = Q * scale, R * scale
+        factor = lc ** (n - m + 1) * self.den
+        return (self._fraction(Q * b.den, factor, self._domain), self._fraction(R, factor, self._domain))
 
     def _div_over_parameters(self, b: Poly) -> tuple[Poly, Poly]:
         if len(self._gens) != 1:
@@ -816,6 +1192,8 @@ class Poly:
         a, b = self._unified(other)
         if b.is_zero:
             raise ZeroDivisionError('cancel by a zero polynomial')
+        if a._den is not None:
+            return a._cancel_fraction(b)
         cp, cq = 1, 1
         f, g = a, b
         if not a._domain.integral and not a._domain.params:
@@ -837,6 +1215,55 @@ class Poly:
             cp, q = -cp, -q
         return (number_from_fraction(Fraction(cp, cq)), p, q)
 
+    # PORTED FROM SYMPY: sympy/polys/euclidtools.py:dmp_cancel (a fraction field: the denominators cleared
+    # into ZZ[params])
+    def _cancel_fraction(self, b: Poly) -> tuple[Expr, Poly, Poly]:
+        """``self = P/D``, ``b = B/E``: ``P/B`` cancelled over
+        ``ZZ[params]``, the constant ``E/D`` in lowest terms, the sign of
+        the ground leading coefficients going into it."""
+        if not self._domain.integral:
+            return self._cancel_rational_field(b)
+        c, p, q = self._numerator().cancel(b._numerator())
+        Z = IntegerPolynomialRing(self._rep.ring.names)
+        cp, cq = Z.cancel(Z.ring.from_dict({m: int(v) for m, v in b.den.terms.items()}),
+                          Z.ring.from_dict({m: int(v) for m, v in self.den.terms.items()}))
+        if c == Integer(-1):
+            cp = -cp
+        numer = self._coefficient_expr({m[len(self._gens):]: Fraction(v) for m, v in cp.terms.items()})
+        denom = self._coefficient_expr({m[len(self._gens):]: Fraction(v) for m, v in cq.terms.items()})
+        coefficient = numer if Z.is_one(cq) else mul(numer, pow(denom, Integer(-1)))
+        one = self._rep.ring.one
+        return (coefficient, Poly._new(p._rep, self._gens, self._domain, one),
+                Poly._new(q._rep, self._gens, self._domain, one))
+
+    # PORTED FROM SYMPY: sympy/polys/euclidtools.py:dmp_cancel, sympy/polys/densetools.py:dmp_clear_denoms
+    # (QQ(params): the denominators cleared into QQ[params])
+    def _cancel_rational_field(self, b: Poly) -> tuple[Expr, Poly, Poly]:
+        R = RationalPolynomialRing(_internal_names(0, len(self._domain.params)))
+        ring_domain = _Domain(False, self._domain.params)
+
+        def cleared(f: Poly) -> tuple[PolyElement[Fraction], Poly]:
+            # the lcm of the denominators in QQ[params], in the dense order
+            F = SparseFractionField(R)
+            den = R.ring.from_dict(f._param_terms(f.den))
+            coefficients = {m: F.new(R.ring.from_dict(terms), den) for m, terms in f._split().items()}
+            common = R.one
+            for m in sorted(coefficients, reverse=True):
+                common = R.lcm(common, coefficients[m].denom)
+            # f*common: the numerator times common/den
+            scaled = f._rep * f._embedded(common)
+            return common, Poly._new(scaled.exquo(f.den), f._gens, ring_domain)
+        cq, f = cleared(self)
+        cp, g = cleared(b)
+        c, p, q = f.cancel(g)
+        h = R.gcd(cp, cq)
+        cp, cq = cp.exquo(h), cq.exquo(h)
+        if c == Integer(-1):
+            cp = -cp
+        numer = self._coefficient_expr(dict(cp.terms))
+        coefficient = numer if R.is_one(cq) else mul(numer, pow(self._coefficient_expr(dict(cq.terms)), Integer(-1)))
+        return coefficient, p._converted(self._domain), q._converted(self._domain)
+
     def _ground_negative(self) -> bool:
         """Whether the ground leading coefficient (lex in all the variables,
         SymPy's ``dmp_ground_LC``) is negative."""
@@ -850,6 +1277,18 @@ class Poly:
 
     def exquo(self, other: PolyLike) -> Poly:
         a, b = self._unified(other)
+        if a._den is not None:
+            # over a fraction field: by the primitive part of the divisor
+            # (Gauss's lemma), the content going into the denominator
+            if b.is_zero:
+                raise ZeroDivisionError('polynomial division by zero')
+            content = b._ground_content_rep()
+            try:
+                quotient = a._rep.exquo(b._rep.exquo(content))
+            except ValueError:
+                from .polyerrors import ExactQuotientFailed
+                raise ExactQuotientFailed('%s does not divide %s' % (b, a))
+            return a._fraction(quotient * b.den, a.den * content, a._domain)
         try:
             return a._same_ring(a._rep.exquo(b._rep))
         except ValueError:
@@ -859,42 +1298,68 @@ class Poly:
     def resultant(self, other: PolyLike) -> Union[Poly, Expr]:
         """The resultant in the first generator: an expression for a
         univariate polynomial, a polynomial in the other generators
-        otherwise."""
+        otherwise; over a fraction field ``Res(P/D, B/E) = Res(P, B)/(D**deg(b)
+        E**deg(a))``."""
         a, b = self._unified(other)
         n = len(a._gens)
         names = _internal_names(n, len(a._domain.params))
-        value = _resultant_first(a._rep, b._rep, names, a._domain.integral)
+        value = _resultant_first(a._rep, b._rep, names, a._domain.integral or a._den is not None)
+        den: Optional[PolyElement[Fraction]] = None
+        if a._den is not None:
+            if a.is_zero or b.is_zero:
+                den = a._rep.ring.one
+            else:
+                den = a.den ** max(b.degree(), 0) * b.den ** max(a.degree(), 0)
+        return a._after_first_gen(value, den)
+
+    def _after_first_gen(self, value: PolyElement[Fraction], den: Optional[PolyElement[Fraction]]
+                         ) -> Union[Poly, Expr]:
+        """A polynomial of the ring which is free of the first generator
+        (``value/den`` over a fraction field): an expression for a
+        univariate polynomial, a polynomial in the other generators
+        otherwise."""
+        n = len(self._gens)
+        numer = {m[1:]: c for m, c in value.terms.items()}
         if n == 1:
-            return a._coefficient_expr({m[1:]: c for m, c in value.terms.items()})
-        rest = Poly._new(PolyRing(QQ, _internal_names(n - 1, len(a._domain.params))).from_dict(
-            {m[1:]: c for m, c in value.terms.items()}), a._gens[1:], a._domain)
-        return rest
+            if den is None:
+                return self._coefficient_expr(numer)
+            return self._fraction_expr(numer, {m[1:]: c for m, c in den.terms.items()})
+        ring = PolyRing(QQ, _internal_names(n - 1, len(self._domain.params)))
+        if den is None:
+            return Poly._new(ring.from_dict(numer), self._gens[1:], self._domain)
+        p, q = _reduce_fraction(ring.from_dict(numer), ring.from_dict({m[1:]: c for m, c in den.terms.items()}))
+        return Poly._new(p, self._gens[1:], self._domain, q)
 
     def discriminant(self) -> Union[Poly, Expr]:
         """``(-1)**(n (n - 1)/2) Res(f, f')/lc(f)`` in the first generator,
         the division exact on the representation (the leading coefficient
-        may be a polynomial in the other generators)."""
+        may be a polynomial in the other generators); over a fraction field
+        ``disc(P/D) = disc(P)/D**(2 n - 2)``."""
         n = self.degree()
         if n < 1:
             return Integer(0)
         k = len(self._gens)
         names = _internal_names(k, len(self._domain.params))
-        value = _resultant_first(self._rep, self._rep.diff(0), names, self._domain.integral)
+        value = _resultant_first(self._rep, self._rep.diff(0), names, self._domain.integral or self._den is not None)
         lc = self._rep.ring.from_dict({(0,) + m[1:]: c for m, c in self._rep.terms.items() if m[0] == n})
         value = value.exquo(lc)
         if (n * (n - 1) // 2) % 2:
             value = -value
-        if k == 1:
-            return self._coefficient_expr({m[1:]: c for m, c in value.terms.items()})
-        return Poly._new(PolyRing(QQ, _internal_names(k - 1, len(self._domain.params))).from_dict(
-            {m[1:]: c for m, c in value.terms.items()}), self._gens[1:], self._domain)
+        return self._after_first_gen(value, None if self._den is None else self._den ** (2 * n - 2))
 
     # PORTED FROM SYMPY: sympy/polys/sqfreetools.py:dup_sqf_list, dmp_sqf_list
     def sqf_list(self) -> tuple[Expr, list[tuple[Poly, int]]]:
         """The square-free decomposition ``(coeff, [(g, k)])`` (SymPy's
         ``Poly.sqf_list``): over ``QQ`` the leading coefficient comes out,
-        over ``ZZ`` and a polynomial domain the content with the sign."""
+        over ``ZZ`` and a polynomial domain the content with the sign, over
+        a fraction field the leading coefficient and monic factors."""
         from .multisqf import IntegerSqfDomain, ParameterSqfDomain, RationalSqfDomain, sqf_list
+        if self._den is not None:
+            if self.is_zero:
+                return (Integer(0), [])
+            _, numerator_factors = self._numerator().sqf_list()
+            return (self.LC(), [(self._ground_monic(g._rep), k) for g, k in numerator_factors
+                                if g.total_degree() > 0])
         n = len(self._gens)
         names = self._rep.ring.names
         if not self._domain.params and n == 1:
@@ -928,9 +1393,20 @@ class Poly:
         multivariate polynomials factored by Wang's algorithm
         (:mod:`~sympy_extras.polys.multifactor`), a polynomial domain
         ``ZZ[a]`` by factoring in all the variables; the factors sorted as
-        SymPy sorts them."""
+        SymPy sorts them; over a fraction field the factors of the
+        numerator over ``ZZ[a]``, the denominator going into the constant."""
         if self.is_zero:
             return (Integer(0), [])
+        if self._den is not None:
+            c, numerator_factors = self._numerator().factor_list()
+            # the constant c (a polynomial in the parameters) over the
+            # denominator: SymPy's coeff/denom of dmp_factor_list
+            parts = _coefficient_dicts(c, [p.name for p in self._domain.params])
+            if parts is None or len(parts[1]) != 1 or any(next(iter(parts[1]))):
+                raise CoercionFailed('the content %s is not in %s' % (c, self._domain.name))
+            numer, (d,) = parts[0], parts[1].values()
+            constant = self._fraction_expr(numer, {m: v * d for m, v in self._param_terms(self._den).items()})
+            return (constant, [(self._same_ring(g._rep), k) for g, k in numerator_factors])
         if not self._domain.params:
             coefficient, factors = _factor_all(self._rep)
             return (number_from_fraction(coefficient),
@@ -1106,6 +1582,111 @@ def _rep_from_coefficients(coefficients: dict[Monomial, Expr], gens: tuple[Expr,
         else:
             raise CoercionFailed('cannot convert %s into %s' % (c, domain.name))
     return ring.from_dict({m: c for m, c in terms.items() if c})
+
+
+FieldGround = TypeVar('FieldGround')
+
+
+# PORTED FROM SYMPY: sympy/polys/densetools.py:dmp_ground_content, dup_content, sympy/polys/domains/field.py:Field.gcd
+def _folded_field_content(F: SparseFractionField[FieldGround],
+                          coefficients: dict[Monomial, SparseFracElement[FieldGround]]) -> SparseFracElement[FieldGround]:
+    """The content over a fraction field as SymPy folds it over the dense
+    coefficients (zeros included, stopping at ``1``): ``Field.gcd`` is the
+    gcd of the numerators over the lcm of the denominators in the ring,
+    which is not associative (``-x + 1/y`` has the content ``1``, the
+    first coefficient deciding)."""
+    R = F.ring
+
+    def gcd(u: SparseFracElement[FieldGround], v: SparseFracElement[FieldGround]) -> SparseFracElement[FieldGround]:
+        return F.new(R.gcd(u.numer, v.numer), R.lcm(u.denom, v.denom))
+
+    def content(terms: dict[Monomial, SparseFracElement[FieldGround]]) -> SparseFracElement[FieldGround]:
+        if not terms:
+            return F.zero
+        grouped: dict[int, dict[Monomial, SparseFracElement[FieldGround]]] = {}
+        for m, c in terms.items():
+            grouped.setdefault(m[0], {})[m[1:]] = c
+        result = F.zero
+        for d in range(max(grouped), -1, -1):
+            part = grouped.get(d, {})
+            if not part:
+                value = F.zero
+            elif () in part:
+                value = part[()]
+            else:
+                value = content(part)
+            result = gcd(result, value)
+            if F.is_one(result):
+                break
+        return result
+    return content(coefficients)
+
+
+def _denominators_lcm_of(values: Sequence[Fraction]) -> int:
+    result = 1
+    for c in values:
+        result = result * c.denominator // integer_gcd(result, c.denominator)
+    return result
+
+
+# PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel (over ZZ, the fraction rep/den of a Poly over ZZ(params))
+def _reduce_fraction(rep: PolyElement[Fraction], den: PolyElement[Fraction]
+                     ) -> tuple[PolyElement[Fraction], PolyElement[Fraction]]:
+    """``rep/den`` in lowest terms (``den`` free of the generators): both
+    with integer coefficients, without a common factor in ``ZZ[params]``
+    (integers included), the leading coefficient of ``den`` positive."""
+    ring = rep.ring
+    if not den.terms:
+        raise ZeroDivisionError('a zero denominator')
+    if not rep.terms:
+        return ring.zero, ring.one
+    scale = _denominators_lcm_of(list(rep.terms.values()) + list(den.terms.values()))
+    numer = {m: int(c * scale) for m, c in rep.terms.items()}
+    denom = {m: int(c * scale) for m, c in den.terms.items()}
+    if len(denom) == 1 and not any(next(iter(denom))):
+        # a number as the denominator: the integer content only
+        common = 0
+        for v in list(numer.values()) + list(denom.values()):
+            common = integer_gcd(common, v)
+        if next(iter(denom.values())) < 0:
+            common = -common
+        return (ring.from_dict({m: Fraction(v // common) for m, v in numer.items()}),
+                ring.from_dict({m: Fraction(v // common) for m, v in denom.items()}))
+    Z = IntegerPolynomialRing(ring.names)
+    p, q = Z.cancel(Z.ring.from_dict(numer), Z.ring.from_dict(denom))
+    return (ring.from_dict({m: Fraction(v) for m, v in p.terms.items()}),
+            ring.from_dict({m: Fraction(v) for m, v in q.terms.items()}))
+
+
+# PORTED FROM SYMPY: sympy/polys/constructor.py:_construct_composite (the fractions of a fraction field)
+def _fraction_from_coefficients(coefficients: dict[Monomial, Expr], gens: tuple[Expr, ...], domain: _Domain
+                                ) -> tuple[PolyElement[Fraction], PolyElement[Fraction]]:
+    """``rep/den`` of the coefficients (rational functions of the
+    parameters): ``den`` the lcm of their denominators, reduced."""
+    names = [p.name for p in domain.params]
+    n = len(gens)
+    ring = PolyRing(QQ, _internal_names(n, len(names)))
+    Z = IntegerPolynomialRing(_internal_names(0, len(names)))
+    parts: list[tuple[Monomial, PolyElement[int], PolyElement[int]]] = []
+    common = Z.one
+    for m, c in coefficients.items():
+        found = _coefficient_dicts(c, names)
+        if found is None:
+            raise CoercionFailed('cannot convert %s into %s' % (c, domain.name))
+        numer, denom = found
+        if not numer:
+            continue
+        scale = _denominators_lcm_of(list(numer.values()) + list(denom.values()))
+        d = Z.ring.from_dict({k: int(v * scale) for k, v in denom.items()})
+        parts.append((m, Z.ring.from_dict({k: int(v * scale) for k, v in numer.items()}), d))
+        common = Z.lcm(common, d)
+    terms: dict[Monomial, Fraction] = {}
+    for m, numerator, d in parts:
+        for pm, v in (numerator * common.exquo(d)).terms.items():
+            terms[m + pm] = terms.get(m + pm, Fraction(0)) + v
+    zeros = tuple(0 for _ in range(n))
+    rep = ring.from_dict({k: v for k, v in terms.items() if v})
+    return _reduce_fraction(rep, ring.from_dict({zeros + pm: Fraction(v) for pm, v in common.terms.items()}))
 
 
 # ---------------------------------------------------------------------

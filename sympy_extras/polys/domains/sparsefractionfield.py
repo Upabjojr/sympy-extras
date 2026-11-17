@@ -24,7 +24,8 @@ y/(x**2 + 2*x*y + y**2)
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/polys/fields.py (FracField, FracElement: new,
-# the arithmetic, diff, evaluate) (SymPy 1.14)
+# the arithmetic, diff, evaluate), sympy/polys/domains/fractionfield.py
+# (from_QQ, to_ring) (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: a typed domain over SparsePolynomialRing (the cancellation is
@@ -33,6 +34,7 @@ y/(x**2 + 2*x*y + y**2)
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Generic, TypeVar
 
 from sympy_extras.core.expr import Expr
@@ -42,6 +44,7 @@ from sympy_extras.core.power import pow
 
 from ..rings import PolyElement
 from .domain import Domain, U
+from .rationalfield import RationalField
 from .sparsepolynomialring import SparsePolynomialRing
 
 __all__ = ['SparseFractionField', 'SparseFracElement']
@@ -207,12 +210,34 @@ class SparseFractionField(Domain[SparseFracElement[T]], Generic[T]):
     def from_ring(self, a: PolyElement[T]) -> SparseFracElement[T]:
         return SparseFracElement(a, self.ring.one)
 
+    # PORTED FROM SYMPY: sympy/polys/domains/fractionfield.py:FractionField.from_QQ, from_PolynomialRing
     def convert(self, a: U, K: Domain[U]) -> SparseFracElement[T]:
+        """``a`` of ``K``: an element of this field (or of another one, by
+        its expression), of the polynomial ring, of the ground domain or of
+        ``QQ`` (``1/2`` is ``1/2`` in ``ZZ(x)``: numerator and denominator
+        converted apart)."""
         if isinstance(K, SparseFractionField) and isinstance(a, SparseFracElement):
             if K == self:
                 return self.new(self.ring.convert(a.numer, K.ring), self.ring.convert(a.denom, K.ring))
             return self.from_expr(K.to_expr(a))
+        if isinstance(K, RationalField) and isinstance(a, Fraction) and a.denominator != 1:
+            return self.new(self.ring.from_int(a.numerator), self.ring.from_int(a.denominator))
         return self.from_ring(self.ring.convert(a, K))
+
+    # PORTED FROM SYMPY: sympy/polys/domains/fractionfield.py:FractionField.to_ring (Domain.convert_from of the ring)
+    def to_ring(self, a: SparseFracElement[T]) -> PolyElement[T]:
+        """``a`` as an element of the polynomial ring: ``CoercionFailed``
+        when its denominator is not a unit of the ground domain."""
+        from ..polyerrors import CoercionFailed
+        d = a.denom
+        if len(d.terms) == 1 and not any(next(iter(d.terms))):
+            c = next(iter(d.terms.values()))
+            K = self.ground
+            if K.is_one(c):
+                return a.numer
+            if K.is_field:
+                return a.numer.mul_ground(K.invert(c))
+        raise CoercionFailed('%s is not an element of %s' % (self.to_expr(a), self.ring.name))
 
     def to_expr(self, a: SparseFracElement[T]) -> Expr:
         numer = self.ring.to_expr(a.numer)

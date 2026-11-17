@@ -379,3 +379,19 @@ def test_piecewise_antiderivative_is_continuous() -> None:
         right = F.subs(x, point + Rational(1, 10**8))
         assert _same(left, right) or abs(complex(reliable_value(left - right, 15) or 0)) < 1e-6
     assert _same(F.diff(x).subs(x, Integer(1)), sin(Integer(1)))
+
+
+def test_fraction_field_coefficients() -> None:
+    # issue #75: the hypergeometric formula hyperexpand builds for
+    # cos(x**y)/x**y has a polynomial over ZZ(y, z) (CoercionFailed before);
+    # the antiderivative is SymPy's
+    from sympy_extras.functions import hyper
+    f = cos(x**y) / x**y
+    F = _antiderivative(f, x)
+    half = Rational(1, 2)
+    expected = (x**(1 - y) * gamma(-half + 1 / (2 * y))
+                * hyper([-half + 1 / (2 * y)], [half, half + 1 / (2 * y)], -x**(2 * y) / 4)
+                / (2 * y * gamma(half + 1 / (2 * y))))
+    assert F == expected
+    for value in (Rational(1, 3), Rational(2, 5)):
+        assert _derivative_is(F.subs(y, value), f.subs(y, value), x)
