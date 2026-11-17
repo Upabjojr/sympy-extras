@@ -175,7 +175,7 @@ def eval_sum(f: Expr, limits: Limits) -> Optional[Expr]:
         return None
     value = eval_sum_symbolic(f.expand(), (i, a, b))
     if value is not None:
-        return value
+        return _merge_point_cases(value)
     if definite:
         return eval_sum_direct(f, (i, a, b))
     return None
@@ -319,8 +319,11 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
                 r = p * (q**a - q**(b + 1)) / (1 - q)
                 l_ = p * (b - a + 1)
                 return piecewise((l_, eq(q, ONE)), (r, True))
-        from .gosper import gosper_sum
-        gr = gosper_sum(f, (i, a, b))
+        from .gosper import gosper_definite, gosper_term
+        certificate = gosper_term(f, i)
+        gr = gosper_definite(f, certificate, (i, a, b)) if certificate is not None else None
+        cases = _certificate_cases(f_orig, certificate, gr, limits) if certificate is not None and gr is not None \
+            else []
         if isinstance(gr, (Mul, Add)):
             non_limit = gr.free_symbols - (a.free_symbols | b.free_symbols)
             den = denom(together(gr))
@@ -338,9 +341,9 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
                     args.append((sum_doit(inner) if isinstance(inner, Sum) else inner, cond))
                 break
             args.append((gr, true))
-            return piecewise(*args)
+            return piecewise(*(cases + args))
         if gr is not None and not isinstance(gr, NaN):
-            return gr
+            return piecewise(*(cases + [(gr, true)])) if cases else gr
     h = eval_sum_hyper(f_orig, (i, a, b))
     if h is not None:
         return h
@@ -351,6 +354,111 @@ def eval_sum_symbolic(f: Expr, limits: Limits) -> Optional[Expr]:
     if factored != f_orig:
         return eval_sum_symbolic(factored, (i, a, b))
     return None
+
+
+def _certificate_cases(f: Expr, certificate: Expr, value: Expr, limits: Limits) -> list[tuple[Expr, Boolean]]:
+    """The cases of the isolated values of the parameters at which the
+    Gosper certificate of ``f`` has a pole, where the telescoped ``value``
+    need not hold: ``(-1)**j*binomial(k, j)`` has the certificate
+    ``-j/k``, and the sum over ``0 <= j <= k`` is ``0`` but for ``k = 0``,
+    where it is ``1`` (issue #75). For each factor of the denominator of
+    the certificate free of the index and each of its symbols, the
+    solutions the facts of the symbol allow get a case, the sum computed
+    again there; a case whose value is that of ``value`` at the point is
+    left out. Not SymPy's: its ``Sum.doit`` gives ``0``."""
+    from sympy_extras.core.relational import Eq
+    from sympy_extras.core.sorting import ordered
+    from sympy_extras.polys.polyerrors import CoercionFailed, PolynomialError
+    from sympy_extras.polys.polytools import factor_list
+    from sympy_extras.polys.rationaltools import together
+    from sympy_extras.simplify.radsimp import denom
+    i, a, b = limits
+    den = denom(together(certificate))
+    if not den.free_symbols - {i}:
+        return []
+    try:
+        _, factors = factor_list(den)
+    except (PolynomialError, CoercionFailed):
+        return []
+    cases: list[tuple[Expr, Boolean]] = []
+    seen: set[tuple[Symbol, Expr]] = set()
+    for fac, _multiplicity in factors:
+        if fac.has(i) or not fac.free_symbols:
+            continue
+        for v in ordered(list(fac.free_symbols)):
+            assert isinstance(v, Symbol)
+            try:
+                sols = _solve(fac, v)
+            except NotImplementedError:
+                continue
+            for r in sols:
+                if (v, r) in seen or not _allowed_value(v, r):
+                    continue
+                seen.add((v, r))
+                point = {v: r}
+                inner = sum_(_e(f.subs(point)), (i, _e(a.subs(point)), _e(b.subs(point))))
+                at = sum_doit(inner) if isinstance(inner, Sum) else inner
+                if isinstance(at, Sum) or at.has(NaN):
+                    continue
+                generic = _e(value.subs(point))
+                if not generic.has(NaN) and (at - generic).expand() == 0:
+                    continue
+                cases.append((at, Eq(v, r)))
+            break
+    return cases
+
+
+def _merge_point_cases(value: Expr) -> Expr:
+    """``value`` with its ``Piecewise`` subexpressions of point cases
+    (conditions ``Eq(v, c)``, ``v`` a symbol and ``c`` a number, then
+    ``True``) merged into one ``Piecewise`` outside: the terms of an
+    expanded summand each bring their cases of :func:`_certificate_cases`
+    (``k**3*Piecewise((1, Eq(k, 0)), (0, True)) - 8*Piecewise(...)``), the
+    sum has one case per point, the value computed there, and none where
+    it agrees with the generic value. ``value`` itself otherwise."""
+    from sympy_extras.core.relational import Equality, Eq
+    from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise
+    if isinstance(value, Piecewise) or not value.has(Piecewise):
+        return value
+    points: list[tuple[Symbol, Expr]] = []
+    pieces = [p for p in value.atoms(Piecewise) if isinstance(p, Piecewise)]
+    generic_rule: dict[Basic, Basic] = {}
+    for pw in pieces:
+        pairs = pw.args
+        if pairs[-1].cond is not true:
+            return value
+        for pair in pairs[:-1]:
+            cond = pair.cond
+            if not isinstance(cond, Equality):
+                return value
+            v, c = cond.args
+            if not isinstance(v, Symbol) or not isinstance(c, Expr) or not c.is_number or pair.expr.has(Piecewise):
+                return value
+            if (v, c) not in points:
+                points.append((v, c))
+        generic_rule[pw] = pairs[-1].expr
+    generic = _e(value._xreplace_evaluated(generic_rule))
+    if generic.has(Piecewise):
+        return value
+    cases: list[tuple[Expr, Boolean]] = []
+    for v, c in points:
+        at = _e(value.subs(v, c))
+        if at.has(Piecewise) or at.has(NaN):
+            return value
+        if (at - _e(generic.subs(v, c))).expand() != 0:
+            cases.append((at, Eq(v, c)))
+    return piecewise(*(cases + [(generic, true)]))
+
+
+def _allowed_value(v: Symbol, r: Expr) -> bool:
+    """Whether the facts of ``v`` allow the value ``r`` (not refuted)."""
+    if v.is_integer is True and r.is_integer is False:
+        return False
+    if v.is_real is True and r.is_real is False:
+        return False
+    refuted = ((v.is_nonnegative, r.is_negative), (v.is_positive, r.is_nonpositive),
+               (v.is_nonpositive, r.is_positive), (v.is_negative, r.is_nonnegative))
+    return not any(fact is True and test is True for fact, test in refuted)
 
 
 Condition = Union[bool, Boolean]

@@ -38,7 +38,7 @@ from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.numbers import Integer, NaN
 from sympy_extras.core.symbol import Dummy, Symbol
 
-__all__ = ['hypersimp', 'consecutive_ratio', 'gosper_normal', 'gosper_term', 'gosper_sum']
+__all__ = ['hypersimp', 'consecutive_ratio', 'gosper_normal', 'gosper_term', 'gosper_sum', 'gosper_definite']
 
 ZERO = Integer(0)
 ONE = Integer(1)
@@ -417,6 +417,18 @@ def gosper_sum(f: ExprLike, k: Union[Symbol, tuple[Symbol, Expr, Expr]]) -> Opti
     g = gosper_term(e, var)
     if g is None:
         return None
+    return gosper_definite(e, g, (var, a, b))
+
+
+# PORTED FROM SYMPY: sympy/concrete/gosper.py:gosper_sum (its definite part)
+def gosper_definite(e: Expr, g: Expr, limits: tuple[Symbol, Expr, Expr]) -> Optional[Expr]:
+    """The definite sum of ``e`` over ``(var, a, b)`` from its Gosper
+    certificate ``g`` (:func:`gosper_term`): ``G(b + 1) - G(a)`` with
+    ``G = g*e``, by limits where a substitution gives ``nan``; ``None``
+    when the limits fail. Valid for the values of the parameters at which
+    ``g`` has no pole (``eval_sum_symbolic`` adds the cases of the others)."""
+    from sympy_extras.polys.polytools import factor
+    var, a, b = limits
     upper = (e * (g + 1)).subs(var, b)
     lower = (e * g).subs(var, a)
     assert isinstance(upper, Expr) and isinstance(lower, Expr)

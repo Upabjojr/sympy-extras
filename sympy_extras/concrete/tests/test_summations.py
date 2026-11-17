@@ -160,3 +160,29 @@ def test_geometric_sum_with_ratio_one() -> None:
     term = Integer(-1)**(2*kk)
     assert summation(term, (kk, 0, nn)) == nn + 1
     assert str(to_sympy(summation(term, (kk, 0, nn)))) == str(sympy.summation((-1)**(2*k), (k, 0, n)))
+
+
+def test_gosper_certificate_poles_get_cases() -> None:
+    # the bug (issue #75): Sum((-1)**j*(k - 2*j)**3*binomial(k, j), (j, 0, k))
+    # was 0 for every k, but it is 2 at k = 1 and 48 at k = 3: the Gosper
+    # certificates of the terms of the expanded summand (-j/k for
+    # (-1)**j*binomial(k, j)) have poles at small k, where the telescoped
+    # value does not hold (SymPy's Sum.doit gives 0 too)
+    from sympy_extras.concrete.expr_with_limits import Sum
+    from sympy_extras.core.add import add
+    from sympy_extras.core.numbers import Integer
+    from sympy_extras.functions.combinatorial.factorials import binomial as nbinomial
+    jj = Symbol('j', integer=True, nonnegative=True)
+    for positive in (False, True):
+        kk = Symbol('k', integer=True, positive=True) if positive else Symbol('k', integer=True, nonnegative=True)
+        for sign in (1, -1):
+            for base in (kk - 2*jj, jj):
+                for power in range(5):
+                    term = Integer(sign)**jj * base**power * nbinomial(kk, jj)
+                    value = Sum(term, (jj, 0, kk)).doit()
+                    for kv in range(int(positive), 13):
+                        direct = add(*[term.subs(kk, kv).subs(jj, jv) for jv in range(kv + 1)])
+                        assert (value.subs(kk, Integer(kv)).doit() - direct).expand() == 0, (term, kv, value)
+    kk = Symbol('k', integer=True, nonnegative=True)
+    value = Sum((-1)**jj*(kk - 2*jj)**3*nbinomial(kk, jj), (jj, 0, kk)).doit()
+    assert str(value) == 'Piecewise((2, Eq(k, 1)), (48, Eq(k, 3)), (0, True))'

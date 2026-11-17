@@ -381,6 +381,50 @@ def test_mod() -> None:
     assert str(2*Mod(x, 3)) == '2*(Mod(x, 3))' and str(-Mod(x, 3)) == '-Mod(x, 3)' and str(Mod(x, 3)**2) == '(Mod(x, 3))**2'
 
 
+def test_mod_of_numbers_by_ratio() -> None:
+    # the bug (issue #75): mod(3/10, pi) stayed unevaluated, but it is 3/10
+    # since 0 <= 3/10 < pi: the floor of a numerical ratio was not taken
+    from sympy_extras.core import mod
+    assert mod(Rational(3, 10), pi) == Rational(3, 10)
+    sx, sp_ = sympy.Symbol('x'), sympy.Symbol('p', positive=True)
+    q2, R, spi = sympy.sqrt(2), sympy.Rational, sympy.pi
+    cases = [(R(3, 10), spi), (R(-3, 10), spi), (R(3, 10), -spi), (-7, spi), (R(355, 113), spi), (3, sympy.E),
+             (-3, sympy.E), (1, q2), (-1, q2), (10, -q2), (spi, sympy.E), (4*spi, 6), (q2, R(1, 3)),
+             (sympy.exp(10), spi), (sympy.sin(1), sympy.cos(1)), (sympy.EulerGamma, R(1, 2)), (sx, spi), (spi, sx),
+             (sx + spi, spi), (sympy.I, 2), (1 + sympy.I, spi), (sp_, sp_ + 1), (-sp_, sp_ + 1), (sp_ + 1, sp_),
+             (sympy.Mod(sx, spi), spi)]
+    for a, b in cases:
+        sa, sb = sympy.sympify(a), sympy.sympify(b)
+        assert to_sympy(mod(as_expr(from_sympy(sa)), as_expr(from_sympy(sb)))) == sympy.Mod(sa, sb), (a, b)
+    # a ratio which is an integer hidden in a sum is proved one (SymPy keeps
+    # -3 - 2*sqrt(2) + (1 + sqrt(2))**2, which is 0)
+    assert mod(Add((1 + sqrt(2))**2, -2*sqrt(2)), 3) == 0
+    assert mod(pi + Rational(1, 10**200), pi) == Rational(1, 10**200)
+
+
+def test_coeff_matches_sympy() -> None:
+    # the bug (issue #75): (I*pi/3).coeff(I*pi) was 0, not 1/3: coeff looked
+    # for x among the factors of each term, and I*pi is not one of the
+    # factors (1/3, I, pi) of I*pi/3; SymPy compares the sets of factors
+    assert (I*pi/3).coeff(I*pi) == Rational(1, 3) and (I*pi/3).coeff(pi) == I/3
+    sx, sy, sz = sympy.symbols('x y z')
+    sn, sm = sympy.symbols('n m', commutative=False)
+    si, spi, sq2 = sympy.I, sympy.pi, sympy.sqrt(2)
+    cases = [(si*spi/3, si*spi, 1), (si*spi/3, sympy.Rational(1, 3), 1), (2*sx**2 + 3*sx + 1, sx, 2),
+             (2*sx**2 + 3*sx + 1, sx, 0), (2*sx**2 + 3*sx + 1, sx, 3), (sx*sy*sz + 2*sx*sy + sy, sx*sy, 1),
+             (3*sx*sy**2, sx*sy**2, 1), (-sx + 2*sy, -1, 1), (sx - 2*sy, -1, 1), (sx + 2*sy, 1, 1), (3 + 2*sx, 1, 1),
+             (-sx - 2*sy, 2, 1), (sx + sq2*sx, sq2, 1), (sz*(sx + sy)**2, (sx + sy)**2, 1), (sz*(sx + sy)**2, sx + sy, 1),
+             (sx + sz*(sx + sx*sy), sx, 1), (spi*sympy.E*sx + 2*spi*sx, spi*sx, 1), (2*si*spi*sx/5, 2*si, 1),
+             (2*si*spi*sx/5, si*spi, 1), (sx*sy + sx + sy + 1, sx + 1, 0), (3*sympy.exp(sx) + sympy.exp(2*sx), sympy.exp(sx), 2),
+             (sx/3 - sy/3, -1, 1), (-sympy.Rational(4, 3)*sx*sy, -sx, 1), (-4*sx*sy, -2*sx, 1), (sn*sm + sm*sn*sm, sn, 1),
+             (sn*sm + sx*sm*sn, sm*sn, 1), (sn*sm + sm*sn, sn, 1)]
+    for e, c, power in cases:
+        se, sc = sympy.sympify(e), sympy.sympify(c)
+        for right in (False, True):
+            ours = as_expr(from_sympy(se)).coeff(as_expr(from_sympy(sc)), power, right=right)
+            assert to_sympy(ours) == se.coeff(sc, power, right=right), (e, c, power, right)
+
+
 def test_order_subs_unevaluated_dict_algebraic() -> None:
     from sympy_extras.core import AlgebraicNumber, Dict, Order, Subs, UnevaluatedExpr, order
     assert Order(x).args == (x, Tuple(x, 0)) and Order(x + x**2).args[0] == x + x**2 and order(x + x**2) == Order(x)
