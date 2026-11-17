@@ -71,7 +71,7 @@ from sympy_extras.functions.elementary.hyperbolic import Acosh, Acoth, Asinh, At
 from sympy_extras.functions.elementary.piecewise import Piecewise
 from sympy_extras.functions.elementary.trigonometric import Acos, Acot, Asin, Atan
 
-__all__ = ['reliable_form', 'reliable_value', 'reliable_complex']
+__all__ = ['reliable_form', 'reliable_value', 'reliable_complex', 'proved_zero']
 
 #: the seconds given to prove one hidden zero
 _PROOF_SECONDS = 2.0
@@ -206,6 +206,19 @@ def _proved_zero(part: Expr) -> bool:
         return minimal_polynomial_coeffs(part) == [1, 0]
     except (NotAlgebraic, NotImplementedError):
         return _has_foreign(part) and _foreign_minimal_polynomial_is_x(part)
+
+
+def proved_zero(e: Expr) -> bool:
+    """Whether the number ``e`` is proved zero (the core's ``is_zero``, or
+    the minimal polynomial ``x`` of an algebraic number); ``False`` when
+    it is not or nothing proves it.
+
+    >>> from sympy_extras.core import Add, sqrt
+    >>> from sympy_extras._numeric import proved_zero
+    >>> proved_zero(Add((1 + sqrt(2))**2, -2*sqrt(2), -3)), proved_zero(sqrt(2) - 1)
+    (True, False)
+    """
+    return _proved_zero(e)
 
 
 def _structural(terms: tuple[Expr, ...], digits: int) -> Optional[tuple[tuple[bool, bool], float]]:

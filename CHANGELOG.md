@@ -3616,6 +3616,30 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- Issue #75, three wrong or missing results of the native core:
+  - the native `Sum.doit` of a Gosper-summable term lost the isolated
+    values of the parameters at which the Gosper certificate has a pole:
+    `Sum((-1)**j*(k - 2*j)**3*binomial(k, j), (j, 0, k))` was `0` (SymPy
+    gives `0` too), it is `Piecewise((2, Eq(k, 1)), (48, Eq(k, 3)), (0,
+    True))`. The poles of the certificate in the parameters get cases, the
+    sum computed again there (`summations._certificate_cases`), and the
+    cases of the terms of an expanded summand are merged into one
+    `Piecewise` (`_merge_point_cases`); `gosper.gosper_definite` is the
+    definite step of `gosper_sum` on a given certificate;
+  - `Expr.coeff` is SymPy's (ported): the factors of `x` are matched as
+    a set, so `(I*pi/3).coeff(I*pi)` is `1/3` (it was `0`), `coeff(-1)`,
+    `coeff(1)`, products, `n = 0` with a sum and the noncommutative
+    `right=` work as in SymPy;
+  - the native `mod` reduces numbers by the floor of their ratio
+    (SymPy's "by ratio" and "by difference" steps): `mod(3/10, pi)` is
+    `3/10`, `mod(-1, sqrt(2))` is `sqrt(2) - 1`; the hidden zeros of the
+    ratio are proved first (`_numeric.reliable_form`), the floor is taken
+    at two precisions, a ratio too close to an integer is reduced to `0`
+    only when proved an integer (the new `_numeric.proved_zero`); the
+    signs of symbolic arguments decide `mod(p, p + 1) = p` for a positive
+    `p`. Nested moduli collapse for any moduli (`Mod(Mod(x, pi), pi)` is
+    `Mod(x, pi)`). Where SymPy differs: `mod(3*I, 2*I)` is `I` (SymPy's
+    sign correction gives the unreduced `3*I`).
 - The case `a = b` of `sin(a*x)*sin(b*x)` over `(0, pi)` was missing
   under some hash seeds: the antiderivative `x/2 - Piecewise((x, Eq(b, 0)),
   ...)/2` of `sin(b*x)**2` had no branch selected for a plain `b`, and the

@@ -151,7 +151,7 @@ module into SymPy later.
 sympy_extras/
     __init__.py              __version__
     _numeric.py              reliable_form, reliable_value, reliable_complex: numerical values which no rounding error
-                             decides (hidden zeros proved, cuts; native)
+                             decides (hidden zeros proved, cuts; native); proved_zero (the native mod uses it)
     _numeric_sympy.py        the SymPy face of _numeric
     _special_values.py       with_special_values, special_points, condition_point, defined_problem, ...: the cases of
                              the isolated values of the parameters at which a closed form fails (native; the real roots
@@ -274,7 +274,8 @@ sympy_extras/
         convergence_sympy.py the SymPy face of convergence
         summations.py        summation, sum_doit, eval_sum, eval_sum_hyper, eval_sum_residue: SymPy's Sum.doit (native,
                              PORTED FROM SYMPY; the residues at CRootOf poles by the formula of a pole of order m, the
-                             roots over EX by ex_roots, the equations by solvers.solvers.solve_equation)
+                             roots over EX by ex_roots, the equations by solvers.solvers.solve_equation; not SymPy's: the
+                             cases of the poles of the Gosper certificate in the parameters, issue #75)
         delta.py             deltasummation, deltaproduct: sums and products of Kronecker deltas (native, PORTED FROM SYMPY;
                              the equations by linsolve, assumptions.solve, solve_equation and solve_system)
         products.py          product, product_doit, eval_product: SymPy's Product.doit (native, PORTED FROM SYMPY; the

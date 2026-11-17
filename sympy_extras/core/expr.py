@@ -17,7 +17,17 @@ References
 
 .. [1] SymPy Development Team, *SymPy documentation: Expr*,
        https://docs.sympy.org/latest/modules/core.html#module-sympy.core.expr
+
+The methods marked so (``coeff``, ``as_coeff_mul``, ``normal``,
+``as_coeff_exponent``, ...) are ported from SymPy's ``sympy.core.expr``.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/core/expr.py, sympy/core/basic.py (the methods
+# marked "PORTED FROM SYMPY") (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the rest of the module is original code.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from fractions import Fraction
@@ -89,6 +99,57 @@ def factors_of(e: Expr) -> tuple[Expr, ...]:
     """The factors of a product, ``(e,)`` for anything else."""
     from .mul import Mul
     return e.args if isinstance(e, Mul) else (e,)
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.args_cnc (cset=True, split_1=True)
+def _args_cnc(e: Expr) -> tuple[set[Expr], list[Expr]]:
+    """The commutative factors of ``e`` as a set (a negative number other
+    than ``-1`` split into ``-1`` and its absolute value) and the
+    noncommutative ones in order (from the first noncommutative factor on)."""
+    from .numbers import Integer
+    factors = list(factors_of(e))
+    c: list[Expr] = factors
+    nc: list[Expr] = []
+    for i, f in enumerate(factors):
+        if f.is_commutative is not True:
+            c, nc = factors[:i], factors[i:]
+            break
+    if c and c[0].is_Number and c[0].is_extended_negative is True and c[0] != -1:
+        c = [Integer(-1), -c[0]] + c[1:]
+    return set(c), nc
+
+
+def _sorted_factors(factors: set[Expr]) -> list[Expr]:
+    """The factors of a set in a fixed order (the product is the same)."""
+    from .sorting import default_sort_key
+    return sorted(factors, key=default_sort_key)
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.coeff (incommon)
+def _incommon(l1: list[Expr], l2: list[Expr]) -> list[Expr]:
+    """The common beginning of two lists."""
+    if not l1 or not l2:
+        return []
+    for i in range(min(len(l1), len(l2))):
+        if l1[i] != l2[i]:
+            return l1[:i]
+    return l1[:]
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.coeff (find)
+def _find(lst: list[Expr], sub: list[Expr], right: bool) -> Optional[int]:
+    """Where ``sub`` appears in ``lst``, ``None`` when it does not: its
+    first occurrence from the left for ``right``, else its last (SymPy's
+    ``find(l, sub, first=right)``)."""
+    first = right
+    if not sub or not lst or len(sub) > len(lst):
+        return None
+    n = len(sub)
+    seq, pat = (lst, sub) if first else (lst[::-1], sub[::-1])
+    for i in range(len(seq) - n + 1):
+        if all(seq[i + j] == pat[j] for j in range(n)):
+            return i if first else len(lst) - (i + n)
+    return None
 
 
 def _is_number_like(other: object) -> bool:
@@ -668,33 +729,123 @@ class Expr(Basic):
             result.append((term, ((c.real, c.imag), monom, nc)))
         return (result, ordered)
 
-    def coeff(self, x: Expr, n: int = 1) -> Expr:
-        """The coefficient of ``x**n`` among the terms of a sum.
+    # PORTED FROM SYMPY: sympy/core/expr.py:Expr.coeff
+    def coeff(self, x: ExprLike, n: int = 1, right: bool = False, _first: bool = True) -> Expr:
+        """The coefficient of ``x**n`` among the terms of a sum: the terms
+        whose factors include those of ``x**n`` (a product, a number, a
+        power), the rest of their factors; for ``n = 0`` the terms free of
+        ``x``. For a noncommutative ``x`` the coefficient on its left, or
+        on its right with ``right=True``.
 
         Examples
         ========
 
-        >>> from sympy_extras.core import Symbol
-        >>> x = Symbol('x')
-        >>> (2*x**2 + 3*x + 1).coeff(x, 2)
-        2
+        >>> from sympy_extras.core import Symbol, I, pi, sqrt
+        >>> x, y = Symbol('x'), Symbol('y')
+        >>> (2*x**2 + 3*x + 1).coeff(x, 2), (3 + 2*x).coeff(x, 0)
+        (2, 3)
+        >>> (I*pi/3).coeff(I*pi), (x + sqrt(2)*x).coeff(sqrt(2)), (x - 2*y).coeff(-1)
+        (1/3, x, 2*y)
         """
+        from functools import reduce
         from .add import add
         from .mul import mul
         from .numbers import Integer
         from .power import pow
-        target = pow(x, Integer(n)) if n != 1 else x
-        found: list[Expr] = []
-        for term in terms_of(self):
-            factors = list(factors_of(term))
-            if n == 0:
-                if not term.has(x):
-                    found.append(term)
+        zero, one = Integer(0), Integer(1)
+        xe = to_expr(x)
+        if xe.is_zero is True and xe.is_Number:
+            return zero
+        if xe == self:
+            return one if n == 1 else zero
+        if isinstance(xe, Integer) and xe == one:
+            co1 = [a for a in terms_of(self) if isinstance(a.as_coeff_Mul()[0], Integer) and a.as_coeff_Mul()[0] == one]
+            return add(*co1) if co1 else zero
+        if n == 0:
+            if len(terms_of(xe)) > 1 and len(terms_of(self)) > 1:
+                c = self.coeff(xe, right=right)
+                if c == 0:
+                    return zero
+                if not right:
+                    return self - add(*[a * xe for a in terms_of(c)])
+                return self - add(*[xe * a for a in terms_of(c)])
+            return self.as_independent(xe, as_Add=True)[0]
+        xe = pow(xe, Integer(n))
+        args = terms_of(self)
+        self_c = self.is_commutative is True
+        x_c = xe.is_commutative is True
+        if self_c and not x_c:
+            return zero
+        if _first and len(args) > 1 and not self_c and not x_c:
+            xfactors = factors_of(xe)
+            # SymPy filters the terms of self.as_independent(x)[1]: each
+            # term kept contains the factors of x, so depends on x
+            d = add(*[t for t in args if all(xi in factors_of(t) for xi in xfactors)])
+            rv = d.coeff(xe, right=right, _first=False)
+            if len(terms_of(rv)) == 1 or not right:
+                return rv
+            splits = [_args_cnc(t) for t in terms_of(rv)]
+            if any(sp[0] != splits[0][0] for sp in splits):
+                return rv
+            return add(*[mul(*sp[1]) for sp in splits])
+        one_c = self_c or x_c
+        xargs, nx = _args_cnc(xe)
+        co2: list[Expr] = []
+        co: list[tuple[set[Expr], list[Expr]]] = []
+        for a in args:
+            margs, nc = _args_cnc(a)
+            if len(xargs) > len(margs):
                 continue
-            if target in factors:
-                factors.remove(target)
-                found.append(mul(*factors))
-        return add(*found)
+            resid = margs.difference(xargs)
+            if len(resid) + len(xargs) == len(margs):
+                if one_c:
+                    co2.append(mul(*(_sorted_factors(resid) + nc)))
+                else:
+                    co.append((resid, nc))
+        if one_c:
+            return add(*co2) if co2 else zero
+        if not co:
+            return zero
+        if all(nc == co[0][1] for _, nc in co):
+            ii = _find(co[0][1], nx, right)
+            if ii is not None:
+                if not right:
+                    return mul(add(*[mul(*_sorted_factors(r)) for r, _ in co]), mul(*co[0][1][:ii]))
+                return mul(*co[0][1][ii + len(nx):])
+        beg = reduce(_incommon, (nc for _, nc in co))
+        if beg:
+            ii = _find(beg, nx, right)
+            if ii is not None:
+                if not right:
+                    gcdc = co[0][0]
+                    for i in range(1, len(co)):
+                        gcdc = gcdc.intersection(co[i][0])
+                        if not gcdc:
+                            break
+                    return mul(*(_sorted_factors(gcdc) + beg[:ii]))
+                m = ii + len(nx)
+                return add(*[mul(*(_sorted_factors(r) + nc[m:])) for r, nc in co])
+        reversed_ncs: list[list[Expr]] = [nc[::-1] for _, nc in co]
+        end = reduce(_incommon, reversed_ncs)[::-1]
+        if end:
+            ii = _find(end, nx, right)
+            if ii is not None:
+                if not right:
+                    return add(*[mul(*(_sorted_factors(r) + nc[:-len(end) + ii])) for r, nc in co])
+                return mul(*end[ii + len(nx):])
+        hit: Optional[tuple[int, set[Expr], list[Expr]]] = None
+        for r, nc in co:
+            ii = _find(nc, nx, right)
+            if ii is not None:
+                if hit is not None:
+                    return zero
+                hit = (ii, r, nc)
+        if hit is not None:
+            ii, r, nc = hit
+            if not right:
+                return mul(*(_sorted_factors(r) + nc[:ii]))
+            return mul(*nc[ii + len(nx):])
+        return zero
 
     def could_extract_minus_sign(self) -> bool:
         """Whether the expression is printed with a leading minus."""

@@ -8,8 +8,13 @@
 integer and rational terms of ``p`` are reduced modulo an integer or
 rational ``q`` (``Mod(x + 3, 3)`` is ``Mod(x, 3)``), a negative integer
 coefficient of an integer ``p`` is reduced modulo an integer ``q``, and
-nested moduli collapse when one modulus divides the other. The operator
-``%`` of ``Expr`` calls ``mod``.
+nested moduli collapse when one modulus divides the other. A number
+modulo a number is ``p - floor(p/q)*q`` when the floor of the ratio is
+decided (``mod(3/10, pi)`` is ``3/10``), the hidden zeros of the ratio
+proved first, and the signs of symbolic arguments place ``p`` between
+``-2*|q|`` and ``2*|q|`` (SymPy's steps "by ratio" and "by difference",
+ported from ``sympy.core.mod``). The operator ``%`` of ``Expr`` calls
+``mod``.
 
 References
 ==========
@@ -17,6 +22,13 @@ References
 .. [1] SymPy Development Team, *SymPy documentation: Mod*,
        https://docs.sympy.org/latest/modules/core.html#sympy.core.mod.Mod
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/core/mod.py (Mod.eval: by ratio, by difference) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the floor of the ratio decided with the hidden zeros
+# proved; the rest of the module is original code.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from fractions import Fraction
@@ -122,6 +134,19 @@ def mod(p: ExprLike, q: ExprLike) -> Expr:
                 return mod(inner_p, b)
             if (1 / ratio).denominator == 1:
                 return a
+        elif isinstance(inner_p, Expr) and isinstance(inner_q, Expr):
+            # SymPy's denesting: the inner modulus a multiple of the outer
+            # one, or no larger with the same sign
+            if mod(inner_q, b) == 0:
+                return mod(inner_p, b)
+            if mul(inner_q, add(b, mul(Integer(-1), inner_q))).is_nonnegative is True:
+                return a
+    by_ratio = _by_ratio(a, b)
+    if by_ratio is not None:
+        return by_ratio
+    by_difference = _by_difference(a, b)
+    if by_difference is not None:
+        return by_difference
     common = _common_factor(a, b)
     if common is not None:
         return mul(common, mod(_divide(a, common), _divide(b, common)))
@@ -131,6 +156,78 @@ def mod(p: ExprLike, q: ExprLike) -> Expr:
     if isinstance(b, Rational) and b.p == 2 and b.q == 1 and _has_consecutive_factors(a):
         return Integer(0)
     return Mod(a, b)
+
+
+# PORTED FROM SYMPY: sympy/core/mod.py:Mod.eval (number_eval, by ratio)
+def _by_ratio(a: Expr, b: Expr) -> Optional[Expr]:
+    """``a - floor(a/b)*b`` when the ratio is an integer (``0``) or a real
+    number whose floor is decided: ``mod(3/10, pi)`` is ``3/10``,
+    ``mod(-1, sqrt(2))`` is ``-1 + sqrt(2)``. SymPy takes ``int(a/b)``
+    from ``evalf``; here the hidden zeros of the ratio are proved first
+    and its floor is taken at two precisions
+    (:func:`~sympy_extras._numeric.reliable_form`,
+    :func:`~sympy_extras.functions.elementary.integers.floor`), a ratio
+    too close to an integer is ``0`` only when it is proved an integer;
+    ``None`` when nothing is decided (a symbolic or complex ratio)."""
+    from .mul import div
+    r = div(a, b)
+    if r.is_integer is True:
+        return Integer(0)
+    if not r.is_number or isinstance(r, Number) and r.exact_value() is None or r.is_extended_real is not True:
+        return None
+    if r.is_finite is not True:
+        return None
+    from sympy_extras._numeric import proved_zero, reliable_form
+    from sympy_extras.functions.elementary.integers import floor
+    form = reliable_form(r)
+    if form is None:
+        return None
+    n = floor(form)
+    if isinstance(n, Integer):
+        return add(a, mul(Integer(-1), n, b))
+    # too close to an integer to tell numerically: an integer only if proved
+    from .evalf import numeric_value
+    value = numeric_value(form, 340)
+    if value is None:
+        return None
+    import mpmath
+    nearest = Integer(int(mpmath.nint(mpmath.re(value))))
+    if proved_zero(add(form, mul(Integer(-1), nearest))):
+        return Integer(0)
+    return None
+
+
+# PORTED FROM SYMPY: sympy/core/mod.py:Mod.eval (number_eval, by difference)
+def _by_difference(a: Expr, b: Expr) -> Optional[Expr]:
+    """``a - m*b`` for the integer ``m`` with ``-2 <= m <= 1`` when the
+    signs decide ``0 <= a - m*b < b`` (``-2*|b| <= a < 2*|b|``): for the
+    symbolic arguments only, the numbers being decided by
+    :func:`_by_ratio` or not at all (their signs by evaluation could be
+    a rounding error)."""
+    if a.is_number and b.is_number:
+        return None
+    from .add import sub
+    positive = b.is_positive
+    if positive is not True and b.is_negative is not True:
+        return None
+
+    def le(u: Expr, v: Expr) -> bool:
+        d = sub(v, u)
+        return (d.is_extended_nonnegative if positive else d.is_extended_nonpositive) is True
+
+    def lt(u: Expr, v: Expr) -> bool:
+        d = sub(v, u)
+        return (d.is_extended_positive if positive else d.is_extended_negative) is True
+
+    ls = mul(Integer(-2), b)
+    r = sub(a, b)
+    for _ in range(4):
+        if not le(ls, a):
+            return None
+        if lt(r, ls):
+            return sub(a, ls)
+        ls = add(ls, b)
+    return None
 
 
 def _has_consecutive_factors(a: Expr) -> bool:
