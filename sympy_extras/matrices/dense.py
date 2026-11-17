@@ -25,15 +25,12 @@ ExprMatrix([[0, 1, 0], [0, 0, 1], [1, 2, 3]])
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Iterator, Sequence, Union
+from typing import Callable, Iterator, Sequence, Union
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.numbers import Integer
 from sympy_extras.core.symbol import Symbol
-
-if TYPE_CHECKING:
-    from .decompositions import LUDecomposition
 
 __all__ = ['ExprMatrix']
 
@@ -314,3 +311,8 @@ class ExprMatrix:
         """``self**n`` for a symbolic exponent."""
         from .functions import matrix_power
         return matrix_power(self, n)
+
+
+# decompositions imports this module (ExprMatrix), so its class is imported
+# once ExprMatrix exists
+from .decompositions import LUDecomposition  # noqa: E402

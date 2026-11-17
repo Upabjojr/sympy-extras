@@ -374,8 +374,9 @@ remove public functions. Breaking changes are listed here when they happen.
   subclasses (`Expr`, `Symbol`, `Dummy`, `Number`, `Boolean`,
   `FunctionClass`, `DiffSpec`), import them at module level at their end,
   once their classes are defined; `sympy_extras.core` imports `core.basic`
-  first so that this order holds whichever submodule is imported. No
-  `TYPE_CHECKING` import is left in the core.
+  first so that this order holds whichever submodule is imported;
+  `matrices.dense` imports `LUDecomposition` the same way. No
+  `TYPE_CHECKING` import is left in the package.
 - The asymptotic series of `fresnels` and `fresnelc` at `oo` and `-oo`
   are native (`FresnelIntegral._eval_aseries`, ported from SymPy's
   `fresnels._eval_aseries` and `fresnelc._eval_aseries`), and so are
