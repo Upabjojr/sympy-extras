@@ -307,7 +307,7 @@ def test_rewrite_table_of_the_nodes_with_parameters_matches_sympy() -> None:
         'TranscendentalRoot': TranscendentalRoot, 'NonElementaryIntegral': NonElementaryIntegral,
         'ConditionSet': s.ConditionSet, 'ImageSet': s.ImageSet, 'Interval': s.Interval, 'FiniteSet': s.FiniteSet,
         'PointSet': s.FiniteSet, 'Union': s.Union, 'Intersection': s.Intersection, 'Complement': s.Complement,
-        'Contains': s.Contains, 'ProductSet': s.ProductSet}
+        'Contains': s.Contains, 'ProductSet': s.ProductSet, 'PowerSet': s.PowerSet, 'SetOfSets': s.FiniteSet}
     for name, cls in theirs.items():
         targets = {m[len('_eval_rewrite_as_'):] for k in cls.__mro__ for m in k.__dict__
                    if m.startswith('_eval_rewrite_as_')}
@@ -362,12 +362,11 @@ def _native_classes() -> dict[str, list[type]]:
 def test_every_sympy_rewrite_rule_is_native() -> None:
     # the nodes of a native class without a native rule for a target went
     # to SymPy's rule through the bridge; now every rule of SymPy 1.14 is
-    # ported but those needing a class the core has not (a piecewise
-    # function with boolean values, PowerSet); 'tractable' and
-    # 'intractable' are rewrite_tractable's
+    # ported (Piecewise to ITE and back, and the PowerSet rules, last);
+    # 'tractable' and 'intractable' are rewrite_tractable's
     from sympy_extras.core._rewrite_rules import REWRITE_TARGETS
     from sympy_extras.core.rewriting import _SYMPY_NAMED_RULES, has_rule
-    left_out = {('Piecewise', 'ITE'), ('ITE', 'Piecewise'), ('FiniteSet', 'PowerSet'), ('PointSet', 'PowerSet')}
+    left_out: set[tuple[str, str]] = set()
     classes = _native_classes()
     missing: list[tuple[str, str]] = []
     for name, targets in REWRITE_TARGETS.items():

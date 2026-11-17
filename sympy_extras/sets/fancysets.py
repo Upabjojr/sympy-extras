@@ -85,6 +85,10 @@ class _NamedSet(Set):
     def is_finite_set(self) -> Optional[bool]:
         return False
 
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        # a set is not a number
+        return false
+
 
 # PORTED FROM SYMPY: sympy/sets/fancysets.py:Naturals
 class NaturalsClass(_NamedSet):
@@ -248,6 +252,10 @@ class ImageSet(Set):
     def _contains(self, other: Expr) -> Optional[Boolean]:
         # SymPy solves the equation of the image: not ported
         return None
+
+    def _contains_set(self, other: Set) -> Optional[Boolean]:
+        # the images are expressions or tuples of them
+        return false
 
 
 def _image_set_args(args: tuple[Basic, ...]) -> tuple[Tuple, Basic, list[Set]]:

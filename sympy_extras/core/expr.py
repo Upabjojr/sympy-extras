@@ -1904,7 +1904,23 @@ class Expr(Basic):
         return res, n
 
     def rewrite(self, *args: Union[Basic, FunctionClass, type, str], piecewise: bool = True) -> Expr:
-        return as_expr(super().rewrite(*args, piecewise=piecewise))
+        """``Basic.rewrite``, whose result is an expression; a rewrite into
+        a node which is not one (``Piecewise`` into ``ITE``) is
+        ``Basic.rewrite(e, ITE)``.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.core import Basic, ITE, symbols
+        >>> from sympy_extras.functions import piecewise
+        >>> a, b, x = symbols('a b x')
+        >>> Basic.rewrite(piecewise((a, x > 0), (b, True)), ITE)
+        ITE(x > 0, a, b)
+        """
+        result = super().rewrite(*args, piecewise=piecewise)
+        if not isinstance(result, Expr):
+            raise TypeError('%s rewritten is %s, not an expression: use Basic.rewrite' % (self, result))
+        return result
 
     def refine(self, assumption: RefineArg = True) -> Expr:
         return as_expr(super().refine(assumption))
