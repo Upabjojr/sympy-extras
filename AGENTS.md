@@ -305,10 +305,12 @@ sympy_extras/
                              quadratures by the numerical rules of the nodes, the native indefinite; the last method the
                              native meijerint and an antiderivative at the endpoints, the delta functions by deltafunctions)
         definite_sympy.py    the SymPy face of definite
-        meijerint.py         meijerint_indefinite, meijerint_definite, meijer_antiderivative, rewrite_single, lookup_table:
-                             integration by Meijer G-functions, the table of representations, the recursive Mellin transform,
-                             the theorems for one and two G-functions with their conditions (native: the native hyperexpand,
-                             gammasimp, powdenest, mellin and slater), PORTED FROM SYMPY (meijerint, parts of transforms)
+        meijerint.py         meijerint_indefinite, meijerint_definite, meijerint_inversion, meijer_antiderivative,
+                             rewrite_single, lookup_table: integration by Meijer G-functions, the table of representations, the
+                             recursive Mellin transform, the theorems for one and two G-functions with their conditions, the
+                             inverse Laplace transform (no native caller: nothing native inverts Laplace transforms)
+                             (native: the native hyperexpand, gammasimp, powdenest, mellin and slater), PORTED FROM SYMPY
+                             (meijerint, parts of transforms)
         deltafunctions.py    deltaintegrate, change_mul, expand_diracdelta: antiderivatives of delta functions (native),
                              PORTED FROM SYMPY
         integral.py          Integral (node): the unevaluated indefinite or definite integral; is_unevaluated (native)

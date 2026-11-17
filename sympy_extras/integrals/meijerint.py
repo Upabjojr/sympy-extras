@@ -30,8 +30,13 @@ a product (the Mellin transform computed by the two-function theorem,
 then inverted) is not ported: the representations which are not in the
 table come from the Mellin transforms of the kernels of :mod:`.mellin`,
 inverted by :func:`.slater.mellin_barnes`, and are checked numerically
-when they have no parameters. Not ported either: ``meijerint_inversion``
-(the inverse Laplace transform).
+when they have no parameters.
+
+The inverse Laplace transform of `f(x)` (:func:`meijerint_inversion`) is
+the integral of `C G(a x^b)` along a vertical line, `C t^{-1}` times a
+Fox H-function which is a G-function for a rational `b` [L]_
+(sections 5.7–5.10, with the conditions of the theorems there); the
+exponential factors `e^{-cx}` are shifts of the result.
 
 Examples
 ========
@@ -69,7 +74,8 @@ References
 # with callables for the computed terms and the hints; results and
 # conditions are pairs instead of Piecewise with an unevaluated Integral;
 # the recursive Mellin transform replaced by the kernels of .mellin;
-# meijerint_inversion not ported.
+# meijerint_inversion returns (value, condition), no InverseLaplaceTransform
+# piece; the shift of a factor b**(c*x) is not applied twice.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -87,7 +93,7 @@ from sympy_extras.core.function import expand, expand_mul, expand_power_base, ex
 from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanFunction, BooleanLike, Or, and_, false, or_,
                                      to_boolean, true)
 from sympy_extras.core.mul import Mul, mul
-from sympy_extras.core.numbers import I, Infinity, Integer, NegativeInfinity, Rational, oo, pi
+from sympy_extras.core.numbers import I, Infinity, Integer, NegativeInfinity, Rational, nan, oo, pi
 from sympy_extras.core.power import Pow, sqrt
 from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ge, gt, le, lt, ne
 from sympy_extras.core.singleton import S
@@ -95,14 +101,14 @@ from sympy_extras.core.sorting import SortKey, default_sort_key
 from sympy_extras.core.symbol import Dummy, Symbol, Wild
 from sympy_extras.functions.combinatorial.factorials import factorial
 from sympy_extras.functions.elementary.complexes import (PeriodicArgument, PrincipalBranch, Re, _unpolarify, abs_,
-                                                          arg as arg_, polar_lift, polarify, principal_branch, re, sign,
-                                                          unbranched_argument, unpolarify)
+                                                          arg as arg_, im, polar_lift, polarify, principal_branch, re,
+                                                          sign, unbranched_argument, unpolarify)
 from sympy_extras.functions.elementary.exponential import Exp, exp, exp_polar, log
 from sympy_extras.functions.elementary.hyperbolic import Cosh, Coth, Csch, Sech, Sinh, Tanh, cosh, sinh
 from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise, piecewise_fold
 from sympy_extras.functions.elementary.trigonometric import Cos, Cot, Csc, Sec, Sin, Tan, cos, sin, sinc
 from sympy_extras.functions.special.bessel import besseli, besselj, besselk, bessely
-from sympy_extras.functions.special.delta_functions import DiracDelta, Heaviside, heaviside
+from sympy_extras.functions.special.delta_functions import DiracDelta, Heaviside, dirac_delta, heaviside
 from sympy_extras.functions.special.elliptic_integrals import elliptic_e, elliptic_k
 from sympy_extras.functions.special.error_functions import (Chi, Ci, Ei, Shi, Si, erf, erfc, erfi, expint,
                                                             fresnelc, fresnels)
@@ -117,8 +123,8 @@ from sympy_extras.simplify.hyperexpand import hyperexpand
 from sympy_extras.simplify.powsimp import powdenest, powsimp
 from sympy_extras.simplify.radsimp import collect
 
-__all__ = ['meijerint_indefinite', 'meijerint_definite', 'meijer_antiderivative', 'rewrite_single',
-           'lookup_table', 'TableEntry', 'GTerm', 'Rewriting', 'ConditionalExpr']
+__all__ = ['meijerint_indefinite', 'meijerint_definite', 'meijerint_inversion', 'meijer_antiderivative',
+           'rewrite_single', 'lookup_table', 'TableEntry', 'GTerm', 'Rewriting', 'ConditionalExpr']
 
 #: a term ``C * x**s * G`` of a rewriting: ``(C, s, G)``
 GTerm = tuple[Expr, Expr, MeijerG]
@@ -1579,6 +1585,73 @@ def _rewrite_gamma(f: Expr, s: Symbol, a: Optional[Expr], b: Optional[Expr]) -> 
     return an, ap, bm, bq, mul(*exponentials), exponent, fac
 
 
+def _contour_line(strip: tuple[Expr, Expr]) -> Optional[Expr]:
+    """A real part, irrational, strictly inside the strip when its ends are
+    finite real numbers; ``None`` otherwise."""
+    a, b = strip
+    if not (a.is_number and b.is_number and a.is_finite and b.is_finite and lt(a, b) is true):
+        return None
+    return a + (b - a) * sqrt(2) / 2
+
+
+def _shift_gammas(F: Expr, s: Symbol, c: Expr) -> Expr:
+    """``F`` with each ``gamma(alpha*s + beta)`` (``alpha`` rational) whose
+    poles lie on both sides of the line ``re(s) = c`` written, by its
+    recurrence, as a gamma whose poles lie on one side times a rational
+    function of ``s``."""
+    from sympy_extras.functions.elementary.integers import floor
+    from sympy_extras.functions.special.gamma_functions import Gamma
+    rule: dict[Basic, Basic] = {}
+    for g in F.atoms(Gamma):
+        u = _expr(g.args[0])
+        alpha = u.diff(s)
+        beta = expand(u - alpha * s)
+        if not isinstance(alpha, Rational) or alpha == 0 or s in beta.free_symbols or not beta.is_number:
+            continue
+        # the pole nearest to the side the poles do not extend to
+        p0 = -beta / alpha
+        distance = (p0 - c) * alpha
+        if not gt(distance, 0) is true:
+            continue
+        shift = floor(distance)
+        if not isinstance(shift, Integer):
+            continue
+        n = int(shift) + 1
+        denominator: Expr = ONE
+        for j in range(n):
+            denominator = denominator * (u + j)
+        rule[g] = gamma(u + n) / denominator
+    return _expr(F.xreplace(rule)) if rule else F
+
+
+def _inverse_mellin_on_line(F: Add, s: Symbol, x: Symbol, strip: tuple[Expr, Expr]) -> Optional[Expr]:
+    """The inverse Mellin transform of the sum ``F`` term by term, all the
+    terms inverted on one line of the strip; ``None`` when the strip has no
+    numeric ends or a term cannot be inverted there.
+
+    A pole of a term inside the strip (cancelled in the sum) must lie on the
+    same side of the contour for all the terms. SymPy inverts each term
+    over the whole strip, which may put the pole left of the contour for one
+    term and right of it for another: a wrong result (for
+    ``1/((x + 1)*(x + 2))`` an extra ``1/x``).
+    """
+    line = _contour_line(strip)
+    if line is None:
+        return None
+    terms: list[Expr] = []
+    for term in F.args:
+        term_ = _expr(term)
+        found = _inverse_mellin_meijerg(term_, s, x, (line, line))
+        if found is None:
+            shifted = _shift_gammas(term_, s, line)
+            if shifted != term_:
+                found = _inverse_mellin_meijerg(factor(shifted), s, x, (line, line))
+        if found is None:
+            return None
+        terms.append(found)
+    return add(*terms)
+
+
 # PORTED FROM SYMPY: sympy/integrals/transforms.py:_inverse_mellin_transform (as_meijerg=True)
 def _inverse_mellin_meijerg(F: Expr, s: Symbol, x: Symbol, strip: tuple[Expr, Expr]) -> Optional[Expr]:
     """The inverse Mellin transform of ``F`` over the strip as a sum of
@@ -1592,6 +1665,9 @@ def _inverse_mellin_meijerg(F: Expr, s: Symbol, x: Symbol, strip: tuple[Expr, Ex
         except BasePolynomialError:
             continue
         if isinstance(g, Add):
+            on_line = _inverse_mellin_on_line(g, s, x, strip)
+            if on_line is not None:
+                return on_line
             terms: list[Expr] = []
             for term in g.args:
                 found = _inverse_mellin_meijerg(_expr(term), s, x, strip)
@@ -2172,3 +2248,281 @@ def _meijerint_definite_4(f: Expr, x: Symbol, only_double: bool = False) -> Opti
                     return res, cond
                 return _my_unpolarify(hyperexpand(res)), cond
     return None
+
+
+# ---------------------------------------------------------------------------
+# the inverse Laplace transform
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:_inflate_fox_h
+def _inflate_fox_h(g: MeijerG, a: Expr) -> Optional[tuple[Expr, MeijerG]]:
+    """``(C, G)`` with ``C*G`` the function ``H`` defined as ``g`` with the
+    integrand of its Mellin–Barnes integral divided by ``Gamma(a*s)``, for
+    a rational ``a`` (by Gauss' multiplication theorem); ``None`` when
+    ``a`` is not rational."""
+    if not isinstance(a, Rational) or a == 0:
+        return None
+    if a.p < 0:
+        return _inflate_fox_h(_flip_g(g), -a)
+    p, q = a.p, a.q
+    # the substitution s -> q*s, then Gauss' theorem on the factor Gamma(p*s)
+    D, g = _inflate_g(g, q)
+    argument = g.argument
+    D = D / ((2 * pi)**(Rational(1 - p, 2)) * Integer(p)**(-HALF))
+    argument = argument / Integer(p)**p
+    bs: list[Expr] = [Rational(n + 1, p) for n in range(p)]
+    return D, _g(g.an, g.aother, g.bm, list(g.bother) + bs, argument)
+
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:_rewrite_inversion
+def _rewrite_inversion(fac: Expr, po: Expr, g: MeijerG, x: Symbol) -> tuple[Expr, MeijerG]:
+    """``fac*po*g`` as ``C*G``: the power ``po = x**s`` absorbed into
+    ``g``."""
+    _, s = _get_coeff_exp(po, x)
+    a, b = _get_coeff_exp(g.argument, x)
+
+    def tr(params: Sequence[Expr]) -> list[Expr]:
+        return [c + s / b for c in params]
+    return (powdenest(fac / a**(s / b), polar=True),
+            _g(tr(g.an), tr(g.aother), tr(g.bm), tr(g.bother), g.argument))
+
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:_check_antecedents_inversion (statement_half)
+def _statement_half(a: Expr, b: Expr, c: Expr, z_: Expr, x: Symbol, plus: bool) -> Boolean:
+    """Half of :func:`_statement`, on the ray of ``exp(+-i*pi*re(c)/2)``."""
+    coeff, exponent = _get_coeff_exp(z_, x)
+    a = a * exponent
+    b = b * coeff**c
+    c = c * exponent
+    w = b * exp((I if plus else -I) * re(c) * pi / 2)
+    conds: list[Boolean] = [
+        and_(or_(eq(b, 0), le(re(c), 0)), le(re(a), -1)),
+        and_(ne(b, 0), eq(im(c), 0), gt(re(c), 0), lt(re(w), 0)),
+        and_(ne(b, 0), eq(im(c), 0), gt(re(c), 0), le(re(w), 0), le(re(a), -1))]
+    return or_(*conds)
+
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:_check_antecedents_inversion (statement)
+def _statement(a: Expr, b: Expr, c: Expr, z_: Expr, x: Symbol) -> Boolean:
+    """The convergence of the inversion integral of ``z**a * exp(b*z**c)``
+    on the two rays."""
+    return and_(_statement_half(a, b, c, z_, x, True), _statement_half(a, b, c, z_, x, False))
+
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:_check_antecedents_inversion
+def _check_antecedents_inversion(g: MeijerG, x: Symbol) -> Boolean:
+    """The condition under which the inverse Laplace transform of ``g``
+    exists and :func:`_int_inversion` computes it ([L], sections 5.7–5.10).
+
+    A comparison which cannot be decided (on which SymPy raises) makes the
+    computation not valid here: ``false``.
+    """
+    zarg = g.argument
+    _, e = _get_coeff_exp(zarg, x)
+    if lt(e, 0) is true:
+        # the argument should grow as |x| -> oo
+        return _check_antecedents_inversion(_flip_g(g), x)
+
+    # the notations of [L], sections 5.7-10
+    mi, ni, pi_, qi = len(g.bm), len(g.an), len(g.ap), len(g.bq)
+    m, n, p, q = Integer(mi), Integer(ni), Integer(pi_), Integer(qi)
+    tau = m + n - p
+    nu = q - m - n
+    rho = (tau - nu) / 2
+    sigma = q - p
+    epsilon: Expr = HALF if qi - pi_ == 1 else (ONE if qi - pi_ > 1 else nan)
+    bq_sum: Expr = add(*g.bq) if g.bq else ZERO
+    ap_sum: Expr = add(*g.ap) if g.ap else ZERO
+    delta = g.delta
+
+    # whether the computation is valid
+    if not (ge(delta, e / 2) is true or (pi_ >= 1 and pi_ >= qi)):
+        return false
+
+    # condition A: a valid G-function
+    for a, b in itertools.product(g.an, g.bm):
+        if (a - b).is_integer is True and gt(a, b) is true:
+            return false
+
+    def E(zz: Expr) -> Boolean:
+        return and_(*[_statement(a - 1, ZERO, ZERO, zz, x) for a in g.an])
+
+    # p >= q: the asymptotic Slater expansion ([L], 5.2 (11)), which holds
+    # even when parameters differ by integers
+    if pi_ >= qi:
+        return E(zarg)
+
+    theta = (Rational(1 - (qi - pi_), 2) + bq_sum - ap_sum) / sigma
+
+    def H(zz: Expr) -> Boolean:
+        return _statement(theta, -sigma, 1 / sigma, zz, x)
+
+    def Hp(zz: Expr) -> Boolean:
+        return _statement_half(theta, -sigma, 1 / sigma, zz, x, True)
+
+    def Hm(zz: Expr) -> Boolean:
+        return _statement_half(theta, -sigma, 1 / sigma, zz, x, False)
+
+    # [L], section 5.10 (p < q from here)
+    conds: list[Boolean] = []
+    # theorem 1
+    conds.append(and_(1 <= ni, 1 <= mi, ge(rho * pi - delta, pi / 2), gt(delta, 0),
+                      E(zarg * exp(I * pi * (nu + 1)))))
+    # theorem 2, statements (2) and (3)
+    conds.append(and_(pi_ + 1 <= mi, mi + 1 <= qi, gt(delta, 0), lt(delta, pi / 2), ni == 0,
+                      ge((m - p + 1) * pi - delta, pi / 2),
+                      Hp(zarg * exp(I * pi * (q - m))), Hm(zarg * exp(-I * pi * (q - m)))))
+    # theorem 2, statement (5)
+    conds.append(and_(mi == qi, ni == 0, gt(delta, 0), ge((sigma + epsilon) * pi - delta, pi / 2), H(zarg)))
+    # theorem 3, statements (6) and (7)
+    conds.append(and_(or_(and_(pi_ <= qi - 2, le(1, tau), le(tau, sigma / 2)),
+                          and_(pi_ + 1 <= mi + ni, le(m + n, (p + q) / 2))),
+                      gt(delta, 0), lt(delta, pi / 2), ge((tau + 1) * pi - delta, pi / 2),
+                      Hp(zarg * exp(I * pi * nu)), Hm(zarg * exp(-I * pi * nu))))
+    # theorem 4, statements (10) and (11)
+    conds.append(and_(1 <= mi, gt(rho, 0), gt(delta, 0), lt(delta + rho * pi, pi / 2),
+                      ge((tau + epsilon) * pi - delta, pi / 2),
+                      Hp(zarg * exp(I * pi * nu)), Hm(zarg * exp(-I * pi * nu))))
+    # the trivial case
+    conds.append(to_boolean(mi == 0))
+    # not done (in SymPy either): theorem 5 (general) and 6 (q = p + 1)
+    return or_(*conds)
+
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:_int_inversion
+def _int_inversion(g: MeijerG, x: Symbol, t: Expr) -> Optional[Expr]:
+    """The inverse Laplace transform of ``g`` (a G-function of ``x``) at
+    ``t``, the conditions assumed; ``None`` when the exponent of ``x`` is
+    not rational."""
+    b, a = _get_coeff_exp(g.argument, x)
+    inflated = _inflate_fox_h(_g(g.an, g.aother, g.bm, g.bother, b / t**a), -a)
+    if inflated is None:
+        return None
+    C, h = inflated
+    return C / t * h
+
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:meijerint_inversion (the shifts)
+def _split_shift(f: Expr, x: Symbol) -> tuple[Expr, Expr]:
+    """``(g, shift)`` with ``f = g*exp(shift*x)``, ``exp(shift*x)`` the
+    product of the exponential factors of ``f`` linear in ``x``: those are
+    shifts of the transform."""
+    args: list[Expr]
+    if isinstance(f, Mul):
+        args = [_expr(a) for a in f.args]
+    elif isinstance(f, Exp):
+        args = [f]
+    else:
+        return f, ZERO
+    newargs: list[Expr] = []
+    exponentials: list[Expr] = []
+    while args:
+        arg = args.pop()
+        if isinstance(arg, Exp):
+            arg2 = expand(arg)
+            if isinstance(arg2, Mul):
+                args += [_expr(a) for a in arg2.args]
+                continue
+            try:
+                a, b = _get_coeff_exp(_expr(arg.args[0]), x)
+            except _CoeffExpValueError:
+                b = ZERO
+            if b == 1:
+                exponentials.append(a)
+            else:
+                newargs.append(arg)
+        elif isinstance(arg, Pow):
+            arg2 = expand(arg)
+            if isinstance(arg2, Mul):
+                args += [_expr(a) for a in arg2.args]
+                continue
+            if x not in arg.base.free_symbols:
+                try:
+                    a, b = _get_coeff_exp(arg.exp, x)
+                except _CoeffExpValueError:
+                    b = ZERO
+                if b == 1:
+                    # SymPy records the shift and keeps the factor as well
+                    # (a double shift, or no rewriting); the factor is the
+                    # shift
+                    exponentials.append(a * log(arg.base))
+                    continue
+            newargs.append(arg)
+        else:
+            newargs.append(arg)
+    return (mul(*newargs) if newargs else ONE), (add(*exponentials) if exponentials else ZERO)
+
+
+# PORTED FROM SYMPY: sympy/integrals/meijerint.py:meijerint_inversion
+def meijerint_inversion(f: ExprLike, x: Symbol, t: Symbol) -> Optional[ConditionalExpr]:
+    """The inverse Laplace transform
+    `\\frac{1}{2\\pi i}\\int_{c - i\\infty}^{c + i\\infty} f(x) e^{tx}\\, dx`
+    (``c`` real, right of the singularities of ``f``) by rewriting ``f``
+    as G-functions, with the condition under which it holds; ``None`` when
+    ``f`` cannot be rewritten or the condition is false. ``t`` is taken
+    real and positive (the result carries ``Heaviside(t)``).
+
+    The exponential factors `e^{-a x}` are shifts `t \\to t - a` of the
+    result; a constant times them gives a ``DiracDelta``.
+
+    SymPy returns a ``Piecewise`` whose last piece is an unevaluated
+    ``InverseLaplaceTransform``; here the pair of the value and its
+    condition, as :func:`meijerint_definite`.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.functions import exp
+    >>> from sympy_extras.integrals.meijerint import meijerint_inversion
+    >>> x, t = symbols('x t')
+    >>> a = symbols('a', positive=True)
+    >>> meijerint_inversion(1/x, x, t)
+    (Heaviside(t), True)
+    >>> meijerint_inversion(1/(x**2 + 1), x, t)
+    (sin(t)*Heaviside(t), True)
+    >>> meijerint_inversion(exp(-a*x)/x, x, t)
+    (Heaviside(-a + t), True)
+    >>> meijerint_inversion(exp(-2*x), x, t)
+    (DiracDelta(t - 2), True)
+    """
+    e = to_expr(f)
+    t_ = t
+    # a polar t: no sqrt(t**2) = abs(t)
+    tp = Dummy('t', polar=True)
+    e = e.subs(t_, tp)
+    if not _is_analytic(e, x):
+        return None
+    # the exponentials are shifts, filtered out and applied to the result
+    e, shift = _split_shift(e, x)
+
+    if x not in e.free_symbols:
+        cond = eq(im(shift), 0)
+        if _is_false(cond):
+            # a nonreal shift: not a Laplace transform
+            return None
+        res = e * dirac_delta(tp + shift)
+        return _expr(res.subs(tp, t_)), to_boolean(cond.subs(tp, t_))
+
+    gs = _rewrite1(e, x)
+    if gs is None:
+        return None
+    fac, po, g, cond = gs
+    value: Expr = ZERO
+    for C, s, h in g:
+        C, h = _rewrite_inversion(fac * C, po * x**s, h, x)
+        term = _int_inversion(h, x, tp)
+        if term is None:
+            return None
+        value = value + C * term
+        cond = and_(cond, _check_antecedents_inversion(h, x))
+        if _is_false(cond):
+            break
+    cond = _my_unpolarify_cond(cond)
+    if _is_false(cond):
+        return None
+    value = _my_unpolarify(hyperexpand(value))
+    if not value.has(Heaviside):
+        value = value * heaviside(tp)
+    value = _expr(value.subs(tp, tp + shift))
+    cond = to_boolean(cond.subs(tp, tp + shift))
+    return _expr(value.subs(tp, t_)), to_boolean(cond.subs(tp, t_))

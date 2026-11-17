@@ -3414,6 +3414,10 @@ assert str(meijerint_definite(sinc(x)**2, x, -oo, oo)) == '(pi, True)'
 assert str(meijerint_definite(exp(-x)*sin(x), x, Integer(0), oo)) == '(1/2, True)'
 assert str(meijerint_indefinite(x*besselj(0, x), x)) == '(x*besselj(1, x), True)'
 assert str(meijer_antiderivative(besselj(1, x), x)) == '-besselj(0, x)'
+from sympy_extras.integrals.meijerint import meijerint_inversion
+t, a = Symbol('t'), Symbol('a', positive=True)
+assert str(meijerint_inversion(exp(-a*x)/x, x, t)) == '(Heaviside(-a + t), True)'
+assert str(meijerint_inversion(1/(x**2 + 1), x, t)) == '(sin(t)*Heaviside(t), True)'
 # the method 'meijer' of indefinite went to indefinite_sympy.meijerint_of_core
 assert verified_antiderivative(besselj(1, x), x, methods=['meijer']) is not None
 # the last method of definite went to definite_sympy.integrate_of_core
@@ -3617,7 +3621,7 @@ def test_native_polar_numbers_do_not_load_sympy() -> None:
 
 
 def test_native_meijerint_does_not_load_sympy() -> None:
-    """The port of SymPy's ``meijerint`` loads no SymPy, nor do the method
+    """The port of SymPy's ``meijerint`` (with ``meijerint_inversion``) loads no SymPy, nor do the method
     ``'meijer'`` of the native indefinite integration (which went to
     ``indefinite_sympy.meijerint_of_core``) and the last method of the
     native definite integration, the Meijer G-function theorems and the
