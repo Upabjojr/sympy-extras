@@ -7,6 +7,7 @@ import random
 from fractions import Fraction
 from typing import Callable
 
+import pytest
 import sympy
 from sympy.polys.fields import FracElement, field as sympy_field
 
@@ -68,3 +69,37 @@ def test_sign_and_content_of_the_denominator() -> None:
     x, y = GENS[0], GENS[1]
     for e in [1/(-2*x - 2*y), (x - y)/(y - x), (2*x + 4)/(6*y - 3), sympy.Rational(3, 2)/(x/3 - y/5)]:
         assert _same(F.from_expr(expr_from_sympy(e)), K.from_expr(e)), e
+
+
+def test_integer_fraction_field_conversions_match_sympy() -> None:
+    """``ZZ(x, y)``: SymPy's normal form over ``ZZ`` (integer numerator and
+    denominator), the conversions from ``ZZ``, ``QQ`` and the ring, and
+    back to the ring (``to_ring``)."""
+    from sympy_extras.polys.domains import QQ, ZZ
+    from sympy_extras.polys.domains.sparsepolynomialring import IntegerPolynomialRing
+    from sympy_extras.polys.polyerrors import CoercionFailed
+    FZ: SparseFractionField[int] = SparseFractionField(IntegerPolynomialRing(['x', 'y']))
+    KZ = sympy.ZZ.frac_field(*GENS[:2])
+    rng = random.Random(7)
+    for _ in range(40):
+        e = _random_poly(rng).subs(GENS[2], 1) / _random_poly(rng).subs(GENS[2], 1)
+        if e.has(sympy.zoo, sympy.nan):
+            continue
+        ours = FZ.from_expr(expr_from_sympy(e))
+        theirs = KZ.from_sympy(e)
+        assert (FZ.ring.to_expr(ours.numer), FZ.ring.to_expr(ours.denom)) == \
+            (expr_from_sympy(theirs.numer.as_expr()), expr_from_sympy(theirs.denom.as_expr())), e
+        assert FZ.to_expr(FZ.mul(ours, FZ.invert(ours))) == expr_from_sympy(sympy.Integer(1)) or FZ.is_zero(ours)
+    half = FZ.convert(Fraction(1, 2), QQ)
+    assert (FZ.ring.to_expr(half.numer), FZ.ring.to_expr(half.denom)) == (expr_from_sympy(sympy.Integer(1)),
+                                                                          expr_from_sympy(sympy.Integer(2)))
+    assert FZ.is_one(FZ.add(half, half)) and FZ.is_one(FZ.convert(3, ZZ)) is False
+    x = FZ.ring.ring.gens[0]
+    assert FZ.to_ring(FZ.from_ring(x * x)) == x * x
+    assert FZ.to_ring(FZ.exquo(FZ.from_ring(x * x), FZ.from_ring(x))) == x
+    for not_polynomial in (half, FZ.invert(FZ.from_ring(x))):
+        with pytest.raises(CoercionFailed):
+            FZ.to_ring(not_polynomial)
+    # over QQ a number as the denominator is a unit
+    y = F.ring.ring.gens[1]
+    assert F.to_ring(F.new(y, F.ring.from_int(2))) == y.mul_ground(Fraction(1, 2))

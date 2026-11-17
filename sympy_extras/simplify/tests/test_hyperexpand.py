@@ -188,3 +188,22 @@ def test_the_parameters_of_an_instantiated_formula_are_evaluated() -> None:
     for a in (Rational(1, 3), Rational(4, 3)):
         found = attempt(lambda: hyperexpand(hyper((a,), (a + 1,), z)), 60, native=True)
         assert found is not None and found.has(LowerGamma), a
+
+
+def test_build_hypergeometric_formula_over_a_fraction_field_matches_sympy() -> None:
+    # issue #75: the polynomial of the formula has coefficients in ZZ(y, z)
+    # (the parameters of cos(x**y)/x**y in meijerint): CoercionFailed before
+    # the fraction fields of the typed Poly
+    from sympy_extras.simplify.hyperexpand import build_hypergeometric_formula
+    y = sympy.Symbol('y')
+    cases: list[tuple[list[sympy.Expr], list[sympy.Expr]]] = [
+        ([R(-1, 2) + 1/(2*y)], [R(1, 2), R(1, 2) + 1/(2*y)]), ([1/y, sympy.Integer(2)], [1 + 1/(y + 1)])]
+    for ap, bq in cases:
+        theirs = sympy_hyperexpand.build_hypergeometric_formula(sympy_hyperexpand.Hyper_Function(ap, bq))
+        ours = build_hypergeometric_formula(HyperFunction([expr_from_sympy(a) for a in ap],
+                                                          [expr_from_sympy(b) for b in bq]))
+        mine = [to_sympy(e) for e in ours.M]
+        ours_z = [s for e in mine for s in e.free_symbols if isinstance(s, sympy.Dummy) and s.name == 'z']
+        want = [e.subs(theirs.z, ours_z[0]) if ours_z else e for e in theirs.M]
+        assert all(sympy.cancel(u - v) == 0 for u, v in zip(mine, want)), (ap, bq)
+        assert len(mine) == len(want) and [str(e) for e in theirs.B] == _strs(ours.B)

@@ -20,6 +20,26 @@ remove public functions. Breaking changes are listed here when they happen.
   `RecursiveSeq` with `start != 0` gives the right terms, and
   `find_linear_recurrence` recognises the recurrences with symbolic
   coefficients (it compares the terms up to simplification).
+- `sympy_extras.polys.polytools.Poly` over the fraction fields `ZZ(a, b)`
+  and `QQ(a, b)` (issue #75): `construct_domain` picks them as SymPy
+  does when a coefficient has a denominator which is not a number
+  (`Poly(x/y, x)` is `Poly(1/y*x, x, domain='ZZ(y)')`), `Poly(...,
+  domain='ZZ(y)')` names a domain (`ZZ`, `QQ`, `ZZ[...]`, `QQ[...]`,
+  `ZZ(...)`, `QQ(...)`), the domains unify as SymPy's `unify_composite`;
+  the arithmetic, `diff`, `eval`, `gcd`/`lcm` (monic), `cofactors`,
+  `monic`, `content`/`primitive` (SymPy's fold of `Field.gcd`), `div`,
+  `quo`, `rem`, `exquo`, `cancel`, `resultant`, `discriminant`,
+  `factor_list` and `sqf_list` give SymPy's results, every coefficient
+  printed as its element of the field. `div` and `monic` over `ZZ[a]`
+  with a divisor (or polynomial) whose leading coefficient is not a
+  number now work over `ZZ(a)` (`CoercionFailed` before), back in
+  `ZZ[a]` when the results are polynomials there. `Poly.den` and
+  `Poly.is_fraction_field`. The native `hyperexpand` builds the
+  hypergeometric formulas whose polynomial has such coefficients (the
+  antiderivative of `cos(x**y)/x**y` by `meijerint_indefinite` is
+  SymPy's, `CoercionFailed` before). `SparseFractionField.convert` takes
+  rationals into `ZZ(x)` (`1/2`) and `to_ring` brings an element back to
+  the polynomial ring.
 - `sympy_extras.steps`: step-by-step solutions (SymPy issue 11088) on
   the architecture of `manualintegrate` in SymPy master. `steps.core`:
   steps as frozen dataclasses, rules as generators which yield their
