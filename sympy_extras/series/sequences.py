@@ -31,7 +31,8 @@ Examples
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: strict typing; unevaluating classes with the evaluating functions
-# sequence, seq_add, seq_mul; only SeqFormula, SeqPer, SeqAdd, SeqMul, EmptySequence.
+# sequence, seq_add, seq_mul; SeqFormula, SeqPer, RecursiveSeq, SeqAdd, SeqMul, EmptySequence and
+# SeqBase.find_linear_recurrence; RecursiveSeq indexes its cache from start (SymPy's from 0).
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -43,11 +44,13 @@ from sympy_extras.core.add import add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
+from sympy_extras.core.function import AppliedUndef, UndefinedFunction
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import Infinity, Integer, NegativeInfinity, oo
+from sympy_extras.core.relational import Eq
 from sympy_extras.core.symbol import Dummy, Symbol
 
-__all__ = ['SeqBase', 'SeqFormula', 'SeqPer', 'SeqAdd', 'SeqMul', 'EmptySequence', 'sequence',
+__all__ = ['SeqBase', 'SeqFormula', 'SeqPer', 'RecursiveSeq', 'SeqAdd', 'SeqMul', 'EmptySequence', 'sequence',
            'seq_add', 'seq_mul']
 
 #: a point of a sequence: an integer or an expression
@@ -69,6 +72,13 @@ def _max(a: Expr, b: Expr) -> Expr:
 def _min(a: Expr, b: Expr) -> Expr:
     from sympy_extras.functions.elementary.miscellaneous import min_
     return min_(a, b)
+
+
+def _is_zero(e: Expr) -> bool:
+    """Whether ``e`` is zero once expanded or simplified."""
+    from sympy_extras.core.function import expand
+    from sympy_extras.simplify.simplify import simplify
+    return e == 0 or expand(e) == 0 or simplify(e) == 0
 
 
 def _empty_range(start: Expr, stop: Expr) -> bool:
@@ -130,6 +140,77 @@ class SeqBase(Basic):
         if isinstance(self.start, NegativeInfinity):
             return self.stop - i
         return self.start + i
+
+    @overload
+    def find_linear_recurrence(self, n: int, d: Optional[int] = None, gfvar: None = None) -> list[Expr]: ...
+
+    @overload
+    def find_linear_recurrence(self, n: int, d: Optional[int], gfvar: Expr) -> tuple[list[Expr], Optional[Expr]]: ...
+
+    @overload
+    def find_linear_recurrence(self, n: int, *, gfvar: Expr) -> tuple[list[Expr], Optional[Expr]]: ...
+
+    # PORTED FROM SYMPY: sympy/series/sequences.py:SeqBase.find_linear_recurrence
+    def find_linear_recurrence(self, n: int, d: Optional[int] = None, gfvar: Optional[Expr] = None
+                               ) -> Union[list[Expr], tuple[list[Expr], Optional[Expr]]]:
+        r"""The shortest linear recurrence of order at most ``n/2`` (at most
+        ``min(d, n/2)`` when ``d`` is given) which the first ``n`` terms
+        satisfy: the coefficients ``[b(1), b(2), ...]`` of
+        ``x(n) = b(1)*x(n-1) + b(2)*x(n-2) + ...``, ``[]`` when there is
+        none. With ``gfvar``, also the ordinary generating function in
+        ``gfvar`` (``None`` when there is no recurrence).
+
+        >>> from sympy_extras.core import Symbol, oo, sqrt
+        >>> from sympy_extras.series.sequences import sequence
+        >>> n, x, y = Symbol('n'), Symbol('x'), Symbol('y')
+        >>> sequence(n**2).find_linear_recurrence(10, 2)
+        []
+        >>> sequence(n**2).find_linear_recurrence(10)
+        [3, -3, 1]
+        >>> sequence(2**n).find_linear_recurrence(10)
+        [2]
+        >>> sequence(sqrt(5)*(((1 + sqrt(5))/2)**n - (-(1 + sqrt(5))/2)**(-n))/5).find_linear_recurrence(10)
+        [1, 1]
+        >>> sequence(x + y*(-2)**(-n), (n, 0, oo)).find_linear_recurrence(30)
+        [1/2, 1/2]
+        >>> sequence(3*5**n + 12).find_linear_recurrence(20, gfvar=x)
+        ([6, -5], 3*(5 - 21*x)/((x - 1)*(5*x - 1)))
+        """
+        from sympy_extras.core.function import expand
+        from sympy_extras.matrices.dense import ExprMatrix
+        from sympy_extras.polys.polytools import factor
+        from sympy_extras.simplify.simplify import simplify
+        x = [simplify(expand(t)) for t in self[:n]]
+        lx = len(x)
+        r = lx // 2 if d is None else min(d, lx // 2)
+        coeffs: list[Expr] = []
+        for l in range(1, r + 1):
+            l2 = 2 * l
+            m = ExprMatrix.from_rows([x[k:k + l] for k in range(l)])
+            if m.det() == 0:
+                continue
+            sol = [simplify(e) for e in m.solve(ExprMatrix.column(x[l:l2])).entries]
+            if lx == l2:
+                coeffs = sol[::-1]
+                break
+            rest = ExprMatrix.from_rows([x[k:k + l] for k in range(l, lx - l)])
+            # SymPy compares the matrices structurally; a zero difference is enough here
+            if all(_is_zero(a - b) for a, b in zip((rest * ExprMatrix.column(sol)).entries, x[l2:])):
+                coeffs = sol[::-1]
+                break
+        if gfvar is None:
+            return coeffs
+        l = len(coeffs)
+        if l == 0:
+            return [], None
+        num = x[l - 1] * gfvar**(l - 1)
+        den = 1 - coeffs[l - 1] * gfvar**l
+        for i in range(l - 1):
+            num += x[i] * gfvar**i
+            for j in range(l - i - 1):
+                num -= coeffs[i] * x[j] * gfvar**(i + j + 1)
+            den -= coeffs[i] * gfvar**(i + 1)
+        return coeffs, simplify(factor(num) / factor(den))
 
     def _add(self, other: SeqBase) -> Optional[SeqBase]:
         """The termwise sum when ``self`` knows how to add ``other``."""
@@ -435,6 +516,152 @@ class SeqPer(_SeqExpr):
     def coeff_mul(self, c: ExprLike) -> SeqPer:
         ce = to_expr(c)
         return SeqPer([e * ce for e in self._periodical], self.limits)
+
+
+# PORTED FROM SYMPY: sympy/series/sequences.py:RecursiveSeq
+class RecursiveSeq(SeqBase):
+    """The sequence ``a(n) = f(a(n - 1), ..., a(n - d))`` of a recurrence of
+    fixed degree ``d``, from ``start`` (included) to ``oo``.
+
+    ``recurrence`` is the expression ``f(y(n - 1), ..., y(n - d))`` (not an
+    equation), ``yn`` the applied undefined function ``y(n)``, ``n`` the
+    index; ``initial`` holds the ``d`` values at ``start, ..., start + d - 1``
+    (dummies ``c_0, ...`` when omitted). The terms computed are cached.
+
+    >>> from sympy_extras.core import Function, Symbol
+    >>> from sympy_extras.series.sequences import RecursiveSeq
+    >>> y, n = Function('y'), Symbol('n')
+    >>> fib = RecursiveSeq(y(n - 1) + y(n - 2), y(n), n, [0, 1])
+    >>> fib, fib.coeff(3), fib[:6], fib.degree
+    (RecursiveSeq(y(n - 2) + y(n - 1), y(n), n, (0, 1), 0), 2, [0, 1, 1, 2, 3, 5], 2)
+    >>> fib.recurrence, fib.interval
+    (Eq(y(n), y(n - 2) + y(n - 1)), (0, oo))
+    >>> RecursiveSeq(y(n - 1) + y(n - 2), y(n), n, [0, 1], start=2)[:5]
+    [0, 1, 1, 2, 3]
+
+    Unlike SymPy 1.14, the terms of a sequence starting at a point other
+    than ``0`` are right (SymPy computes the term at ``start + i`` from
+    the cache index ``i``).
+    """
+
+    __slots__ = ('_recurrence', '_yn', '_n', '_initial', '_start', '_degree', '_terms')
+
+    def __init__(self, recurrence: ExprLike, yn: Basic, n: Basic, initial: Optional[Sequence[ExprLike]] = None,
+                 start: ExprLike = 0) -> None:
+        if not isinstance(yn, AppliedUndef):
+            raise TypeError("recurrence sequence must be an applied undefined function, found `{}`".format(yn))
+        if not isinstance(n, Symbol):
+            raise TypeError("recurrence variable must be a symbol, found `{}`".format(n))
+        if yn.args != (n,):
+            raise TypeError("recurrence sequence does not match symbol")
+        rec = to_expr(recurrence)
+        degree = 0
+        # every application of y has one argument n + k with k a negative integer
+        for prev in rec.atoms(AppliedUndef):
+            if not isinstance(prev, AppliedUndef) or prev.function != yn.function:
+                continue
+            if len(prev.args) != 1:
+                raise TypeError("Recurrence should be in a single variable")
+            shift = as_expr(prev.args[0]) - n
+            if not isinstance(shift, Integer) or int(shift) >= 0:
+                raise TypeError("Recurrence should have constant, negative, integer shifts (found {})".format(prev))
+            degree = max(degree, -int(shift))
+        values: list[Expr] = []
+        if initial:
+            values = [to_expr(v) for v in initial]
+        else:
+            values = [Dummy("c_{}".format(k)) for k in range(degree)]
+        if len(values) != degree:
+            raise ValueError("Number of initial terms must equal degree")
+        self._recurrence: Final[Expr] = rec
+        self._yn: Final[AppliedUndef] = yn
+        self._n: Final[Symbol] = n
+        self._initial: Final[Tuple] = Tuple(*values)
+        self._start: Final[Expr] = to_expr(start)
+        self._degree: Final[int] = degree
+        #: the terms computed, from ``start`` on (the cache)
+        self._terms: Final[list[Expr]] = values
+        Basic.__init__(self)
+
+    @property
+    def args(self) -> tuple[Basic, ...]:
+        return (self._recurrence, self._yn, self._n, self._initial, self._start)
+
+    def _rebuild(self, args: tuple[Basic, ...]) -> Basic:
+        rec, yn, n, initial, start = args
+        if not isinstance(initial, Tuple):
+            raise TypeError("the initial values of a RecursiveSeq are a Tuple")
+        return RecursiveSeq(as_expr(rec), yn, n, [as_expr(a) for a in initial.args], as_expr(start))
+
+    @property
+    def recurrence(self) -> Eq:
+        """The equation ``y(n) = f(...)`` of the recurrence."""
+        return Eq(self._yn, self._recurrence)
+
+    @property
+    def yn(self) -> AppliedUndef:
+        """The applied function of the ``n``-th term."""
+        return self._yn
+
+    @property
+    def y(self) -> UndefinedFunction:
+        """The undefined function of the terms."""
+        return self._yn.function
+
+    @property
+    def n(self) -> Symbol:
+        """The index."""
+        return self._n
+
+    @property
+    def initial(self) -> Tuple:
+        """The initial values."""
+        return self._initial
+
+    @property
+    def degree(self) -> int:
+        """The degree of the recurrence (the largest shift)."""
+        return self._degree
+
+    @property
+    def start(self) -> Expr:
+        return self._start
+
+    @property
+    def stop(self) -> Expr:
+        return oo
+
+    @property
+    def interval(self) -> tuple[Expr, Expr]:
+        """``(start, oo)``."""
+        return (self._start, oo)
+
+    @property
+    def cache(self) -> dict[Expr, Expr]:
+        """The terms computed so far, keyed by ``y(start + k)``."""
+        y = self._yn.function
+        return {y(self._start + k): t for k, t in enumerate(self._terms)}
+
+    def _eval_coeff(self, pt: Expr) -> Expr:
+        offset = pt - self._start
+        if not isinstance(offset, Integer):
+            raise ValueError("a recursive sequence takes the points start + k, not %s" % (pt,))
+        i = int(offset)
+        y = self._yn.function
+        while len(self._terms) <= i:
+            current = len(self._terms)
+            point = self._start + current
+            rule: dict[Basic, Basic] = {y(self._start + k): self._terms[k]
+                                        for k in range(max(0, current - self._degree), current)}
+            # subs, not SymPy's xreplace: the native xreplace does not evaluate
+            self._terms.append(self._recurrence.subs(self._n, point).subs(rule))
+        return self._terms[i]
+
+    def __iter__(self) -> Iterator[Expr]:
+        i = 0
+        while True:
+            yield self._eval_coeff(self._start + i)
+            i += 1
 
 
 class _SeqExprOp(SeqBase):

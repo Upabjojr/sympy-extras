@@ -3745,3 +3745,26 @@ def test_native_fps_and_fourier_series_do_not_load_sympy() -> None:
     out = subprocess.run([sys.executable, '-c', _NATIVE_FPS_FOURIER], capture_output=True, text=True, timeout=900)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout
+
+
+_NATIVE_RECURSIVE_SEQ = r'''
+import sys
+from sympy_extras.core import Function, Symbol, sqrt
+from sympy_extras.series.sequences import RecursiveSeq, sequence
+y, n, x = Function('y'), Symbol('n'), Symbol('x')
+fib = RecursiveSeq(y(n - 1) + y(n - 2), y(n), n, [0, 1])
+assert fib[:6] == [0, 1, 1, 2, 3, 5] and fib.find_linear_recurrence(10) == [1, 1]
+phi = (1 + sqrt(5))/2
+assert sequence((phi**n - (1 - phi)**n)/sqrt(5)).find_linear_recurrence(10) == [1, 1]
+coeffs, gf = sequence(3*5**n + 12).find_linear_recurrence(20, gfvar=x)
+assert str(coeffs) == '[6, -5]' and str(gf) == '3*(5 - 21*x)/((x - 1)*(5*x - 1))', gf
+print('SYMPY' if 'sympy' in sys.modules else 'FREE')
+'''
+
+
+def test_native_recursive_seq_does_not_load_sympy() -> None:
+    """RecursiveSeq and SeqBase.find_linear_recurrence (with its generating
+    function) are native (:mod:`sympy_extras.series.sequences`)."""
+    out = subprocess.run([sys.executable, '-c', _NATIVE_RECURSIVE_SEQ], capture_output=True, text=True, timeout=600)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip().splitlines()[-1] == 'FREE', out.stdout

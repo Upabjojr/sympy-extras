@@ -618,6 +618,7 @@ sympy_extras/
                              algorithms, the full partial fractions by Taylor coefficients at the roots, rsolve_linear);
                              fourier_series, FourierSeries, FiniteFourierSeries (fourier.py: the coefficients by the
                              native definite_integral, the index a positive integer); SeqFormula, SeqPer, SeqAdd, SeqMul,
+                             RecursiveSeq, SeqBase.find_linear_recurrence (gfvar: the generating function),
                              sequence (sequences.py); SeriesBase (series_class.py) (native, ported from SymPy);
                              approximants.py: pade, rational_interpolate, series_reversion (Euclid, Lagrange inversion);
                              fouriercoefficients.py: fourier_coefficients, fourier_partial_sum (piecewise polynomials by repeated
