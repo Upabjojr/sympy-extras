@@ -14,7 +14,7 @@ from sympy_extras.core.logic import Boolean, and_, not_
 from sympy_extras.core.relational import eq
 from sympy_extras.functions import Piecewise, abs_, asin, atan, cos, exp, gamma, log, sin
 from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.definite import (DefiniteIntegrator, _coefficients, _numeric_function, _quadrature,
+from sympy_extras.integrals.definite import (DefiniteIntegrator, _coefficients, _numeric_function, _pairs, _quadrature,
                                              _singular_points, conditional_integral, definite_integral,
                                              verify_numerically)
 from sympy_extras.integrals.integral import Integral, is_unevaluated
@@ -220,8 +220,7 @@ def _branches_check(value: Expr, f: Expr, lower: Expr, upper: Expr, assumptions:
     assert isinstance(value, Piecewise), value
     conditions: list[Boolean] = []
     earlier: list[Boolean] = []
-    for pair in value.args:
-        branch, condition = pair.expr, pair.cond
+    for branch, condition in _pairs(value):
         if not is_unevaluated(branch):
             region = and_(condition, *[not_(e) for e in earlier])
             assert verify_numerically(branch, f, x, lower, upper, assumptions + [region], samples=3,
@@ -244,7 +243,7 @@ def test_cases_of_singularities_against_symbolic_endpoints() -> None:
     value = definite_integral(1 / (x**2 - 1), (x, p, q), p < q)
     assert set(_branches_check(value, 1 / (x**2 - 1), p, q, [p < q])) \
         == {(p > 1) | (q < -1) | ((p > -1) & (q < 1))}
-    assert is_unevaluated(value.args[-1].expr)
+    assert isinstance(value, Piecewise) and is_unevaluated(_pairs(value)[-1][0])
     # the poles a < b against (0, 1): the rational integrator's logarithms
     # cancelled, both below, both above, or around the range
     f = 1 / ((x - p) * (x - q))
