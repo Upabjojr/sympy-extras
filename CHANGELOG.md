@@ -424,6 +424,28 @@ remove public functions. Breaking changes are listed here when they happen.
   evaluates. A finite set of points is a subset of a finite set of
   numbers or of an interval never, of another finite set of points of
   rationals only when its points are among them (SymPy's answers).
+- The cases of the parameters of the native definite integrals (issue
+  #75): a singularity or a kink whose position against symbolic
+  endpoints the assumptions do not settle gives a `Piecewise` of the
+  finite cases, each checked numerically on samples of its region, with
+  the unevaluated integral for the divergent ones; more of the cases are
+  reached within their budget. `1/(x**2 - 1)` over `(a, b)` has its three
+  finite cases (it had the one below `-1`), `1/((x - a)*(x - b))` over
+  `(0, 1)` with `a < b` its three (it was left unevaluated), `1/(x**2 -
+  c)` over `(0, 1)` with `c > 0` the case `c > 1`, `Abs(x)` over `(a, b)`
+  the cases with both endpoints of one sign, and `log(c - x)` and `log(x -
+  c)` over `(a, b)` a value for every `a != c`, `b != c` (they had
+  the case `a > c`, `b > c` only). The new
+  `antiderivative.continuous_at` proves an antiderivative continuous at a
+  symbolic point by its tree, and `one_sided_limit` takes the value there
+  instead of the limit (the series at `x = a` took seconds per endpoint);
+  the new `antiderivative.cancelled_logarithms` cancels the rational
+  arguments of the logarithms of an antiderivative before its
+  singularities are sought; a relation `sqrt(u) > e` of a case is written
+  `u > e**2`, so that it has samples; a kink at an endpoint takes its
+  branch from a weak sign at the midpoint; the cases which agree are
+  joined under a disjunction with the disjuncts differing in one
+  relation merged (`(a > c) | (a < c)` is `Ne(a, c)`).
 - The import cycles hidden behind `TYPE_CHECKING` imports are broken
   (internal change): the `_sympystr` methods take the `NodePrinter`
   protocol of `core.basic` (`StrPrinter` prints `Add`, `Mul` and `Pow`

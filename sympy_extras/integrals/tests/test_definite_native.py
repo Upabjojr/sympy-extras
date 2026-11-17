@@ -10,10 +10,11 @@ import mpmath
 from sympy_extras.core import Integer, Rational, I, Symbol, oo, pi, sqrt
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.evalf import numeric_value, to_float
+from sympy_extras.core.logic import Boolean, and_, not_
 from sympy_extras.core.relational import eq
 from sympy_extras.functions import Piecewise, abs_, asin, atan, cos, exp, gamma, log, sin
 from sympy_extras.integrals.conditions import ConditionalValue
-from sympy_extras.integrals.definite import (DefiniteIntegrator, _coefficients, _numeric_function, _quadrature,
+from sympy_extras.integrals.definite import (DefiniteIntegrator, _coefficients, _numeric_function, _pairs, _quadrature,
                                              _singular_points, conditional_integral, definite_integral,
                                              verify_numerically)
 from sympy_extras.integrals.integral import Integral, is_unevaluated
@@ -210,3 +211,49 @@ def test_integral_node_values() -> None:
     # not accurate: no value (SymPy's evalf prints garbage digits)
     assert numeric_value(Integral(sin(x) / x, x, Integer(0), oo), 53) is None
     assert Integral(exp(-x), x).is_number is False
+
+
+def _branches_check(value: Expr, f: Expr, lower: Expr, upper: Expr, assumptions: list[Boolean],
+                    inside: tuple[Expr, ...] = ()) -> list[Boolean]:
+    """The conditions of the evaluated branches of a ``Piecewise`` value,
+    each branch checked numerically on samples of its own region."""
+    assert isinstance(value, Piecewise), value
+    conditions: list[Boolean] = []
+    earlier: list[Boolean] = []
+    for branch, condition in _pairs(value):
+        if not is_unevaluated(branch):
+            region = and_(condition, *[not_(e) for e in earlier])
+            assert verify_numerically(branch, f, x, lower, upper, assumptions + [region], samples=3,
+                                      inside=inside) is True, \
+                (branch, condition)
+            conditions.append(condition)
+        earlier.append(condition)
+    return conditions
+
+
+def test_cases_of_singularities_against_symbolic_endpoints() -> None:
+    # issue #75: a singularity whose position against symbolic endpoints
+    # the assumptions do not settle gives the cases of the parameters, each
+    # checked on samples of its region, the divergent ones left to the
+    # unevaluated branch
+    p, q = Symbol('p'), Symbol('q')
+    # the three finite cases of 1/(x**2 - 1) (both endpoints below -1,
+    # between -1 and 1, above 1), where the limits at the symbolic
+    # endpoints ran out of the budget of all but one
+    value = definite_integral(1 / (x**2 - 1), (x, p, q), p < q)
+    assert set(_branches_check(value, 1 / (x**2 - 1), p, q, [p < q])) \
+        == {(p > 1) | (q < -1) | ((p > -1) & (q < 1))}
+    assert isinstance(value, Piecewise) and is_unevaluated(_pairs(value)[-1][0])
+    # the poles a < b against (0, 1): the rational integrator's logarithms
+    # cancelled, both below, both above, or around the range
+    f = 1 / ((x - p) * (x - q))
+    value = definite_integral(f, (x, 0, 1), p < q)
+    assert set(_branches_check(value, f, Integer(0), Integer(1), [p < q])) \
+        == {(p > 1) | (q < 0) | ((q > 1) & (p < 0))}
+    # a radical point: the case sqrt(c) > 1 written c > 1, so that it has
+    # samples
+    value = definite_integral(1 / (x**2 - c), (x, 0, 1), c > 0)
+    assert _branches_check(value, 1 / (x**2 - c), Integer(0), Integer(1), [c > 0]) == [c > 1]
+    # a kink at an endpoint: the closed cases of Abs(x) by a weak sign
+    value = definite_integral(abs_(x), (x, p, q))
+    assert len(_branches_check(value, abs_(x), p, q, [], (Integer(0),))) == 4

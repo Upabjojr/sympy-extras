@@ -126,7 +126,7 @@ from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanTrue, No
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import I, Integer, Rational, nan, number_from_fraction, oo, pi, zoo
 from sympy_extras.core.power import Pow, sqrt
-from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ge, gt, le, lt
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ge, gt, le, lt, ne
 from sympy_extras.core.singleton import S
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.functions.combinatorial.factorials import factorial
@@ -1508,6 +1508,15 @@ class _Integrator:
                 return 1
             if self.ask(value < 0) is True:
                 return -1
+            # the callers cut the range at the zeros found, so the sign is
+            # the same on the whole open range, and a sample at a zero
+            # means an empty range: a weak sign decides it (Abs(x) over
+            # (a, b) in the case a >= 0, b >= 0 of the kink, where the
+            # midpoint is 0 at a = b = 0 only, was left unevaluated)
+            if self.ask(value >= 0) is True:
+                return 1
+            if self.ask(value <= 0) is True:
+                return -1
             return None
 
         for node, constant, factors in self._nodes(result, x, full):
@@ -1760,7 +1769,7 @@ class _Integrator:
                     conjuncts.extend(to_boolean(part) for part in c.args)
                 else:
                     conjuncts.append(c)
-            condition = self._reduced(conjuncts)
+            condition = self._reduced([self._squared(c) for c in conjuncts])
             if condition is None:
                 continue
             inside = [p for (p, _), (_, position) in zip(points, combination) if position != 0]
@@ -1792,7 +1801,7 @@ class _Integrator:
                     found.value, f, x, a, b, _with(self.assumptions, [case]), inside=inside) is False:
                 continue
             results.append((case, found.value))
-        joined = self._joined(results, f, x, a, b)
+        joined = [(_merged_disjunction(condition), value) for condition, value in self._joined(results, f, x, a, b)]
         if not joined:
             return None
         if len(joined) == 1:
@@ -1801,6 +1810,41 @@ class _Integrator:
         # of the earlier ones, and the conditions of the cases must stay
         # those of their disjunction (ConditionalValue.cases reads them back)
         return ConditionalValue(Piecewise(*[(v, c) for c, v in joined]), or_(*[c for c, _ in joined]))
+
+    def _squared(self, condition: Boolean) -> Boolean:
+        """A relation ``k*sqrt(u) > e`` (or ``<``, ``>=``, ``<=``) of a
+        point against an endpoint, ``k`` a nonzero rational, written
+        without the root under the assumptions: ``u > (e/k)**2`` when
+        ``e/k`` is known nonnegative, ``true`` or ``false`` when it is
+        known negative (the root real, the point placed being real);
+        any other condition as it is. The samples of the parameters
+        satisfy polynomial relations (the bug: the case ``sqrt(c) > 1`` of
+        ``1/(x**2 - c)`` over ``(0, 1)`` had no samples, and its value no
+        check)."""
+        if not isinstance(condition, (Lt, Le, Gt, Ge)):
+            return condition
+        lhs, rhs = condition.lhs, condition.rhs
+        for side, other, flipped in ((lhs, rhs, False), (rhs, lhs, True)):
+            k, root = side.as_coeff_Mul()
+            if not (isinstance(root, Pow) and root.exp == S.Half and isinstance(k, Rational) and k.is_zero is False) \
+                    or other.has(root):
+                continue
+            # side rel other, side = k*sqrt(u): sqrt(u) rel' other/k
+            bound = other / k
+            greater = isinstance(condition, (Gt, Ge)) != flipped
+            if k.is_negative:
+                greater = not greater
+            strict = isinstance(condition, (Gt, Lt))
+            u = root.base
+            if self.ask(bound < 0) is True:
+                return true if greater else false
+            if self.ask(bound >= 0) is not True:
+                return condition
+            square = bound**2
+            if greater:
+                return gt(u, square) if strict else ge(u, square)
+            return lt(u, square) if strict else le(u, square)
+        return condition
 
     def _reduced(self, conjuncts: Sequence[Boolean]) -> Optional[Boolean]:
         """The conjunction of the conditions without those which follow
@@ -1906,17 +1950,34 @@ class _Integrator:
         earlier value agrees with the quadrature at samples of the
         parameters within the case (``-log(a) + log(b)`` for ``1/x`` over
         ``(a, b)`` holds for negative ``a`` and ``b`` too, where the case
-        found ``-log(-a) + log(-b)``)."""
-        joined: list[tuple[Boolean, Expr]] = []
+        found ``-log(-a) + log(-b)``); failing that, the earlier cases
+        join a later one whose value agrees within each of them (the value
+        ``-a*log(Abs(a**2)) + ...`` of ``log(x**2)`` over ``(a, b)`` for
+        endpoints of opposite signs holds for the endpoints of one sign,
+        whose simpler values hold there only)."""
+        joined: list[tuple[list[Boolean], Expr]] = []
+
+        def agrees(value: Expr, condition: Boolean) -> bool:
+            return settings.numerical_checks and verify_numerically(
+                value, f, x, a, b, _with(self.assumptions, [condition]), samples=3) is True
+
         for condition, value in sorted(results, key=lambda item: (_ops(item[1]), str(item[1]))):
             for i, (earlier, candidate) in enumerate(joined):
-                if candidate == value or (settings.numerical_checks and verify_numerically(
-                        candidate, f, x, a, b, _with(self.assumptions, [condition]), samples=3) is True):
-                    joined[i] = (or_(earlier, condition), candidate)
+                if candidate == value or agrees(candidate, condition):
+                    joined[i] = (earlier + [condition], candidate)
                     break
             else:
-                joined.append((condition, value))
-        return joined
+                joined.append(([condition], value))
+        # the later values over the earlier cases, each case checked
+        merged: list[tuple[list[Boolean], Expr]] = []
+        for conditions, value in reversed(joined):
+            for i, (later, candidate) in enumerate(merged):
+                if all(agrees(candidate, c) for c in conditions):
+                    merged[i] = (later + conditions, candidate)
+                    break
+            else:
+                merged.append((conditions, value))
+        return [(or_(*conditions), value) for conditions, value in reversed(merged)]
 
     # -- the methods on a plain piece ---------------------------------------
 
@@ -3352,6 +3413,81 @@ def _strict_where_undefined(condition: Boolean, value: Expr) -> Boolean:
         if at.has(nan, zoo, oo, -oo):
             replacements[atom] = lt(lhs, rhs) if isinstance(atom, Le) else gt(lhs, rhs)
     return to_boolean(condition._xreplace_evaluated(replacements)) if replacements else condition
+
+
+def _union_of_relations(r: Relational, s: Relational) -> Optional[Boolean]:
+    """The disjunction of two relations between the same sides as one
+    relation (``a < c`` or ``a > c`` is ``Ne(a, c)``, ``a < c`` or ``a >=
+    c`` is ``true``), the sides real; ``None`` when it is not one."""
+    if (r.lhs, r.rhs) != (s.lhs, s.rhs):
+        return None
+    kinds = {type(r), type(s)}
+    if kinds == {Lt, Gt}:
+        return ne(r.lhs, r.rhs)
+    if kinds in ({Le, Gt}, {Lt, Ge}, {Le, Ge}, {Eq, Ne}):
+        return true
+    if kinds == {Lt, Eq}:
+        return le(r.lhs, r.rhs)
+    if kinds == {Gt, Eq}:
+        return ge(r.lhs, r.rhs)
+    return None
+
+
+def _merged_disjunction(condition: Boolean) -> Boolean:
+    """A disjunction of conjunctions of relations with the disjuncts which
+    differ in one relation merged (``(a > c) & (b > c) | (a < c) & (b >
+    c)`` is ``Ne(a, c) & (b > c)``), and those implied by another dropped,
+    until none is left: the positions of a point against both endpoints,
+    joined by :meth:`_Integrator._cases` when the values agree, written
+    as the few relations they amount to. The parameters are real, as for
+    the cases (the relations of the positions say so).
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.integrals.definite import _merged_disjunction
+    >>> a, b, c = symbols('a b c')
+    >>> _merged_disjunction(((a > c) & (b > c)) | ((a > c) & (b < c)) | ((a < c) & (b > c)) | ((a < c) & (b < c)))
+    Ne(a, c) & Ne(b, c)
+    >>> _merged_disjunction(((a > 1) & (b > 1)) | ((a < -1) & (b < -1)))
+    ((a > 1) & (b > 1)) | ((a < -1) & (b < -1))
+    """
+    if not isinstance(condition, Or):
+        return condition
+    terms: list[frozenset[Boolean]] = []
+    for disjunct in condition.args:
+        term = to_boolean(disjunct)
+        terms.append(frozenset(to_boolean(part) for part in term.args) if isinstance(term, And)
+                     else frozenset([term]))
+    changed = True
+    while changed and len(terms) > 1:
+        changed = False
+        for i in range(len(terms)):
+            for j in range(len(terms)):
+                if i == j:
+                    continue
+                if terms[i] <= terms[j]:
+                    # the j-th implies the i-th
+                    del terms[j]
+                    changed = True
+                    break
+                only_i, only_j = terms[i] - terms[j], terms[j] - terms[i]
+                if len(only_i) != 1 or len(only_j) != 1:
+                    continue
+                (r,), (s,) = only_i, only_j
+                if not isinstance(r, Relational) or not isinstance(s, Relational):
+                    continue
+                union = _union_of_relations(r, s)
+                if union is None:
+                    continue
+                common = terms[i] & terms[j]
+                merged = common if union is true else common | {union}
+                terms = [t for k, t in enumerate(terms) if k not in (i, j)] + [merged]
+                changed = True
+                break
+            if changed:
+                break
+    if any(not term for term in terms):
+        return true
+    return or_(*[and_(*sorted(term, key=str)) for term in terms])
 
 
 def _real_for_real_parameters(p: Expr) -> bool:
