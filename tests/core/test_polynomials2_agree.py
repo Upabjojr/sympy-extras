@@ -6,7 +6,7 @@ x)``), compared by structure (or the error), facts, conjugates,
 derivatives and values (as in part 1, a node of numerical order has no
 Rust value); ``chebyshevt_root``, ``chebyshevu_root`` and
 ``jacobi_normalized``. ``jacobi`` of a symbolic order at ``0`` is a
-``hyper``, not in the Rust core (skipped)."""
+``hyper``."""
 
 from __future__ import annotations
 

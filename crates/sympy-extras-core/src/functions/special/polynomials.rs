@@ -11,12 +11,11 @@
 //! Part 2: `jacobi`, `gegenbauer`, `assoc_legendre`, `hermite_prob` with
 //! SymPy's reductions (`jacobi(n, a, a, x)` through `gegenbauer`,
 //! `chebyshevt`, `legendre`, `chebyshevu`; `jacobi(n, a, -a, x)` through
-//! `assoc_legendre`), `chebyshevt_root`, `chebyshevu_root` and
+//! `assoc_legendre`; at `x = 0` a `hyper`), `chebyshevt_root`, `chebyshevu_root` and
 //! `jacobi_normalized`.
 //!
 //! Not ported: the values of a node (a non-integer order: mpmath's
-//! hypergeometric continuations) and `jacobi` of a symbolic order at `x =
-//! 0` (a `hyper`, not yet in the Rust core: `NotImplemented`).
+//! hypergeometric continuations).
 
 // PORTED FROM SYMPY: sympy/functions/special/polynomials.py (legendre, chebyshevt,
 // chebyshevu, hermite, laguerre, assoc_laguerre, jacobi, gegenbauer, assoc_legendre,
@@ -645,7 +644,18 @@ fn jacobi_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
             return Ok(Some(mul(&[pow(&Basic::negative_one(), n)?, inner])?));
         }
         if is_true(x, Predicate::zero) {
-            return Err(not_ported("jacobi at 0 of a symbolic order (a hyper)"));
+            use crate::functions::special::hyper::hyper;
+            let parameters: Vec<Basic> = vec![sub(&neg(b)?, n)?, neg(n)?];
+            let series: Basic = hyper(&parameters, &[add(&[a.clone(), one.clone()])?], &Basic::negative_one())?;
+            return Ok(Some(lmul(&[
+                pow(&int(2), &neg(n)?)?,
+                gamma(&add(&[a.clone(), n.clone(), one.clone()])?)?,
+                pow(
+                    &mul(&[gamma(&add(&[a.clone(), one.clone()])?)?, factorial(n)?])?,
+                    &Basic::negative_one(),
+                )?,
+                series,
+            ])?));
         }
         if *x == one {
             return Ok(Some(div(&rf(&add(&[a.clone(), one])?, n)?, &factorial(n)?)?));

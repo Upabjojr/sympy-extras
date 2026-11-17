@@ -179,6 +179,7 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::PolyGamma
         | Function::SingularityFunction
         | Function::Znm
+        | Function::AppellF1
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -590,6 +591,7 @@ fn function_real_imag(
         | Function::MathieuSPrime
         | Function::MathieuCPrime
         | Function::Znm
+        | Function::AppellF1
         | Function::LowerGamma
         | Function::UpperGamma
         | Function::MultiGamma

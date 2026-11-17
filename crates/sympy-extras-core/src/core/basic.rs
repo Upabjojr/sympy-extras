@@ -97,6 +97,11 @@ pub enum Head {
     /// (`functions.elementary.piecewise`).
     Piecewise,
     ExprCondPair,
+    /// `hyper(Tuple(ap), Tuple(bq), z)` and `meijerg(Tuple(Tuple(an),
+    /// Tuple(aother)), Tuple(Tuple(bm), Tuple(bother)), z)`
+    /// (`functions.special.hyper`).
+    Hyper,
+    MeijerG,
 }
 
 /// The relations of `core.relational`.
@@ -277,6 +282,7 @@ pub enum Function {
     Gegenbauer,
     AssocLegendre,
     HermiteProb,
+    AppellF1,
     EllipticK,
     EllipticF,
     EllipticE,
@@ -411,6 +417,7 @@ impl Function {
             Function::Gegenbauer => "gegenbauer",
             Function::AssocLegendre => "assoc_legendre",
             Function::HermiteProb => "hermite_prob",
+            Function::AppellF1 => "appellf1",
             Function::EllipticK => "elliptic_k",
             Function::EllipticF => "elliptic_f",
             Function::EllipticE => "elliptic_e",
@@ -544,6 +551,7 @@ impl Function {
             Function::Gegenbauer => "Gegenbauer",
             Function::AssocLegendre => "AssocLegendre",
             Function::HermiteProb => "HermiteProb",
+            Function::AppellF1 => "AppellF1",
             Function::EllipticK => "EllipticK",
             Function::EllipticF => "EllipticF",
             Function::EllipticE => "EllipticE",
@@ -698,6 +706,7 @@ impl Function {
             | Function::Gegenbauer
             | Function::AssocLegendre
             | Function::HermiteProb
+            | Function::AppellF1
             | Function::EllipticK
             | Function::EllipticF
             | Function::EllipticE
@@ -795,6 +804,8 @@ impl Head {
             Head::AccumBounds => "AccumBounds",
             Head::Piecewise => "Piecewise",
             Head::ExprCondPair => "ExprCondPair",
+            Head::Hyper => "Hyper",
+            Head::MeijerG => "MeijerG",
         }
     }
 
@@ -824,6 +835,8 @@ impl Head {
             Head::TribonacciConstant => "TribonacciConstant",
             Head::Function(f) => f.name(),
             Head::Relational(op) => op.sympy_name(),
+            Head::Hyper => "hyper",
+            Head::MeijerG => "meijerg",
             Head::Undefined(u) => {
                 // the compare name is the function's name, a String: leaked
                 // once per distinct name so that the key stays 'static
@@ -866,6 +879,8 @@ impl Head {
                 | Head::AccumBounds
                 | Head::Piecewise
                 | Head::ExprCondPair
+                | Head::Hyper
+                | Head::MeijerG
         )
     }
 

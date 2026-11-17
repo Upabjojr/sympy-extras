@@ -215,6 +215,9 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Gegenbauer" => Basic::new(Head::Function(Function::Gegenbauer), args()?),
         "AssocLegendre" => Basic::new(Head::Function(Function::AssocLegendre), args()?),
         "HermiteProb" => Basic::new(Head::Function(Function::HermiteProb), args()?),
+        "AppellF1" => Basic::new(Head::Function(Function::AppellF1), args()?),
+        "Hyper" => Basic::new(Head::Hyper, args()?),
+        "MeijerG" => Basic::new(Head::MeijerG, args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
         "EllipticF" => Basic::new(Head::Function(Function::EllipticF), args()?),
         "EllipticE" => Basic::new(Head::Function(Function::EllipticE), args()?),
@@ -424,6 +427,28 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .getattr(name)?
                 .call1(PyTuple::new(py, items)?)?
         }
+        Head::Hyper => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.functions.special.hyper")?
+                .getattr("Hyper")?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::MeijerG => {
+            let (first, second) = (&e.args()[0], &e.args()[1]);
+            let mut items: Vec<Bound<'py, PyAny>> = Vec::new();
+            for t in [
+                &first.args()[0],
+                &first.args()[1],
+                &second.args()[0],
+                &second.args()[1],
+                &e.args()[2],
+            ] {
+                items.push(to_python(py, t)?);
+            }
+            py.import("sympy_extras.functions.special.hyper")?
+                .getattr("MeijerG")?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::ConditionSet => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.sets.conditionset")?
@@ -505,6 +530,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::Gegenbauer
                 | Function::AssocLegendre
                 | Function::HermiteProb => "polynomials",
+                Function::AppellF1 => "hyper",
                 Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
                     "elliptic_integrals"
                 }
@@ -542,6 +568,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::spherical_harmonics::is_spherical_harmonic(*f)
                 || sympy_extras_core::functions::special::mathieu_functions::is_mathieu(*f)
                 || sympy_extras_core::functions::special::polynomials::is_orthogonal(*f)
+                || *f == Function::AppellF1
                 || sympy_extras_core::functions::special::elliptic_integrals::is_elliptic(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
@@ -2363,6 +2390,43 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
             }
             ei::elliptic(f, &a).map_err(e)?
+        }
+        "hyper" | "meijerg" | "appellf1" | "hyper_radius" | "hyper_eta" | "hyper_convergence" | "meijerg_nu"
+        | "meijerg_delta" | "meijerg_period" => {
+            use sympy_extras_core::functions::special::hyper as hy;
+            let wrong = || pyo3::exceptions::PyTypeError::new_err("wrong arguments");
+            let tuple_of = |b: &Basic| -> PyResult<Vec<Basic>> {
+                if matches!(b.head(), Head::Tuple) {
+                    Ok(b.args().to_vec())
+                } else {
+                    Err(wrong())
+                }
+            };
+            match (name, a.len()) {
+                ("hyper", 3) => hy::hyper(&tuple_of(&a[0])?, &tuple_of(&a[1])?, &a[2]).map_err(e)?,
+                ("meijerg", 5) => hy::meijerg(
+                    &tuple_of(&a[0])?,
+                    &tuple_of(&a[1])?,
+                    &tuple_of(&a[2])?,
+                    &tuple_of(&a[3])?,
+                    &a[4],
+                )
+                .map_err(e)?,
+                ("appellf1", 6) => hy::appellf1(&a).map_err(e)?,
+                ("hyper_radius", 1) if matches!(a[0].head(), Head::Hyper) => {
+                    hy::radius_of_convergence(&a[0]).map_err(e)?
+                }
+                ("hyper_eta", 1) if matches!(a[0].head(), Head::Hyper) => hy::hyper_eta(&a[0]).map_err(e)?,
+                ("hyper_convergence", 1) if matches!(a[0].head(), Head::Hyper) => {
+                    hy::convergence_statement(&a[0]).map_err(e)?
+                }
+                ("meijerg_nu", 1) if matches!(a[0].head(), Head::MeijerG) => hy::meijerg_nu(&a[0]).map_err(e)?,
+                ("meijerg_delta", 1) if matches!(a[0].head(), Head::MeijerG) => hy::meijerg_delta(&a[0]).map_err(e)?,
+                ("meijerg_period", 1) if matches!(a[0].head(), Head::MeijerG) => {
+                    hy::meijerg_get_period(&a[0]).map_err(e)?
+                }
+                _ => return Err(wrong()),
+            }
         }
         "chebyshevt_root" | "chebyshevu_root" | "jacobi_normalized" => {
             use sympy_extras_core::functions::special::polynomials as op;

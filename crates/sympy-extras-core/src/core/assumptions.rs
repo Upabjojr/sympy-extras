@@ -634,7 +634,10 @@ pub fn is_number(e: &Basic) -> bool {
     if e.is_symbol()
         || matches!(e.head(), Head::Undefined(_) | Head::Derivative | Head::Tuple)
         || crate::sets::sets::is_set(e)
-        || matches!(e.head(), Head::AccumBounds | Head::Piecewise | Head::ExprCondPair)
+        || matches!(
+            e.head(),
+            Head::AccumBounds | Head::Piecewise | Head::ExprCondPair | Head::Hyper | Head::MeijerG
+        )
     {
         return false;
     }
@@ -1281,6 +1284,7 @@ fn eval_facts(e: &Basic) -> FactList {
         Head::AccumBounds => super::accumbounds::bounds_facts(e),
         Head::Piecewise => crate::functions::elementary::piecewise::piecewise_facts(e),
         Head::ExprCondPair => FactList::new(),
+        Head::Hyper | Head::MeijerG => crate::functions::special::hyper::hyper_facts(e),
         _ if super::logic::is_boolean(e) || crate::sets::sets::is_set(e) => FactList::new(),
         _ => constant_facts(e),
     }
@@ -1399,6 +1403,7 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::Gegenbauer
         | super::basic::Function::AssocLegendre
         | super::basic::Function::HermiteProb => crate::functions::special::polynomials::orthogonal_facts(),
+        super::basic::Function::AppellF1 => crate::functions::special::hyper::appellf1_facts(),
         super::basic::Function::Ynm | super::basic::Function::Znm => {
             crate::functions::special::spherical_harmonics::spherical_facts()
         }

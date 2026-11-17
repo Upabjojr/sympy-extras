@@ -100,6 +100,7 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
             crate::core::modulo::modulo_fdiff(e, argindex)
         }
         Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
+        Function::AppellF1 => special::hyper::appellf1_fdiff(e, argindex),
         g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
         g @ (Function::Legendre
         | Function::ChebyshevT
@@ -257,6 +258,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::elliptic_integrals::is_elliptic(f) && special::elliptic_integrals::arity_fits(f, args.len()) {
         return special::elliptic_integrals::elliptic(f, args);
     }
+    if f == Function::AppellF1 && args.len() == 6 {
+        return special::hyper::appellf1(args);
+    }
     if special::polynomials::is_orthogonal(f) && special::polynomials::arity_fits(f, args.len()) {
         return special::polynomials::orthogonal(f, args);
     }
@@ -376,6 +380,7 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
             unreachable!("evaluated above with all their arguments")
         }
         Function::SingularityFunction => unreachable!("evaluated above with all their arguments"),
+        Function::AppellF1 => unreachable!("evaluated above with all their arguments"),
         Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
         Function::Legendre
         | Function::ChebyshevT

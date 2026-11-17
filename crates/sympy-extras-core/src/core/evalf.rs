@@ -381,6 +381,9 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::combinatorial::numbers::number_value(*g, &values, prec)
         }
+        Head::Hyper => crate::functions::special::hyper::hyper_node_value(e, prec),
+        // mpmath's meijerg is not ported
+        Head::MeijerG => None,
         Head::Function(
             g @ (super::basic::Function::Zeta
             | super::basic::Function::DirichletEta
@@ -580,6 +583,8 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Gegenbauer
                 | super::basic::Function::AssocLegendre
                 | super::basic::Function::HermiteProb => return None,
+                // mpmath's appellf1 is not ported
+                super::basic::Function::AppellF1 => return None,
                 // no numerical value (neither SymPy nor mpmath has one)
                 super::basic::Function::MathieuS
                 | super::basic::Function::MathieuC
