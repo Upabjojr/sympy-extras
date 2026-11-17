@@ -575,7 +575,11 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::ChebyshevU
                 | super::basic::Function::Hermite
                 | super::basic::Function::Laguerre
-                | super::basic::Function::AssocLaguerre => return None,
+                | super::basic::Function::AssocLaguerre
+                | super::basic::Function::Jacobi
+                | super::basic::Function::Gegenbauer
+                | super::basic::Function::AssocLegendre
+                | super::basic::Function::HermiteProb => return None,
                 // no numerical value (neither SymPy nor mpmath has one)
                 super::basic::Function::MathieuS
                 | super::basic::Function::MathieuC

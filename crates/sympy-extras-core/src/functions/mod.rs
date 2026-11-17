@@ -106,7 +106,11 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::ChebyshevU
         | Function::Hermite
         | Function::Laguerre
-        | Function::AssocLaguerre) => special::polynomials::orthogonal_fdiff(g, e, argindex),
+        | Function::AssocLaguerre
+        | Function::Jacobi
+        | Function::Gegenbauer
+        | Function::AssocLegendre
+        | Function::HermiteProb) => special::polynomials::orthogonal_fdiff(g, e, argindex),
         g @ (Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi) => {
             special::elliptic_integrals::elliptic_fdiff(g, e, argindex)
         }
@@ -378,7 +382,11 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::ChebyshevU
         | Function::Hermite
         | Function::Laguerre
-        | Function::AssocLaguerre => unreachable!("evaluated above with all their arguments"),
+        | Function::AssocLaguerre
+        | Function::Jacobi
+        | Function::Gegenbauer
+        | Function::AssocLegendre
+        | Function::HermiteProb => unreachable!("evaluated above with all their arguments"),
         Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
             unreachable!("evaluated above with all their arguments")
         }

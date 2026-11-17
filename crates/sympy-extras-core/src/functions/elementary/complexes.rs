@@ -149,7 +149,11 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::ChebyshevU
         | Function::Hermite
         | Function::Laguerre
-        | Function::AssocLaguerre) => crate::functions::special::polynomials::orthogonal_conjugate(g, e),
+        | Function::AssocLaguerre
+        | Function::Jacobi
+        | Function::Gegenbauer
+        | Function::AssocLegendre
+        | Function::HermiteProb) => crate::functions::special::polynomials::orthogonal_conjugate(g, e),
         g @ (Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi) => {
             crate::functions::special::elliptic_integrals::elliptic_conjugate(g, e)
         }
@@ -573,6 +577,10 @@ fn function_real_imag(
         | Function::Hermite
         | Function::Laguerre
         | Function::AssocLaguerre
+        | Function::Jacobi
+        | Function::Gegenbauer
+        | Function::AssocLegendre
+        | Function::HermiteProb
         | Function::EllipticK
         | Function::EllipticF
         | Function::EllipticE

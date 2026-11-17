@@ -1394,7 +1394,11 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::ChebyshevU
         | super::basic::Function::Hermite
         | super::basic::Function::Laguerre
-        | super::basic::Function::AssocLaguerre => crate::functions::special::polynomials::orthogonal_facts(),
+        | super::basic::Function::AssocLaguerre
+        | super::basic::Function::Jacobi
+        | super::basic::Function::Gegenbauer
+        | super::basic::Function::AssocLegendre
+        | super::basic::Function::HermiteProb => crate::functions::special::polynomials::orthogonal_facts(),
         super::basic::Function::Ynm | super::basic::Function::Znm => {
             crate::functions::special::spherical_harmonics::spherical_facts()
         }

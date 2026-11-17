@@ -7,12 +7,20 @@
 //! `-x` and evaluates at `0`, `1` and `oo`; the derivatives in `x` and the
 //! conjugates.
 //!
+//!
+//! Part 2: `jacobi`, `gegenbauer`, `assoc_legendre`, `hermite_prob` with
+//! SymPy's reductions (`jacobi(n, a, a, x)` through `gegenbauer`,
+//! `chebyshevt`, `legendre`, `chebyshevu`; `jacobi(n, a, -a, x)` through
+//! `assoc_legendre`), `chebyshevt_root`, `chebyshevu_root` and
+//! `jacobi_normalized`.
+//!
 //! Not ported: the values of a node (a non-integer order: mpmath's
-//! hypergeometric continuations), `jacobi`, `gegenbauer`, `assoc_legendre`,
-//! `hermite_prob` and the Chebyshev roots (part 2).
+//! hypergeometric continuations) and `jacobi` of a symbolic order at `x =
+//! 0` (a `hyper`, not yet in the Rust core: `NotImplemented`).
 
 // PORTED FROM SYMPY: sympy/functions/special/polynomials.py (legendre, chebyshevt,
-// chebyshevu, hermite, laguerre, assoc_laguerre) and the recurrences of
+// chebyshevu, hermite, laguerre, assoc_laguerre, jacobi, gegenbauer, assoc_legendre,
+// hermite_prob, chebyshevt_root, chebyshevu_root, jacobi_normalized) and the recurrences of
 // sympy/polys/orthopolys.py (SymPy 1.14)
 // Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 // see sympy_extras/LICENSE-SymPy.
@@ -160,7 +168,7 @@ fn integer(n: &Basic) -> PolyResult<Option<i64>> {
     }
 }
 
-/// The orthogonal polynomials of part 1.
+/// The orthogonal polynomials (both parts).
 pub fn is_orthogonal(f: Function) -> bool {
     matches!(
         f,
@@ -170,15 +178,19 @@ pub fn is_orthogonal(f: Function) -> bool {
             | Function::Hermite
             | Function::Laguerre
             | Function::AssocLaguerre
+            | Function::Jacobi
+            | Function::Gegenbauer
+            | Function::AssocLegendre
+            | Function::HermiteProb
     )
 }
 
 /// Whether the arguments fit the head.
 pub fn arity_fits(f: Function, n: usize) -> bool {
-    if f == Function::AssocLaguerre {
-        n == 3
-    } else {
-        n == 2
+    match f {
+        Function::Jacobi => n == 4,
+        Function::AssocLaguerre | Function::Gegenbauer | Function::AssocLegendre => n == 3,
+        _ => n == 2,
     }
 }
 
@@ -224,6 +236,13 @@ pub fn orthogonal(f: Function, args: &[Basic]) -> PolyResult<Basic> {
 }
 
 fn eval(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>> {
+    match f {
+        Function::Jacobi => return jacobi_eval(args),
+        Function::Gegenbauer => return gegenbauer_eval(args),
+        Function::AssocLegendre => return assoc_legendre_eval(args),
+        Function::HermiteProb => return hermite_prob_eval(args),
+        _ => {}
+    }
     use crate::functions::combinatorial::factorials::binomial;
     use crate::functions::elementary::exponential::exp;
     use crate::functions::elementary::trigonometric::cos;
@@ -399,6 +418,28 @@ pub fn orthogonal_fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<B
     if argindex == args.len() {
         let x2m1: Basic = sub(&pow(x, &int(2))?, &one)?;
         return match f {
+            Function::Jacobi => {
+                let (a, b): (&Basic, &Basic) = (&args[1], &args[2]);
+                let inner: Basic = jacobi(
+                    &sub(n, &one)?,
+                    &add(&[a.clone(), one.clone()])?,
+                    &add(&[b.clone(), one.clone()])?,
+                    x,
+                )?;
+                lmul(&[Basic::half(), add(&[a.clone(), b.clone(), n.clone(), one])?, inner])
+            }
+            Function::Gegenbauer => {
+                let a: &Basic = &args[1];
+                let inner: Basic = gegenbauer(&sub(n, &one)?, &add(&[a.clone(), one])?, x)?;
+                lmul(&[int(2), a.clone(), inner])
+            }
+            Function::AssocLegendre => {
+                let m: &Basic = &args[1];
+                let first: Basic = lmul(&[x.clone(), n.clone(), assoc_legendre(n, m, x)?])?;
+                let second: Basic = mul(&[add(&[m.clone(), n.clone()])?, assoc_legendre(&sub(n, &one)?, m, x)?])?;
+                lmul(&[div(&one, &x2m1)?, sub(&first, &second)?])
+            }
+            Function::HermiteProb => mul(&[n.clone(), hermite_prob(&sub(n, &one)?, x)?]),
             Function::Legendre => mul(&[
                 div(n, &x2m1)?,
                 sub(&mul(&[x.clone(), legendre(n, x)?])?, &legendre(&sub(n, &one)?, x)?)?,
@@ -428,8 +469,10 @@ pub fn orthogonal_fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<B
     Err(not_ported("a derivative as a Subs"))
 }
 
-/// The conjugate (`_eval_conjugate`): `f(n, conjugate(x))`
-/// (`assoc_laguerre(n, conjugate(alpha), conjugate(x))`).
+/// The conjugate (`_eval_conjugate`): `f(n, conjugate(x))`, the
+/// parameters after `n` conjugated too (`assoc_laguerre(n,
+/// conjugate(alpha), conjugate(x))`, `jacobi(n, conjugate(a),
+/// conjugate(b), conjugate(x))`, ...).
 pub fn orthogonal_conjugate(f: Function, e: &Basic) -> PolyResult<Option<Basic>> {
     use crate::functions::elementary::complexes::conjugate;
     let args: &[Basic] = e.args();
@@ -445,4 +488,377 @@ pub fn orthogonal_facts() -> FactList {
     let mut facts: FactList = FactList::new();
     facts.set(Predicate::commutative, true);
     facts
+}
+
+// ---------------------------------------------------------------------
+// Part 2: jacobi, gegenbauer, assoc_legendre, hermite_prob
+// ---------------------------------------------------------------------
+
+pub fn jacobi(n: &Basic, a: &Basic, b: &Basic, x: &Basic) -> PolyResult<Basic> {
+    orthogonal(Function::Jacobi, &[n.clone(), a.clone(), b.clone(), x.clone()])
+}
+
+pub fn gegenbauer(n: &Basic, a: &Basic, x: &Basic) -> PolyResult<Basic> {
+    orthogonal(Function::Gegenbauer, &[n.clone(), a.clone(), x.clone()])
+}
+
+pub fn assoc_legendre(n: &Basic, m: &Basic, x: &Basic) -> PolyResult<Basic> {
+    orthogonal(Function::AssocLegendre, &[n.clone(), m.clone(), x.clone()])
+}
+
+pub fn hermite_prob(n: &Basic, x: &Basic) -> PolyResult<Basic> {
+    orthogonal(Function::HermiteProb, &[n.clone(), x.clone()])
+}
+
+/// The product evaluated left to right, as Python evaluates SymPy's
+/// `a*b/c*d` (`_lmul`).
+fn lmul(factors: &[Basic]) -> PolyResult<Basic> {
+    let mut result: Basic = factors[0].clone();
+    for f in &factors[1..] {
+        result = mul(&[result, f.clone()])?;
+    }
+    Ok(result)
+}
+
+fn hermite_prob_coefficients(n: i64) -> PolyResult<Coefficients> {
+    // He_{k+1} = x*He_k - k*He_{k-1}
+    recurrence(n, vec![Basic::one()], vec![Basic::zero(), Basic::one()], &|k, p, q| {
+        combine(&[(Basic::one(), shift(p)), (int(-k), q.clone())])
+    })
+}
+
+fn gegenbauer_coefficients(n: i64, a: &Basic) -> PolyResult<Coefficients> {
+    // k*C_k = 2*(k + a - 1)*x*C_{k-1} - (k + 2*a - 2)*C_{k-2}
+    let second: Coefficients = vec![Basic::zero(), expand(&mul(&[int(2), a.clone()])?)?];
+    recurrence(n, vec![Basic::one()], second, &|k, p, q| {
+        let j: i64 = k + 1;
+        combine(&[
+            (mul(&[rational(2, j)?, add(&[int(j - 1), a.clone()])?])?, shift(p)),
+            (
+                mul(&[rational(-1, j)?, add(&[int(j - 2), mul(&[int(2), a.clone()])?])?])?,
+                q.clone(),
+            ),
+        ])
+    })
+}
+
+/// `binomial(top, k)` as an expanded polynomial in `top`.
+fn binomial_polynomial(top: &Basic, k: i64) -> PolyResult<Basic> {
+    let mut product: Basic = Basic::one();
+    let mut factorial: Int = Int::ONE;
+    for i in 0..k {
+        product = mul(&[product, sub(top, &int(i))?])?;
+        factorial *= Int::from(i + 1);
+    }
+    expand(&mul(&[Basic::rational(Int::ONE, factorial)?, product])?)
+}
+
+/// The coefficients of `((x + shift)/2)**power`.
+fn power_coefficients(shift: i64, power: i64) -> PolyResult<Vec<Basic>> {
+    let mut result: Vec<Basic> = Vec::new();
+    let mut choose: Int = Int::ONE;
+    let two_power: Int = Int::from(2).pow(power as usize);
+    for k in 0..=power {
+        if k > 0 {
+            choose = choose * Int::from(power - k + 1) / Int::from(k);
+        }
+        let sign: Int = Int::from(shift).pow((power - k) as usize);
+        result.push(Basic::rational(choose.clone() * sign, two_power.clone())?);
+    }
+    Ok(result)
+}
+
+/// `P_n^(a, b) = sum(binomial(n + a, n - s)*binomial(n + b, s)
+/// *((x - 1)/2)**s*((x + 1)/2)**(n - s))`, the coefficients expanded.
+fn jacobi_coefficients(n: i64, a: &Basic, b: &Basic) -> PolyResult<Coefficients> {
+    let mut coefficients: Vec<Vec<Basic>> = vec![Vec::new(); (n + 1) as usize];
+    for s in 0..=n {
+        let weight: Basic = mul(&[
+            binomial_polynomial(&add(&[int(n), a.clone()])?, n - s)?,
+            binomial_polynomial(&add(&[int(n), b.clone()])?, s)?,
+        ])?;
+        let minus: Vec<Basic> = power_coefficients(-1, s)?;
+        let plus: Vec<Basic> = power_coefficients(1, n - s)?;
+        for (i, c) in minus.iter().enumerate() {
+            for (j, d) in plus.iter().enumerate() {
+                coefficients[i + j].push(mul(&[c.clone(), d.clone(), weight.clone()])?);
+            }
+        }
+    }
+    coefficients.iter().map(|terms| expand(&add(terms)?)).collect()
+}
+
+fn derivative_coefficients(coefficients: &Coefficients, order: i64) -> PolyResult<Coefficients> {
+    let mut result: Coefficients = coefficients.clone();
+    for _ in 0..order {
+        let mut next: Coefficients = Vec::new();
+        for (k, c) in result.iter().enumerate().skip(1) {
+            next.push(mul(&[int(k as i64), c.clone()])?);
+        }
+        if next.is_empty() {
+            next.push(Basic::zero());
+        }
+        result = next;
+    }
+    Ok(result)
+}
+
+fn jacobi_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
+    use crate::functions::combinatorial::factorials::{factorial, rf};
+    use crate::functions::special::gamma_functions::gamma;
+    let one: Basic = Basic::one();
+    let half: Basic = Basic::half();
+    let (n, a, b, x) = (&args[0], &args[1], &args[2], &args[3]);
+    if a == b {
+        if *a == rational(-1, 2)? {
+            return Ok(Some(lmul(&[div(&rf(&half, n)?, &factorial(n)?)?, chebyshevt(n, x)?])?));
+        }
+        if is_true(a, Predicate::zero) {
+            return Ok(Some(legendre(n, x)?));
+        }
+        if *a == half {
+            let top: Basic = rf(&rational(3, 2)?, n)?;
+            let bottom: Basic = factorial(&add(&[n.clone(), one])?)?;
+            return Ok(Some(lmul(&[div(&top, &bottom)?, chebyshevu(n, x)?])?));
+        }
+        let top: Basic = rf(&add(&[a.clone(), one.clone()])?, n)?;
+        let bottom: Basic = rf(&add(&[mul(&[int(2), a.clone()])?, one])?, n)?;
+        let inner: Basic = gegenbauer(n, &add(&[a.clone(), half])?, x)?;
+        return Ok(Some(lmul(&[div(&top, &bottom)?, inner])?));
+    }
+    if *b == neg(a)? {
+        let half_a: Basic = div(a, &int(2))?;
+        let ratio: Basic = div(
+            &gamma(&add(&[n.clone(), a.clone(), one.clone()])?)?,
+            &gamma(&add(&[n.clone(), one.clone()])?)?,
+        )?;
+        return Ok(Some(lmul(&[
+            ratio,
+            pow(&add(&[one.clone(), x.clone()])?, &half_a)?,
+            pow(&pow(&sub(&one, x)?, &half_a)?, &Basic::negative_one())?,
+            assoc_legendre(n, &neg(a)?, x)?,
+        ])?));
+    }
+    if !n.is_number_class() {
+        if could_extract_minus_sign(x) {
+            let inner: Basic = jacobi(n, b, a, &neg(x)?)?;
+            return Ok(Some(mul(&[pow(&Basic::negative_one(), n)?, inner])?));
+        }
+        if is_true(x, Predicate::zero) {
+            return Err(not_ported("jacobi at 0 of a symbolic order (a hyper)"));
+        }
+        if *x == one {
+            return Ok(Some(div(&rf(&add(&[a.clone(), one])?, n)?, &factorial(n)?)?));
+        }
+        if matches!(x.head(), Head::Infinity) && is_true(n, Predicate::positive) {
+            let total: Basic = add(&[a.clone(), b.clone(), mul(&[int(2), n.clone()])?])?;
+            if is_true(&total, Predicate::integer) {
+                return Err(value_error("Error. a + b + 2*n should not be an integer.".to_string()));
+            }
+            let top: Basic = rf(&add(&[a.clone(), b.clone(), n.clone(), one])?, n)?;
+            return Ok(Some(mul(&[top, Basic::oo()])?));
+        }
+        return Ok(None);
+    }
+    let Some(order) = integer(n)? else {
+        return Ok(None);
+    };
+    if order < 0 {
+        return Err(value_error(format!(
+            "Cannot generate Jacobi polynomial of degree {}",
+            n
+        )));
+    }
+    Ok(Some(as_expr(&jacobi_coefficients(order, a, b)?, x)?))
+}
+
+fn gegenbauer_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
+    use crate::core::logic::true_;
+    use crate::core::relational::gt;
+    use crate::functions::combinatorial::factorials::rf;
+    use crate::functions::elementary::complexes::re;
+    use crate::functions::elementary::trigonometric::{cos, sec};
+    use crate::functions::special::gamma_functions::gamma;
+    let one: Basic = Basic::one();
+    let half: Basic = Basic::half();
+    let pi: Basic = Basic::pi();
+    let (n, a, x) = (&args[0], &args[1], &args[2]);
+    if is_true(n, Predicate::negative) {
+        return Ok(Some(Basic::zero()));
+    }
+    if *a == half {
+        return Ok(Some(legendre(n, x)?));
+    }
+    if *a == one {
+        return Ok(Some(chebyshevu(n, x)?));
+    }
+    if *a == Basic::negative_one() {
+        return Ok(Some(Basic::zero()));
+    }
+    if !n.is_number_class() {
+        let two_a: Basic = mul(&[int(2), a.clone()])?;
+        let n1: Basic = add(&[n.clone(), one.clone()])?;
+        if *x == Basic::negative_one() {
+            if gt(&re(a)?, &half)? == true_() {
+                return Ok(Some(Basic::zoo()));
+            }
+            let top: Basic = lmul(&[
+                cos(&mul(&[pi.clone(), add(&[a.clone(), n.clone()])?])?)?,
+                sec(&mul(&[pi, a.clone()])?)?,
+                gamma(&add(&[two_a.clone(), n.clone()])?)?,
+            ])?;
+            let bottom: Basic = lmul(&[gamma(&two_a)?, gamma(&n1)?])?;
+            return Ok(Some(div(&top, &bottom)?));
+        }
+        if could_extract_minus_sign(x) {
+            let inner: Basic = gegenbauer(n, a, &neg(x)?)?;
+            return Ok(Some(mul(&[pow(&Basic::negative_one(), n)?, inner])?));
+        }
+        if is_true(x, Predicate::zero) {
+            let top: Basic = lmul(&[
+                pow(&int(2), n)?,
+                pow(&pi, &half)?,
+                gamma(&add(&[a.clone(), mul(&[half.clone(), n.clone()])?])?)?,
+            ])?;
+            let bottom: Basic = lmul(&[gamma(&div(&sub(&one, n)?, &int(2))?)?, gamma(&n1)?, gamma(a)?])?;
+            return Ok(Some(div(&top, &bottom)?));
+        }
+        if *x == one {
+            let bottom: Basic = mul(&[gamma(&two_a)?, gamma(&n1)?])?;
+            return Ok(Some(div(&gamma(&add(&[two_a, n.clone()])?)?, &bottom)?));
+        }
+        if matches!(x.head(), Head::Infinity) && is_true(n, Predicate::positive) {
+            return Ok(Some(mul(&[rf(a, n)?, Basic::oo()])?));
+        }
+        return Ok(None);
+    }
+    let Some(order) = integer(n)? else {
+        return Ok(None);
+    };
+    Ok(Some(as_expr(&gegenbauer_coefficients(order, a)?, x)?))
+}
+
+fn assoc_legendre_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
+    use crate::core::symbol::Dummy;
+    use crate::functions::combinatorial::factorials::factorial;
+    use crate::functions::special::gamma_functions::gamma;
+    let one: Basic = Basic::one();
+    let (n, m, x) = (&args[0], &args[1], &args[2]);
+    if could_extract_minus_sign(m) {
+        let minus_m: Basic = neg(m)?;
+        let ratio: Basic = div(&factorial(&add(&[m.clone(), n.clone()])?)?, &factorial(&sub(n, m)?)?)?;
+        return Ok(Some(lmul(&[
+            pow(&Basic::negative_one(), &minus_m)?,
+            ratio,
+            assoc_legendre(n, &minus_m, x)?,
+        ])?));
+    }
+    if *m == Basic::zero() {
+        return Ok(Some(legendre(n, x)?));
+    }
+    if *x == Basic::zero() {
+        let top: Basic = mul(&[pow(&int(2), m)?, pow(&Basic::pi(), &Basic::half())?])?;
+        let g1: Basic = gamma(&div(&sub(&sub(&one, m)?, n)?, &int(2))?)?;
+        let g2: Basic = gamma(&sub(&one, &div(&sub(m, n)?, &int(2))?)?)?;
+        return Ok(Some(div(&top, &mul(&[g1, g2])?)?));
+    }
+    let (Some(nn), Some(mm)) = (integer(n)?, integer(m)?) else {
+        return Ok(None);
+    };
+    if nn < 0 {
+        return Err(value_error(format!(
+            "assoc_legendre : 1st index must be nonnegative integer (got {})",
+            n
+        )));
+    }
+    if mm.abs() > nn {
+        return Err(value_error(format!(
+            "assoc_legendre : abs('2nd index') must be <= '1st index' (got {}, {})",
+            n, m
+        )));
+    }
+    // SymPy builds the function in a dummy and substitutes x
+    let order: i64 = mm.abs();
+    let dummy: Basic = Dummy::new("x", &[]).0;
+    let derivative: Basic = as_expr(&derivative_coefficients(&legendre_coefficients(nn)?, order)?, &dummy)?;
+    let built: Basic = lmul(&[
+        pow(&Basic::negative_one(), &int(order))?,
+        pow(&sub(&one, &pow(&dummy, &int(2))?)?, &rational(order, 2)?)?,
+        derivative,
+    ])?;
+    Ok(Some(crate::core::subs::subs(&built, &dummy, x)?))
+}
+
+fn hermite_prob_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
+    use crate::functions::special::gamma_functions::gamma;
+    let (n, x) = (&args[0], &args[1]);
+    let Some(order) = integer(n)? else {
+        if n.is_number_class() {
+            return Ok(None);
+        }
+        if let Some(r) = minus_x(Function::HermiteProb, n, x)? {
+            return Ok(Some(r));
+        }
+        if is_true(x, Predicate::zero) {
+            let bottom: Basic = gamma(&div(&sub(&Basic::one(), n)?, &int(2))?)?;
+            return Ok(Some(div(&pow(&Basic::pi(), &Basic::half())?, &bottom)?));
+        }
+        if matches!(x.head(), Head::Infinity) {
+            return Ok(Some(Basic::oo()));
+        }
+        return Ok(None);
+    };
+    if order < 0 {
+        return Ok(None); // SymPy builds a ValueError without raising it: the node stays
+    }
+    Ok(Some(as_expr(&hermite_prob_coefficients(order)?, x)?))
+}
+
+fn check_root_index(n: &Basic, k: &Basic) -> PolyResult<()> {
+    use crate::core::logic::true_;
+    use crate::core::relational::{le, lt};
+    if !(le(&Basic::zero(), k)? == true_() && lt(k, n)? == true_()) {
+        return Err(value_error(format!(
+            "must have 0 <= k < n, got k = {} and n = {}",
+            k, n
+        )));
+    }
+    Ok(())
+}
+
+/// The `k`-th root of `chebyshevt(n, x)`, `cos(pi*(2*k + 1)/(2*n))`.
+pub fn chebyshevt_root(n: &Basic, k: &Basic) -> PolyResult<Basic> {
+    use crate::functions::elementary::trigonometric::cos;
+    check_root_index(n, k)?;
+    let top: Basic = mul(&[Basic::pi(), add(&[mul(&[int(2), k.clone()])?, Basic::one()])?])?;
+    cos(&div(&top, &mul(&[int(2), n.clone()])?)?)
+}
+
+/// The `k`-th root of `chebyshevu(n, x)`, `cos(pi*(k + 1)/(n + 1))`.
+pub fn chebyshevu_root(n: &Basic, k: &Basic) -> PolyResult<Basic> {
+    use crate::functions::elementary::trigonometric::cos;
+    check_root_index(n, k)?;
+    let top: Basic = mul(&[Basic::pi(), add(&[k.clone(), Basic::one()])?])?;
+    cos(&div(&top, &add(&[n.clone(), Basic::one()])?)?)
+}
+
+/// The Jacobi polynomial divided by the square root of its norm.
+pub fn jacobi_normalized(n: &Basic, a: &Basic, b: &Basic, x: &Basic) -> PolyResult<Basic> {
+    use crate::functions::combinatorial::factorials::factorial;
+    use crate::functions::special::gamma_functions::gamma;
+    let one: Basic = Basic::one();
+    let power: Basic = pow(&int(2), &add(&[a.clone(), b.clone(), one.clone()])?)?;
+    let gammas: Basic = mul(&[
+        gamma(&add(&[n.clone(), a.clone(), one.clone()])?)?,
+        gamma(&add(&[n.clone(), b.clone(), one.clone()])?)?,
+    ])?;
+    let inner: Basic = div(
+        &mul(&[power, gammas])?,
+        &add(&[mul(&[int(2), n.clone()])?, a.clone(), b.clone(), one.clone()])?,
+    )?;
+    let factor: Basic = div(
+        &inner,
+        &mul(&[factorial(n)?, gamma(&add(&[n.clone(), a.clone(), b.clone(), one])?)?])?,
+    )?;
+    div(&jacobi(n, a, b, x)?, &pow(&factor, &Basic::half())?)
 }

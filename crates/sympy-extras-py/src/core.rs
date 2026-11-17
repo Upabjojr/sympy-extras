@@ -211,6 +211,10 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Hermite" => Basic::new(Head::Function(Function::Hermite), args()?),
         "Laguerre" => Basic::new(Head::Function(Function::Laguerre), args()?),
         "AssocLaguerre" => Basic::new(Head::Function(Function::AssocLaguerre), args()?),
+        "Jacobi" => Basic::new(Head::Function(Function::Jacobi), args()?),
+        "Gegenbauer" => Basic::new(Head::Function(Function::Gegenbauer), args()?),
+        "AssocLegendre" => Basic::new(Head::Function(Function::AssocLegendre), args()?),
+        "HermiteProb" => Basic::new(Head::Function(Function::HermiteProb), args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
         "EllipticF" => Basic::new(Head::Function(Function::EllipticF), args()?),
         "EllipticE" => Basic::new(Head::Function(Function::EllipticE), args()?),
@@ -496,7 +500,11 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::ChebyshevU
                 | Function::Hermite
                 | Function::Laguerre
-                | Function::AssocLaguerre => "polynomials",
+                | Function::AssocLaguerre
+                | Function::Jacobi
+                | Function::Gegenbauer
+                | Function::AssocLegendre
+                | Function::HermiteProb => "polynomials",
                 Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
                     "elliptic_integrals"
                 }
@@ -2356,7 +2364,17 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             }
             ei::elliptic(f, &a).map_err(e)?
         }
-        "legendre" | "chebyshevt" | "chebyshevu" | "hermite" | "laguerre" | "assoc_laguerre" => {
+        "chebyshevt_root" | "chebyshevu_root" | "jacobi_normalized" => {
+            use sympy_extras_core::functions::special::polynomials as op;
+            match (name, a.len()) {
+                ("chebyshevt_root", 2) => op::chebyshevt_root(&a[0], &a[1]).map_err(e)?,
+                ("chebyshevu_root", 2) => op::chebyshevu_root(&a[0], &a[1]).map_err(e)?,
+                ("jacobi_normalized", 4) => op::jacobi_normalized(&a[0], &a[1], &a[2], &a[3]).map_err(e)?,
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments")),
+            }
+        }
+        "legendre" | "chebyshevt" | "chebyshevu" | "hermite" | "laguerre" | "assoc_laguerre" | "jacobi"
+        | "gegenbauer" | "assoc_legendre" | "hermite_prob" => {
             use sympy_extras_core::core::basic::Function as F;
             use sympy_extras_core::functions::special::polynomials as op;
             let f: F = match name {
@@ -2365,7 +2383,11 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "chebyshevu" => F::ChebyshevU,
                 "hermite" => F::Hermite,
                 "laguerre" => F::Laguerre,
-                _ => F::AssocLaguerre,
+                "assoc_laguerre" => F::AssocLaguerre,
+                "jacobi" => F::Jacobi,
+                "gegenbauer" => F::Gegenbauer,
+                "assoc_legendre" => F::AssocLegendre,
+                _ => F::HermiteProb,
             };
             if !op::arity_fits(f, a.len()) {
                 return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));

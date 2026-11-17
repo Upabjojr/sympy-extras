@@ -273,6 +273,10 @@ pub enum Function {
     Hermite,
     Laguerre,
     AssocLaguerre,
+    Jacobi,
+    Gegenbauer,
+    AssocLegendre,
+    HermiteProb,
     EllipticK,
     EllipticF,
     EllipticE,
@@ -403,6 +407,10 @@ impl Function {
             Function::Hermite => "hermite",
             Function::Laguerre => "laguerre",
             Function::AssocLaguerre => "assoc_laguerre",
+            Function::Jacobi => "jacobi",
+            Function::Gegenbauer => "gegenbauer",
+            Function::AssocLegendre => "assoc_legendre",
+            Function::HermiteProb => "hermite_prob",
             Function::EllipticK => "elliptic_k",
             Function::EllipticF => "elliptic_f",
             Function::EllipticE => "elliptic_e",
@@ -532,6 +540,10 @@ impl Function {
             Function::Hermite => "Hermite",
             Function::Laguerre => "Laguerre",
             Function::AssocLaguerre => "AssocLaguerre",
+            Function::Jacobi => "Jacobi",
+            Function::Gegenbauer => "Gegenbauer",
+            Function::AssocLegendre => "AssocLegendre",
+            Function::HermiteProb => "HermiteProb",
             Function::EllipticK => "EllipticK",
             Function::EllipticF => "EllipticF",
             Function::EllipticE => "EllipticE",
@@ -682,6 +694,10 @@ impl Function {
             | Function::Hermite
             | Function::Laguerre
             | Function::AssocLaguerre
+            | Function::Jacobi
+            | Function::Gegenbauer
+            | Function::AssocLegendre
+            | Function::HermiteProb
             | Function::EllipticK
             | Function::EllipticF
             | Function::EllipticE
