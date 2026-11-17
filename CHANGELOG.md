@@ -310,7 +310,6 @@ remove public functions. Breaking changes are listed here when they happen.
   native `solve`'s solution of a `ConditionSet`; `Basic.simplify` of a node
   which is not an expression rebuilds it with its arguments simplified;
   `numeric_value` of a native node without a numerical rule is `None`.
-  `meijerint_inversion` stays unported: no native code calls it.
 - `sympy_extras.series.formal`, `sympy_extras.series.fourier`: native ports of SymPy's
   formal power series (`fps`, `FormalPowerSeries` with truncate, sums, derivatives,
   integrals, `product`, `compose`, `inverse`) and Fourier series (`fourier_series`,
@@ -347,7 +346,14 @@ remove public functions. Breaking changes are listed here when they happen.
   convergence conditions of Prudnikov 2.24.1-2 and Luke 5.6, the changes
   of range), and `meijer_antiderivative`, SymPy's `integrate(f, x,
   meijerg=True, risch=False)`; values come with their conditions as pairs.
-  Not ported: `meijerint_inversion`.
+  `meijerint_inversion` (the inverse Laplace transform by G-functions,
+  Luke 5.7-5.10) is ported too, as a pair of the value and its condition
+  (no `InverseLaplaceTransform` piece). Unlike SymPy, a factor `c**(-a*s)`
+  is one shift (SymPy recorded the shift and kept the factor: no result),
+  and the Mellin-Barnes inversion of a sum inverts all its terms on one
+  line of the strip: for `1/((x + a)*(x + b))` SymPy put the pole at
+  `s = 1` left of the contour for one term and right for the other, a
+  rewriting wrong by `1/((a - b)*x)` and a wrong inverse Laplace transform.
 - `sympy_extras.integrals.deltafunctions`: a native port of SymPy's
   `deltaintegrate` and `change_mul`, with `DiracDelta.is_simple` and the
   expansion of a delta by the roots of its argument.
