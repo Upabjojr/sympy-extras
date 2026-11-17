@@ -224,6 +224,15 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Hankel2" => Basic::new(Head::Function(Function::Hankel2), args()?),
         "BesselIs" => Basic::new(Head::Function(Function::BesselIs), args()?),
         "BesselKs" => Basic::new(Head::Function(Function::BesselKs), args()?),
+        "SphericalJ" => Basic::new(Head::Function(Function::SphericalJ), args()?),
+        "SphericalY" => Basic::new(Head::Function(Function::SphericalY), args()?),
+        "SphericalHankel1" => Basic::new(Head::Function(Function::SphericalHankel1), args()?),
+        "SphericalHankel2" => Basic::new(Head::Function(Function::SphericalHankel2), args()?),
+        "AiryAi" => Basic::new(Head::Function(Function::AiryAi), args()?),
+        "AiryBi" => Basic::new(Head::Function(Function::AiryBi), args()?),
+        "AiryAiPrime" => Basic::new(Head::Function(Function::AiryAiPrime), args()?),
+        "AiryBiPrime" => Basic::new(Head::Function(Function::AiryBiPrime), args()?),
+        "MarcumQ" => Basic::new(Head::Function(Function::MarcumQ), args()?),
         "Hyper" => Basic::new(Head::Hyper, args()?),
         "MeijerG" => Basic::new(Head::MeijerG, args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
@@ -539,7 +548,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::AssocLegendre
                 | Function::HermiteProb => "polynomials",
                 Function::AppellF1 => "hyper",
-                f if sympy_extras_core::functions::special::bessel::is_bessel(*f) => "bessel",
+                f if sympy_extras_core::functions::special::bessel::is_bessel(*f)
+                    || sympy_extras_core::functions::special::bessel::is_airy(*f)
+                    || *f == Function::MarcumQ =>
+                {
+                    "bessel"
+                }
                 Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
                     "elliptic_integrals"
                 }
@@ -579,6 +593,8 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::polynomials::is_orthogonal(*f)
                 || *f == Function::AppellF1
                 || sympy_extras_core::functions::special::bessel::is_bessel(*f)
+                || sympy_extras_core::functions::special::bessel::is_airy(*f)
+                || *f == Function::MarcumQ
                 || sympy_extras_core::functions::special::elliptic_integrals::is_elliptic(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
@@ -2438,7 +2454,20 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => return Err(wrong()),
             }
         }
-        "besselj" | "bessely" | "besseli" | "besselk" | "hankel1" | "hankel2" | "besselis" | "besselks" => {
+        "airyai" | "airybi" | "airyaiprime" | "airybiprime" | "marcumq" => {
+            use sympy_extras_core::core::basic::Function as F;
+            use sympy_extras_core::functions::special::bessel as bs;
+            match (name, a.len()) {
+                ("marcumq", 3) => bs::marcumq(&a).map_err(e)?,
+                ("airyai", 1) => bs::airy(F::AiryAi, &a[0]).map_err(e)?,
+                ("airybi", 1) => bs::airy(F::AiryBi, &a[0]).map_err(e)?,
+                ("airyaiprime", 1) => bs::airy(F::AiryAiPrime, &a[0]).map_err(e)?,
+                ("airybiprime", 1) => bs::airy(F::AiryBiPrime, &a[0]).map_err(e)?,
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments")),
+            }
+        }
+        "besselj" | "bessely" | "besseli" | "besselk" | "hankel1" | "hankel2" | "besselis" | "besselks" | "jn"
+        | "yn" | "hn1" | "hn2" => {
             use sympy_extras_core::core::basic::Function as F;
             let f: F = match name {
                 "besselj" => F::BesselJ,
@@ -2448,7 +2477,11 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "hankel1" => F::Hankel1,
                 "hankel2" => F::Hankel2,
                 "besselis" => F::BesselIs,
-                _ => F::BesselKs,
+                "besselks" => F::BesselKs,
+                "jn" => F::SphericalJ,
+                "yn" => F::SphericalY,
+                "hn1" => F::SphericalHankel1,
+                _ => F::SphericalHankel2,
             };
             if a.len() != 2 {
                 return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));

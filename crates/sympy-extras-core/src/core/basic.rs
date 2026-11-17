@@ -291,6 +291,15 @@ pub enum Function {
     Hankel2,
     BesselIs,
     BesselKs,
+    SphericalJ,
+    SphericalY,
+    SphericalHankel1,
+    SphericalHankel2,
+    AiryAi,
+    AiryBi,
+    AiryAiPrime,
+    AiryBiPrime,
+    MarcumQ,
     EllipticK,
     EllipticF,
     EllipticE,
@@ -434,6 +443,15 @@ impl Function {
             Function::Hankel2 => "hankel2",
             Function::BesselIs => "_besseli",
             Function::BesselKs => "_besselk",
+            Function::SphericalJ => "jn",
+            Function::SphericalY => "yn",
+            Function::SphericalHankel1 => "hn1",
+            Function::SphericalHankel2 => "hn2",
+            Function::AiryAi => "airyai",
+            Function::AiryBi => "airybi",
+            Function::AiryAiPrime => "airyaiprime",
+            Function::AiryBiPrime => "airybiprime",
+            Function::MarcumQ => "marcumq",
             Function::EllipticK => "elliptic_k",
             Function::EllipticF => "elliptic_f",
             Function::EllipticE => "elliptic_e",
@@ -576,6 +594,15 @@ impl Function {
             Function::Hankel2 => "Hankel2",
             Function::BesselIs => "BesselIs",
             Function::BesselKs => "BesselKs",
+            Function::SphericalJ => "SphericalJ",
+            Function::SphericalY => "SphericalY",
+            Function::SphericalHankel1 => "SphericalHankel1",
+            Function::SphericalHankel2 => "SphericalHankel2",
+            Function::AiryAi => "AiryAi",
+            Function::AiryBi => "AiryBi",
+            Function::AiryAiPrime => "AiryAiPrime",
+            Function::AiryBiPrime => "AiryBiPrime",
+            Function::MarcumQ => "MarcumQ",
             Function::EllipticK => "EllipticK",
             Function::EllipticF => "EllipticF",
             Function::EllipticE => "EllipticE",
@@ -739,6 +766,15 @@ impl Function {
             | Function::Hankel2
             | Function::BesselIs
             | Function::BesselKs
+            | Function::SphericalJ
+            | Function::SphericalY
+            | Function::SphericalHankel1
+            | Function::SphericalHankel2
+            | Function::AiryAi
+            | Function::AiryBi
+            | Function::AiryAiPrime
+            | Function::AiryBiPrime
+            | Function::MarcumQ
             | Function::EllipticK
             | Function::EllipticF
             | Function::EllipticE

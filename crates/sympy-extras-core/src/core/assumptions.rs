@@ -1411,7 +1411,16 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::Hankel1
         | super::basic::Function::Hankel2
         | super::basic::Function::BesselIs
-        | super::basic::Function::BesselKs) => crate::functions::special::bessel::bessel_facts(g, e.args()),
+        | super::basic::Function::BesselKs
+        | super::basic::Function::SphericalJ
+        | super::basic::Function::SphericalY
+        | super::basic::Function::SphericalHankel1
+        | super::basic::Function::SphericalHankel2) => crate::functions::special::bessel::bessel_facts(g, e.args()),
+        super::basic::Function::AiryAi
+        | super::basic::Function::AiryBi
+        | super::basic::Function::AiryAiPrime
+        | super::basic::Function::AiryBiPrime => crate::functions::special::bessel::airy_facts(e.args()),
+        super::basic::Function::MarcumQ => crate::functions::special::bessel::marcumq_facts(e.args()),
         super::basic::Function::Ynm | super::basic::Function::Znm => {
             crate::functions::special::spherical_harmonics::spherical_facts()
         }

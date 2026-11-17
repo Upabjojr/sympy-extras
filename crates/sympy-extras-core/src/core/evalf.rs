@@ -383,6 +383,15 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
         }
         Head::Hyper => crate::functions::special::hyper::hyper_node_value(e, prec),
         Head::Function(
+            g @ (super::basic::Function::AiryAi
+            | super::basic::Function::AiryBi
+            | super::basic::Function::AiryAiPrime
+            | super::basic::Function::AiryBiPrime),
+        ) => {
+            let v: Complex = numeric_value(&e.args()[0], prec + 40)?;
+            crate::functions::special::bessel::airy_value(*g, &[v], prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::BesselJ
             | super::basic::Function::BesselY
             | super::basic::Function::BesselI
@@ -390,7 +399,11 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             | super::basic::Function::Hankel1
             | super::basic::Function::Hankel2
             | super::basic::Function::BesselIs
-            | super::basic::Function::BesselKs),
+            | super::basic::Function::BesselKs
+            | super::basic::Function::SphericalJ
+            | super::basic::Function::SphericalY
+            | super::basic::Function::SphericalHankel1
+            | super::basic::Function::SphericalHankel2),
         ) => {
             let mut values: Vec<Complex> = Vec::new();
             for a in e.args() {
@@ -609,7 +622,16 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Hankel1
                 | super::basic::Function::Hankel2
                 | super::basic::Function::BesselIs
-                | super::basic::Function::BesselKs => return None,
+                | super::basic::Function::BesselKs
+                | super::basic::Function::SphericalJ
+                | super::basic::Function::SphericalY
+                | super::basic::Function::SphericalHankel1
+                | super::basic::Function::SphericalHankel2
+                | super::basic::Function::AiryAi
+                | super::basic::Function::AiryBi
+                | super::basic::Function::AiryAiPrime
+                | super::basic::Function::AiryBiPrime
+                | super::basic::Function::MarcumQ => return None,
                 // no numerical value (neither SymPy nor mpmath has one)
                 super::basic::Function::MathieuS
                 | super::basic::Function::MathieuC

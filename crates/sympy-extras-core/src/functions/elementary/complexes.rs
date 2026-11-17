@@ -151,7 +151,14 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Hankel1
         | Function::Hankel2
         | Function::BesselIs
-        | Function::BesselKs) => crate::functions::special::bessel::bessel_conjugate(g, e),
+        | Function::BesselKs
+        | Function::SphericalJ
+        | Function::SphericalY
+        | Function::SphericalHankel1
+        | Function::SphericalHankel2) => crate::functions::special::bessel::bessel_conjugate(g, e),
+        g @ (Function::AiryAi | Function::AiryBi | Function::AiryAiPrime | Function::AiryBiPrime) => {
+            crate::functions::special::bessel::airy_conjugate(g, e)
+        }
         g @ (Function::Legendre
         | Function::ChebyshevT
         | Function::ChebyshevU
@@ -188,6 +195,7 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::SingularityFunction
         | Function::Znm
         | Function::AppellF1
+        | Function::MarcumQ
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -497,6 +505,9 @@ fn function_real_imag(
 ) -> PolyResult<Option<RealImag>> {
     use crate::core::function::expand_with_hints;
     match f {
+        g @ (Function::AiryAi | Function::AiryBi | Function::AiryAiPrime | Function::AiryBiPrime) => {
+            Ok(Some(crate::functions::special::bessel::airy_real_imag(g, e)?))
+        }
         g @ (Function::Erf | Function::Erfc | Function::Erfi) => {
             Ok(crate::functions::special::error_functions::error_real_imag(g, e, deep)?.flatten())
         }
@@ -600,6 +611,11 @@ fn function_real_imag(
         | Function::MathieuCPrime
         | Function::Znm
         | Function::AppellF1
+        | Function::SphericalJ
+        | Function::SphericalY
+        | Function::SphericalHankel1
+        | Function::SphericalHankel2
+        | Function::MarcumQ
         | Function::BesselJ
         | Function::BesselY
         | Function::BesselI

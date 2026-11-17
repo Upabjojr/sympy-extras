@@ -108,7 +108,15 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Hankel1
         | Function::Hankel2
         | Function::BesselIs
-        | Function::BesselKs) => special::bessel::bessel_fdiff(g, e, argindex),
+        | Function::BesselKs
+        | Function::SphericalJ
+        | Function::SphericalY
+        | Function::SphericalHankel1
+        | Function::SphericalHankel2) => special::bessel::bessel_fdiff(g, e, argindex),
+        g @ (Function::AiryAi | Function::AiryBi | Function::AiryAiPrime | Function::AiryBiPrime) => {
+            special::bessel::airy_fdiff(g, e)
+        }
+        Function::MarcumQ => special::bessel::marcumq_fdiff(e, argindex),
         g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
         g @ (Function::Legendre
         | Function::ChebyshevT
@@ -266,6 +274,12 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::elliptic_integrals::is_elliptic(f) && special::elliptic_integrals::arity_fits(f, args.len()) {
         return special::elliptic_integrals::elliptic(f, args);
     }
+    if special::bessel::is_airy(f) && args.len() == 1 {
+        return special::bessel::airy(f, &args[0]);
+    }
+    if f == Function::MarcumQ && args.len() == 3 {
+        return special::bessel::marcumq(args);
+    }
     if special::bessel::is_bessel(f) && args.len() == 2 {
         return special::bessel::bessel(f, args);
     }
@@ -399,7 +413,16 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::Hankel1
         | Function::Hankel2
         | Function::BesselIs
-        | Function::BesselKs => unreachable!("evaluated above with all their arguments"),
+        | Function::BesselKs
+        | Function::SphericalJ
+        | Function::SphericalY
+        | Function::SphericalHankel1
+        | Function::SphericalHankel2
+        | Function::AiryAi
+        | Function::AiryBi
+        | Function::AiryAiPrime
+        | Function::AiryBiPrime
+        | Function::MarcumQ => unreachable!("evaluated above with all their arguments"),
         Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
         Function::Legendre
         | Function::ChebyshevT
