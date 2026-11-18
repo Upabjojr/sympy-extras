@@ -7,6 +7,7 @@ pub mod exponential;
 pub mod hyperbolic;
 pub mod integers;
 pub mod inverse;
+pub mod inverse_rewrites;
 pub mod miscellaneous;
 pub mod piecewise;
 pub mod rewrites;

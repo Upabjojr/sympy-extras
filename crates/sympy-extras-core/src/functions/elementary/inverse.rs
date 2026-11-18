@@ -1100,8 +1100,23 @@ pub fn inverse_value(f: Function, z: &Complex, prec: usize) -> Option<Complex> {
             Some(&c(1) / w)
         }
     };
-    // asin z = -i ln(i z + sqrt(1 - z^2))
+    let acosh_of = |w: &Complex| -> Option<Complex> { ln(&(w + &(&sqrt(&(w + &c(1)))? * &sqrt(&(w - &c(1)))?))) };
+    // asin z = -i ln(i z + sqrt(1 - z^2)); a real z beyond [-1, 1] on
+    // mpmath's branch, pi/2 - i acosh(z) (odd), whose real part is pi/2
+    // exactly
     let asin_of = |w: &Complex| -> Option<Complex> {
+        let (re, im) = parts(w);
+        if im.repr().significand().is_zero() {
+            let one = real_int(&Int::ONE, prec);
+            let minus_one = real_int(&Int::NEG_ONE, prec);
+            if re > one {
+                return Some(&half_pi - &(&i * &acosh_of(w)?));
+            }
+            if re < minus_one {
+                let reflected: Complex = &c(0) - w;
+                return Some(&(&i * &acosh_of(&reflected)?) - &half_pi);
+            }
+        }
         let root: Complex = sqrt(&(&c(1) - &(w * w)))?;
         Some(&(-&i) * &ln(&(&(&i * w) + &root))?)
     };
@@ -1110,8 +1125,37 @@ pub fn inverse_value(f: Function, z: &Complex, prec: usize) -> Option<Complex> {
         let iw: Complex = &i * w;
         Some(&(&i / &c(2)) * &(&ln(&(&c(1) - &iw))? - &ln(&(&c(1) + &iw))?))
     };
-    let asinh_of = |w: &Complex| -> Option<Complex> { ln(&(w + &sqrt(&(&(w * w) + &c(1)))?)) };
-    let acosh_of = |w: &Complex| -> Option<Complex> { ln(&(w + &(&sqrt(&(w + &c(1)))? * &sqrt(&(w - &c(1)))?))) };
+    // asinh z = ln(z + sqrt(z^2 + 1)); an imaginary z beyond [-i, i] on
+    // mpmath's branch, acosh(y) + i pi/2 for z = i y (odd), whose imaginary
+    // part is pi/2 exactly
+    let asinh_of = |w: &Complex| -> Option<Complex> {
+        let (re, im) = parts(w);
+        if re.repr().significand().is_zero() {
+            let one = real_int(&Int::ONE, prec);
+            let minus_one = real_int(&Int::NEG_ONE, prec);
+            if im > one {
+                let y: Complex = complex_real(im, prec);
+                return Some(&acosh_of(&y)? + &(&i * &half_pi));
+            }
+            if im < minus_one {
+                let y: Complex = complex_real(-im, prec);
+                return Some(&(&c(0) - &acosh_of(&y)?) - &(&i * &half_pi));
+            }
+            // i asin(y), purely imaginary
+            let a: Complex = asin_of(&complex_real(im, prec))?;
+            return Some(complex(zero_real(), parts(&a).0));
+        }
+        ln(&(w + &sqrt(&(&(w * w) + &c(1)))?))
+    };
+    // acosh of a real x in [-1, 1] is i acos(x), purely imaginary (mpmath)
+    let acosh_value = |w: &Complex| -> Option<Complex> {
+        let (re, im) = parts(w);
+        if im.repr().significand().is_zero() && re <= real_int(&Int::ONE, prec) && re >= real_int(&Int::NEG_ONE, prec) {
+            let a: Complex = &half_pi - &asin_of(w)?;
+            return Some(complex(zero_real(), parts(&a).0));
+        }
+        acosh_of(w)
+    };
     let atanh_of = |w: &Complex| -> Option<Complex> { Some(&(&ln(&(&c(1) + w))? - &ln(&(&c(1) - w))?) / &c(2)) };
     let is_unit = |w: &Complex| is_zero(&(w - &c(1))) || is_zero(&(w + &c(1)));
     let value: Option<Complex> = match f {
@@ -1127,7 +1171,7 @@ pub fn inverse_value(f: Function, z: &Complex, prec: usize) -> Option<Complex> {
         Function::Asec => Some(&half_pi - &asin_of(&recip(z)?)?),
         Function::Acsc => asin_of(&recip(z)?),
         Function::Asinh => asinh_of(z),
-        Function::Acosh => acosh_of(z),
+        Function::Acosh => acosh_value(z),
         Function::Atanh => {
             if is_unit(z) {
                 return None;
@@ -1143,7 +1187,7 @@ pub fn inverse_value(f: Function, z: &Complex, prec: usize) -> Option<Complex> {
             }
             atanh_of(&recip(z)?)
         }
-        Function::Asech => acosh_of(&recip(z)?),
+        Function::Asech => acosh_value(&recip(z)?),
         Function::Acsch => asinh_of(&recip(z)?),
         _ => unreachable!("not an inverse function"),
     };
