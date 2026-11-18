@@ -1421,6 +1421,9 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::AiryAiPrime
         | super::basic::Function::AiryBiPrime => crate::functions::special::bessel::airy_facts(e.args()),
         super::basic::Function::MarcumQ => crate::functions::special::bessel::marcumq_facts(e.args()),
+        g if crate::functions::special::hyperrep::is_hyperrep(g) => {
+            crate::functions::special::hyperrep::hyperrep_facts()
+        }
         super::basic::Function::Ynm | super::basic::Function::Znm => {
             crate::functions::special::spherical_harmonics::spherical_facts()
         }

@@ -117,6 +117,17 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
             special::bessel::airy_fdiff(g, e)
         }
         Function::MarcumQ => special::bessel::marcumq_fdiff(e, argindex),
+        Function::HyperRepPower1
+        | Function::HyperRepPower2
+        | Function::HyperRepLog1
+        | Function::HyperRepAtanh
+        | Function::HyperRepAsin1
+        | Function::HyperRepAsin2
+        | Function::HyperRepSqrts1
+        | Function::HyperRepSqrts2
+        | Function::HyperRepLog2
+        | Function::HyperRepCosasin
+        | Function::HyperRepSinasin => special::hyper::default_fdiff(e, argindex),
         g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
         g @ (Function::Legendre
         | Function::ChebyshevT
@@ -277,6 +288,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::bessel::is_airy(f) && args.len() == 1 {
         return special::bessel::airy(f, &args[0]);
     }
+    if special::hyperrep::is_hyperrep(f) && args.len() == special::hyperrep::hyperrep_arity(f) {
+        return special::hyperrep::hyperrep(f, args);
+    }
     if f == Function::MarcumQ && args.len() == 3 {
         return special::bessel::marcumq(args);
     }
@@ -422,7 +436,18 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         | Function::AiryBi
         | Function::AiryAiPrime
         | Function::AiryBiPrime
-        | Function::MarcumQ => unreachable!("evaluated above with all their arguments"),
+        | Function::MarcumQ
+        | Function::HyperRepPower1
+        | Function::HyperRepPower2
+        | Function::HyperRepLog1
+        | Function::HyperRepAtanh
+        | Function::HyperRepAsin1
+        | Function::HyperRepAsin2
+        | Function::HyperRepSqrts1
+        | Function::HyperRepSqrts2
+        | Function::HyperRepLog2
+        | Function::HyperRepCosasin
+        | Function::HyperRepSinasin => unreachable!("evaluated above with all their arguments"),
         Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
         Function::Legendre
         | Function::ChebyshevT

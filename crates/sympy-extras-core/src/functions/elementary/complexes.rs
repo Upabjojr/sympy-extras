@@ -196,6 +196,17 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::Znm
         | Function::AppellF1
         | Function::MarcumQ
+        | Function::HyperRepPower1
+        | Function::HyperRepPower2
+        | Function::HyperRepLog1
+        | Function::HyperRepAtanh
+        | Function::HyperRepAsin1
+        | Function::HyperRepAsin2
+        | Function::HyperRepSqrts1
+        | Function::HyperRepSqrts2
+        | Function::HyperRepLog2
+        | Function::HyperRepCosasin
+        | Function::HyperRepSinasin
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -616,6 +627,17 @@ fn function_real_imag(
         | Function::SphericalHankel1
         | Function::SphericalHankel2
         | Function::MarcumQ
+        | Function::HyperRepPower1
+        | Function::HyperRepPower2
+        | Function::HyperRepLog1
+        | Function::HyperRepAtanh
+        | Function::HyperRepAsin1
+        | Function::HyperRepAsin2
+        | Function::HyperRepSqrts1
+        | Function::HyperRepSqrts2
+        | Function::HyperRepLog2
+        | Function::HyperRepCosasin
+        | Function::HyperRepSinasin
         | Function::BesselJ
         | Function::BesselY
         | Function::BesselI

@@ -233,6 +233,17 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "AiryAiPrime" => Basic::new(Head::Function(Function::AiryAiPrime), args()?),
         "AiryBiPrime" => Basic::new(Head::Function(Function::AiryBiPrime), args()?),
         "MarcumQ" => Basic::new(Head::Function(Function::MarcumQ), args()?),
+        "HyperRep_power1" => Basic::new(Head::Function(Function::HyperRepPower1), args()?),
+        "HyperRep_power2" => Basic::new(Head::Function(Function::HyperRepPower2), args()?),
+        "HyperRep_log1" => Basic::new(Head::Function(Function::HyperRepLog1), args()?),
+        "HyperRep_atanh" => Basic::new(Head::Function(Function::HyperRepAtanh), args()?),
+        "HyperRep_asin1" => Basic::new(Head::Function(Function::HyperRepAsin1), args()?),
+        "HyperRep_asin2" => Basic::new(Head::Function(Function::HyperRepAsin2), args()?),
+        "HyperRep_sqrts1" => Basic::new(Head::Function(Function::HyperRepSqrts1), args()?),
+        "HyperRep_sqrts2" => Basic::new(Head::Function(Function::HyperRepSqrts2), args()?),
+        "HyperRep_log2" => Basic::new(Head::Function(Function::HyperRepLog2), args()?),
+        "HyperRep_cosasin" => Basic::new(Head::Function(Function::HyperRepCosasin), args()?),
+        "HyperRep_sinasin" => Basic::new(Head::Function(Function::HyperRepSinasin), args()?),
         "Hyper" => Basic::new(Head::Hyper, args()?),
         "MeijerG" => Basic::new(Head::MeijerG, args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
@@ -548,6 +559,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::AssocLegendre
                 | Function::HermiteProb => "polynomials",
                 Function::AppellF1 => "hyper",
+                f if sympy_extras_core::functions::special::hyperrep::is_hyperrep(*f) => "hyperrep",
                 f if sympy_extras_core::functions::special::bessel::is_bessel(*f)
                     || sympy_extras_core::functions::special::bessel::is_airy(*f)
                     || *f == Function::MarcumQ =>
@@ -592,6 +604,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::mathieu_functions::is_mathieu(*f)
                 || sympy_extras_core::functions::special::polynomials::is_orthogonal(*f)
                 || *f == Function::AppellF1
+                || sympy_extras_core::functions::special::hyperrep::is_hyperrep(*f)
                 || sympy_extras_core::functions::special::bessel::is_bessel(*f)
                 || sympy_extras_core::functions::special::bessel::is_airy(*f)
                 || *f == Function::MarcumQ
@@ -2452,6 +2465,39 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     hy::meijerg_get_period(&a[0]).map_err(e)?
                 }
                 _ => return Err(wrong()),
+            }
+        }
+        "hyperrep" | "rewrite_nonrep" | "rewrite_nonrepsmall" => {
+            use sympy_extras_core::core::basic::Function as F;
+            use sympy_extras_core::functions::special::hyperrep as hr;
+            match name {
+                "rewrite_nonrep" if a.len() == 1 => hr::rewrite_nonrep(&a[0], false).map_err(e)?,
+                "rewrite_nonrepsmall" if a.len() == 1 => hr::rewrite_nonrep(&a[0], true).map_err(e)?,
+                "hyperrep" if !a.is_empty() => {
+                    // the head by its Python name, then the arguments
+                    let label: String = a[0].to_string();
+                    let f: F = [
+                        F::HyperRepPower1,
+                        F::HyperRepPower2,
+                        F::HyperRepLog1,
+                        F::HyperRepAtanh,
+                        F::HyperRepAsin1,
+                        F::HyperRepAsin2,
+                        F::HyperRepSqrts1,
+                        F::HyperRepSqrts2,
+                        F::HyperRepLog2,
+                        F::HyperRepCosasin,
+                        F::HyperRepSinasin,
+                    ]
+                    .into_iter()
+                    .find(|f| f.name() == label)
+                    .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("unknown HyperRep"))?;
+                    if a.len() - 1 != hr::hyperrep_arity(f) {
+                        return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
+                    }
+                    hr::hyperrep(f, &a[1..]).map_err(e)?
+                }
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
             }
         }
         "airyai" | "airybi" | "airyaiprime" | "airybiprime" | "marcumq" => {

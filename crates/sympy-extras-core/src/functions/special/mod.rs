@@ -9,6 +9,7 @@ pub mod error_functions;
 pub mod gamma_functions;
 pub mod gamma_numeric;
 pub mod hyper;
+pub mod hyperrep;
 pub mod mathieu_functions;
 pub mod polynomials;
 pub mod singularity_functions;

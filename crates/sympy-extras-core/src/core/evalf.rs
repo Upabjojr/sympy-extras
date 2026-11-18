@@ -631,7 +631,18 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::AiryBi
                 | super::basic::Function::AiryAiPrime
                 | super::basic::Function::AiryBiPrime
-                | super::basic::Function::MarcumQ => return None,
+                | super::basic::Function::MarcumQ
+                | super::basic::Function::HyperRepPower1
+                | super::basic::Function::HyperRepPower2
+                | super::basic::Function::HyperRepLog1
+                | super::basic::Function::HyperRepAtanh
+                | super::basic::Function::HyperRepAsin1
+                | super::basic::Function::HyperRepAsin2
+                | super::basic::Function::HyperRepSqrts1
+                | super::basic::Function::HyperRepSqrts2
+                | super::basic::Function::HyperRepLog2
+                | super::basic::Function::HyperRepCosasin
+                | super::basic::Function::HyperRepSinasin => return None,
                 // no numerical value (neither SymPy nor mpmath has one)
                 super::basic::Function::MathieuS
                 | super::basic::Function::MathieuC

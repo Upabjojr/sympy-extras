@@ -300,6 +300,17 @@ pub enum Function {
     AiryAiPrime,
     AiryBiPrime,
     MarcumQ,
+    HyperRepPower1,
+    HyperRepPower2,
+    HyperRepLog1,
+    HyperRepAtanh,
+    HyperRepAsin1,
+    HyperRepAsin2,
+    HyperRepSqrts1,
+    HyperRepSqrts2,
+    HyperRepLog2,
+    HyperRepCosasin,
+    HyperRepSinasin,
     EllipticK,
     EllipticF,
     EllipticE,
@@ -452,6 +463,17 @@ impl Function {
             Function::AiryAiPrime => "airyaiprime",
             Function::AiryBiPrime => "airybiprime",
             Function::MarcumQ => "marcumq",
+            Function::HyperRepPower1 => "HyperRep_power1",
+            Function::HyperRepPower2 => "HyperRep_power2",
+            Function::HyperRepLog1 => "HyperRep_log1",
+            Function::HyperRepAtanh => "HyperRep_atanh",
+            Function::HyperRepAsin1 => "HyperRep_asin1",
+            Function::HyperRepAsin2 => "HyperRep_asin2",
+            Function::HyperRepSqrts1 => "HyperRep_sqrts1",
+            Function::HyperRepSqrts2 => "HyperRep_sqrts2",
+            Function::HyperRepLog2 => "HyperRep_log2",
+            Function::HyperRepCosasin => "HyperRep_cosasin",
+            Function::HyperRepSinasin => "HyperRep_sinasin",
             Function::EllipticK => "elliptic_k",
             Function::EllipticF => "elliptic_f",
             Function::EllipticE => "elliptic_e",
@@ -603,6 +625,17 @@ impl Function {
             Function::AiryAiPrime => "AiryAiPrime",
             Function::AiryBiPrime => "AiryBiPrime",
             Function::MarcumQ => "MarcumQ",
+            Function::HyperRepPower1 => "HyperRep_power1",
+            Function::HyperRepPower2 => "HyperRep_power2",
+            Function::HyperRepLog1 => "HyperRep_log1",
+            Function::HyperRepAtanh => "HyperRep_atanh",
+            Function::HyperRepAsin1 => "HyperRep_asin1",
+            Function::HyperRepAsin2 => "HyperRep_asin2",
+            Function::HyperRepSqrts1 => "HyperRep_sqrts1",
+            Function::HyperRepSqrts2 => "HyperRep_sqrts2",
+            Function::HyperRepLog2 => "HyperRep_log2",
+            Function::HyperRepCosasin => "HyperRep_cosasin",
+            Function::HyperRepSinasin => "HyperRep_sinasin",
             Function::EllipticK => "EllipticK",
             Function::EllipticF => "EllipticF",
             Function::EllipticE => "EllipticE",
@@ -775,6 +808,17 @@ impl Function {
             | Function::AiryAiPrime
             | Function::AiryBiPrime
             | Function::MarcumQ
+            | Function::HyperRepPower1
+            | Function::HyperRepPower2
+            | Function::HyperRepLog1
+            | Function::HyperRepAtanh
+            | Function::HyperRepAsin1
+            | Function::HyperRepAsin2
+            | Function::HyperRepSqrts1
+            | Function::HyperRepSqrts2
+            | Function::HyperRepLog2
+            | Function::HyperRepCosasin
+            | Function::HyperRepSinasin
             | Function::EllipticK
             | Function::EllipticF
             | Function::EllipticE
