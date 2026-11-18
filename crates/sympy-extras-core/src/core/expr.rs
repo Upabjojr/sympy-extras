@@ -738,3 +738,79 @@ pub fn equals(a: &Basic, b: &Basic) -> PolyResult<bool> {
     }
     Err(crate::error::not_ported("equals by SymPy (the bridge)"))
 }
+
+/// The terms of a sum mapped to their numerical coefficients, in the
+/// order of first occurrence (`as_coefficients_dict`).
+pub fn as_coefficients_dict(e: &Basic) -> PolyResult<Vec<(Basic, Basic)>> {
+    let mut result: Vec<(Basic, Basic)> = Vec::new();
+    for term in terms_of(e) {
+        let (c, rest) = as_coeff_mul(&term);
+        match result.iter().position(|(k, _)| *k == rest) {
+            Some(i) => result[i].1 = super::add::add(&[result[i].1.clone(), c])?,
+            None => result.push((rest, c)),
+        }
+    }
+    if result.is_empty() {
+        result.push((Basic::one(), Basic::zero()));
+    }
+    Ok(result)
+}
+
+/// The bases of a product mapped to their exponents, in the order of
+/// first occurrence (`as_powers_dict`).
+pub fn as_powers_dict(e: &Basic) -> PolyResult<Vec<(Basic, Basic)>> {
+    let mut result: Vec<(Basic, Basic)> = Vec::new();
+    for f in factors_of(e) {
+        let (b, ex) = as_base_exp(&f)?;
+        match result.iter().position(|(k, _)| *k == b) {
+            Some(i) => result[i].1 = super::add::add(&[result[i].1.clone(), ex])?,
+            None => result.push((b, ex)),
+        }
+    }
+    Ok(result)
+}
+
+/// `e - c` when `c` is a part of `e` term by term (same signs, no larger
+/// coefficients), else `None` (`extract_additively`).
+pub fn extract_additively(e: &Basic, c: &Basic) -> PolyResult<Option<Basic>> {
+    if c.is_number_class() && *c == Basic::zero() {
+        return Ok(Some(e.clone()));
+    }
+    if e == c {
+        return Ok(Some(Basic::zero()));
+    }
+    let mut terms: Vec<(Basic, Basic)> = as_coefficients_dict(e)?;
+    for term in terms_of(c) {
+        let (ct, rest) = as_coeff_mul(&term);
+        let Some(i) = terms.iter().position(|(k, _)| *k == rest) else {
+            return Ok(None);
+        };
+        let cs: Basic = terms[i].1.clone();
+        let (Some(vs), Some(vt)) = (
+            cs.as_rational().filter(|_| cs.is_rational_class()),
+            ct.as_rational().filter(|_| ct.is_rational_class()),
+        ) else {
+            return Ok(None);
+        };
+        if vt.is_zero() {
+            return Ok(None);
+        }
+        let positive = |v: &crate::numbers::Rat| *v > crate::numbers::Rat::ZERO;
+        let magnitude = |v: &crate::numbers::Rat| {
+            if crate::numbers::rat_is_negative(v) {
+                -v.clone()
+            } else {
+                v.clone()
+            }
+        };
+        if positive(vs) != positive(vt) || magnitude(vs) < magnitude(vt) {
+            return Ok(None);
+        }
+        terms[i].1 = Basic::from_rational(vs - vt);
+    }
+    let parts: Vec<Basic> = terms
+        .into_iter()
+        .map(|(rest, k)| super::mul::mul(&[k, rest]))
+        .collect::<PolyResult<_>>()?;
+    Ok(Some(super::add::add(&parts)?))
+}

@@ -2901,6 +2901,67 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "fu" => {
+            // op (a TR rule, fu, L, sincos_to_sum, trig_split, as_f_sign_1, hyper_as_trig) and its arguments
+            use sympy_extras_core::simplify::fu as f;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || tuple(vec![]);
+            let x = &a[1];
+            match a[0].to_string().as_str() {
+                "TR0" => f::tr0(x).map_err(e)?,
+                "TR1" => f::tr1(x).map_err(e)?,
+                "TR2" => f::tr2(x).map_err(e)?,
+                "TR2i" => f::tr2i(x, false).map_err(e)?,
+                "TR2i_half" => f::tr2i(x, true).map_err(e)?,
+                "TR3" => f::tr3(x).map_err(e)?,
+                "TR4" => f::tr4(x).map_err(e)?,
+                "TR5" => f::tr5(x, 4, false).map_err(e)?,
+                "TR6" => f::tr6(x, 4, false).map_err(e)?,
+                "TR6_pow" => f::tr6(x, 6, true).map_err(e)?,
+                "TR7" => f::tr7(x).map_err(e)?,
+                "TR8" => f::tr8(x, true).map_err(e)?,
+                "TR9" => f::tr9(x).map_err(e)?,
+                "TR10" => f::tr10(x, true).map_err(e)?,
+                "TR10i" => f::tr10i(x).map_err(e)?,
+                "TR11" => f::tr11(x, None).map_err(e)?,
+                "TR11_base" => f::tr11(x, Some(&a[2])).map_err(e)?,
+                "_TR11" => f::tr11_half(x).map_err(e)?,
+                "TR12" => f::tr12(x, true).map_err(e)?,
+                "TR12i" => f::tr12i(x).map_err(e)?,
+                "TR13" => f::tr13(x).map_err(e)?,
+                "TR14" => f::tr14(x, true).map_err(e)?,
+                "TR15" => f::tr15(x, 4, false).map_err(e)?,
+                "TR16" => f::tr16(x, 4, false).map_err(e)?,
+                "TR111" => f::tr111(x).map_err(e)?,
+                "TR22" => f::tr22(x, 4, false).map_err(e)?,
+                "TRmorrie" => f::tr_morrie(x).map_err(e)?,
+                "TRpower" => f::tr_power(x).map_err(e)?,
+                "L" => Basic::int(f::l_count(x)),
+                "sincos_to_sum" => f::sincos_to_sum(x).map_err(e)?,
+                "fu" => f::fu(x, f::fu_measure).map_err(e)?,
+                "trig_split" => match f::trig_split(x, &a[2], matches!(a[3].head(), Head::BooleanTrue)).map_err(e)? {
+                    None => none(),
+                    Some((g, n1, n2, p, q, c)) => tuple(vec![
+                        g,
+                        Basic::int(n1),
+                        Basic::int(n2),
+                        p,
+                        q,
+                        sympy_extras_core::core::logic::boolean(c),
+                    ]),
+                },
+                "as_f_sign_1" => match f::as_f_sign_1(x).map_err(e)? {
+                    None => none(),
+                    Some((g, p, s)) => tuple(vec![g, p, s]),
+                },
+                "hyper_as_trig" => {
+                    let h = f::hyper_as_trig(x).map_err(e)?;
+                    let back = h.inverse(&h.expr).map_err(e)?;
+                    tuple(vec![h.expr.clone(), back])
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "collect" => {
             // op (collect, collect_dict, rcollect), e, Tuple(syms), exact (true, false or the symbol None)
             use sympy_extras_core::simplify::radsimp as rs;

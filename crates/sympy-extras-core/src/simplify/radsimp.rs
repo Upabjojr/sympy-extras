@@ -547,7 +547,7 @@ fn handle(x: &Basic, symbolic: bool, max_terms: usize) -> PolyResult<Basic> {
 }
 
 /// `Expr.normal`: one fraction, a numerical denominator kept outside.
-fn normal(e: &Basic) -> PolyResult<Basic> {
+pub(crate) fn normal(e: &Basic) -> PolyResult<Basic> {
     let (n, d) = as_numer_denom(e)?;
     if d.is_number_class() {
         if is_one(&d) {

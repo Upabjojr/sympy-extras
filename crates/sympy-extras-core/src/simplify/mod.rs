@@ -1,5 +1,6 @@
 //! Port of `sympy_extras/simplify`, the parts on the core so far.
 
+pub mod fu;
 pub mod gammasimp;
 pub mod powsimp;
 pub mod radsimp;

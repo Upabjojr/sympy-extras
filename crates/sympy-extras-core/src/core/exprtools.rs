@@ -760,3 +760,263 @@ mod tests {
         );
     }
 }
+
+/// SymPy's `Factors` of an expression with any exponents: `{base:
+/// exponent}` in the order of first occurrence, `I` counted, rationals
+/// split into numerator and denominator (`ExprFactors`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExprFactors {
+    pub factors: Vec<(Basic, Basic)>,
+}
+
+fn ef_get<'a>(factors: &'a [(Basic, Basic)], k: &Basic) -> Option<&'a Basic> {
+    factors.iter().find(|(f, _)| f == k).map(|(_, e)| e)
+}
+
+fn ef_set(factors: &mut Vec<(Basic, Basic)>, k: Basic, v: Basic) {
+    match factors.iter().position(|(f, _)| *f == k) {
+        Some(i) => factors[i].1 = v,
+        None => factors.push((k, v)),
+    }
+}
+
+fn ef_del(factors: &mut Vec<(Basic, Basic)>, k: &Basic) {
+    factors.retain(|(f, _)| f != k);
+}
+
+fn is_number_zero(e: &Basic) -> bool {
+    e.is_number_class() && *e == Basic::zero()
+}
+
+impl ExprFactors {
+    pub fn new(factors: Vec<(Basic, Basic)>) -> ExprFactors {
+        ExprFactors { factors }
+    }
+
+    /// The factors of an expression (`ExprFactors.of`).
+    pub fn of(e: &Basic) -> PolyResult<ExprFactors> {
+        use super::assumptions::Predicate;
+        if e.is_number_class() {
+            return Self::of_number(e);
+        }
+        if e.args().is_empty() {
+            return Ok(ExprFactors::new(vec![(e.clone(), Basic::one())]));
+        }
+        let all: Vec<Basic> = super::expr::factors_of(e);
+        let commutative: Vec<Basic> = all
+            .iter()
+            .filter(|f| !super::expr::is_false(f, Predicate::commutative))
+            .cloned()
+            .collect();
+        let noncommutative: Vec<Basic> = all
+            .iter()
+            .filter(|f| super::expr::is_false(f, Predicate::commutative))
+            .cloned()
+            .collect();
+        let unit: Basic = Basic::imaginary_unit();
+        let units: i64 = commutative.iter().filter(|f| **f == unit).count() as i64;
+        let rest: Vec<Basic> = commutative.into_iter().filter(|f| *f != unit).collect();
+        let mut powers: Vec<(Basic, Basic)> = match rest.len() {
+            0 => Vec::new(),
+            1 => super::expr::as_powers_dict(&rest[0])?,
+            _ => super::expr::as_powers_dict(&super::mul::raw_mul(rest))?,
+        };
+        let keys: Vec<Basic> = powers.iter().map(|(k, _)| k.clone()).collect();
+        for f in keys {
+            let Some(v) = f
+                .as_rational()
+                .filter(|v| f.is_rational_class() && !v.is_int())
+                .cloned()
+            else {
+                continue;
+            };
+            let ex: Basic = ef_get(&powers, &f).expect("present").clone();
+            let (p, q) = (Basic::integer(numer(&v)), Basic::integer(denom(&v)));
+            let pv: Basic = super::add::add(&[ef_get(&powers, &p).cloned().unwrap_or_else(Basic::zero), ex.clone()])?;
+            ef_set(&mut powers, p, pv);
+            let qv: Basic = super::add::add(&[
+                ef_get(&powers, &q).cloned().unwrap_or_else(Basic::zero),
+                super::mul::neg(&ex)?,
+            ])?;
+            ef_set(&mut powers, q, qv);
+            ef_del(&mut powers, &f);
+        }
+        if units != 0 {
+            let v: Basic = super::add::add(&[
+                ef_get(&powers, &unit).cloned().unwrap_or_else(Basic::zero),
+                Basic::int(units),
+            ])?;
+            ef_set(&mut powers, unit, v);
+        }
+        if !noncommutative.is_empty() {
+            ef_set(&mut powers, super::mul::raw_mul(noncommutative), Basic::one());
+        }
+        Ok(ExprFactors::new(powers))
+    }
+
+    fn of_number(n: &Basic) -> PolyResult<ExprFactors> {
+        if *n == Basic::zero() {
+            return Ok(ExprFactors::new(vec![(Basic::zero(), Basic::one())]));
+        }
+        if *n == Basic::one() {
+            return Ok(ExprFactors::new(vec![]));
+        }
+        let mut result: Vec<(Basic, Basic)> = Vec::new();
+        let mut value: Basic = n.clone();
+        if super::expr::is_true(&value, super::assumptions::Predicate::negative) {
+            result.push((Basic::negative_one(), Basic::one()));
+            let negated: Basic = super::mul::neg(&value)?;
+            if negated.is_number_class() {
+                value = negated;
+            }
+        }
+        if !(super::expr::is_integer_class(&value) && value == Basic::one()) {
+            match value.as_rational().filter(|v| value.is_rational_class() && !v.is_int()) {
+                Some(v) => {
+                    if !numer(v).is_one() {
+                        result.push((Basic::integer(numer(v)), Basic::one()));
+                    }
+                    result.push((Basic::integer(denom(v)), Basic::negative_one()));
+                }
+                None => result.push((value, Basic::one())),
+            }
+        }
+        Ok(ExprFactors::new(result))
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.factors.len() == 1 && ef_get(&self.factors, &Basic::zero()).is_some()
+    }
+
+    pub fn is_one(&self) -> bool {
+        self.factors.is_empty()
+    }
+
+    pub fn contains(&self, k: &Basic) -> bool {
+        ef_get(&self.factors, k).is_some()
+    }
+
+    pub fn as_expr(&self) -> PolyResult<Basic> {
+        let mut args: Vec<Basic> = Vec::new();
+        for (factor, exponent) in &self.factors {
+            if *exponent != Basic::one() {
+                if super::expr::is_integer_class(exponent) {
+                    let (b, e) = super::expr::as_base_exp(factor)?;
+                    args.push(super::power::pow(&b, &super::mul::keep_coeff(exponent, &e)?)?);
+                } else {
+                    args.push(super::power::pow(factor, exponent)?);
+                }
+            } else {
+                args.push(factor.clone());
+            }
+        }
+        super::mul::mul(&args)
+    }
+
+    /// `self` and `other` with the common factors cancelled (`normal`).
+    pub fn normal(&self, other: &ExprFactors) -> PolyResult<(ExprFactors, ExprFactors)> {
+        use super::assumptions::Predicate;
+        let mut mine: Vec<(Basic, Basic)> = self.factors.clone();
+        let mut theirs: Vec<(Basic, Basic)> = other.factors.clone();
+        for (factor, self_exp) in &self.factors {
+            let Some(other_exp) = ef_get(&other.factors, factor).cloned() else {
+                continue;
+            };
+            let exp: Basic = super::add::sub(self_exp, &other_exp)?;
+            if is_number_zero(&exp) {
+                ef_del(&mut mine, factor);
+                ef_del(&mut theirs, factor);
+            } else if exp.is_number_class() {
+                if super::expr::is_true(&exp, Predicate::positive) {
+                    ef_set(&mut mine, factor.clone(), exp);
+                    ef_del(&mut theirs, factor);
+                } else {
+                    ef_del(&mut mine, factor);
+                    ef_set(&mut theirs, factor.clone(), super::mul::neg(&exp)?);
+                }
+            } else if let Some(r) = super::expr::extract_additively(self_exp, &other_exp)? {
+                if !is_number_zero(&r) {
+                    ef_set(&mut mine, factor.clone(), r);
+                    ef_del(&mut theirs, factor);
+                } else {
+                    ef_del(&mut mine, factor);
+                    ef_del(&mut theirs, factor);
+                }
+            } else {
+                let mut other_exp: Basic = other_exp;
+                let (sc, sa) = super::expr::as_coeff_add(self_exp);
+                if !is_number_zero(&sc) {
+                    let (oc, oa) = super::expr::as_coeff_add(&other_exp);
+                    let diff: Basic = super::add::sub(&sc, &oc)?;
+                    let current = |m: &Vec<(Basic, Basic)>| ef_get(m, factor).cloned().expect("present");
+                    if super::expr::is_true(&diff, Predicate::positive) {
+                        let v: Basic = super::add::sub(&current(&mine), &oc)?;
+                        ef_set(&mut mine, factor.clone(), v);
+                        other_exp = oa;
+                    } else if super::expr::is_true(&diff, Predicate::negative) {
+                        let v: Basic = super::add::sub(&current(&mine), &sc)?;
+                        ef_set(&mut mine, factor.clone(), v);
+                        let w: Basic = super::add::sub(&current(&theirs), &sc)?;
+                        ef_set(&mut theirs, factor.clone(), w);
+                        other_exp = super::add::sub(&oa, &diff)?;
+                    } else {
+                        ef_set(&mut mine, factor.clone(), sa);
+                        other_exp = oa;
+                    }
+                }
+                if !is_number_zero(&other_exp) {
+                    ef_set(&mut theirs, factor.clone(), other_exp);
+                } else {
+                    ef_del(&mut theirs, factor);
+                }
+            }
+        }
+        Ok((ExprFactors::new(mine), ExprFactors::new(theirs)))
+    }
+
+    /// SymPy's `Factors.quo` (`quo`).
+    pub fn quo(&self, other: &ExprFactors) -> PolyResult<ExprFactors> {
+        use super::assumptions::Predicate;
+        let mut quotient: Vec<(Basic, Basic)> = self.factors.clone();
+        for (factor, exp) in &other.factors {
+            let Some(current) = ef_get(&quotient, factor).cloned() else {
+                continue;
+            };
+            let d: Basic = super::add::sub(&current, exp)?;
+            if d.is_number_class() {
+                if !super::expr::is_true(&d, Predicate::positive) {
+                    ef_del(&mut quotient, factor);
+                }
+                if !super::expr::is_true(&d, Predicate::negative) && !is_number_zero(&d) {
+                    ef_set(&mut quotient, factor.clone(), d);
+                }
+            } else if let Some(r) = super::expr::extract_additively(&current, exp)? {
+                if is_number_zero(&r) {
+                    ef_del(&mut quotient, factor);
+                } else {
+                    ef_set(&mut quotient, factor.clone(), r);
+                }
+            }
+        }
+        Ok(ExprFactors::new(quotient))
+    }
+
+    /// The smaller exponents where their difference has a known sign
+    /// (`gcd`).
+    pub fn gcd(&self, other: &ExprFactors) -> PolyResult<ExprFactors> {
+        if other.is_zero() {
+            return Ok(self.clone());
+        }
+        let mut result: Vec<(Basic, Basic)> = Vec::new();
+        for (factor, exp) in &self.factors {
+            if let Some(o) = ef_get(&other.factors, factor) {
+                match super::expr::is(&super::add::sub(exp, o)?, super::assumptions::Predicate::negative) {
+                    Some(true) => result.push((factor.clone(), exp.clone())),
+                    Some(false) => result.push((factor.clone(), o.clone())),
+                    None => {}
+                }
+            }
+        }
+        Ok(ExprFactors::new(result))
+    }
+}
