@@ -12,6 +12,7 @@ pub mod hyper;
 pub mod hyperrep;
 pub mod mathieu_functions;
 pub mod polynomials;
+pub mod rewrites_bessel;
 pub mod singularity_functions;
 pub mod spherical_harmonics;
 pub mod tensor_functions;

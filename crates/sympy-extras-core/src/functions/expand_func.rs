@@ -625,7 +625,7 @@ fn bessel_expand(node: &Basic) -> PolyResult<Basic> {
 // PORTED FROM SYMPY: sympy/functions/special/spherical_harmonics.py:Ynm._eval_expand_func
 /// `Ynm(n, m, theta, phi)` in terms of the associated Legendre function of
 /// `cos(theta)`, `sin(theta)` for `sqrt(1 - cos(theta)**2)`.
-fn ynm_rule(node: &Basic) -> PolyResult<Option<Basic>> {
+pub(crate) fn ynm_rule(node: &Basic) -> PolyResult<Option<Basic>> {
     use crate::functions::combinatorial::factorials::factorial;
     use crate::functions::elementary::exponential::exp;
     use crate::functions::elementary::trigonometric::{cos, sin};

@@ -372,7 +372,10 @@ fn has_pattern(e: &Basic, p: Function) -> bool {
 /// `e` with its nodes (the applications of `patterns`, all when empty)
 /// rewritten in terms of `target`, SymPy's name of it (`rewrite`).
 pub fn rewrite(e: &Basic, patterns: &[Function], target: &str, hints: &RewriteHints) -> PolyResult<Basic> {
-    if !PORTED_TARGETS.contains(&target) {
+    if !PORTED_TARGETS.contains(&target)
+        && !crate::functions::special::rewrites_bessel::TARGETS.contains(&target)
+        && target != "polynomial"
+    {
         return Err(not_ported(&format!("rewrite in terms of {}", target)));
     }
     let mut kept: Vec<Function> = Vec::new();
@@ -396,7 +399,11 @@ fn rewrite_rec(e: &Basic, patterns: &[Function], target: &str, hints: &RewriteHi
             Head::Function(f) => rule_for(*f, target),
             _ => None,
         }
-        .or_else(|| crate::functions::elementary::rewrites::rule_for(e, target));
+        .or_else(|| crate::functions::elementary::rewrites::rule_for(e, target))
+        .or_else(|| match e.head() {
+            Head::Function(f) => crate::functions::special::rewrites_bessel::rule_for(*f, target),
+            _ => None,
+        });
         if let Some(rule) = rule {
             if let Some(rewritten) = rule(e, &args, hints)? {
                 return Ok(rewritten);
