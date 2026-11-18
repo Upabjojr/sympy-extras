@@ -1,5 +1,6 @@
 """``rewrite`` of the elementary functions against its Rust port, for the
-targets ``exp``, ``cos``, ``sin`` and ``log``: random expressions of the
+targets ``exp``, ``cos``, ``sin``, ``log``, ``tan``, ``cot``, ``sec``, ``csc``,
+``sincos`` and the hyperbolic functions: random expressions of the
 trigonometric, hyperbolic and inverse functions, exponentials, powers
 and ``E``, with and without patterns."""
 
@@ -35,7 +36,15 @@ def expression(rng: random.Random, depth: int) -> Any:
             continue
 
 
-@pytest.mark.parametrize("seed", range(50))
+def all_targets() -> list[tuple[str, Any]]:
+    from sympy_extras.functions.elementary import hyperbolic as h, trigonometric as t
+    from sympy_extras.functions.elementary.exponential import Exp, Log
+    return [('exp', Exp), ('cos', t.Cos), ('sin', t.Sin), ('log', Log), ('tan', t.Tan), ('cot', t.Cot),
+            ('sec', t.Sec), ('csc', t.Csc), ('sincos', 'sincos'), ('sinh', h.Sinh), ('cosh', h.Cosh),
+            ('tanh', h.Tanh), ('coth', h.Coth), ('csch', h.Csch), ('sech', h.Sech)]
+
+
+@pytest.mark.parametrize("seed", range(80))
 def test_rewrite_elementary(rust: Any, seed: int) -> None:
     from sympy_extras.core import Integer, Symbol
     from sympy_extras.functions import cos, cosh, exp, sin, tan
@@ -45,7 +54,7 @@ def test_rewrite_elementary(rust: Any, seed: int) -> None:
     rc = load("sympy_extras_rs.core")
     rng = random.Random(stable_seed("rewriting elementary", seed))
     x = Symbol('x')
-    targets = [('exp', Exp), ('cos', Cos), ('sin', Sin), ('log', Log)]
+    targets = all_targets()
     samples = [(Sin, sin(x)), (Cos, cos(x)), (Tan, tan(x)), (Cosh, cosh(x)), (Exp, exp(x))]
     for _ in range(4):
         e = expression(rng, rng.randint(1, 2))

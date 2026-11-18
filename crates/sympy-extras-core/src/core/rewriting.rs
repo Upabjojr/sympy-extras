@@ -44,7 +44,7 @@ impl Default for RewriteHints {
 pub type Rule = fn(&Basic, &[Basic], &RewriteHints) -> PolyResult<Option<Basic>>;
 
 /// The targets whose rules are ported.
-const PORTED_TARGETS: [&str; 9] = [
+const PORTED_TARGETS: [&str; 20] = [
     "gamma",
     "factorial",
     "binomial",
@@ -54,6 +54,17 @@ const PORTED_TARGETS: [&str; 9] = [
     "cos",
     "sin",
     "log",
+    "tan",
+    "cot",
+    "sec",
+    "csc",
+    "sincos",
+    "sinh",
+    "cosh",
+    "tanh",
+    "coth",
+    "csch",
+    "sech",
 ];
 
 fn one() -> Basic {
