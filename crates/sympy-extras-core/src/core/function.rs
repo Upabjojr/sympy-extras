@@ -1065,40 +1065,6 @@ pub fn doit(e: &Basic) -> PolyResult<Basic> {
     rebuild_evaluated(e, args)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::basic::UndefinedFunction;
-    use crate::core::printing::sstr;
-    use crate::core::Symbol;
-    use std::sync::Arc;
-
-    #[test]
-    fn docstring_examples() {
-        let x: Basic = Symbol::new("x", &[]).0;
-        let show = |e: PolyResult<Basic>| sstr(&e.unwrap());
-        let cube: Basic = pow(&x, &Basic::int(3)).unwrap();
-        assert_eq!(show(diff(&cube, &[(x.clone(), 1)])), "3*x**2");
-        assert_eq!(
-            show(diff(&pow(&x, &Basic::half()).unwrap(), &[(x.clone(), 1)])),
-            "1/(2*sqrt(x))"
-        );
-        let f = Arc::new(UndefinedFunction::new("f", None, &[]));
-        let fx: Basic = f.apply(vec![x.clone()]).unwrap();
-        assert_eq!(
-            show(diff(&mul(&[x.clone(), fx]).unwrap(), &[(x.clone(), 1)])),
-            "x*Derivative(f(x), x) + f(x)"
-        );
-        let fx2: Basic = f.apply(vec![pow(&x, &Basic::int(2)).unwrap()]).unwrap();
-        assert_eq!(
-            show(diff(&fx2, &[(x.clone(), 1)])),
-            "2*x*Subs(Derivative(f(_xi_1), _xi_1), _xi_1, x**2)"
-        );
-        let two_x: Basic = pow(&Basic::int(2), &x).unwrap();
-        assert_eq!(show(diff(&two_x, &[(x.clone(), 1)])), "2**x*log(2)");
-    }
-}
-
 // ---------------------------------------------------------------------
 // count_ops
 
@@ -1276,4 +1242,38 @@ pub fn count_ops_visual(e: &Basic) -> PolyResult<Basic> {
         terms.push(mul(&[Basic::integer(n.into()), super::Symbol::new(&name, &[]).0])?);
     }
     add(&terms)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::basic::UndefinedFunction;
+    use crate::core::printing::sstr;
+    use crate::core::Symbol;
+    use std::sync::Arc;
+
+    #[test]
+    fn docstring_examples() {
+        let x: Basic = Symbol::new("x", &[]).0;
+        let show = |e: PolyResult<Basic>| sstr(&e.unwrap());
+        let cube: Basic = pow(&x, &Basic::int(3)).unwrap();
+        assert_eq!(show(diff(&cube, &[(x.clone(), 1)])), "3*x**2");
+        assert_eq!(
+            show(diff(&pow(&x, &Basic::half()).unwrap(), &[(x.clone(), 1)])),
+            "1/(2*sqrt(x))"
+        );
+        let f = Arc::new(UndefinedFunction::new("f", None, &[]));
+        let fx: Basic = f.apply(vec![x.clone()]).unwrap();
+        assert_eq!(
+            show(diff(&mul(&[x.clone(), fx]).unwrap(), &[(x.clone(), 1)])),
+            "x*Derivative(f(x), x) + f(x)"
+        );
+        let fx2: Basic = f.apply(vec![pow(&x, &Basic::int(2)).unwrap()]).unwrap();
+        assert_eq!(
+            show(diff(&fx2, &[(x.clone(), 1)])),
+            "2*x*Subs(Derivative(f(_xi_1), _xi_1), _xi_1, x**2)"
+        );
+        let two_x: Basic = pow(&Basic::int(2), &x).unwrap();
+        assert_eq!(show(diff(&two_x, &[(x.clone(), 1)])), "2**x*log(2)");
+    }
 }
