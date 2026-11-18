@@ -2901,6 +2901,64 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "int_linear" => {
+            // op (hnf, diophantine, hilbert, minimal, cooper, presburger, is_presburger) and its
+            // arguments; matrices as tuples of rows; None as an empty Tuple
+            use sympy_extras_core::assumptions::quantifiers::QuantifierKind;
+            use sympy_extras_core::solvers::integers as zi;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let int_of = |b: &Basic| b.as_rational().map(|v| v.numerator().clone()).unwrap_or_default();
+            let vector_of = |b: &Basic| -> zi::IntVector { b.args().iter().map(int_of).collect() };
+            let matrix_of = |b: &Basic| -> zi::IntMatrix { b.args().iter().map(vector_of).collect() };
+            let shown_vector = |v: &zi::IntVector| tuple(v.iter().map(|c| Basic::integer(c.clone())).collect());
+            let shown_matrix = |m: &zi::IntMatrix| tuple(m.iter().map(shown_vector).collect());
+            match a[0].to_string().as_str() {
+                "hnf" => {
+                    let (h, u) = zi::hermite_normal_form_with_transform(&matrix_of(&a[1]));
+                    tuple(vec![shown_matrix(&h), shown_matrix(&u)])
+                }
+                "diophantine" => match zi::linear_diophantine_system(a[1].args(), a[2].args()).map_err(e)? {
+                    None => tuple(vec![]),
+                    Some((values, parameters)) => tuple(vec![tuple(values), tuple(parameters)]),
+                },
+                "hilbert" => {
+                    // the completion beyond its limit is Python's RuntimeError
+                    let basis = zi::hilbert_basis(&matrix_of(&a[1]), int_of(&a[2]).try_into().unwrap_or(10000))
+                        .map_err(|err| match err {
+                            sympy_extras_core::error::PolyError::Arithmetic(m) => {
+                                pyo3::exceptions::PyRuntimeError::new_err(m)
+                            }
+                            other => e(other),
+                        })?;
+                    shown_matrix(&basis)
+                }
+                "minimal" => {
+                    let (p, h) =
+                        zi::minimal_nonnegative_solutions(&matrix_of(&a[1]), &vector_of(&a[2]), 10000).map_err(e)?;
+                    tuple(vec![shown_matrix(&p), shown_matrix(&h)])
+                }
+                "cooper" => zi::cooper(&a[1], &a[2]).map_err(e)?,
+                "presburger" => {
+                    let prefix: Vec<(QuantifierKind, Basic)> = a[2]
+                        .args()
+                        .iter()
+                        .map(|q| {
+                            let k = if q.args()[0].to_string() == "exists" {
+                                QuantifierKind::Exists
+                            } else {
+                                QuantifierKind::ForAll
+                            };
+                            (k, q.args()[1].clone())
+                        })
+                        .collect();
+                    zi::presburger_quantifier_elimination(&a[1], &prefix).map_err(e)?
+                }
+                "is_presburger" => {
+                    sympy_extras_core::core::logic::boolean(zi::is_presburger(&a[1], a[2].args()).map_err(e)?)
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "virtual_sub" => {
             // op (linear, quadratic, nnf, with_sides, linear_qe, qe), formula, [x | Tuple of
             // Tuple(exists/forall, variable)] -> formula, or Tuple(formula, Tuple(remaining prefix))
