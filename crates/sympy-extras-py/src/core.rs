@@ -2836,6 +2836,44 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "rosenfeld" => {
+            // Tuple(equations), Tuple(functions), Tuple(variables) (empty: the default),
+            // Tuple(blocks) (empty: orderly), Tuple(inequations), Tuple(probes) ->
+            // Tuple(Tuple of Tuple(equations, inequations, leaders, saturation), Tuple(contains of
+            // each probe), Tuple(remainder of each probe by each component))
+            use sympy_extras_core::polys::differential::rosenfeld_groebner::rosenfeld_groebner;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let variables: Option<&[Basic]> = if a[2].args().is_empty() {
+                None
+            } else {
+                Some(a[2].args())
+            };
+            let blocks: Vec<Vec<Basic>> = a[3].args().iter().map(|b| b.args().to_vec()).collect();
+            let ranking: Option<&[Vec<Basic>]> = if blocks.is_empty() { None } else { Some(&blocks) };
+            let ideal = rosenfeld_groebner(a[0].args(), a[1].args(), variables, ranking, a[4].args()).map_err(e)?;
+            let mut components: Vec<Basic> = Vec::new();
+            for c in &ideal.components {
+                components.push(tuple(vec![
+                    tuple(c.equations().map_err(e)?),
+                    tuple(c.inequations().map_err(e)?),
+                    tuple(c.leaders().map_err(e)?),
+                    tuple(c.saturation().map_err(e)?),
+                ]));
+            }
+            let mut contains: Vec<Basic> = Vec::new();
+            let mut remainders: Vec<Basic> = Vec::new();
+            for probe in a[5].args() {
+                contains.push(sympy_extras_core::core::logic::boolean(
+                    ideal.contains(probe).map_err(e)?,
+                ));
+                let mut row: Vec<Basic> = Vec::new();
+                for c in &ideal.components {
+                    row.push(c.remainder(probe).map_err(e)?);
+                }
+                remainders.push(tuple(row));
+            }
+            tuple(vec![tuple(components), tuple(contains), tuple(remainders)])
+        }
         "complex_reduction" => {
             // cgs: op, Tuple(polys), Tuple(variables), Tuple(parameters) -> Tuple of
             //   Tuple(Tuple(equations), Tuple(nonzero), Tuple(basis));

@@ -4,3 +4,4 @@
 pub mod janet;
 pub mod polynomial;
 pub mod ring;
+pub mod rosenfeld_groebner;

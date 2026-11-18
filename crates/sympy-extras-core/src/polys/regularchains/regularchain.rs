@@ -246,6 +246,38 @@ impl RegularChain {
         self.chain.elements().iter().map(|p| self.expr(p)).collect()
     }
 
+    /// The same chain in a ring with more variables, which are free; the
+    /// variables of the chain must come in the same order among the new
+    /// ones (`with_symbols`).
+    pub fn with_symbols(&self, symbols: &[Basic]) -> PolyResult<RegularChain> {
+        for (i, s) in symbols.iter().enumerate() {
+            if symbols[..i].contains(s) {
+                return Err(value_error("repeated variables".to_string()));
+            }
+        }
+        let kept: Vec<Basic> = symbols.iter().filter(|s| self.symbols.contains(s)).cloned().collect();
+        if kept != self.symbols {
+            let names: Vec<String> = self.symbols.iter().map(|s| s.to_string()).collect();
+            return Err(value_error(format!(
+                "the variables ({}) must be kept, in this order",
+                names.join(", ")
+            )));
+        }
+        let ring = ring_of(symbols)?;
+        let decomposer: Decomposer = Decomposer::new(Arc::clone(&ring), None);
+        let mut polys: Vec<ZPoly> = Vec::new();
+        for p in self.polys()? {
+            polys.push(polynomial(&ring, symbols, &p)?);
+        }
+        let chain: Chain = decomposer.empty.union(&polys);
+        Ok(RegularChain {
+            symbols: symbols.to_vec(),
+            ring,
+            decomposer: Rc::new(RefCell::new(decomposer)),
+            chain,
+        })
+    }
+
     /// The variables of the ring of the chain.
     pub fn symbols(&self) -> &[Basic] {
         &self.symbols
