@@ -134,3 +134,42 @@ def test_edge_cases(rust: Any) -> None:
     ]
     for e, other, gens in cases:
         check(rc, e, other, gens)
+
+
+def random_fraction_polynomial(rng: random.Random, variables: list[Any], params: list[Any]) -> Any:
+    """A polynomial whose coefficients are rational functions of the
+    parameters (the domains ZZ(a, b), QQ(a, b))."""
+    from sympy_extras.core import Integer, Rational
+    from sympy_extras.core.add import add
+    from sympy_extras.core.mul import mul
+    from sympy_extras.core.power import pow
+    terms = []
+    for _ in range(rng.randint(1, 3)):
+        c: Any = rng.choice([Integer(rng.randint(-4, 4)), Rational(rng.randint(-3, 3), rng.randint(1, 3))])
+        if rng.random() < 0.6:
+            p = rng.choice(params)
+            den = rng.choice([p, add(p, Integer(1)), mul(Integer(2), p), add(mul(p, p), Integer(-1))])
+            c = mul(c, pow(den, Integer(-1)))
+        if rng.random() < 0.4:
+            c = mul(c, rng.choice(params))
+        factors = [c] + [pow(v, Integer(rng.randint(0, 2))) for v in variables if rng.random() < 0.7]
+        terms.append(mul(*factors))
+    return add(*terms)
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_fraction_fields(rust: Any, seed: int) -> None:
+    from sympy_extras.core import Symbol
+    from sympy_extras.core.mul import mul
+    rc = load("sympy_extras_rs.core")
+    x, y, a, b = [Symbol(c) for c in 'xyab']
+    rng = random.Random(stable_seed("poly fraction", seed))
+    for _ in range(4):
+        variables = [x, y][:rng.choice([1, 1, 2])]
+        params = [a, b][:rng.choice([1, 2])]
+        common = random_fraction_polynomial(rng, variables, params)
+        e = (mul(random_fraction_polynomial(rng, variables, params), common) if rng.random() < 0.5
+             else random_fraction_polynomial(rng, variables, params))
+        other = rng.choice([mul(random_fraction_polynomial(rng, variables, params), common),
+                            random_polynomial(rng, variables, params)])
+        check(rc, e, other, variables)

@@ -337,24 +337,50 @@ fn decompose_without_gens(e: &Basic) -> PolyResult<(Decomposed, Vec<Basic>)> {
 }
 
 /// SymPy's domain of a `Poly`, restricted to `ZZ`, `QQ`, `ZZ[params]`,
-/// `QQ[params]` (`_Domain`).
+/// `QQ[params]` and the fraction fields `ZZ(params)`, `QQ(params)`
+/// (`_Domain`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolyDomain {
     pub integral: bool,
     pub params: Vec<Basic>,
+    /// a fraction field (only with parameters)
+    pub fraction: bool,
 }
 
 impl PolyDomain {
+    pub fn new(integral: bool, params: Vec<Basic>, fraction: bool) -> PolyDomain {
+        let fraction: bool = fraction && !params.is_empty();
+        PolyDomain {
+            integral,
+            params,
+            fraction,
+        }
+    }
+
     pub fn name(&self) -> String {
         let ground: &str = if self.integral { "ZZ" } else { "QQ" };
         if self.params.is_empty() {
             return ground.to_string();
         }
         let names: Vec<String> = self.params.iter().map(|p| p.to_string()).collect();
-        format!("{}[{}]", ground, names.join(","))
+        if self.fraction {
+            format!("{}({})", ground, names.join(","))
+        } else {
+            format!("{}[{}]", ground, names.join(","))
+        }
+    }
+
+    /// The fraction field of a polynomial domain (`ZZ[y]` to `ZZ(y)`; `ZZ`
+    /// to `QQ`), the domain itself for a field (`to_field`).
+    pub fn to_field(&self) -> PolyDomain {
+        if self.params.is_empty() {
+            return PolyDomain::new(false, Vec::new(), false);
+        }
+        PolyDomain::new(self.integral, self.params.clone(), true)
     }
 }
 
+// PORTED FROM SYMPY: sympy/polys/domains/domain.py:Domain.unify_composite (SymPy 1.14)
 fn unify_domains(a: &PolyDomain, b: &PolyDomain) -> PolyDomain {
     let mut all: Vec<Basic> = a.params.clone();
     for p in &b.params {
@@ -363,10 +389,152 @@ fn unify_domains(a: &PolyDomain, b: &PolyDomain) -> PolyDomain {
         }
     }
     let params: Vec<Basic> = sort_gens(&all).into_iter().filter(|p| p.is_symbol()).collect();
-    PolyDomain {
-        integral: a.integral && b.integral,
-        params,
+    let mut integral: bool = a.integral && b.integral;
+    let other_params: &Vec<Basic> = if b.fraction { &a.params } else { &b.params };
+    if a.fraction != b.fraction && !other_params.is_empty() && !(!a.integral && !b.integral) {
+        // ZZ[x] and QQ(x), QQ[x] and ZZ(x): ZZ(x)
+        integral = true;
     }
+    PolyDomain::new(integral, params, a.fraction || b.fraction)
+}
+
+type ParamTerms = BTreeMap<Monomial, Rat>;
+
+/// The numerator and the denominator of a coefficient as polynomials in
+/// the parameters named `names` (`as_numer_denom`), `None` when they are
+/// not polynomials (`_coefficient_dicts`).
+fn coefficient_dicts(c: &Basic, names: &[String]) -> PolyResult<Option<(ParamTerms, ParamTerms)>> {
+    let (n, d) = crate::core::expr::as_numer_denom(c)?;
+    let numer = match crate::polys::polyutils::dict_from_expr(&expand_default(&n)?, names, &QQ) {
+        Ok(t) => t,
+        Err(_) => return Ok(None),
+    };
+    let denom = match crate::polys::polyutils::dict_from_expr(&expand_default(&d)?, names, &QQ) {
+        Ok(t) => t,
+        Err(_) => return Ok(None),
+    };
+    Ok(Some((numer.into_iter().collect(), denom.into_iter().collect())))
+}
+
+fn lcm_of_denominators<'a>(values: impl Iterator<Item = &'a Rat>) -> Int {
+    let mut result: Int = Int::ONE;
+    for c in values {
+        let d: Int = denom(c);
+        result = &result * &d / gcd(&result, &d);
+    }
+    result
+}
+
+fn integer_ring(names: Vec<String>) -> SparsePolynomialRing<IntegerRing> {
+    SparsePolynomialRing::sympy(ZZ, names)
+}
+
+fn to_integer_terms(terms: &Terms<Rat>, scale: &Int) -> Terms<Int> {
+    terms
+        .iter()
+        .map(|(m, c)| (m.clone(), numer(&(c * &rat_from_int(scale)))))
+        .collect()
+}
+
+fn to_rational_terms(terms: &Terms<Int>) -> Terms<Rat> {
+    terms.iter().map(|(m, c)| (m.clone(), rat_from_int(c))).collect()
+}
+
+// PORTED FROM SYMPY: sympy/polys/rings.py:PolyElement.cancel (SymPy 1.14)
+/// `rep/den` in lowest terms (`den` free of the generators): both with
+/// integer coefficients, without a common factor in `ZZ[params]`, the
+/// leading coefficient of `den` positive (`_reduce_fraction`).
+fn reduce_fraction(
+    rep: &PolyElement<RationalField>,
+    den: &PolyElement<RationalField>,
+) -> PolyResult<(PolyElement<RationalField>, PolyElement<RationalField>)> {
+    let ring = rep.ring.clone();
+    if den.is_zero() {
+        return Err(crate::error::zero_division("a zero denominator"));
+    }
+    if rep.is_zero() {
+        return Ok((ring.zero(), ring.one()));
+    }
+    let scale: Int = lcm_of_denominators(rep.terms.values().chain(den.terms.values()));
+    let numer_terms: Terms<Int> = to_integer_terms(&rep.terms, &scale);
+    let denom_terms: Terms<Int> = to_integer_terms(&den.terms, &scale);
+    if denom_terms.len() == 1 && denom_terms.keys().next().expect("a term").iter().all(|e| *e == 0) {
+        // a number as the denominator: the integer content only
+        let mut common: Int = Int::ZERO;
+        for v in numer_terms.values().chain(denom_terms.values()) {
+            common = gcd(&common, v);
+        }
+        if *denom_terms.values().next().expect("a term") < Int::ZERO {
+            common = -common;
+        }
+        let divide = |t: &Terms<Int>| -> Terms<Rat> {
+            t.iter()
+                .map(|(m, v)| (m.clone(), rat_from_int(&(v / &common))))
+                .collect()
+        };
+        return Ok((
+            ring.from_dict(divide(&numer_terms)),
+            ring.from_dict(divide(&denom_terms)),
+        ));
+    }
+    let z = integer_ring(ring.names.clone());
+    let (p, q) = z.cancel(&z.ring.from_dict(numer_terms), &z.ring.from_dict(denom_terms));
+    Ok((
+        ring.from_dict(to_rational_terms(&p.terms)),
+        ring.from_dict(to_rational_terms(&q.terms)),
+    ))
+}
+
+// PORTED FROM SYMPY: sympy/polys/constructor.py:_construct_composite (SymPy 1.14)
+/// `rep/den` of the coefficients (rational functions of the parameters):
+/// `den` the lcm of their denominators, reduced (`_fraction_from_coefficients`).
+fn fraction_from_coefficients(
+    coefficients: &BTreeMap<Monomial, Basic>,
+    gens: &[Basic],
+    domain: &PolyDomain,
+) -> PolyResult<(PolyElement<RationalField>, PolyElement<RationalField>)> {
+    let names: Vec<String> = domain.params.iter().map(symbol_name).collect();
+    let n: usize = gens.len();
+    let ring = rational_ring(internal_names(n, names.len()));
+    let z = integer_ring(internal_names(0, names.len()));
+    let mut parts: Vec<(Monomial, PolyElement<IntegerRing>, PolyElement<IntegerRing>)> = Vec::new();
+    let mut common: PolyElement<IntegerRing> = z.ring.one();
+    for (m, c) in coefficients {
+        let Some((numer_terms, denom_terms)) = coefficient_dicts(c, &names)? else {
+            return Err(polys_error(
+                PolysErrorKind::CoercionFailed,
+                format!("cannot convert {} into {}", c, domain.name()),
+            ));
+        };
+        if numer_terms.is_empty() {
+            continue;
+        }
+        let scale: Int = lcm_of_denominators(numer_terms.values().chain(denom_terms.values()));
+        let d = z.ring.from_dict(to_integer_terms(&denom_terms, &scale));
+        let numerator = z.ring.from_dict(to_integer_terms(&numer_terms, &scale));
+        common = Domain::lcm(&z, &common, &d);
+        parts.push((m.clone(), numerator, d));
+    }
+    let mut terms: Terms<Rat> = Terms::new();
+    for (m, numerator, d) in parts {
+        for (pm, v) in numerator.mul(&common.exquo(&d)?).terms {
+            let mut key: Monomial = m.clone();
+            key.extend(pm);
+            let total: Rat = terms.remove(&key).unwrap_or(Rat::ZERO) + rat_from_int(&v);
+            terms.insert(key, total);
+        }
+    }
+    terms.retain(|_, v| !v.is_zero());
+    let den_terms: Terms<Rat> = common
+        .terms
+        .iter()
+        .map(|(pm, v)| {
+            let mut key: Monomial = vec![0; n];
+            key.extend(pm.iter().copied());
+            (key, rat_from_int(v))
+        })
+        .collect();
+    reduce_fraction(&ring.from_dict(terms), &ring.from_dict(den_terms))
 }
 
 fn symbol_name(s: &Basic) -> String {
@@ -397,20 +565,25 @@ fn construct_domain(coefficients: &[Basic]) -> PolyResult<PolyDomain> {
     let params: Vec<Basic> = sort_gens(&symbols).into_iter().filter(|p| p.is_symbol()).collect();
     let names: Vec<String> = params.iter().map(symbol_name).collect();
     let mut integral: bool = true;
+    let mut polynomial_values: Vec<Rat> = Vec::new();
+    let mut fraction: bool = false;
     for c in coefficients {
-        let values: Vec<Rat> = if !names.is_empty() {
+        if !names.is_empty() {
             match crate::polys::polyutils::dict_from_expr(c, &names, &QQ) {
-                Ok(terms) => terms.into_values().collect(),
+                Ok(terms) => polynomial_values.extend(terms.into_values()),
                 Err(_) => {
-                    return Err(polys_error(
-                        PolysErrorKind::CoercionFailed,
-                        format!("the domain of {} (EX or a fraction field) is not ported yet", c),
-                    ))
+                    if coefficient_dicts(c, &names)?.is_none() {
+                        return Err(polys_error(
+                            PolysErrorKind::CoercionFailed,
+                            format!("the domain of {} (EX) is not ported yet", c),
+                        ));
+                    }
+                    fraction = true;
                 }
             }
         } else {
             match c.as_rational() {
-                Some(v) => vec![v.clone()],
+                Some(v) => polynomial_values.push(v.clone()),
                 None => {
                     return Err(polys_error(
                         PolysErrorKind::CoercionFailed,
@@ -418,12 +591,28 @@ fn construct_domain(coefficients: &[Basic]) -> PolyResult<PolyDomain> {
                     ))
                 }
             }
-        };
-        if values.iter().any(|v| !v.is_int()) {
-            integral = false;
         }
     }
-    Ok(PolyDomain { integral, params })
+    if fraction {
+        // SymPy's _construct_composite: the coefficients of every numerator
+        // and denominator decide between ZZ(params) and QQ(params)
+        for c in coefficients {
+            let Some((n, d)) = coefficient_dicts(c, &names)? else {
+                return Err(polys_error(
+                    PolysErrorKind::CoercionFailed,
+                    format!("the domain of {} (EX) is not ported yet", c),
+                ));
+            };
+            if n.values().chain(d.values()).any(|v| !v.is_int()) {
+                integral = false;
+            }
+        }
+        return Ok(PolyDomain::new(integral, params, true));
+    }
+    if polynomial_values.iter().any(|v| !v.is_int()) {
+        integral = false;
+    }
+    Ok(PolyDomain::new(integral, params, false))
 }
 
 fn internal_names(n_gens: usize, n_params: usize) -> Vec<String> {
@@ -490,11 +679,16 @@ fn denominators_lcm(f: &PolyElement<RationalField>) -> Int {
 /// A polynomial in generators with coefficients in `ZZ`, `QQ`,
 /// `ZZ[params]` or `QQ[params]` (SymPy's `Poly`): a sparse polynomial over
 /// `QQ` in the generators followed by the parameters.
+///
+/// Over a fraction field the polynomial is `rep/den`: `den` a polynomial
+/// in the parameters, both with integer coefficients, without common
+/// factor and the leading coefficient of `den` positive.
 #[derive(Debug, Clone)]
 pub struct Poly {
     pub rep: PolyElement<RationalField>,
     pub gens: Vec<Basic>,
     pub domain: PolyDomain,
+    pub den: Option<PolyElement<RationalField>>,
 }
 
 impl PartialEq for Poly {
@@ -503,7 +697,22 @@ impl PartialEq for Poly {
             return false;
         }
         if self.domain.params == other.domain.params {
-            return self.rep.terms == other.rep.terms;
+            // one ring: the representations are equal exactly when the
+            // polynomials are (the fractions reduced)
+            if self.den.is_none() && other.den.is_none() {
+                return self.rep.terms == other.rep.terms;
+            }
+            let field = |p: &Poly| -> Option<Poly> {
+                if p.den.is_some() {
+                    Some(p.clone())
+                } else {
+                    p.converted(&p.domain.to_field()).ok()
+                }
+            };
+            return match (field(self), field(other)) {
+                (Some(a), Some(b)) => a.rep.terms == b.rep.terms && a.den().terms == b.den().terms,
+                _ => false,
+            };
         }
         match (self.as_expr(), other.as_expr()) {
             (Ok(a), Ok(b)) => a == b,
@@ -563,12 +772,159 @@ impl Poly {
         }
         let values: Vec<Basic> = coefficients.values().cloned().collect();
         let domain: PolyDomain = construct_domain(&values)?;
+        if domain.fraction {
+            let (rep, den) = fraction_from_coefficients(&coefficients, &generators, &domain)?;
+            return Ok(Poly::new_rep(rep, generators, domain, Some(den)));
+        }
         let rep = rep_from_coefficients(&coefficients, &generators, &domain)?;
-        Ok(Poly {
-            rep,
-            gens: generators,
-            domain,
-        })
+        Ok(Poly::new_rep(rep, generators, domain, None))
+    }
+
+    /// The polynomial of a representation (`_new`); over a fraction field
+    /// `rep/den` (`den` one when it is not given), which must be reduced.
+    pub fn new_rep(
+        rep: PolyElement<RationalField>,
+        gens: Vec<Basic>,
+        domain: PolyDomain,
+        den: Option<PolyElement<RationalField>>,
+    ) -> Poly {
+        let den = if domain.fraction {
+            Some(den.unwrap_or_else(|| rep.ring.one()))
+        } else {
+            None
+        };
+        Poly { rep, gens, domain, den }
+    }
+
+    /// The denominator of the representation (`1` outside the fraction
+    /// fields).
+    pub fn den(&self) -> PolyElement<RationalField> {
+        self.den.clone().unwrap_or_else(|| self.rep.ring.one())
+    }
+
+    /// Whether the domain is a fraction field.
+    pub fn is_fraction_field(&self) -> bool {
+        self.domain.fraction
+    }
+
+    /// `rep/den` reduced, over the fraction field of the domain (or over
+    /// `domain`) (`_fraction`).
+    fn fraction(
+        &self,
+        rep: &PolyElement<RationalField>,
+        den: &PolyElement<RationalField>,
+        domain: Option<&PolyDomain>,
+    ) -> PolyResult<Poly> {
+        let target: PolyDomain = domain.cloned().unwrap_or_else(|| self.domain.to_field());
+        let (p, q) = reduce_fraction(rep, den)?;
+        Ok(Poly::new_rep(p, self.gens.clone(), target, Some(q)))
+    }
+
+    /// `rep` over `ZZ[params]` (`_numerator`).
+    fn numerator(&self) -> Poly {
+        Poly::new_rep(
+            self.rep.clone(),
+            self.gens.clone(),
+            PolyDomain::new(true, self.domain.params.clone(), false),
+            None,
+        )
+    }
+
+    /// The polynomial over `domain`, which must contain its domain
+    /// (`_set_domain`; `CoercionFailed` otherwise).
+    fn set_domain(&self, domain: &PolyDomain) -> PolyResult<Poly> {
+        if *domain == self.domain {
+            return Ok(self.clone());
+        }
+        let own: &PolyDomain = &self.domain;
+        if !own.params.iter().all(|p| domain.params.contains(p))
+            || (own.fraction && !domain.fraction)
+            || (domain.integral && !domain.fraction && !own.integral)
+        {
+            return Err(polys_error(
+                PolysErrorKind::CoercionFailed,
+                format!("cannot convert {} into {}", self.to_str()?, domain.name()),
+            ));
+        }
+        self.converted(domain)
+    }
+
+    /// The terms of a polynomial of the ring which is free of the
+    /// generators, as terms in the parameters (`_param_terms`).
+    fn param_terms(&self, f: &PolyElement<RationalField>) -> ParamTerms {
+        let n: usize = self.gens.len();
+        f.terms.iter().map(|(m, c)| (m[n..].to_vec(), c.clone())).collect()
+    }
+
+    // PORTED FROM SYMPY: sympy/polys/fields.py:FracElement.as_expr (SymPy 1.14)
+    /// `numer/denom` (terms in the parameters) in lowest terms, as SymPy
+    /// writes an element of `ZZ(params)` (`_fraction_expr`).
+    fn fraction_expr(&self, numer_terms: &ParamTerms, denom_terms: &ParamTerms) -> PolyResult<Basic> {
+        if numer_terms.is_empty() {
+            return Ok(Basic::zero());
+        }
+        if denom_terms.len() == 1 {
+            let (m, d) = denom_terms.iter().next().expect("a term");
+            if m.iter().all(|e| *e == 0) && *d == Rat::ONE {
+                return self.coefficient_expr(numer_terms);
+            }
+        }
+        let z = integer_ring(internal_names(0, self.domain.params.len()));
+        let scale: Int = lcm_of_denominators(numer_terms.values().chain(denom_terms.values()));
+        let (p, q) = z.cancel(
+            &z.ring.from_dict(to_integer_terms(numer_terms, &scale)),
+            &z.ring.from_dict(to_integer_terms(denom_terms, &scale)),
+        );
+        let numer_expr: Basic = self.coefficient_expr(&to_rational_terms(&p.terms))?;
+        if z.is_one(&q) {
+            return Ok(numer_expr);
+        }
+        core_mul(&[
+            numer_expr,
+            core_pow(
+                &self.coefficient_expr(&to_rational_terms(&q.terms))?,
+                &Basic::negative_one(),
+            )?,
+        ])
+    }
+
+    /// A rational function of the parameters in lowest terms, as SymPy
+    /// writes the element of the fraction field (`_domain_element_expr`).
+    fn domain_element_expr(&self, e: &Basic) -> PolyResult<Basic> {
+        let names: Vec<String> = self.domain.params.iter().map(symbol_name).collect();
+        match coefficient_dicts(e, &names)? {
+            Some((n, d)) => self.fraction_expr(&n, &d),
+            None => Ok(e.clone()),
+        }
+    }
+
+    /// SymPy's `FracElement.as_expr` of an element in its normal form
+    /// (`_ratio_expr`).
+    fn ratio_expr(&self, numer_terms: &ParamTerms, denom_terms: &ParamTerms) -> PolyResult<Basic> {
+        let numer_expr: Basic = self.coefficient_expr(numer_terms)?;
+        let one: ParamTerms = BTreeMap::from([(vec![0; self.domain.params.len()], Rat::ONE)]);
+        if *denom_terms == one {
+            return Ok(numer_expr);
+        }
+        core_mul(&[
+            numer_expr,
+            core_pow(&self.coefficient_expr(denom_terms)?, &Basic::negative_one())?,
+        ])
+    }
+
+    /// A polynomial in the parameters as one of the ring of `rep`
+    /// (`_embedded`).
+    fn embedded(&self, f: &ParamTerms) -> PolyElement<RationalField> {
+        let n: usize = self.gens.len();
+        self.rep.ring.from_dict(
+            f.iter()
+                .map(|(m, c)| {
+                    let mut key: Monomial = vec![0; n];
+                    key.extend(m.iter().copied());
+                    (key, c.clone())
+                })
+                .collect(),
+        )
     }
 
     /// The polynomial of rational coefficients in `gens` over `ZZ` or `QQ`
@@ -595,29 +951,26 @@ impl Poly {
         values.retain(|_, c| !c.is_zero());
         let integral: bool = values.values().all(|c| c.is_int());
         let ring = rational_ring(internal_names(gens.len(), 0));
-        Ok(Poly {
-            rep: ring.from_dict(values),
-            gens: gens.to_vec(),
-            domain: PolyDomain {
-                integral,
-                params: Vec::new(),
-            },
-        })
+        Ok(Poly::new_rep(
+            ring.from_dict(values),
+            gens.to_vec(),
+            PolyDomain::new(integral, Vec::new(), false),
+            None,
+        ))
     }
 
+    /// A polynomial over the domain of `self` (or its `ZZ`/`QQ` variant);
+    /// over a fraction field the polynomial `rep` itself (`_same_ring`).
     fn same_ring(&self, rep: PolyElement<RationalField>, integral: Option<bool>) -> Poly {
         let domain: PolyDomain = match integral {
             None => self.domain.clone(),
-            Some(i) => PolyDomain {
-                integral: i,
-                params: self.domain.params.clone(),
-            },
+            Some(i) => PolyDomain::new(i, self.domain.params.clone(), self.domain.fraction),
         };
-        Poly {
-            rep,
-            gens: self.gens.clone(),
-            domain,
+        if domain.fraction {
+            let (p, q) = reduce_fraction(&rep, &rep.ring.one()).expect("a nonzero denominator");
+            return Poly::new_rep(p, self.gens.clone(), domain, Some(q));
         }
+        Poly::new_rep(rep, self.gens.clone(), domain, None)
     }
 
     // -- structure
@@ -651,8 +1004,13 @@ impl Poly {
     /// The terms `(monomial, coefficient)` in lex order.
     pub fn terms(&self) -> PolyResult<Vec<(Monomial, Basic)>> {
         let mut result: Vec<(Monomial, Basic)> = Vec::new();
+        let denom_terms: Option<ParamTerms> = self.den.as_ref().map(|d| self.param_terms(d));
         for (m, c) in self.split().iter().rev() {
-            result.push((m.clone(), self.coefficient_expr(c)?));
+            let coefficient: Basic = match &denom_terms {
+                Some(d) => self.fraction_expr(c, d)?,
+                None => self.coefficient_expr(c)?,
+            };
+            result.push((m.clone(), coefficient));
         }
         Ok(result)
     }
@@ -872,54 +1230,91 @@ impl Poly {
             return Ok((self.clone(), other.clone()));
         }
         let domain: PolyDomain = unify_domains(&self.domain, &other.domain);
-        Ok((self.converted(&domain), other.converted(&domain)))
+        Ok((self.converted(&domain)?, other.converted(&domain)?))
     }
 
-    fn converted(&self, domain: &PolyDomain) -> Poly {
+    /// The polynomial over a larger domain (more parameters, `QQ` for
+    /// `ZZ`, the fraction field of a polynomial ring) (`_converted`).
+    fn converted(&self, domain: &PolyDomain) -> PolyResult<Poly> {
         let n: usize = self.gens.len();
-        let ring = rational_ring(internal_names(n, domain.params.len()));
-        let mut terms: Terms<Rat> = Terms::new();
-        for (m, c) in &self.rep.terms {
-            let mut exponents: Vec<u32> = vec![0; domain.params.len()];
-            for (p, k) in self.domain.params.iter().zip(&m[n..]) {
-                let position: usize = domain.params.iter().position(|q| q == p).expect("a parameter");
-                exponents[position] = *k;
-            }
-            let mut key: Monomial = m[..n].to_vec();
-            key.extend(exponents);
-            terms.insert(key, c.clone());
+        let (rep, den) = if domain.params == self.domain.params {
+            (self.rep.clone(), self.den.clone())
+        } else {
+            let ring = rational_ring(internal_names(n, domain.params.len()));
+            let moved = |f: &PolyElement<RationalField>| -> PolyElement<RationalField> {
+                let mut terms: Terms<Rat> = Terms::new();
+                for (m, c) in &f.terms {
+                    let mut exponents: Vec<u32> = vec![0; domain.params.len()];
+                    for (p, k) in self.domain.params.iter().zip(&m[n..]) {
+                        let position: usize = domain.params.iter().position(|q| q == p).expect("a parameter");
+                        exponents[position] = *k;
+                    }
+                    let mut key: Monomial = m[..n].to_vec();
+                    key.extend(exponents);
+                    terms.insert(key, c.clone());
+                }
+                ring.from_dict(terms)
+            };
+            (moved(&self.rep), self.den.as_ref().map(moved))
+        };
+        if !domain.fraction {
+            return Ok(Poly::new_rep(rep, self.gens.clone(), domain.clone(), None));
         }
-        Poly {
-            rep: ring.from_dict(terms),
-            gens: self.gens.clone(),
-            domain: domain.clone(),
+        if den.is_some() {
+            return Ok(Poly::new_rep(rep, self.gens.clone(), domain.clone(), den));
         }
+        let (p, q) = reduce_fraction(&rep, &rep.ring.one())?;
+        Ok(Poly::new_rep(p, self.gens.clone(), domain.clone(), Some(q)))
     }
 
     pub fn neg(&self) -> Poly {
+        if let Some(d) = &self.den {
+            return Poly::new_rep(self.rep.neg(), self.gens.clone(), self.domain.clone(), Some(d.clone()));
+        }
         self.same_ring(self.rep.neg(), None)
     }
 
     pub fn add(&self, other: &Poly) -> PolyResult<Poly> {
         let (a, b) = self.unified(other)?;
+        if let (Some(da), Some(db)) = (&a.den, &b.den) {
+            if da == db {
+                return a.fraction(&a.rep.add(&b.rep), da, None);
+            }
+            return a.fraction(&a.rep.mul(db).add(&b.rep.mul(da)), &da.mul(db), None);
+        }
         Ok(a.same_ring(a.rep.add(&b.rep), None))
     }
 
     pub fn sub(&self, other: &Poly) -> PolyResult<Poly> {
         let (a, b) = self.unified(other)?;
+        if a.den.is_some() {
+            return a.add(&b.neg());
+        }
         Ok(a.same_ring(a.rep.sub(&b.rep), None))
     }
 
     pub fn mul(&self, other: &Poly) -> PolyResult<Poly> {
         let (a, b) = self.unified(other)?;
+        if let (Some(da), Some(db)) = (&a.den, &b.den) {
+            return a.fraction(&a.rep.mul(&b.rep), &da.mul(db), None);
+        }
         Ok(a.same_ring(a.rep.mul(&b.rep), None))
     }
 
     pub fn pow(&self, n: u64) -> Poly {
+        if let Some(d) = &self.den {
+            // the powers of a reduced fraction are reduced
+            return Poly::new_rep(self.rep.pow(n), self.gens.clone(), self.domain.clone(), Some(d.pow(n)));
+        }
         self.same_ring(self.rep.pow(n), None)
     }
 
     pub fn diff(&self, i: usize) -> Poly {
+        if let Some(d) = &self.den {
+            return self
+                .fraction(&self.rep.diff(i), d, None)
+                .expect("a nonzero denominator");
+        }
         self.same_ring(self.rep.diff(i), None)
     }
 
@@ -981,6 +1376,9 @@ impl Poly {
     /// over `QQ`.
     pub fn gcd(&self, other: &Poly) -> PolyResult<Poly> {
         let (a, b) = self.unified(other)?;
+        if a.den.is_some() {
+            return a.ground_monic(&a.numerator().gcd(&b.numerator())?.rep);
+        }
         if a.domain.integral {
             let g = a.with_integer_ring(|z| {
                 let ring = z.ring_of();
@@ -1003,6 +1401,9 @@ impl Poly {
         let (a, b) = self.unified(other)?;
         if a.is_zero() || b.is_zero() {
             return Ok(a.same_ring(a.rep.ring.zero(), None));
+        }
+        if a.den.is_some() {
+            return a.ground_monic(&a.numerator().lcm(&b.numerator())?.rep);
         }
         if !a.domain.params.is_empty() {
             if a.domain.integral {
@@ -1045,6 +1446,10 @@ impl Poly {
         if g.is_zero() {
             return Ok((g, a, b));
         }
+        if a.den.is_some() {
+            let (p, q) = (a.exquo(&g)?, b.exquo(&g)?);
+            return Ok((g, p, q));
+        }
         let (p, q) = (a.rep.exquo(&g.rep)?, b.rep.exquo(&g.rep)?);
         Ok((g, a.same_ring(p, None), b.same_ring(q, None)))
     }
@@ -1055,6 +1460,9 @@ impl Poly {
         let (a, b) = self.unified(other)?;
         if b.is_zero() {
             return Err(crate::error::zero_division("cancel by a zero polynomial"));
+        }
+        if a.den.is_some() {
+            return a.cancel_fraction(&b);
         }
         let (mut cp, mut cq): (Int, Int) = (Int::ONE, Int::ONE);
         let (mut f, mut g) = (a.clone(), b.clone());
@@ -1096,7 +1504,24 @@ impl Poly {
         if b.is_zero() {
             return Err(crate::error::zero_division("polynomial division by zero"));
         }
+        if a.den.is_some() {
+            return a.div_fraction(&b);
+        }
         if !a.domain.params.is_empty() {
+            if a.gens.len() == 1 {
+                let split = b.split();
+                let top: Monomial = vec![b.degree(0)? as u32];
+                let zero: Monomial = vec![0; a.domain.params.len()];
+                let lead = &split[&top];
+                if !(lead.len() == 1 && lead.contains_key(&zero)) {
+                    let field: PolyDomain = a.domain.to_field();
+                    let (fq, fr) = a.converted(&field)?.div_fraction(&b.converted(&field)?)?;
+                    if let (Some(q), Some(r)) = (fq.retracted(&a.domain)?, fr.retracted(&a.domain)?) {
+                        return Ok((q, r));
+                    }
+                    return Ok((fq, fr));
+                }
+            }
             return a.div_over_parameters(&b);
         }
         let (q, r) = super::densearith::dup_div(&a.univariate_rational()?, &b.univariate_rational()?, &QQ)?;
@@ -1197,6 +1622,24 @@ impl Poly {
 
     pub fn exquo(&self, other: &Poly) -> PolyResult<Poly> {
         let (a, b) = self.unified(other)?;
+        if a.den.is_some() {
+            // over a fraction field: by the primitive part of the divisor
+            // (Gauss's lemma), the content going into the denominator
+            if b.is_zero() {
+                return Err(crate::error::zero_division("polynomial division by zero"));
+            }
+            let content = b.ground_content_rep()?;
+            let quotient = match b.rep.exquo(&content).and_then(|primitive| a.rep.exquo(&primitive)) {
+                Ok(q) => q,
+                Err(_) => {
+                    return Err(polys_error(
+                        PolysErrorKind::ExactQuotientFailed,
+                        format!("{} does not divide {}", b.to_str()?, a.to_str()?),
+                    ))
+                }
+            };
+            return a.fraction(&quotient.mul(&b.den()), &a.den().mul(&content), Some(&a.domain));
+        }
         match a.rep.exquo(&b.rep) {
             Ok(q) => Ok(a.same_ring(q, None)),
             Err(_) => Err(polys_error(
@@ -1204,6 +1647,224 @@ impl Poly {
                 format!("{} does not divide {}", b.to_str()?, a.to_str()?),
             )),
         }
+    }
+}
+
+impl Poly {
+    /// The leading coefficient of `f` in the generators (lex, SymPy's
+    /// `dmp_ground_LC`) as a polynomial of the ring in the parameters.
+    fn ground_lc_rep(&self, f: &PolyElement<RationalField>) -> PolyElement<RationalField> {
+        let n: usize = self.gens.len();
+        let top: Monomial = f
+            .terms
+            .keys()
+            .map(|m| m[..n].to_vec())
+            .max()
+            .expect("a nonzero polynomial");
+        f.ring.from_dict(
+            f.terms
+                .iter()
+                .filter(|(m, _)| m[..n] == top[..])
+                .map(|(m, c)| {
+                    let mut key: Monomial = vec![0; n];
+                    key.extend_from_slice(&m[n..]);
+                    (key, c.clone())
+                })
+                .collect(),
+        )
+    }
+
+    // PORTED FROM SYMPY: sympy/polys/densetools.py:dmp_ground_monic (SymPy 1.14)
+    /// `f` divided by its leading coefficient in the generators, over the
+    /// fraction field of the domain (`_ground_monic`).
+    fn ground_monic(&self, f: &PolyElement<RationalField>) -> PolyResult<Poly> {
+        if f.is_zero() {
+            return self.fraction(f, &f.ring.one(), None);
+        }
+        self.fraction(f, &self.ground_lc_rep(f), None)
+    }
+
+    /// The content of `rep` (integer coefficients) in `ZZ[params]`, with a
+    /// positive leading coefficient, as a polynomial of the ring
+    /// (`_ground_content_rep`).
+    fn ground_content_rep(&self) -> PolyResult<PolyElement<RationalField>> {
+        let n: usize = self.gens.len();
+        let names: Vec<String> = self.rep.ring.names.clone();
+        let z = IteratedPolynomialRing::new(
+            SparsePolynomialRing::sympy(ZZ, names[n..].to_vec()),
+            names[..n].to_vec(),
+        );
+        let fz = z
+            .ring()
+            .from_dict(self.rep.terms.iter().map(|(m, c)| (m.clone(), numer(c))).collect());
+        let mut content = z.ground_content(&fz);
+        if !content.is_zero() && content.LC() < Int::ZERO {
+            content = content.neg();
+        }
+        Ok(self.embedded(
+            &content
+                .terms
+                .iter()
+                .map(|(m, c)| (m.clone(), rat_from_int(c)))
+                .collect(),
+        ))
+    }
+
+    /// The polynomial over the polynomial domain `ring` (SymPy's
+    /// `to_ring`), `None` when its coefficients are not in it (`_retracted`).
+    fn retracted(&self, ring: &PolyDomain) -> PolyResult<Option<Poly>> {
+        let den = self.den();
+        if den.terms.keys().any(|m| m.iter().any(|e| *e != 0)) {
+            return Ok(None);
+        }
+        let d: Rat = den.LC();
+        if ring.integral && d != Rat::ONE {
+            return Ok(None);
+        }
+        Ok(Some(Poly::new_rep(
+            self.rep.exquo_ground(&d)?,
+            self.gens.clone(),
+            ring.clone(),
+            None,
+        )))
+    }
+
+    // PORTED FROM SYMPY: sympy/polys/densearith.py:dup_pdiv (SymPy 1.14)
+    /// `self = q b + r` over the fraction field: `lc^k P = Q B + R` on the
+    /// numerators, `q = Q den(b)/(lc^k den)`, `r = R/(lc^k den)`
+    /// (`_div_fraction`).
+    fn div_fraction(&self, b: &Poly) -> PolyResult<(Poly, Poly)> {
+        if self.gens.len() != 1 {
+            return Err(polys_error(
+                PolysErrorKind::OperationNotSupported,
+                "division of multivariate polynomials is not ported yet".to_string(),
+            ));
+        }
+        let ring = self.rep.ring.clone();
+        let (p, bb) = (&self.rep, &b.rep);
+        let m: i64 = b.degree(0)?;
+        let n: i64 = self.degree(0)?;
+        if n < m {
+            return Ok((
+                self.fraction(&ring.zero(), &ring.one(), Some(&self.domain))?,
+                self.clone(),
+            ));
+        }
+        let lc = self.ground_lc_rep(bb);
+        let (mut q, mut r) = (ring.zero(), p.clone());
+        let mut k: i64 = n - m + 1;
+        let nvars: usize = ring.names.len();
+        while !r.is_zero() && r.degree_in(0) >= m {
+            let d: i64 = r.degree_in(0);
+            let lr = ring.from_dict(
+                r.terms
+                    .iter()
+                    .filter(|(mm, _)| i64::from(mm[0]) == d)
+                    .map(|(mm, c)| {
+                        let mut key: Monomial = vec![0];
+                        key.extend_from_slice(&mm[1..]);
+                        (key, c.clone())
+                    })
+                    .collect(),
+            );
+            let shift: Monomial = (0..nvars).map(|i| if i == 0 { (d - m) as u32 } else { 0 }).collect();
+            q = q.mul(&lc).add(&lr.mul_monom(&shift));
+            r = r.mul(&lc).sub(&lr.mul(bb).mul_monom(&shift));
+            k -= 1;
+        }
+        let scale = lc.pow(k as u64);
+        q = q.mul(&scale);
+        r = r.mul(&scale);
+        let factor = lc.pow((n - m + 1) as u64).mul(&self.den());
+        Ok((
+            self.fraction(&q.mul(&b.den()), &factor, Some(&self.domain))?,
+            self.fraction(&r, &factor, Some(&self.domain))?,
+        ))
+    }
+
+    // PORTED FROM SYMPY: sympy/polys/euclidtools.py:dmp_cancel (SymPy 1.14)
+    /// `self = P/D`, `b = B/E`: `P/B` cancelled over `ZZ[params]`, the
+    /// constant `E/D` in lowest terms (`_cancel_fraction`).
+    fn cancel_fraction(&self, b: &Poly) -> PolyResult<(Basic, Poly, Poly)> {
+        if !self.domain.integral {
+            return self.cancel_rational_field(b);
+        }
+        let (c, p, q) = self.numerator().cancel(&b.numerator())?;
+        let z = integer_ring(self.rep.ring.names.clone());
+        let to_z = |f: &PolyElement<RationalField>| {
+            z.ring
+                .from_dict(f.terms.iter().map(|(m, v)| (m.clone(), numer(v))).collect())
+        };
+        let (mut cp, cq) = z.cancel(&to_z(&b.den()), &to_z(&self.den()));
+        if c == Basic::negative_one() {
+            cp = cp.neg();
+        }
+        let n: usize = self.gens.len();
+        let params = |f: &PolyElement<IntegerRing>| -> ParamTerms {
+            f.terms
+                .iter()
+                .map(|(m, v)| (m[n..].to_vec(), rat_from_int(v)))
+                .collect()
+        };
+        let numer_expr: Basic = self.coefficient_expr(&params(&cp))?;
+        let coefficient: Basic = if z.is_one(&cq) {
+            numer_expr
+        } else {
+            core_mul(&[
+                numer_expr,
+                core_pow(&self.coefficient_expr(&params(&cq))?, &Basic::negative_one())?,
+            ])?
+        };
+        let one = self.rep.ring.one();
+        Ok((
+            coefficient,
+            Poly::new_rep(p.rep, self.gens.clone(), self.domain.clone(), Some(one.clone())),
+            Poly::new_rep(q.rep, self.gens.clone(), self.domain.clone(), Some(one)),
+        ))
+    }
+
+    // PORTED FROM SYMPY: sympy/polys/euclidtools.py:dmp_cancel, sympy/polys/densetools.py:dmp_clear_denoms (SymPy 1.14)
+    /// `QQ(params)`: the denominators cleared into `QQ[params]`
+    /// (`_cancel_rational_field`).
+    fn cancel_rational_field(&self, b: &Poly) -> PolyResult<(Basic, Poly, Poly)> {
+        use crate::polys::domains::sparsefractionfield::SparseFractionField;
+        let r = SparsePolynomialRing::sympy(QQ, internal_names(0, self.domain.params.len()));
+        let ring_domain = PolyDomain::new(false, self.domain.params.clone(), false);
+        let cleared = |f: &Poly| -> PolyResult<(PolyElement<RationalField>, Poly)> {
+            // the lcm of the denominators in QQ[params], in the dense order
+            let field = SparseFractionField::new(r.clone());
+            let den = r.ring.from_dict(f.param_terms(&f.den()));
+            let mut common = r.ring.one();
+            for terms in f.split().values().rev() {
+                let element = field.new_element(&r.ring.from_dict(terms.clone()), &den)?;
+                common = Domain::lcm(&r, &common, &element.denom);
+            }
+            // f*common: the numerator times common/den
+            let scaled = f.rep.mul(&f.embedded(&common.terms.clone()));
+            Ok((
+                common,
+                Poly::new_rep(scaled.exquo(&f.den())?, f.gens.clone(), ring_domain.clone(), None),
+            ))
+        };
+        let (cq, f) = cleared(self)?;
+        let (cp, g) = cleared(b)?;
+        let (c, p, q) = f.cancel(&g)?;
+        let h = Domain::gcd(&r, &cp, &cq);
+        let mut cp = cp.exquo(&h)?;
+        let cq = cq.exquo(&h)?;
+        if c == Basic::negative_one() {
+            cp = cp.neg();
+        }
+        let numer_expr: Basic = self.coefficient_expr(&cp.terms.clone())?;
+        let coefficient: Basic = if r.is_one(&cq) {
+            numer_expr
+        } else {
+            core_mul(&[
+                numer_expr,
+                core_pow(&self.coefficient_expr(&cq.terms.clone())?, &Basic::negative_one())?,
+            ])?
+        };
+        Ok((coefficient, p.converted(&self.domain)?, q.converted(&self.domain)?))
     }
 }
 
@@ -1291,11 +1952,46 @@ fn domain_key(f: &PolyElement<IntegerRing>, n: usize) -> DomainKey {
 impl Poly {
     fn param_ring_rep(&self, terms: Terms<Rat>, n_gens: usize) -> Poly {
         let ring = rational_ring(internal_names(n_gens, self.domain.params.len()));
-        Poly {
-            rep: ring.from_dict(terms),
-            gens: self.gens[self.gens.len() - n_gens..].to_vec(),
-            domain: self.domain.clone(),
+        Poly::new_rep(
+            ring.from_dict(terms),
+            self.gens[self.gens.len() - n_gens..].to_vec(),
+            self.domain.clone(),
+            None,
+        )
+    }
+
+    // PORTED FROM SYMPY: sympy/polys/densetools.py:dmp_ground_content, sympy/polys/domains/field.py:Field.gcd (SymPy 1.14)
+    /// The content over the fraction field, as SymPy computes it: its
+    /// numerator and denominator as terms in the parameters
+    /// (`_field_content`, `_folded_field_content`).
+    fn field_content(&self) -> PolyResult<(ParamTerms, ParamTerms)> {
+        let names: Vec<String> = internal_names(0, self.domain.params.len());
+        let den: ParamTerms = self.param_terms(&self.den());
+        if self.domain.integral {
+            let r = integer_ring(names);
+            let to_z = |t: &ParamTerms| r.ring.from_dict(t.iter().map(|(m, v)| (m.clone(), numer(v))).collect());
+            let dz = to_z(&den);
+            let mut coefficients: BTreeMap<Monomial, (PolyElement<IntegerRing>, PolyElement<IntegerRing>)> =
+                BTreeMap::new();
+            for (m, terms) in self.split() {
+                let (p, q) = r.cancel(&to_z(&terms), &dz);
+                coefficients.insert(m, (p, q));
+            }
+            let (n, d) = folded_field_content(&r, &coefficients);
+            return Ok((
+                n.terms.iter().map(|(m, v)| (m.clone(), rat_from_int(v))).collect(),
+                d.terms.iter().map(|(m, v)| (m.clone(), rat_from_int(v))).collect(),
+            ));
         }
+        let r = SparsePolynomialRing::sympy(QQ, names);
+        let dq = r.ring.from_dict(den.clone());
+        let mut coefficients: BTreeMap<Monomial, (PolyElement<RationalField>, PolyElement<RationalField>)> =
+            BTreeMap::new();
+        for (m, terms) in self.split() {
+            coefficients.insert(m, r.cancel(&r.ring.from_dict(terms), &dq));
+        }
+        let (n, d) = folded_field_content(&r, &coefficients);
+        Ok((n.terms.clone(), d.terms.clone()))
     }
 
     /// The polynomial divided by its leading coefficient (`monic`; over a
@@ -1304,16 +2000,16 @@ impl Poly {
         if self.is_zero() {
             return Ok(self.clone());
         }
+        if self.den.is_some() {
+            return self.ground_monic(&self.rep);
+        }
         let lc: Rat = self.rep.LC();
         if !self.domain.params.is_empty() {
             let split = self.split();
             let lead = split.values().next_back().expect("a nonzero polynomial");
             let zero: Monomial = vec![0; self.domain.params.len()];
             if lead.len() != 1 || !lead.contains_key(&zero) {
-                return Err(polys_error(
-                    PolysErrorKind::CoercionFailed,
-                    format!("monic of {} needs the fraction field (not ported yet)", self.to_str()?),
-                ));
+                return self.ground_monic(&self.rep);
             }
         }
         let integral: Option<bool> = if lc != Rat::ONE { Some(false) } else { None };
@@ -1323,6 +2019,13 @@ impl Poly {
     /// The content (`content`; over `ZZ` the gcd of the coefficients, over
     /// `QQ` one).
     pub fn content(&self) -> PolyResult<Basic> {
+        if self.den.is_some() {
+            if self.is_zero() {
+                return Ok(Basic::zero());
+            }
+            let (n, d) = self.field_content()?;
+            return self.ratio_expr(&n, &d);
+        }
         if !self.domain.params.is_empty() {
             return Err(polys_error(
                 PolysErrorKind::OperationNotSupported,
@@ -1341,6 +2044,21 @@ impl Poly {
 
     /// `(content, primitive part)`.
     pub fn primitive(&self) -> PolyResult<(Basic, Poly)> {
+        if self.den.is_some() {
+            if self.is_zero() {
+                return Ok((Basic::zero(), self.clone()));
+            }
+            let (n, d) = self.field_content()?;
+            if n == d {
+                return Ok((Basic::one(), self.clone()));
+            }
+            let primitive = self.fraction(
+                &self.rep.mul(&self.embedded(&d)),
+                &self.den().mul(&self.embedded(&n)),
+                Some(&self.domain),
+            )?;
+            return Ok((self.ratio_expr(&n, &d)?, primitive));
+        }
         let c: Basic = self.content()?;
         match c.as_rational() {
             Some(v) if !(v.is_zero() || *v == Rat::ONE) => {
@@ -1368,28 +2086,76 @@ impl Poly {
         let result: Basic = expand_default(&crate::core::function::xreplace_evaluated(&self.as_expr()?, &rule)?)?;
         let mut rest: Vec<Basic> = self.gens.clone();
         rest.remove(i);
+        if self.den.is_some() {
+            // SymPy evaluates in the fraction field: an element of it, a
+            // polynomial over it
+            if rest.is_empty() {
+                return Ok(PolyOrExpr::Expr(self.domain_element_expr(&result)?));
+            }
+            let evaluated: Poly = Poly::new(&result, &rest)?;
+            return Ok(PolyOrExpr::Poly(match evaluated.set_domain(&self.domain) {
+                Ok(p) => p,
+                Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => evaluated,
+                Err(e) => return Err(e),
+            }));
+        }
         if rest.is_empty() {
             return Ok(PolyOrExpr::Expr(result));
         }
         Ok(PolyOrExpr::Poly(Poly::new(&result, &rest)?))
     }
 
-    fn drop_first(&self, value: &PolyElement<RationalField>) -> PolyResult<PolyOrExpr> {
+    /// A polynomial of the ring which is free of the first generator
+    /// (`value/den` over a fraction field): an expression for a univariate
+    /// polynomial, a polynomial in the other generators otherwise
+    /// (`_after_first_gen`).
+    fn drop_first(
+        &self,
+        value: &PolyElement<RationalField>,
+        den: Option<&PolyElement<RationalField>>,
+    ) -> PolyResult<PolyOrExpr> {
         let n: usize = self.gens.len();
+        let tail = |f: &PolyElement<RationalField>| -> Terms<Rat> {
+            f.terms.iter().map(|(m, c)| (m[1..].to_vec(), c.clone())).collect()
+        };
         if n == 1 {
-            let terms: BTreeMap<Monomial, Rat> =
-                value.terms.iter().map(|(m, c)| (m[1..].to_vec(), c.clone())).collect();
-            return Ok(PolyOrExpr::Expr(self.coefficient_expr(&terms)?));
+            return Ok(PolyOrExpr::Expr(match den {
+                None => self.coefficient_expr(&tail(value))?,
+                Some(d) => self.fraction_expr(&tail(value), &tail(d))?,
+            }));
         }
-        let terms: Terms<Rat> = value.terms.iter().map(|(m, c)| (m[1..].to_vec(), c.clone())).collect();
-        Ok(PolyOrExpr::Poly(self.param_ring_rep(terms, n - 1)))
+        let Some(d) = den else {
+            return Ok(PolyOrExpr::Poly(self.param_ring_rep(tail(value), n - 1)));
+        };
+        let ring = rational_ring(internal_names(n - 1, self.domain.params.len()));
+        let (p, q) = reduce_fraction(&ring.from_dict(tail(value)), &ring.from_dict(tail(d)))?;
+        Ok(PolyOrExpr::Poly(Poly::new_rep(
+            p,
+            self.gens[1..].to_vec(),
+            self.domain.clone(),
+            Some(q),
+        )))
     }
 
-    /// The resultant in the first generator.
+    /// The resultant in the first generator; over a fraction field
+    /// `Res(P/D, B/E) = Res(P, B)/(D**deg(b) E**deg(a))`.
     pub fn resultant(&self, other: &Poly) -> PolyResult<PolyOrExpr> {
         let (a, b) = self.unified(other)?;
-        let value = resultant_first(&a.rep, &b.rep, &a.names(), a.domain.integral);
-        a.drop_first(&value)
+        let value = resultant_first(&a.rep, &b.rep, &a.names(), a.domain.integral || a.den.is_some());
+        let den: Option<PolyElement<RationalField>> = if a.den.is_some() {
+            if a.is_zero() || b.is_zero() {
+                Some(a.rep.ring.one())
+            } else {
+                Some(
+                    a.den()
+                        .pow(b.degree(0)?.max(0) as u64)
+                        .mul(&b.den().pow(a.degree(0)?.max(0) as u64)),
+                )
+            }
+        } else {
+            None
+        };
+        a.drop_first(&value, den.as_ref())
     }
 
     /// `(-1)**(n (n - 1)/2) Res(f, f')/lc(f)` in the first generator.
@@ -1398,7 +2164,12 @@ impl Poly {
         if n < 1 {
             return Ok(PolyOrExpr::Expr(Basic::zero()));
         }
-        let mut value = resultant_first(&self.rep, &self.rep.diff(0), &self.names(), self.domain.integral);
+        let mut value = resultant_first(
+            &self.rep,
+            &self.rep.diff(0),
+            &self.names(),
+            self.domain.integral || self.den.is_some(),
+        );
         let lc_terms: Terms<Rat> = self
             .rep
             .terms
@@ -1414,7 +2185,8 @@ impl Poly {
         if (n * (n - 1) / 2) % 2 == 1 {
             value = value.neg();
         }
-        self.drop_first(&value)
+        let den: Option<PolyElement<RationalField>> = self.den.as_ref().map(|d| d.pow((2 * n - 2) as u64));
+        self.drop_first(&value, den.as_ref())
     }
 
     fn with_int_coefficients(&self, f: &PolyElement<IntegerRing>) -> Poly {
@@ -1436,6 +2208,19 @@ impl Poly {
     pub fn sqf_list(&self) -> PolyResult<(Basic, Vec<(Poly, usize)>)> {
         use super::multisqf::{sqf_list, IntegerSqfDomain, ParameterSqfDomain, RationalSqfDomain};
         use super::sqfreetools::dup_sqf_list;
+        if self.den.is_some() {
+            if self.is_zero() {
+                return Ok((Basic::zero(), Vec::new()));
+            }
+            let (_, numerator_factors) = self.numerator().sqf_list()?;
+            let mut factors: Vec<(Poly, usize)> = Vec::new();
+            for (g, k) in numerator_factors {
+                if g.total_degree() > 0 {
+                    factors.push((self.ground_monic(&g.rep)?, k));
+                }
+            }
+            return Ok((self.LC()?, factors));
+        }
         let n: usize = self.gens.len();
         let names: Vec<String> = self.rep.ring.names.clone();
         if self.domain.params.is_empty() && n == 1 {
@@ -1508,6 +2293,31 @@ impl Poly {
     pub fn factor_list(&self) -> PolyResult<(Basic, Vec<(Poly, usize)>)> {
         if self.is_zero() {
             return Ok((Basic::zero(), Vec::new()));
+        }
+        if let Some(den) = &self.den {
+            let (c, numerator_factors) = self.numerator().factor_list()?;
+            // the constant c (a polynomial in the parameters) over the
+            // denominator: SymPy's coeff/denom of dmp_factor_list
+            let names: Vec<String> = self.domain.params.iter().map(symbol_name).collect();
+            let parts = coefficient_dicts(&c, &names)?;
+            let Some((numer_terms, denom_terms)) =
+                parts.filter(|(_, d)| d.len() == 1 && d.keys().next().expect("a term").iter().all(|e| *e == 0))
+            else {
+                return Err(polys_error(
+                    PolysErrorKind::CoercionFailed,
+                    format!("the content {} is not in {}", c, self.domain.name()),
+                ));
+            };
+            let d: Rat = denom_terms.values().next().expect("a term").clone();
+            let scaled: ParamTerms = self.param_terms(den).into_iter().map(|(m, v)| (m, v * &d)).collect();
+            let constant: Basic = self.fraction_expr(&numer_terms, &scaled)?;
+            return Ok((
+                constant,
+                numerator_factors
+                    .into_iter()
+                    .map(|(g, k)| (self.same_ring(g.rep, None), k))
+                    .collect(),
+            ));
         }
         if self.domain.params.is_empty() {
             let (coefficient, factors) = factor_all(&self.rep)?;
@@ -1595,6 +2405,59 @@ impl Poly {
                 .collect(),
         ))
     }
+}
+
+/// The content over a fraction field as SymPy folds it over the dense
+/// coefficients (zeros included, stopping at `1`): `Field.gcd` is the gcd
+/// of the numerators over the lcm of the denominators in the ring
+/// (`_folded_field_content`); the elements are `(numer, denom)` in lowest
+/// terms.
+fn folded_field_content<K: crate::polys::domains::sparsepolynomialring::SparseGround>(
+    r: &SparsePolynomialRing<K>,
+    coefficients: &BTreeMap<Monomial, (PolyElement<K>, PolyElement<K>)>,
+) -> (PolyElement<K>, PolyElement<K>) {
+    type Element<K> = (PolyElement<K>, PolyElement<K>);
+    let zero = |r: &SparsePolynomialRing<K>| -> Element<K> { (r.ring.zero(), r.ring.one()) };
+    let gcd_of = |u: &Element<K>, v: &Element<K>| -> Element<K> {
+        let numerator = Domain::gcd(r, &u.0, &v.0);
+        let denominator = Domain::lcm(r, &u.1, &v.1);
+        if numerator.is_zero() {
+            return (numerator, r.ring.one());
+        }
+        r.cancel(&numerator, &denominator)
+    };
+    fn content<K: crate::polys::domains::sparsepolynomialring::SparseGround>(
+        r: &SparsePolynomialRing<K>,
+        terms: &BTreeMap<Monomial, Element<K>>,
+        zero: &dyn Fn(&SparsePolynomialRing<K>) -> Element<K>,
+        gcd_of: &dyn Fn(&Element<K>, &Element<K>) -> Element<K>,
+    ) -> Element<K> {
+        if terms.is_empty() {
+            return zero(r);
+        }
+        let mut grouped: BTreeMap<u32, BTreeMap<Monomial, Element<K>>> = BTreeMap::new();
+        for (m, c) in terms {
+            grouped.entry(m[0]).or_default().insert(m[1..].to_vec(), c.clone());
+        }
+        let mut result: Element<K> = zero(r);
+        let top: u32 = *grouped.keys().next_back().expect("terms");
+        for d in (0..=top).rev() {
+            let value: Element<K> = match grouped.get(&d) {
+                None => zero(r),
+                Some(part) if part.is_empty() => zero(r),
+                Some(part) => match part.get(&Vec::new()) {
+                    Some(v) => v.clone(),
+                    None => content(r, part, zero, gcd_of),
+                },
+            };
+            result = gcd_of(&result, &value);
+            if r.is_one(&result.0) && r.is_one(&result.1) {
+                break;
+            }
+        }
+        result
+    }
+    content(r, coefficients, &zero, &gcd_of)
 }
 
 // ---------------------------------------------------------------------

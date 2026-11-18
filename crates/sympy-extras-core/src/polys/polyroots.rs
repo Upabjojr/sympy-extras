@@ -615,11 +615,7 @@ fn cleared_primitive(f: &Poly) -> PolyResult<Basic> {
         .rep
         .ring
         .from_dict(scaled.into_iter().map(|(m, c)| (m, c / &divisor)).collect());
-    let p: Poly = Poly {
-        rep,
-        gens: f.gens.clone(),
-        domain: f.domain.clone(),
-    };
+    let p: Poly = Poly::new_rep(rep, f.gens.clone(), f.domain.clone(), f.den.clone());
     let mut content: Basic = Basic::one();
     if !f.domain.params.is_empty() {
         content = parameter_content(&p)?;
