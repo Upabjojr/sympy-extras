@@ -2836,6 +2836,69 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "field_matrix" => {
+            // op (a symbol), rows, cols, entries..., [rows2, cols2, entries2...] -> a Tuple of
+            // Tuple(rows, cols, Tuple(entries)) (rref: the pivots last, rank: an Integer)
+            use sympy_extras_core::integrals::risch::polymatrix::FieldMatrix as M;
+            use sympy_extras_core::integrals::risch::tower::RationalFunction as R;
+            let op: String = a[0].to_string();
+            let size = |b: &Basic| -> PyResult<usize> {
+                b.to_string()
+                    .parse()
+                    .map_err(|_| pyo3::exceptions::PyValueError::new_err("a size"))
+            };
+            let read = |start: usize| -> PyResult<(M, usize)> {
+                let (m, n) = (size(&a[start])?, size(&a[start + 1])?);
+                let entries: Vec<R> = a[start + 2..start + 2 + m * n]
+                    .iter()
+                    .map(R::from_expr)
+                    .collect::<Result<_, _>>()
+                    .map_err(e)?;
+                Ok((M::new(m, n, entries).map_err(e)?, start + 2 + m * n))
+            };
+            let shown = |m: &M| -> PyResult<Basic> {
+                let entries: Vec<Basic> = m
+                    .flat()
+                    .iter()
+                    .map(|r| r.as_expr())
+                    .collect::<Result<_, _>>()
+                    .map_err(e)?;
+                Ok(Basic::new(
+                    Head::Tuple,
+                    vec![
+                        Basic::int(m.rows as i64),
+                        Basic::int(m.cols as i64),
+                        Basic::new(Head::Tuple, entries),
+                    ],
+                ))
+            };
+            let (first, next) = read(1)?;
+            let second = || read(next).map(|(m, _)| m);
+            let out: Vec<Basic> = match op.as_str() {
+                "rref" => {
+                    let (r, pivots) = first.rref().map_err(e)?;
+                    vec![
+                        shown(&r)?,
+                        Basic::new(Head::Tuple, pivots.iter().map(|p| Basic::int(*p as i64)).collect()),
+                    ]
+                }
+                "nullspace" => first
+                    .nullspace()
+                    .map_err(e)?
+                    .iter()
+                    .map(shown)
+                    .collect::<PyResult<_>>()?,
+                "rank" => vec![Basic::int(first.rank().map_err(e)? as i64)],
+                "transpose" => vec![shown(&first.transpose())?],
+                "mul" => vec![shown(&first.mul(&second()?).map_err(e)?)?],
+                "add" => vec![shown(&first.add(&second()?).map_err(e)?)?],
+                "sub" => vec![shown(&first.sub(&second()?).map_err(e)?)?],
+                "row_join" => vec![shown(&first.row_join(&second()?).map_err(e)?)?],
+                "col_join" => vec![shown(&first.col_join(&second()?).map_err(e)?)?],
+                _ => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", op))),
+            };
+            Basic::new(Head::Tuple, out)
+        }
         "tower_rf" => {
             // op (a symbol), elements... -> Tuple(expr, Tuple(gens))
             use sympy_extras_core::integrals::risch::tower::RationalFunction as R;
