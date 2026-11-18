@@ -5,8 +5,7 @@
 //! is). Not ported (an error): the rewrites of `erfc`, `erfi`, `erf2` and
 //! `expint` in terms of `erf` and `Ei`, the sums of `loggamma` and
 //! `harmonic` at rationals, `lerchphi` at a rational `a` (`exp_polar`),
-//! `hyperexpand` (`hyper` but `2F1(1)`, `meijerg`) and the Airy functions
-//! (pattern matching).
+//! `hyperexpand` (`hyper` but `2F1(1)`, `meijerg`).
 
 // PORTED FROM SYMPY: the _eval_expand_func methods of sympy/functions/special/gamma_functions.py
 // (gamma, polygamma, loggamma, digamma, trigamma), beta_functions.py (beta), zeta_functions.py (zeta,
@@ -17,6 +16,8 @@
 // (dup_spherical_bessel_fn, dup_spherical_bessel_fn_minus) (SymPy 1.14)
 // Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 // see sympy_extras/LICENSE-SymPy.
+
+#![allow(clippy::mutable_key_type)]
 
 use crate::core::add::{add, raw_add, sub};
 use crate::core::assumptions::Predicate;
@@ -640,6 +641,90 @@ fn ynm_rule(node: &Basic) -> PolyResult<Option<Basic>> {
     Ok(Some(subs(&rv, &old, &sin(theta)?)?))
 }
 
+/// SymPy's `arg.match(c*(d*z**n)**m)` of the argument (`z` its only
+/// symbol), `(c, d, n, m, z)` when it matches with `3*m` an integer
+/// (`_airy_match`).
+fn airy_match(node: &Basic) -> PolyResult<Option<[Basic; 5]>> {
+    use crate::core::Wild;
+    let arg: &Basic = &node.args()[0];
+    let symbols = arg.free_symbols();
+    if symbols.len() != 1 {
+        return Ok(None);
+    }
+    let z: Basic = symbols.into_iter().next().expect("a symbol");
+    if !z.is_symbol() {
+        return Ok(None);
+    }
+    let wild = |name: &str| Wild::new(name, vec![z.clone()], Vec::new(), &[]).0;
+    let (c, d, m, n) = (wild("c"), wild("d"), wild("m"), wild("n"));
+    let pattern: Basic = m2(&c, &pow(&m2(&d, &pow(&z, &n)?)?, &m)?)?;
+    let Some(found) = crate::core::matching::match_pattern(arg, &pattern, &[], false)? else {
+        return Ok(None);
+    };
+    let get = |w: &Basic| found.iter().find(|(k, _)| k == w).map(|(_, v)| v.clone());
+    let (Some(cv), Some(dv), Some(nv), Some(mv)) = (get(&c), get(&d), get(&n), get(&m)) else {
+        return Ok(None);
+    };
+    if !(is_expr(&cv) && is_expr(&dv) && is_expr(&nv) && is_expr(&mv)) {
+        return Ok(None);
+    }
+    if is(&m2(&int(3), &mv)?, Predicate::integer) != Some(true) {
+        return Ok(None);
+    }
+    Ok(Some([cv, dv, nv, mv, z]))
+}
+
+// PORTED FROM SYMPY: sympy/functions/special/bessel.py:airyai._eval_expand_func, airybi._eval_expand_func,
+// airyaiprime._eval_expand_func, airybiprime._eval_expand_func
+fn airy_rule(node: &Basic) -> PolyResult<Option<Basic>> {
+    let Some([c, d, n, m, z]) = airy_match(node)? else {
+        return Ok(None);
+    };
+    let f: Function = match node.head() {
+        Head::Function(f) => *f,
+        _ => unreachable!("an Airy function"),
+    };
+    let half: Basic = Basic::half();
+    let r3: Basic = sqrt(&int(3))?;
+    let mn: Basic = m2(&m, &n)?;
+    let inner: Basic = pow(&m2(&d, &pow(&z, &n)?)?, &m)?;
+    let outer: Basic = m2(&pow(&d, &m)?, &pow(&z, &mn)?)?;
+    let newarg: Basic = m2(&m2(&c, &pow(&d, &m)?)?, &pow(&z, &mn)?)?;
+    let plus = |pf: &Basic| a2(pf, &one());
+    let minus = |pf: &Basic| sub(pf, &one());
+    let result: Basic = match f {
+        Function::AiryAi | Function::AiryBi => {
+            let pf: Basic = div(&inner, &outer)?;
+            let ai: Basic = call(Function::AiryAi, std::slice::from_ref(&newarg))?;
+            let bi: Basic = call(Function::AiryBi, std::slice::from_ref(&newarg))?;
+            if f == Function::AiryAi {
+                let first: Basic = m2(&plus(&pf)?, &ai)?;
+                let second: Basic = m2(&div(&minus(&pf)?, &r3)?, &bi)?;
+                m2(&half, &sub(&first, &second)?)?
+            } else {
+                let first: Basic = m2(&m2(&r3, &sub(&one(), &pf)?)?, &ai)?;
+                let second: Basic = m2(&a2(&one(), &pf)?, &bi)?;
+                m2(&half, &a2(&first, &second)?)?
+            }
+        }
+        _ => {
+            let pf: Basic = div(&outer, &inner)?;
+            let ai: Basic = call(Function::AiryAiPrime, std::slice::from_ref(&newarg))?;
+            let bi: Basic = call(Function::AiryBiPrime, std::slice::from_ref(&newarg))?;
+            if f == Function::AiryAiPrime {
+                let first: Basic = m2(&plus(&pf)?, &ai)?;
+                let second: Basic = m2(&div(&minus(&pf)?, &r3)?, &bi)?;
+                m2(&half, &a2(&first, &second)?)?
+            } else {
+                let first: Basic = m2(&m2(&r3, &minus(&pf)?)?, &ai)?;
+                let second: Basic = m2(&plus(&pf)?, &bi)?;
+                m2(&half, &a2(&first, &second)?)?
+            }
+        }
+    };
+    Ok(Some(result))
+}
+
 // PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper._eval_expand_func
 fn hyper_rule(node: &Basic) -> PolyResult<Option<Basic>> {
     let (ap, bq, z) = (node.args()[0].args(), node.args()[1].args(), &node.args()[2]);
@@ -679,9 +764,8 @@ fn rule_for(e: &Basic) -> Option<Rule> {
             F::SphericalJ | F::SphericalY | F::SphericalHankel1 | F::SphericalHankel2 => spherical_rule,
             F::Ynm => ynm_rule,
             // erf rewrites, Ei rewrites, pattern matching: not ported
-            F::Erfc | F::Erfi | F::Erf2 | F::Expint | F::AiryAi | F::AiryBi | F::AiryAiPrime | F::AiryBiPrime => {
-                not_ported_rule
-            }
+            F::Erfc | F::Erfi | F::Erf2 | F::Expint => not_ported_rule,
+            F::AiryAi | F::AiryBi | F::AiryAiPrime | F::AiryBiPrime => airy_rule,
             _ => return None,
         },
         Head::GoldenRatio => golden_ratio_rule,

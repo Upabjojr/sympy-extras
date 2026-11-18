@@ -95,6 +95,17 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "TribonacciConstantType" | "TribonacciConstant" => Basic::tribonacci_constant(),
         "ImaginaryUnit" => Basic::imaginary_unit(),
         "Symbol" => Symbol::new(&ob.getattr("name")?.extract::<String>()?, &given_assumptions(ob)?).0,
+        "Wild" => {
+            if ob.getattr("properties")?.len()? > 0 {
+                return Err(PyTypeError::new_err("the properties of a wild are not converted"));
+            }
+            let mut exclude: Vec<Basic> = Vec::new();
+            for item in ob.getattr("exclude")?.try_iter()? {
+                exclude.push(from_python(&item?)?);
+            }
+            let name: String = ob.getattr("name")?.extract()?;
+            sympy_extras_core::core::Wild::new(&name, exclude, Vec::new(), &given_assumptions(ob)?).0
+        }
         "Dummy" => {
             let index: i64 = ob.getattr("dummy_index")?.extract()?;
             if let Some(found) = with_dummies(|d| d.from_python.get(&index).cloned()) {
@@ -409,7 +420,16 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 object
             }
         },
-        Head::Wild(_) => return Err(PyTypeError::new_err("wilds are not converted")),
+        Head::Wild(data) => {
+            if !data.properties.is_empty() {
+                return Err(PyTypeError::new_err("the properties of a wild are not converted"));
+            }
+            let exclude: Vec<Bound<'py, PyAny>> =
+                data.exclude.iter().map(|x| to_python(py, x)).collect::<PyResult<_>>()?;
+            let kw = kwargs(py, &data.symbol.given)?;
+            kw.set_item("exclude", PyTuple::new(py, exclude)?)?;
+            class("symbol", "Wild")?.call((data.symbol.name.clone(),), Some(&kw))?
+        }
         Head::Add => rebuilt("Add", "add")?,
         Head::Mul => rebuilt("Mul", "mul")?,
         Head::Pow => rebuilt("Pow", "power")?,
@@ -2753,6 +2773,29 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     tuple(ab.constraints),
                     tuple(ab.requirements),
                 ]),
+            }
+        }
+        "match" => {
+            // expr, pattern, exact (0 or 1), the bindings as Tuple(wild, value); the
+            // bindings found as Tuple(Tuple(wild, value), ...) or false
+            if a.len() < 3 {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments"));
+            }
+            let start: Vec<(Basic, Basic)> = a[3..]
+                .iter()
+                .map(|t| (t.args()[0].clone(), t.args()[1].clone()))
+                .collect();
+            match sympy_extras_core::core::matching::match_pattern(&a[0], &a[1], &start, a[2] != Basic::zero())
+                .map_err(e)?
+            {
+                Some(found) => Basic::new(
+                    Head::Tuple,
+                    found
+                        .into_iter()
+                        .map(|(w, v)| Basic::new(Head::Tuple, vec![w, v]))
+                        .collect(),
+                ),
+                None => sympy_extras_core::core::logic::false_(),
             }
         }
         "is_meromorphic" => {

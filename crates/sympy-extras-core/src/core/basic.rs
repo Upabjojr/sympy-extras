@@ -1038,6 +1038,12 @@ impl Head {
         matches!(self, Head::And | Head::Or | Head::Xor | Head::Equivalent)
     }
 
+    /// Whether the two heads are the same function or class (Python's
+    /// `a.func == b.func` on the nodes).
+    pub fn same_head(&self, other: &Head) -> bool {
+        self.same(other)
+    }
+
     fn same(&self, other: &Head) -> bool {
         match (self, other) {
             // a Rational equals the Integer of the same value
