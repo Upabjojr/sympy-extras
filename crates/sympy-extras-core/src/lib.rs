@@ -42,6 +42,7 @@ pub mod physics;
 pub mod polys;
 pub mod random;
 pub mod series;
+pub mod timeout;
 pub mod sets;
 pub mod simplify;
 pub mod solvers;
