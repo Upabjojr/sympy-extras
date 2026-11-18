@@ -2901,6 +2901,27 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "trigsimp" => {
+            // op: futrig(e, hyper), trigsimp(e, method name), exptrigsimp(e)
+            use sympy_extras_core::simplify::trigsimp as t;
+            match a[0].to_string().as_str() {
+                "futrig" => {
+                    t::futrig(&a[1], !matches!(a.get(2).map(|b| b.head()), Some(Head::BooleanFalse))).map_err(e)?
+                }
+                "trigsimp" => {
+                    let method = match a[2].to_string().as_str() {
+                        "matching" => t::Method::Matching,
+                        "fu" => t::Method::Fu,
+                        "groebner" => t::Method::Groebner,
+                        "combined" => t::Method::Combined,
+                        _ => t::Method::Old,
+                    };
+                    t::trigsimp(&a[1], method).map_err(e)?
+                }
+                "exptrigsimp" => t::exptrigsimp(&a[1]).map_err(e)?,
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "fu" => {
             // op (a TR rule, fu, L, sincos_to_sum, trig_split, as_f_sign_1, hyper_as_trig) and its arguments
             use sympy_extras_core::simplify::fu as f;

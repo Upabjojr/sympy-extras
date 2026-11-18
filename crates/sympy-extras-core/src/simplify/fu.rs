@@ -6,7 +6,13 @@
 //! up. Python's dictionaries are insertion-ordered vectors here; where the
 //! Python iterates a set, the order of first occurrence is used.
 
-#![allow(clippy::type_complexity, clippy::too_many_arguments, clippy::needless_range_loop, clippy::mutable_key_type, clippy::redundant_guards)]
+#![allow(
+    clippy::type_complexity,
+    clippy::too_many_arguments,
+    clippy::needless_range_loop,
+    clippy::mutable_key_type,
+    clippy::redundant_guards
+)]
 
 use std::collections::HashMap;
 
@@ -93,7 +99,7 @@ fn function_of(e: &Basic) -> Option<Function> {
 fn is_f(e: &Basic, f: Function) -> bool {
     function_of(e) == Some(f)
 }
-const TRIG: [Function; 6] = [
+pub(crate) const TRIG: [Function; 6] = [
     Function::Sin,
     Function::Cos,
     Function::Tan,
@@ -101,7 +107,7 @@ const TRIG: [Function; 6] = [
     Function::Sec,
     Function::Csc,
 ];
-const HYPER: [Function; 6] = [
+pub(crate) const HYPER: [Function; 6] = [
     Function::Sinh,
     Function::Cosh,
     Function::Tanh,
@@ -137,7 +143,7 @@ fn node(f: Function, x: &Basic) -> Basic {
     Basic::new(Head::Function(f), vec![x.clone()])
 }
 
-fn has_function(e: &Basic, fs: &[Function]) -> bool {
+pub(crate) fn has_function(e: &Basic, fs: &[Function]) -> bool {
     e.preorder()
         .iter()
         .any(|n| function_of(n).is_some_and(|f| fs.contains(&f)))
@@ -1797,15 +1803,22 @@ pub fn sincos_to_sum(e: &Basic) -> R {
 /// A rule tree: a rule, a chain of trees, or the best of alternatives
 /// (`Chain`, `Minimize`).
 pub enum Tree {
-    Rule(Rule),
+    Rule(Box<dyn Fn(&Basic) -> R>),
     Chain(Vec<Tree>),
     Minimize(Vec<Tree>),
 }
 
-/// The measure `fu` minimises.
-pub type Measure = fn(&Basic) -> PolyResult<(i64, i64)>;
+/// A rule as a tree.
+pub fn rule(f: impl Fn(&Basic) -> R + 'static) -> Tree {
+    Tree::Rule(Box::new(f))
+}
 
-/// The tree applied greedily (`greedy`).
+/// The measure a greedy strategy minimises, compared lexicographically
+/// (Python's tuple).
+pub type Measure = fn(&Basic) -> PolyResult<Vec<i64>>;
+
+/// The tree applied greedily (`greedy`); a minimisation keeps the first
+/// result of least measure.
 pub fn apply_greedy(tree: &Tree, objective: Measure, e: &Basic) -> R {
     match tree {
         Tree::Rule(r) => r(e),
@@ -1817,28 +1830,11 @@ pub fn apply_greedy(tree: &Tree, objective: Measure, e: &Basic) -> R {
             Ok(e)
         }
         Tree::Minimize(rules) => {
-            let mut best: Option<((i64, i64), Basic)> = None;
+            let mut candidates: Vec<Basic> = Vec::new();
             for r in rules {
-                let candidate: Basic = apply_greedy(r, objective, e)?;
-                let key = objective(&candidate)?;
-                if best.as_ref().is_none_or_lt(&key) {
-                    best = Some((key, candidate));
-                }
+                candidates.push(apply_greedy(r, objective, e)?);
             }
-            Ok(best.expect("alternatives").1)
-        }
-    }
-}
-
-trait FirstMinimum {
-    fn is_none_or_lt(&self, key: &(i64, i64)) -> bool;
-}
-
-impl FirstMinimum for Option<&((i64, i64), Basic)> {
-    fn is_none_or_lt(&self, key: &(i64, i64)) -> bool {
-        match self {
-            None => true,
-            Some((k, _)) => key < k,
+            first_min(candidates, objective)
         }
     }
 }
@@ -1867,97 +1863,85 @@ fn r_tr12(e: &Basic) -> R {
 
 fn ctr1() -> Tree {
     Tree::Minimize(vec![
-        Tree::Chain(vec![Tree::Rule(r_tr5), Tree::Rule(tr0)]),
-        Tree::Chain(vec![Tree::Rule(r_tr6), Tree::Rule(tr0)]),
-        Tree::Rule(identity),
+        Tree::Chain(vec![rule(r_tr5), rule(tr0)]),
+        Tree::Chain(vec![rule(r_tr6), rule(tr0)]),
+        rule(identity),
     ])
 }
 
 fn ctr2() -> Tree {
     Tree::Chain(vec![
-        Tree::Rule(r_tr11),
+        rule(r_tr11),
         Tree::Minimize(vec![
-            Tree::Chain(vec![Tree::Rule(r_tr5), Tree::Rule(tr0)]),
-            Tree::Chain(vec![Tree::Rule(r_tr6), Tree::Rule(tr0)]),
-            Tree::Rule(tr0),
+            Tree::Chain(vec![rule(r_tr5), rule(tr0)]),
+            Tree::Chain(vec![rule(r_tr6), rule(tr0)]),
+            rule(tr0),
         ]),
     ])
 }
 
 fn ctr3() -> Tree {
     Tree::Minimize(vec![
-        Tree::Chain(vec![Tree::Rule(tr_morrie), Tree::Rule(r_tr8), Tree::Rule(tr0)]),
-        Tree::Chain(vec![
-            Tree::Rule(tr_morrie),
-            Tree::Rule(r_tr8),
-            Tree::Rule(tr10i),
-            Tree::Rule(tr0),
-        ]),
-        Tree::Rule(identity),
+        Tree::Chain(vec![rule(tr_morrie), rule(r_tr8), rule(tr0)]),
+        Tree::Chain(vec![rule(tr_morrie), rule(r_tr8), rule(tr10i), rule(tr0)]),
+        rule(identity),
     ])
 }
 
 fn ctr4() -> Tree {
-    Tree::Minimize(vec![
-        Tree::Chain(vec![Tree::Rule(tr4), Tree::Rule(tr10i)]),
-        Tree::Rule(identity),
-    ])
+    Tree::Minimize(vec![Tree::Chain(vec![rule(tr4), rule(tr10i)]), rule(identity)])
 }
 
 fn rl1() -> Tree {
     Tree::Chain(vec![
-        Tree::Rule(tr4),
-        Tree::Rule(tr3),
-        Tree::Rule(tr4),
-        Tree::Rule(r_tr12),
-        Tree::Rule(tr4),
-        Tree::Rule(tr13),
-        Tree::Rule(tr4),
-        Tree::Rule(tr0),
+        rule(tr4),
+        rule(tr3),
+        rule(tr4),
+        rule(r_tr12),
+        rule(tr4),
+        rule(tr13),
+        rule(tr4),
+        rule(tr0),
     ])
 }
 
 fn rl2() -> Tree {
     Tree::Minimize(vec![
         Tree::Chain(vec![
-            Tree::Rule(tr4),
-            Tree::Rule(tr3),
-            Tree::Rule(r_tr10),
-            Tree::Rule(tr4),
-            Tree::Rule(tr3),
-            Tree::Rule(r_tr11),
+            rule(tr4),
+            rule(tr3),
+            rule(r_tr10),
+            rule(tr4),
+            rule(tr3),
+            rule(r_tr11),
         ]),
-        Tree::Chain(vec![
-            Tree::Rule(r_tr5),
-            Tree::Rule(tr7),
-            Tree::Rule(r_tr11),
-            Tree::Rule(tr4),
-        ]),
+        Tree::Chain(vec![rule(r_tr5), rule(tr7), rule(r_tr11), rule(tr4)]),
         Tree::Chain(vec![
             ctr3(),
             ctr1(),
-            Tree::Rule(tr9),
+            rule(tr9),
             ctr2(),
-            Tree::Rule(tr4),
-            Tree::Rule(tr9),
-            Tree::Rule(tr9),
+            rule(tr4),
+            rule(tr9),
+            rule(tr9),
             ctr4(),
         ]),
-        Tree::Rule(identity),
+        rule(identity),
     ])
 }
 
 /// The number of trigonometric functions, then of operations
 /// (`_fu_measure`).
-pub fn fu_measure(e: &Basic) -> PolyResult<(i64, i64)> {
-    Ok((l_count(e), crate::core::function::count_ops(e)?))
+pub fn fu_measure(e: &Basic) -> PolyResult<Vec<i64>> {
+    Ok(vec![l_count(e), crate::core::function::count_ops(e)?])
 }
 
-fn first_min(candidates: Vec<Basic>, measure: Measure) -> R {
-    let mut best: Option<((i64, i64), Basic)> = None;
+/// The first candidate of least measure (Python's `min`).
+pub fn first_min(candidates: Vec<Basic>, measure: Measure) -> R {
+    let mut best: Option<(Vec<i64>, Basic)> = None;
     for c in candidates {
-        let key = measure(&c)?;
-        if best.as_ref().is_none_or_lt(&key) {
+        let key: Vec<i64> = measure(&c)?;
+        if best.as_ref().map_or(true, |(k, _)| key < *k) {
             best = Some((key, c));
         }
     }
