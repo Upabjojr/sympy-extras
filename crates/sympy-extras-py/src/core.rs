@@ -2753,6 +2753,14 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 ]),
             }
         }
+        "count_ops" | "count_ops_visual" => {
+            use sympy_extras_core::core::function as fc;
+            if name == "count_ops" {
+                Basic::integer(fc::count_ops(&a[0]).map_err(e)?.into())
+            } else {
+                fc::count_ops_visual(&a[0]).map_err(e)?
+            }
+        }
         "postorder_traversal" | "iterargs" | "iterfreeargs" | "fuzzy_group" | "bottom_up_x2" | "use_x2" => {
             use sympy_extras_core::core::{fuzzy, traversal as tv};
             let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);

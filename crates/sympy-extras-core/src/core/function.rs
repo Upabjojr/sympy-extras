@@ -1087,3 +1087,182 @@ mod tests {
         assert_eq!(show(diff(&two_x, &[(x.clone(), 1)])), "2**x*log(2)");
     }
 }
+
+// ---------------------------------------------------------------------
+// count_ops
+
+// PORTED FROM SYMPY: sympy/core/function.py:_coeff_isneg (SymPy 1.14)
+/// Whether the leading numerical coefficient of `a` is negative.
+fn coeff_isneg(a: &Basic) -> bool {
+    use super::assumptions::Predicate;
+    let first: &Basic = if a.is_mul() && !a.args().is_empty() {
+        &a.args()[0]
+    } else {
+        a
+    };
+    first.is_number_class() && super::expr::is(first, Predicate::extended_negative) == Some(true)
+}
+
+fn tally(counts: &mut std::collections::BTreeMap<String, i64>, name: &str, n: i64) {
+    if n != 0 {
+        *counts.entry(name.to_string()).or_insert(0) += n;
+    }
+}
+
+// PORTED FROM SYMPY: sympy/core/function.py:count_ops (SymPy 1.14)
+fn count_into(e: &Basic, counts: &mut std::collections::BTreeMap<String, i64>) -> PolyResult<()> {
+    use super::logic::is_boolean;
+    match e.head() {
+        Head::Rational { value, .. } => {
+            tally(counts, "DIV", i64::from(!value.is_int()));
+            tally(counts, "NEG", i64::from(*value < crate::numbers::Rat::ZERO));
+            return Ok(());
+        }
+        Head::Add => {
+            // every term negative: NEG and (n - 1) SUB; otherwise a SUB per
+            // negative term and an ADD per positive term but one
+            let terms: &[Basic] = e.args();
+            let negatives: Vec<bool> = terms.iter().map(coeff_isneg).collect();
+            if negatives.iter().all(|n| *n) {
+                tally(counts, "NEG", 1);
+                tally(counts, "SUB", terms.len() as i64 - 1);
+            } else {
+                tally(counts, "SUB", negatives.iter().filter(|n| **n).count() as i64);
+                tally(counts, "ADD", negatives.iter().filter(|n| !**n).count() as i64 - 1);
+            }
+            for (t, negative) in terms.iter().zip(&negatives) {
+                if *negative {
+                    count_into(&mul(&[Basic::negative_one(), t.clone()])?, counts)?;
+                } else {
+                    count_into(t, counts)?;
+                }
+            }
+            return Ok(());
+        }
+        Head::Exp1 => {
+            tally(counts, "EXP", 1); // SymPy: E is exp(1)
+            return Ok(());
+        }
+        Head::Mul => {
+            let mut a: Basic = e.clone();
+            if coeff_isneg(e) {
+                tally(counts, "NEG", 1);
+                let first: &Basic = &a.args()[0];
+                if *first == Basic::negative_one()
+                    && matches!(
+                        first.head(),
+                        Head::Rational {
+                            integer_class: true,
+                            ..
+                        }
+                    )
+                {
+                    let rest: Vec<Basic> = a.args()[1..].to_vec();
+                    a = if rest.len() == 1 {
+                        rest[0].clone()
+                    } else {
+                        super::mul::raw_mul(rest)
+                    };
+                } else {
+                    a = mul(&[Basic::negative_one(), a.clone()])?;
+                }
+            }
+            let (n, d) = crate::simplify::radsimp::fraction(&a)?;
+            let is_integer = |b: &Basic| {
+                matches!(
+                    b.head(),
+                    Head::Rational {
+                        integer_class: true,
+                        ..
+                    }
+                )
+            };
+            if is_integer(&n) {
+                tally(counts, "DIV", 1);
+                let negative: bool = n.as_rational().is_some_and(|v| *v < crate::numbers::Rat::ZERO);
+                tally(counts, "NEG", i64::from(negative));
+                count_into(&d, counts)?;
+                return Ok(());
+            }
+            if !(is_integer(&d) && d == Basic::one()) {
+                if !is_integer(&d) {
+                    count_into(&d, counts)?;
+                }
+                tally(counts, "DIV", 1);
+                count_into(&n, counts)?;
+                return Ok(());
+            }
+            if a.is_mul() {
+                tally(counts, "MUL", a.args().len() as i64 - 1);
+                for f in a.args() {
+                    count_into(f, counts)?;
+                }
+                return Ok(());
+            }
+            return count_into(&a, counts);
+        }
+        Head::Pow => {
+            let (base, exponent) = (&e.args()[0], &e.args()[1]);
+            if matches!(exponent.head(), Head::Rational { .. }) && *exponent == Basic::negative_one() {
+                tally(counts, "DIV", 1);
+            } else {
+                tally(counts, "POW", 1);
+                count_into(exponent, counts)?;
+            }
+            return count_into(base, counts);
+        }
+        Head::Undefined(u) => {
+            tally(counts, &format!("FUNC_{}", u.name.to_uppercase()), 1);
+            for a in e.args() {
+                count_into(a, counts)?;
+            }
+            return Ok(());
+        }
+        Head::Derivative => {
+            tally(counts, "DERIVATIVE", 1);
+            return count_into(&e.args()[0], counts);
+        }
+        Head::Subs => return count_into(&e.args()[0], counts),
+        Head::Tuple => {
+            for a in e.args() {
+                count_into(a, counts)?;
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
+    if matches!(e.head(), Head::Relational(_)) || (is_boolean(e) && !e.args().is_empty()) {
+        tally(counts, &e.class_name().to_uppercase(), 1);
+        for a in e.args() {
+            count_into(a, counts)?;
+        }
+        return Ok(());
+    }
+    if !e.args().is_empty() {
+        tally(counts, &e.class_name().to_uppercase(), 1);
+        for a in e.args() {
+            count_into(a, counts)?;
+        }
+    }
+    Ok(())
+}
+
+/// The number of operations of an expression, as SymPy counts them
+/// (`count_ops`).
+pub fn count_ops(e: &Basic) -> PolyResult<i64> {
+    let mut counts: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+    count_into(e, &mut counts)?;
+    Ok(counts.values().sum())
+}
+
+/// The kinds of the operations as a sum of symbols (`count_ops(e,
+/// visual=True)`: `2*ADD + MUL + POW`).
+pub fn count_ops_visual(e: &Basic) -> PolyResult<Basic> {
+    let mut counts: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+    count_into(e, &mut counts)?;
+    let mut terms: Vec<Basic> = Vec::new();
+    for (name, n) in counts {
+        terms.push(mul(&[Basic::integer(n.into()), super::Symbol::new(&name, &[]).0])?);
+    }
+    add(&terms)
+}
