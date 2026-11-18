@@ -40,6 +40,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Piecewise => crate::functions::elementary::piecewise::piecewise_of_pairs(args),
         Head::ExprCondPair => crate::functions::elementary::piecewise::checked_pair(&args[0], &args[1]),
         h @ (Head::Hyper | Head::MeijerG) => crate::functions::special::hyper::rebuild_hyper(h, &args),
+        h @ (Head::ForAll | Head::Exists) => crate::assumptions::quantifiers::rebuild_quantifier(h, &args),
         h @ (Head::EmptySet
         | Head::UniversalSet
         | Head::Reals

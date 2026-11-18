@@ -102,6 +102,10 @@ pub enum Head {
     /// (`functions.special.hyper`).
     Hyper,
     MeijerG,
+    /// `ForAll(Tuple(variables), formula)` and `Exists(...)`
+    /// (`assumptions.quantifiers`).
+    ForAll,
+    Exists,
 }
 
 /// The relations of `core.relational`.
@@ -918,6 +922,8 @@ impl Head {
             Head::ExprCondPair => "ExprCondPair",
             Head::Hyper => "Hyper",
             Head::MeijerG => "MeijerG",
+            Head::ForAll => "ForAll",
+            Head::Exists => "Exists",
         }
     }
 
@@ -993,6 +999,8 @@ impl Head {
                 | Head::ExprCondPair
                 | Head::Hyper
                 | Head::MeijerG
+                | Head::ForAll
+                | Head::Exists
         )
     }
 
@@ -1295,6 +1303,7 @@ impl Basic {
     /// The symbols of the tree (`free_symbols`; nothing binds symbols yet).
     pub fn free_symbols(&self) -> BTreeSet<Basic> {
         match &self.0.head {
+            Head::ForAll | Head::Exists => crate::assumptions::quantifiers::quantifier_free_symbols(self),
             Head::Subs => {
                 // the variables are bound
                 let variables: BTreeSet<Basic> = self.0.args[1].args().iter().cloned().collect();

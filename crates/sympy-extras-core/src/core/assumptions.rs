@@ -636,7 +636,13 @@ pub fn is_number(e: &Basic) -> bool {
         || crate::sets::sets::is_set(e)
         || matches!(
             e.head(),
-            Head::AccumBounds | Head::Piecewise | Head::ExprCondPair | Head::Hyper | Head::MeijerG
+            Head::AccumBounds
+                | Head::Piecewise
+                | Head::ExprCondPair
+                | Head::Hyper
+                | Head::MeijerG
+                | Head::ForAll
+                | Head::Exists
         )
     {
         return false;

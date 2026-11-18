@@ -76,6 +76,9 @@ fn subs_node_rec(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Basic> {
         }
         return crate::polys::cad::indexedroot::indexed_root(&replaced, t, k);
     }
+    if crate::assumptions::quantifiers::is_quantifier(e) {
+        return crate::assumptions::quantifiers::quantifier_subs(e, old, new, &|f: &Basic| subs_node_rec(f, old, new));
+    }
     if let Some(replaced) = subs_partial(e, old, new)? {
         return Ok(replaced);
     }

@@ -356,6 +356,9 @@ impl StrPrinter {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Head::ForAll | Head::Exists => {
+                crate::assumptions::quantifiers::print_quantifier(e, &|a: &Basic| self.doprint(a))
+            }
             Head::Hyper | Head::MeijerG => {
                 crate::functions::special::hyper::print_hyper(e, &|a: &Basic| self.doprint(a))
             }

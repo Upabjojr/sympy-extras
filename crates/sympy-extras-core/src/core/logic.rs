@@ -52,6 +52,8 @@ pub fn is_boolean(e: &Basic) -> bool {
             | Head::Ite
             | Head::Relational(_)
             | Head::Contains
+            | Head::ForAll
+            | Head::Exists
     )
 }
 
@@ -200,6 +202,14 @@ pub fn binary_symbols(e: &Basic) -> Vec<Basic> {
                 }
             }
             Head::Relational(_) => {}
+            Head::ForAll | Head::Exists => {
+                let bound: &[Basic] = e.args()[0].args();
+                for s in binary_symbols(&e.args()[1]) {
+                    if !bound.contains(&s) && !found.contains(&s) {
+                        found.push(s);
+                    }
+                }
+            }
             _ if is_boolean(e) => {
                 for a in e.args() {
                     if is_boolean(a) || a.is_symbol() || matches!(a.head(), Head::Dummy(..)) {

@@ -245,6 +245,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "HyperRep_cosasin" => Basic::new(Head::Function(Function::HyperRepCosasin), args()?),
         "HyperRep_sinasin" => Basic::new(Head::Function(Function::HyperRepSinasin), args()?),
         "Hyper" => Basic::new(Head::Hyper, args()?),
+        "ForAll" => Basic::new(Head::ForAll, args()?),
+        "Exists" => Basic::new(Head::Exists, args()?),
         "MeijerG" => Basic::new(Head::MeijerG, args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
         "EllipticF" => Basic::new(Head::Function(Function::EllipticF), args()?),
@@ -453,6 +455,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             py.import("sympy_extras.functions.elementary.piecewise")?
                 .getattr(name)?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::ForAll | Head::Exists => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.assumptions.quantifiers")?
+                .getattr(e.class_name())?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::Hyper => {
@@ -2465,6 +2473,30 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     hy::meijerg_get_period(&a[0]).map_err(e)?
                 }
                 _ => return Err(wrong()),
+            }
+        }
+        "forall" | "exists" | "prenex" => {
+            use sympy_extras_core::assumptions::quantifiers as qf;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let vars = |b: &Basic| -> Vec<Basic> {
+                if matches!(b.head(), Head::Tuple) {
+                    b.args().to_vec()
+                } else {
+                    vec![b.clone()]
+                }
+            };
+            match (name, a.len()) {
+                ("forall", 2) => qf::forall(&vars(&a[0]), &a[1]).map_err(e)?,
+                ("exists", 2) => qf::exists(&vars(&a[0]), &a[1]).map_err(e)?,
+                ("prenex", 1) => {
+                    let (prefix, matrix) = qf::prenex(&a[0]).map_err(e)?;
+                    let pairs: Vec<Basic> = prefix
+                        .into_iter()
+                        .map(|(k, v)| tuple(vec![sympy_extras_core::core::Symbol::new(k.name(), &[]).0, v]))
+                        .collect();
+                    tuple(vec![tuple(pairs), matrix])
+                }
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
             }
         }
         "to_clauses" | "clauses_conjunction" | "propositional_models" | "is_satisfiable" => {
