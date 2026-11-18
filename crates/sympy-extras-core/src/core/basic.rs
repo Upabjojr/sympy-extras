@@ -106,6 +106,10 @@ pub enum Head {
     /// (`assumptions.quantifiers`).
     ForAll,
     Exists,
+    /// a finite set of sets and the power set of a set (`sets.sets`,
+    /// `sets.powerset`)
+    SetOfSets,
+    PowerSet,
 }
 
 /// The relations of `core.relational`.
@@ -923,6 +927,8 @@ impl Head {
             Head::Hyper => "Hyper",
             Head::MeijerG => "MeijerG",
             Head::ForAll => "ForAll",
+            Head::SetOfSets => "SetOfSets",
+            Head::PowerSet => "PowerSet",
             Head::Exists => "Exists",
         }
     }
@@ -1001,6 +1007,8 @@ impl Head {
                 | Head::MeijerG
                 | Head::ForAll
                 | Head::Exists
+                | Head::SetOfSets
+                | Head::PowerSet
         )
     }
 

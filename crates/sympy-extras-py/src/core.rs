@@ -172,6 +172,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Contains" => Basic::new(Head::Contains, args()?),
         "ProductSet" => Basic::new(Head::ProductSet, args()?),
         "PointSet" => Basic::new(Head::PointSet, args()?),
+        "SetOfSets" => Basic::new(Head::SetOfSets, args()?),
+        "PowerSet" => Basic::new(Head::PowerSet, args()?),
         "ConditionSet" => Basic::new(Head::ConditionSet, args()?),
         "AccumBounds" | "AccumulationBounds" => Basic::new(Head::AccumBounds, args()?),
         "Piecewise" => Basic::new(Head::Piecewise, args()?),
@@ -455,6 +457,18 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             py.import("sympy_extras.functions.elementary.piecewise")?
                 .getattr(name)?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::SetOfSets => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.sets.sets")?
+                .getattr("SetOfSets")?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::PowerSet => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.sets.powerset")?
+                .getattr("PowerSet")?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::ForAll | Head::Exists => {
@@ -2710,6 +2724,23 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     tuple(ab.constraints),
                     tuple(ab.requirements),
                 ]),
+            }
+        }
+        "set_of_sets" | "power_set" | "powerset" | "power_set_elements" | "finite_elements" => {
+            use sympy_extras_core::sets::sets as st;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            match (name, a.len()) {
+                ("set_of_sets", _) => st::set_of_sets(&a).map_err(e)?,
+                ("power_set", 1) => st::power_set(&a[0]).map_err(e)?,
+                ("powerset", 1) => st::powerset(&a[0]).map_err(e)?,
+                ("power_set_elements", 1) if matches!(a[0].head(), Head::PowerSet) => {
+                    tuple(st::power_set_elements(&a[0]).map_err(e)?)
+                }
+                ("finite_elements", 1) => match st::finite_elements(&a[0]) {
+                    Some(v) => tuple(v),
+                    None => sympy_extras_core::core::logic::false_(),
+                },
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
             }
         }
         "forall" | "exists" | "prenex" => {

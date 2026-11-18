@@ -85,6 +85,8 @@ pub fn is_set(e: &Basic) -> bool {
             | Head::ProductSet
             | Head::PointSet
             | Head::ConditionSet
+            | Head::SetOfSets
+            | Head::PowerSet
     )
 }
 
@@ -203,6 +205,9 @@ fn sets_of(s: &Basic) -> Vec<Basic> {
 /// Whether `x` is an element: `true`, `false`, a condition or an
 /// unevaluated `Contains` (`Set.contains`).
 pub fn contains(s: &Basic, x: &Basic) -> PolyResult<Basic> {
+    if is_set(x) {
+        return Ok(contains_set_rule(s, x)?.unwrap_or_else(|| contains_node(x, s)));
+    }
     match contains_rule(s, x)? {
         Some(c) => Ok(c),
         None => Ok(contains_node(x, s)),
@@ -268,8 +273,68 @@ fn contains_rule(s: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
         }
         Head::PointSet => Some(false_()),
         Head::ConditionSet => Some(super::conditionset::condition_set_contains(s, x)?),
+        // the elements are sets: SymPy's Eq of a set and an expression is false
+        Head::SetOfSets => Some(false_()),
+        // an expression is not a set
+        Head::PowerSet => None,
         _ => return Err(not_ported("_contains of this set")),
     })
+}
+
+/// Whether the set `x` is an element (`_contains_set`), `None` when it is
+/// not decided; the sets of numbers and of points have no set as an
+/// element.
+fn contains_set_rule(s: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
+    Ok(match s.head() {
+        Head::EmptySet => Some(false_()),
+        Head::UniversalSet => Some(true_()),
+        Head::Interval | Head::Reals | Head::FiniteSet | Head::ProductSet | Head::PointSet => Some(false_()),
+        Head::Union => {
+            let mut terms: Vec<Basic> = Vec::new();
+            for t in sets_of(s) {
+                terms.push(contains(&t, x)?);
+            }
+            Some(or_(&terms))
+        }
+        Head::Intersection => {
+            let mut terms: Vec<Basic> = Vec::new();
+            for t in sets_of(s) {
+                terms.push(contains(&t, x)?);
+            }
+            Some(and_(&terms))
+        }
+        Head::Complement => {
+            let (a, b) = (&s.args()[0], &s.args()[1]);
+            Some(and_(&[contains(a, x)?, not_(&contains(b, x)?)]))
+        }
+        Head::SetOfSets => {
+            // FiniteSet._contains: the equations of sets decided by inclusion
+            if s.args().contains(x) {
+                return Ok(Some(true_()));
+            }
+            let mut found: Vec<Truth> = Vec::new();
+            for e in s.args() {
+                found.push(set_equal(e, x)?);
+            }
+            if found.contains(&Some(true)) {
+                Some(true_())
+            } else if found.iter().all(|f| *f == Some(false)) {
+                Some(false_())
+            } else {
+                None
+            }
+        }
+        Head::PowerSet => is_subset(x, &s.args()[0])?.map(boolean),
+        _ => None,
+    })
+}
+
+/// Whether two sets are equal (each a subset of the other).
+fn set_equal(a: &Basic, b: &Basic) -> PolyResult<Truth> {
+    if a == b {
+        return Ok(Some(true));
+    }
+    Ok(fuzzy_and([is_subset(a, b)?, is_subset(b, a)?]))
 }
 
 fn canonical_interval(s: &Basic) -> Basic {
@@ -391,7 +456,7 @@ pub fn is_empty(s: &Basic) -> PolyResult<Truth> {
                 fuzzy_bool(&crate::core::relational::gt(&start, &end)?)
             }
         }
-        Head::FiniteSet | Head::PointSet => Some(s.args().is_empty()),
+        Head::FiniteSet | Head::PointSet | Head::SetOfSets => Some(s.args().is_empty()),
         Head::Union => {
             let mut values: Vec<Truth> = Vec::new();
             for t in sets_of(s) {
@@ -413,7 +478,7 @@ pub fn is_empty(s: &Basic) -> PolyResult<Truth> {
 /// `is_finite_set`.
 pub fn is_finite_set(s: &Basic) -> PolyResult<Truth> {
     Ok(match s.head() {
-        Head::EmptySet | Head::FiniteSet | Head::PointSet => Some(true),
+        Head::EmptySet | Head::FiniteSet | Head::PointSet | Head::SetOfSets => Some(true),
         Head::UniversalSet => Some(false),
         Head::Interval | Head::Reals => is(&measure(s)?, Predicate::zero),
         Head::Union => {
@@ -494,6 +559,9 @@ pub fn is_subset(a: &Basic, b: &Basic) -> PolyResult<Truth> {
             return Ok(Some(v));
         }
     }
+    if let Some(v) = eval_is_subset(a, b)? {
+        return Ok(Some(v));
+    }
     if let Some(v) = is_subset_sets(a, b)? {
         return Ok(Some(v));
     }
@@ -501,6 +569,46 @@ pub fn is_subset(a: &Basic, b: &Basic) -> PolyResult<Truth> {
         return Ok(Some(true));
     }
     Ok(None)
+}
+
+/// The `_eval_is_subset` of the sets of points, of sets and the power sets.
+fn eval_is_subset(a: &Basic, b: &Basic) -> PolyResult<Truth> {
+    match a.head() {
+        Head::PointSet => {
+            // a point of rational numbers is in another such set of points
+            // only if it is one of them; a point is not a number
+            if matches!(b.head(), Head::FiniteSet | Head::Interval | Head::Reals) && !a.args().is_empty() {
+                return Ok(Some(false));
+            }
+            if !matches!(b.head(), Head::PointSet) {
+                return Ok(None);
+            }
+            if a.args().iter().all(|p| b.args().contains(p)) {
+                return Ok(Some(true));
+            }
+            let numeric: bool = a
+                .args()
+                .iter()
+                .chain(b.args())
+                .all(|q| q.args().iter().all(|c| c.is_number_node() && c.as_rational().is_some()));
+            Ok(if numeric { Some(false) } else { None })
+        }
+        Head::SetOfSets => {
+            let mut results: Vec<Truth> = Vec::new();
+            for e in a.args() {
+                let c: Option<Basic> = contains_set_rule(b, e)?;
+                results.push(c.as_ref().and_then(fuzzy_bool));
+            }
+            Ok(fuzzy_and(results))
+        }
+        Head::PowerSet => {
+            if matches!(b.head(), Head::PowerSet) {
+                return is_subset(&a.args()[0], &b.args()[0]);
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
+    }
 }
 
 /// The subset rules between intervals and unions of intervals
@@ -1260,6 +1368,116 @@ pub fn point_set(points: &[Basic]) -> PolyResult<Basic> {
     Ok(Basic::new(Head::PointSet, ordered(unique)))
 }
 
+/// The finite set of sets, evaluated (`set_of_sets`): duplicates removed,
+/// in SymPy's order (by infimum), empty is `EmptySet`.
+pub fn set_of_sets(elements: &[Basic]) -> PolyResult<Basic> {
+    let mut unique: Vec<Basic> = Vec::new();
+    for e in elements {
+        if !is_set(e) {
+            return Err(PolyError::Type(format!(
+                "an element of a set of sets is a set, got {}",
+                e
+            )));
+        }
+        if !unique.contains(e) {
+            unique.push(e.clone());
+        }
+    }
+    if unique.is_empty() {
+        return Ok(empty_set());
+    }
+    Ok(Basic::new(Head::SetOfSets, sorted_sets(unique)))
+}
+
+/// The unevaluated `PowerSet(arg)` (its constructor never evaluates).
+pub fn power_set(arg: &Basic) -> PolyResult<Basic> {
+    if !is_set(arg) {
+        return Err(value_error(format!("{} must be a set.", arg)));
+    }
+    Ok(Basic::new(Head::PowerSet, vec![arg.clone()]))
+}
+
+/// The elements of a finite set given by its elements (the empty set, a
+/// `FiniteSet`, a `PointSet`, a `SetOfSets`), `None` for another set
+/// (`finite_elements`).
+pub fn finite_elements(s: &Basic) -> Option<Vec<Basic>> {
+    match s.head() {
+        Head::EmptySet | Head::FiniteSet | Head::PointSet | Head::SetOfSets => Some(s.args().to_vec()),
+        _ => None,
+    }
+}
+
+/// The finite set of `elements`, of their kind (`_finite_of`).
+fn finite_of(elements: &[Basic]) -> PolyResult<Basic> {
+    if elements.is_empty() {
+        return Ok(empty_set());
+    }
+    if elements.iter().all(is_set) {
+        return set_of_sets(elements);
+    }
+    if elements.iter().all(|e| matches!(e.head(), Head::Tuple)) {
+        return point_set(elements);
+    }
+    Ok(finite_set(elements))
+}
+
+/// The `k`-element subsets in `itertools.combinations` order.
+fn subsets_of_size(items: &[Basic], k: usize) -> Vec<Vec<Basic>> {
+    fn go(items: &[Basic], k: usize, start: usize, current: &mut Vec<Basic>, out: &mut Vec<Vec<Basic>>) {
+        if current.len() == k {
+            out.push(current.clone());
+            return;
+        }
+        for i in start..items.len() {
+            current.push(items[i].clone());
+            go(items, k, i + 1, current, out);
+            current.pop();
+        }
+    }
+    let mut out: Vec<Vec<Basic>> = Vec::new();
+    go(items, k, 0, &mut Vec::new(), &mut out);
+    out
+}
+
+// PORTED FROM SYMPY: sympy/sets/sets.py:Set.powerset, Set._eval_powerset (SymPy 1.14)
+/// The set of the subsets: the finite set of them for a finite set, a
+/// `PowerSet` otherwise (`Set.powerset`).
+pub fn powerset(s: &Basic) -> PolyResult<Basic> {
+    let Some(elements) = finite_elements(s) else {
+        return power_set(s);
+    };
+    let mut subsets: Vec<Basic> = Vec::new();
+    for k in 0..=elements.len() {
+        for sub in subsets_of_size(&elements, k) {
+            subsets.push(finite_of(&sub)?);
+        }
+    }
+    set_of_sets(&subsets)
+}
+
+// PORTED FROM SYMPY: sympy/sets/powerset.py:PowerSet.__iter__ (SymPy 1.14)
+/// The elements of a power set in SymPy's order of iteration; `TypeError`
+/// when its argument is not given by its elements.
+pub fn power_set_elements(p: &Basic) -> PolyResult<Vec<Basic>> {
+    let arg: &Basic = &p.args()[0];
+    let Some(elements) = finite_elements(arg) else {
+        return Err(PolyError::Type(format!("the power set of {} is not iterable", arg)));
+    };
+    let mut result: Vec<Basic> = vec![empty_set()];
+    let mut found: Vec<Vec<Basic>> = vec![Vec::new()];
+    for x in &elements {
+        let mut temp: Vec<Vec<Basic>> = Vec::new();
+        for y in &found {
+            let mut new: Vec<Basic> = vec![x.clone()];
+            new.extend(y.iter().cloned());
+            result.push(finite_of(&new)?);
+            temp.push(new);
+        }
+        found.extend(temp);
+    }
+    Ok(result)
+}
+
 /// The evaluated rebuild of a set node (`_evaluated`).
 pub fn rebuild_set(head: &Head, args: &[Basic]) -> PolyResult<Basic> {
     match head {
@@ -1278,6 +1496,8 @@ pub fn rebuild_set(head: &Head, args: &[Basic]) -> PolyResult<Basic> {
         Head::ProductSet => product_set(args),
         Head::PointSet => point_set(args),
         Head::ConditionSet => super::conditionset::condition_set(&args[0], &args[1], &args[2]),
+        Head::SetOfSets => set_of_sets(args),
+        Head::PowerSet => power_set(&args[0]),
         _ => unreachable!("not a set"),
     }
 }
@@ -1315,6 +1535,24 @@ pub fn print_set(e: &Basic, doprint: &dyn Fn(&Basic) -> String) -> String {
             let shown: Vec<String> = items.iter().map(doprint).collect();
             format!("{}({})", e.class_name(), shown.join(", "))
         }
+        Head::SetOfSets => {
+            // StrPrinter._print_FiniteSet: FiniteSet(...) when an element
+            // contains a finite set
+            let mut items: Vec<Basic> = e.args().to_vec();
+            items.sort_by_cached_key(sort_key);
+            let shown: Vec<String> = items.iter().map(doprint).collect();
+            let nested: bool = items.iter().any(|i| {
+                i.preorder()
+                    .iter()
+                    .any(|n| matches!(n.head(), Head::FiniteSet | Head::PointSet | Head::SetOfSets))
+            });
+            if nested {
+                format!("FiniteSet({})", shown.join(", "))
+            } else {
+                format!("{{{}}}", shown.join(", "))
+            }
+        }
+        Head::PowerSet => format!("PowerSet({})", doprint(&e.args()[0])),
         Head::Complement | Head::Contains | Head::ProductSet | Head::ConditionSet => {
             let shown: Vec<String> = e.args().iter().map(doprint).collect();
             format!("{}({})", e.class_name(), shown.join(", "))
