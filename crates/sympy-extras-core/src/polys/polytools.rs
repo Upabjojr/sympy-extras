@@ -200,7 +200,7 @@ fn gens_order(name: &str) -> i64 {
 
 /// The sort key of a generator (`_gen_key`): the order of its name, the
 /// name, the trailing number, and the creation index of a dummy.
-fn gen_key(gen: &Basic) -> (i64, String, Int, i64) {
+pub(crate) fn gen_key(gen: &Basic) -> (i64, String, Int, i64) {
     let text: String = gen.to_string();
     let digits: usize = text.chars().rev().take_while(|c| c.is_ascii_digit()).count();
     let (name, index) = text.split_at(text.len() - digits);

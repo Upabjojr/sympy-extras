@@ -578,30 +578,64 @@ impl<K: Domain> PolyElement<K> {
     /// exactly: a field, or divisors with unit leading coefficients; `Value`
     /// otherwise).
     pub fn div(&self, divisors: &[PolyElement<K>]) -> PolyResult<(Vec<PolyElement<K>>, PolyElement<K>)> {
+        // the remainder and the quotients are updated in place, as in the
+        // Python (no new map per step)
         let k: &K = self.domain();
-        let mut quotients: Vec<PolyElement<K>> = divisors.iter().map(|_| self.ring.zero()).collect();
+        let mut quotients: Vec<Terms<K::Elem>> = divisors.iter().map(|_| Terms::new()).collect();
         let mut remainder: Terms<K::Elem> = Terms::new();
-        let mut p: PolyElement<K> = self.clone();
+        let mut p: Terms<K::Elem> = self.terms.clone();
         let leading: Vec<(Monomial, K::Elem)> = divisors.iter().map(|g| (g.LM(), g.LC())).collect();
-        while !p.terms.is_empty() {
-            let (m, c) = p.LT();
+        let order: &MonomialOrder = &self.ring.order;
+        let lexicographic: bool = matches!(order, MonomialOrder::Lex);
+        let accumulate = |terms: &mut Terms<K::Elem>, m: Monomial, c: K::Elem| {
+            use std::collections::btree_map::Entry;
+            match terms.entry(m) {
+                Entry::Vacant(v) => {
+                    if !k.is_zero(&c) {
+                        v.insert(c);
+                    }
+                }
+                Entry::Occupied(mut o) => {
+                    let value: K::Elem = k.add(o.get(), &c);
+                    if k.is_zero(&value) {
+                        o.remove();
+                    } else {
+                        *o.get_mut() = value;
+                    }
+                }
+            }
+        };
+        while !p.is_empty() {
+            let m: Monomial = if lexicographic {
+                p.keys().next_back().expect("not empty").clone()
+            } else {
+                p.keys().max_by(|a, b| order.cmp(a, b)).expect("not empty").clone()
+            };
+            let c: K::Elem = p[&m].clone();
             let mut divided: bool = false;
             for (i, (lm, lc)) in leading.iter().enumerate() {
                 if !divisors[i].terms.is_empty() && monomial_divides(lm, &m) {
                     let q_monomial: Monomial = monomial_div(&m, lm)?;
                     let q_coefficient: K::Elem = k.exquo(&c, lc)?;
-                    quotients[i] = quotients[i].add(&self.ring.term(q_monomial.clone(), q_coefficient.clone()));
-                    p = p.sub(&divisors[i].mul_term(&q_monomial, &q_coefficient));
+                    if !k.is_zero(&q_coefficient) {
+                        accumulate(&mut quotients[i], q_monomial.clone(), q_coefficient.clone());
+                        for (mg, cg) in &divisors[i].terms {
+                            accumulate(&mut p, monomial_mul(mg, &q_monomial), k.neg(&k.mul(cg, &q_coefficient)));
+                        }
+                    }
                     divided = true;
                     break;
                 }
             }
             if !divided {
-                p.terms.remove(&m);
+                p.remove(&m);
                 remainder.insert(m, c);
             }
         }
-        Ok((quotients, self.with_terms(remainder)))
+        Ok((
+            quotients.into_iter().map(|q| self.with_terms(q)).collect(),
+            self.with_terms(remainder),
+        ))
     }
 
     pub fn rem(&self, divisors: &[PolyElement<K>]) -> PolyResult<PolyElement<K>> {

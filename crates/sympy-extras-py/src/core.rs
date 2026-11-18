@@ -2836,6 +2836,103 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "tower_rf" => {
+            // op (a symbol), elements... -> Tuple(expr, Tuple(gens))
+            use sympy_extras_core::integrals::risch::tower::RationalFunction as R;
+            let op: String = a[0].to_string();
+            let x = |i: usize| R::from_expr(&a[i]);
+            let r: R = match op.as_str() {
+                "from_expr" => x(1).map_err(e)?,
+                "add" => x(1).and_then(|p| p.add(&x(2)?)).map_err(e)?,
+                "sub" => x(1).and_then(|p| p.sub(&x(2)?)).map_err(e)?,
+                "mul" => x(1).and_then(|p| p.mul(&x(2)?)).map_err(e)?,
+                "div" => x(1).and_then(|p| p.div(&x(2)?)).map_err(e)?,
+                "pow" => {
+                    let n: i64 = a[2]
+                        .to_string()
+                        .parse()
+                        .map_err(|_| pyo3::exceptions::PyValueError::new_err("an integer"))?;
+                    x(1).and_then(|p| p.pow(n)).map_err(e)?
+                }
+                "diff" => x(1).and_then(|p| p.diff(&a[2])).map_err(e)?,
+                "subs" => x(1).and_then(|p| p.subs(&a[2], &x(3)?)).map_err(e)?,
+                "conjugate_i" => x(1).and_then(|p| p.conjugate_i()).map_err(e)?,
+                "numerator" => x(1).and_then(|p| p.numerator()).map_err(e)?,
+                "denominator" => x(1).and_then(|p| p.denominator()).map_err(e)?,
+                _ => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", op))),
+            };
+            Basic::new(
+                Head::Tuple,
+                vec![r.as_expr().map_err(e)?, Basic::new(Head::Tuple, r.gens.clone())],
+            )
+        }
+        "tower_poly" => {
+            // op (a symbol), polynomial expressions..., the generator last (subs, as_poly and
+            // compose_shift: further arguments after it) -> a Tuple of results
+            use sympy_extras_core::integrals::risch::tower::{RationalFunction as R, TowerPoly as T};
+            let op: String = a[0].to_string();
+            let t: Basic = a[match op.as_str() {
+                "from_expr" | "monic" | "sqf_list_include" | "diff" | "subs" | "as_poly" | "compose_shift"
+                | "degree" | "as_element" => 2,
+                _ => 3,
+            }]
+            .clone();
+            let p = |i: usize| T::from_expr(&a[i], &t);
+            let px = |q: &T| q.as_expr();
+            let tup = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let out: Vec<Basic> = (|| -> sympy_extras_core::error::PolyResult<Vec<Basic>> {
+                Ok(match op.as_str() {
+                    "from_expr" => vec![px(&p(1)?)?],
+                    "monic" => vec![px(&p(1)?.monic()?)?],
+                    "degree" => vec![Basic::int(p(1)?.degree(a.get(3)))],
+                    "as_element" => vec![p(1)?.as_element()?.as_expr()?],
+                    "diff" => vec![px(&p(1)?.diff(a.get(3))?)?],
+                    "subs" => vec![px(&p(1)?.subs(&a[3], &R::from_expr(&a[4])?)?)?],
+                    "as_poly" => match p(1)?.as_poly(&a[3])? {
+                        Some(q) => vec![px(&q)?, q.gen.clone()],
+                        None => vec![],
+                    },
+                    "compose_shift" => vec![px(&p(1)?.compose_shift(&R::from_expr(&a[3])?))?],
+                    "sqf_list_include" => p(1)?
+                        .sqf_list_include()
+                        .iter()
+                        .map(|(f, k)| Ok(tup(vec![px(f)?, Basic::int(*k as i64)])))
+                        .collect::<sympy_extras_core::error::PolyResult<_>>()?,
+                    "gcd" => vec![px(&p(1)?.gcd(&p(2)?)?)?],
+                    "lcm" => vec![px(&p(1)?.lcm(&p(2)?)?)?],
+                    "exquo" => vec![px(&p(1)?.exquo(&p(2)?)?)?],
+                    "invert" => vec![px(&p(1)?.invert(&p(2)?)?)?],
+                    "div" => {
+                        let (q, r) = p(1)?.div(&p(2)?)?;
+                        vec![px(&q)?, px(&r)?]
+                    }
+                    "cancel" => {
+                        let (q, r) = p(1)?.cancel(&p(2)?)?;
+                        vec![px(&q)?, px(&r)?]
+                    }
+                    "half_gcdex" => {
+                        let (s, h) = p(1)?.half_gcdex(&p(2)?)?;
+                        vec![px(&s)?, px(&h)?]
+                    }
+                    "gcdex" => {
+                        let (s, u, h) = p(1)?.gcdex(&p(2)?)?;
+                        vec![px(&s)?, px(&u)?, px(&h)?]
+                    }
+                    "resultant" => vec![p(1)?.resultant(&p(2)?)?.as_expr()?],
+                    "resultant_prs" => {
+                        let (res, prs) = p(1)?.resultant_prs(&p(2)?)?;
+                        let mut v: Vec<Basic> = vec![res.as_expr()?];
+                        for q in &prs {
+                            v.push(px(q)?);
+                        }
+                        v
+                    }
+                    _ => return Err(sympy_extras_core::error::value_error(format!("unknown op {}", op))),
+                })
+            })()
+            .map_err(e)?;
+            tup(out)
+        }
         "curve_integrate" => {
             // f, x -> Tuple(elementary part, remainder, verdict: True / False / Integer(0) for None)
             use sympy_extras_core::integrals::curves::{integrate_on_curve, AlgebraicIntegrand};
