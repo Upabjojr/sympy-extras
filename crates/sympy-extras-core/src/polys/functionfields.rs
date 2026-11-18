@@ -982,7 +982,7 @@ fn row_hermite<K: Domain>(rows: &Matrix<Poly<K>>, r: &PolynomialRing<K>, k: &K) 
 }
 
 /// The determinant over `K[x]`, fraction-free (Bareiss).
-fn determinant<K: Domain>(m: &Matrix<Poly<K>>, r: &PolynomialRing<K>) -> PolyResult<Poly<K>> {
+pub(crate) fn determinant<K: Domain>(m: &Matrix<Poly<K>>, r: &PolynomialRing<K>) -> PolyResult<Poly<K>> {
     let n: usize = m.len();
     if n == 0 {
         return Ok(r.one());
@@ -1015,7 +1015,7 @@ fn determinant<K: Domain>(m: &Matrix<Poly<K>>, r: &PolynomialRing<K>) -> PolyRes
 }
 
 /// The determinant over a field (Gaussian elimination).
-fn determinant_over_field<K: Domain>(m: &Matrix<Frac<K>>, f: &FractionField<K>) -> PolyResult<Frac<K>> {
+pub(crate) fn determinant_over_field<K: Domain>(m: &Matrix<Frac<K>>, f: &FractionField<K>) -> PolyResult<Frac<K>> {
     let n: usize = m.len();
     let mut a: Matrix<Frac<K>> = m.clone();
     let mut result: Frac<K> = f.one();
@@ -1044,7 +1044,7 @@ fn determinant_over_field<K: Domain>(m: &Matrix<Frac<K>>, f: &FractionField<K>) 
 }
 
 /// The inverse of a square matrix over a field (Gauss-Jordan).
-fn inverse_matrix<K: Domain>(m: &Matrix<Frac<K>>, f: &FractionField<K>) -> PolyResult<Matrix<Frac<K>>> {
+pub(crate) fn inverse_matrix<K: Domain>(m: &Matrix<Frac<K>>, f: &FractionField<K>) -> PolyResult<Matrix<Frac<K>>> {
     let n: usize = m.len();
     let mut a: Matrix<Frac<K>> = m
         .iter()
@@ -1124,7 +1124,7 @@ fn charpoly<K: Domain>(m: &Matrix<Frac<K>>, f: &FractionField<K>) -> Vec<Frac<K>
 
 /// The adjugate matrix `det(M) M^(-1)` (the cofactors when `M` is
 /// singular).
-fn adjugate<K: Domain>(
+pub(crate) fn adjugate<K: Domain>(
     m: &Matrix<Poly<K>>,
     r: &PolynomialRing<K>,
     kx: &FractionField<K>,

@@ -2836,6 +2836,41 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "curve_integrand" | "curve_transformed" => {
+            // curve_integrand: f, x -> Tuple(curve, element_expr, polynomial_to_expr(element_expr), theta,
+            //   Tuple(weights), y); curve_transformed: f, x, N -> Tuple(curve in z and y,
+            //   to_x_expr of the transformed integrand, z, y)
+            use sympy_extras_core::integrals::curves::{AlgebraicIntegrand, Transformed};
+            let t = |items: Vec<Basic>| Basic::new(Head::Tuple, items);
+            let integrand = AlgebraicIntegrand::new(&a[0], &a[1]).map_err(e)?;
+            if name == "curve_integrand" {
+                let element = integrand.element_expr().map_err(e)?;
+                let radicals = integrand.polynomial_to_expr(&element).map_err(e)?;
+                t(vec![
+                    integrand.curve.clone(),
+                    element,
+                    radicals,
+                    integrand.theta.clone(),
+                    t(integrand.weights.iter().map(|w| Basic::integer((*w).into())).collect()),
+                    integrand.y.clone(),
+                ])
+            } else {
+                let n: i64 = a[2]
+                    .as_rational()
+                    .and_then(|v| i64::try_from(v.numerator()).ok())
+                    .unwrap_or(0);
+                let transformed = Transformed::new(&integrand, n).map_err(e)?;
+                let back = transformed
+                    .to_x_expr(&transformed.field, &transformed.integrand_element, &Basic::zero())
+                    .map_err(e)?;
+                t(vec![
+                    transformed.field.original().map_err(e)?,
+                    back,
+                    transformed.z.clone(),
+                    integrand.y.clone(),
+                ])
+            }
+        }
         "pyrandom_randint" => {
             // seed (an Integer, or a Symbol whose name is the string seed), a, b, count
             use sympy_extras_core::random::PyRandom;

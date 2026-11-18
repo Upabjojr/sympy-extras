@@ -32,6 +32,7 @@ pub mod concrete;
 pub mod core;
 pub mod error;
 pub mod functions;
+pub mod integrals;
 pub mod logic;
 pub mod matrices;
 pub mod ntheory;
