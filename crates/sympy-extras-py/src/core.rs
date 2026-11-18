@@ -2475,6 +2475,57 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => return Err(wrong()),
             }
         }
+        "xor_evaluated"
+        | "and_evaluated"
+        | "is_anf"
+        | "to_anf"
+        | "distribute_xor_over_and"
+        | "anf_coeffs"
+        | "bool_monomial"
+        | "ANFform" => {
+            use sympy_extras_core::logic::anf;
+            let wrong = || pyo3::exceptions::PyTypeError::new_err("wrong arguments");
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let flag = |b: &Basic| sympy_extras_core::core::logic::truth(b) == Some(true);
+            let digits = |b: &Basic| -> PyResult<Vec<u8>> {
+                b.args()
+                    .iter()
+                    .map(|v| {
+                        v.as_rational()
+                            .and_then(|r| u8::try_from(r.numerator()).ok())
+                            .ok_or_else(wrong)
+                    })
+                    .collect()
+            };
+            let small = |v: u8| Basic::integer((v as i64).into());
+            match (name, a.len()) {
+                ("xor_evaluated", n) if n >= 1 => anf::xor_evaluated(&a[1..], flag(&a[0])).map_err(e)?,
+                ("and_evaluated", _) => anf::and_evaluated(&a).map_err(e)?,
+                ("is_anf", 1) => sympy_extras_core::core::logic::boolean(anf::is_anf(&a[0])),
+                ("to_anf", 2) => anf::to_anf(&a[0], flag(&a[1])).map_err(e)?,
+                ("distribute_xor_over_and", 1) => anf::distribute_xor_over_and(&a[0]).map_err(e)?,
+                ("anf_coeffs", 1) => tuple(
+                    anf::anf_coeffs(&digits(&a[0])?)
+                        .map_err(e)?
+                        .into_iter()
+                        .map(small)
+                        .collect(),
+                ),
+                ("bool_monomial", 2) => {
+                    if matches!(a[0].head(), Head::Tuple) {
+                        anf::bool_monomial_digits(&digits(&a[0])?, a[1].args()).map_err(e)?
+                    } else {
+                        let k: i64 = a[0]
+                            .as_rational()
+                            .and_then(|v| i64::try_from(v.numerator()).ok())
+                            .ok_or_else(wrong)?;
+                        anf::bool_monomial(k, a[1].args()).map_err(e)?
+                    }
+                }
+                ("ANFform", 2) => anf::anf_form(a[0].args(), &digits(&a[1])?).map_err(e)?,
+                _ => return Err(wrong()),
+            }
+        }
         "multiquadratic" => {
             // [radicands Tuple, operation symbol, element, (element | index)];
             // an element over QQ: a Tuple of (mask, coefficient) pairs
