@@ -2901,6 +2901,34 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "radsimp" => {
+            // op: radsimp(e, symbolic, max_terms), sqrtdenest(e, max_iter), split_surds(e),
+            // rad_rationalize(num, den), unevaluated_mul(*args), sqrt_depth(e), is_algebraic(e)
+            use sympy_extras_core::simplify::{radsimp as rs, sqrtdenest as sd};
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let flag = |b: &Basic| matches!(b.head(), Head::BooleanTrue);
+            let small = |b: &Basic| {
+                b.as_rational()
+                    .and_then(|v| usize::try_from(v.numerator()).ok())
+                    .unwrap_or(4)
+            };
+            match a[0].to_string().as_str() {
+                "radsimp" => rs::radsimp(&a[1], flag(&a[2]), small(&a[3])).map_err(e)?,
+                "sqrtdenest" => sd::sqrtdenest(&a[1], small(&a[2])).map_err(e)?,
+                "split_surds" => {
+                    let (g, x, y) = rs::split_surds(&a[1]).map_err(e)?;
+                    tuple(vec![g, x, y])
+                }
+                "rad_rationalize" => {
+                    let (n, d) = rs::rad_rationalize(&a[1], &a[2]).map_err(e)?;
+                    tuple(vec![n, d])
+                }
+                "unevaluated_mul" => rs::unevaluated_mul(&a[1..]).map_err(e)?,
+                "sqrt_depth" => Basic::int(sd::sqrt_depth(&a[1]) as i64),
+                "is_algebraic" => sympy_extras_core::core::logic::boolean(sd::is_algebraic(&a[1])),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "powsimp" => {
             // op: powsimp(e, deep, combine, force), powdenest(e, force, polar), logcombine(e, force),
             // posify(e) -> Tuple(e', Tuple(Tuple(dummy, symbol), ...)), multiplicity(p, n)

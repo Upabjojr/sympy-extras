@@ -7,3 +7,4 @@ pub mod ratsimp;
 pub mod signsimp;
 #[allow(clippy::module_inception)]
 pub mod simplify;
+pub mod sqrtdenest;
