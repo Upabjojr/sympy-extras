@@ -2868,6 +2868,14 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "ask" => {
+            // proposition, assumptions, [Tuple(context)] -> True, False, or Tuple() for None
+            let context: Option<Vec<Basic>> = a.get(2).map(|c| c.args().to_vec());
+            match sympy_extras_core::core::ask::ask(&a[0], &a[1], context.as_deref()).map_err(e)? {
+                Some(v) => sympy_extras_core::core::logic::boolean(v),
+                None => Basic::new(Head::Tuple, Vec::new()),
+            }
+        }
         "reliable" => {
             // op (form, value, complex, proved_zero), e, digits, Tuple of Tuple(symbol, value) ->
             // form: the expression or Tuple() for None; value: Tuple(re, im) as exact rationals of the
