@@ -6,7 +6,9 @@
 //! SymPy's name of it (what follows `_eval_rewrite_as_`: `gamma`,
 //! `factorial`, `RisingFactorial`, ...). The rules ported are those of the
 //! combinatorial functions into `gamma`, `factorial`, `binomial`,
-//! `RisingFactorial` and `FallingFactorial`; another target is not ported.
+//! `RisingFactorial` and `FallingFactorial`, and those of the elementary
+//! functions into `exp`, `cos`, `sin` and `log`
+//! (`functions/elementary/rewrites.rs`); another target is not ported.
 
 // PORTED FROM SYMPY: sympy/core/basic.py (Basic.rewrite, Basic._rewrite),
 // sympy/functions/combinatorial/factorials.py, sympy/functions/combinatorial/numbers.py,
@@ -39,10 +41,20 @@ impl Default for RewriteHints {
 
 /// A rule: the node and its rewritten arguments to the rewritten node,
 /// `None` when it does not apply.
-type Rule = fn(&Basic, &[Basic], &RewriteHints) -> PolyResult<Option<Basic>>;
+pub type Rule = fn(&Basic, &[Basic], &RewriteHints) -> PolyResult<Option<Basic>>;
 
 /// The targets whose rules are ported.
-const PORTED_TARGETS: [&str; 5] = ["gamma", "factorial", "binomial", "RisingFactorial", "FallingFactorial"];
+const PORTED_TARGETS: [&str; 9] = [
+    "gamma",
+    "factorial",
+    "binomial",
+    "RisingFactorial",
+    "FallingFactorial",
+    "exp",
+    "cos",
+    "sin",
+    "log",
+];
 
 fn one() -> Basic {
     Basic::one()
@@ -353,12 +365,16 @@ fn rewrite_rec(e: &Basic, patterns: &[Function], target: &str, hints: &RewriteHi
     for a in e.args() {
         args.push(rewrite_rec(a, patterns, target, hints)?);
     }
-    if let Head::Function(f) = e.head() {
-        if patterns.is_empty() || patterns.contains(f) {
-            if let Some(rule) = rule_for(*f, target) {
-                if let Some(rewritten) = rule(e, &args, hints)? {
-                    return Ok(rewritten);
-                }
+    let matched: bool = patterns.is_empty() || matches!(e.head(), Head::Function(f) if patterns.contains(f));
+    if matched {
+        let rule: Option<Rule> = match e.head() {
+            Head::Function(f) => rule_for(*f, target),
+            _ => None,
+        }
+        .or_else(|| crate::functions::elementary::rewrites::rule_for(e, target));
+        if let Some(rule) = rule {
+            if let Some(rewritten) = rule(e, &args, hints)? {
+                return Ok(rewritten);
             }
         }
     }

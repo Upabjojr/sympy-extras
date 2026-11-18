@@ -9,4 +9,5 @@ pub mod integers;
 pub mod inverse;
 pub mod miscellaneous;
 pub mod piecewise;
+pub mod rewrites;
 pub mod trigonometric;
