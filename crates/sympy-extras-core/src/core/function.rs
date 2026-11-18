@@ -27,6 +27,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
             let counts: Vec<(Basic, u64)> = derivative_counts(&e.rebuild(args.clone()));
             diff(&args[0], &counts)
         }
+        Head::RootSum => crate::polys::rootoftools::evaluated(&args),
         Head::Subs => {
             // Subs._evaluated: the variables are symbols (_as_symbol)
             if let Some(v) = args[1].args().iter().find(|v| !v.is_symbol()) {
@@ -220,6 +221,9 @@ pub fn xreplace_evaluated(e: &Basic, rule: &std::collections::HashMap<Basic, Bas
     }
     if e.args().is_empty() || matches!(e.head(), Head::ComplexRootOf(_)) {
         return Ok(e.clone());
+    }
+    if matches!(e.head(), Head::RootSum) {
+        return crate::polys::rootoftools::xreplace_evaluated(e, rule);
     }
     let mut args: Vec<Basic> = Vec::new();
     for a in e.args() {
@@ -1018,6 +1022,7 @@ pub fn derivative(e: &Basic, s: &Basic) -> PolyResult<Basic> {
         }
         Head::Piecewise => crate::functions::elementary::piecewise::map_expressions(e, &|a: &Basic| derivative(a, s)),
         Head::Hyper | Head::MeijerG => crate::functions::special::hyper::hyper_derivative(e, s),
+        Head::RootSum => crate::polys::rootoftools::derivative(e, s),
         Head::Derivative => {
             let mut counts: Vec<(Basic, u64)> = derivative_counts(e);
             counts.push((s.clone(), 1));
@@ -1058,6 +1063,10 @@ pub fn diff(e: &Basic, counts: &[(Basic, u64)]) -> PolyResult<Basic> {
 pub fn doit(e: &Basic) -> PolyResult<Basic> {
     if e.args().is_empty() {
         return Ok(e.clone());
+    }
+    if matches!(e.head(), Head::RootSum) {
+        // RootSum.doit: with the roots, its arguments left alone
+        return crate::polys::rootoftools::doit(e);
     }
     let mut args: Vec<Basic> = Vec::new();
     for a in e.args() {

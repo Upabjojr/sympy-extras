@@ -628,3 +628,22 @@ pub fn exact_solutions(
         .map(|p| p.exact)
         .collect())
 }
+
+/// mpmath's `polyroots` (with its cleanup) on complex coefficients at
+/// `prec` bits; `None` without convergence or with a zero leading
+/// coefficient.
+pub(crate) fn polyroots_complex(
+    coeffs: &[crate::core::evalf::Complex],
+    maxsteps: usize,
+    extraprec: usize,
+    prec: usize,
+) -> Option<Vec<crate::core::evalf::Complex>> {
+    let cs: Vec<C> = coeffs.iter().map(|z| C::from_complex(z, prec)).collect();
+    let found: Vec<C> = polyroots(&cs, maxsteps, extraprec, prec).ok()??;
+    Some(
+        found
+            .into_iter()
+            .map(|c| crate::core::evalf::complex(c.re, c.im))
+            .collect(),
+    )
+}

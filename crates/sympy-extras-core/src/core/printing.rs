@@ -412,6 +412,7 @@ impl StrPrinter {
                 let (f, t, k) = crate::polys::cad::indexedroot::shown_parts(e);
                 format!("IndexedRoot({}, {}, {})", self.doprint(&f), self.doprint(&t), k)
             }
+            Head::RootSum => crate::polys::rootoftools::print(e, &|a: &Basic| self.doprint(a)),
             Head::Subs => {
                 let (expr, variables, point) = (&e.args()[0], e.args()[1].args(), e.args()[2].args());
                 if variables.len() == 1 {

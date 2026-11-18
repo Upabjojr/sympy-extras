@@ -17,6 +17,14 @@ pub fn bound_symbols(e: &Basic) -> Vec<Basic> {
             e.args()[i].args().to_vec()
         }
         Head::IndexedRoot => vec![e.args()[1].clone()],
+        Head::RootSum => {
+            let (_, var, _, t) = crate::polys::rootoftools::parts(e);
+            if var == t {
+                vec![t.clone()]
+            } else {
+                vec![t.clone(), var.clone()]
+            }
+        }
         _ => Vec::new(),
     }
 }

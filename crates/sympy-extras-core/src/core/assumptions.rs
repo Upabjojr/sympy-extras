@@ -653,7 +653,7 @@ pub fn is_number(e: &Basic) -> bool {
         // _is_number_node: a number (its variable is bound)
         return true;
     }
-    if matches!(e.head(), Head::IndexedRoot) {
+    if matches!(e.head(), Head::IndexedRoot | Head::RootSum) {
         // _is_number_node: no free symbols (the variable is bound)
         return e.free_symbols().is_empty();
     }

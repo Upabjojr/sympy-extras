@@ -191,6 +191,15 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "RationalsClass" => Basic::atom(Head::Rationals),
         "ComplexesClass" => Basic::atom(Head::Complexes),
         "ImageSet" => Basic::new(Head::ImageSet, args()?),
+        "RootSum" => {
+            // RootSum(f, Lambda(var, body), t): the Lambda flattened
+            let fun = ob.getattr("fun")?;
+            let var: Basic = from_python(&fun.getattr("variables")?.get_item(0)?)?;
+            let body: Basic = from_python(&fun.getattr("expr")?)?;
+            let f: Basic = from_python(&ob.getattr("expr")?)?;
+            let t: Basic = from_python(&ob.getattr("variable")?)?;
+            sympy_extras_core::polys::rootoftools::node(&f, &var, &body, &t)
+        }
         "ComplexRootOf" => {
             let a: Vec<Basic> = args()?;
             sympy_extras_core::polys::complexrootof::complex_root_of(&a[0], &a[1]).map_err(crate::convert::err)?
@@ -503,6 +512,16 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         Head::Naturals | Head::Naturals0 | Head::Integers | Head::Rationals | Head::Complexes => py
             .import("sympy_extras.sets.fancysets")?
             .getattr(sympy_extras_core::sets::fancysets::set_name(e))?,
+        Head::RootSum => {
+            let (f, var, body, t) = sympy_extras_core::polys::rootoftools::parts(e);
+            let lambda = py
+                .import("sympy_extras.core.function")?
+                .getattr("Lambda")?
+                .call1((to_python(py, var)?, to_python(py, body)?))?;
+            py.import("sympy_extras.polys.rootoftools")?
+                .getattr("RootSum")?
+                .call1((to_python(py, f)?, lambda, to_python(py, t)?))?
+        }
         Head::ImageSet => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.sets.fancysets")?
@@ -2898,6 +2917,30 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "to_predicates" => fc::to_predicates(&a[1]).map_err(e)?.unwrap_or_else(none),
                 "to_polynomial" => fc::to_polynomial(&a[1], a[2].args()).map_err(e)?.unwrap_or_else(none),
                 "element" => fc::element(&a[1], &a[2]).map_err(e)?,
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
+        "root_sum" => {
+            // op: root_sum(f, var, body (or empty Tuples for the identity), t (or empty Tuple), auto,
+            // quadratic), doit(node), diff(node, s), value(node, digits) -> Tuple(re, im) as rationals
+            use sympy_extras_core::polys::rootoftools as rs;
+            let given = |b: &Basic| !matches!(b.head(), Head::Tuple);
+            let flag = |b: Option<&Basic>, d: bool| match b.map(|x| x.head()) {
+                Some(Head::BooleanTrue) => true,
+                Some(Head::BooleanFalse) => false,
+                _ => d,
+            };
+            match a[0].to_string().as_str() {
+                "root_sum" => {
+                    let fun = if given(&a[2]) { Some((&a[2], &a[3])) } else { None };
+                    let t = if given(&a[4]) { Some(&a[4]) } else { None };
+                    rs::root_sum(&a[1], fun, t, flag(a.get(5), true), flag(a.get(6), false)).map_err(e)?
+                }
+                "doit" => sympy_extras_core::core::function::doit(&a[1]).map_err(e)?,
+                "diff" => sympy_extras_core::core::function::derivative(&a[1], &a[2]).map_err(e)?,
+                "is_number" => {
+                    sympy_extras_core::core::logic::boolean(sympy_extras_core::core::assumptions::is_number(&a[1]))
+                }
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }

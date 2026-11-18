@@ -125,6 +125,9 @@ pub enum Head {
     Rationals,
     Complexes,
     ImageSet,
+    /// `RootSum(f, Lambda(var, body))`: the arguments `(f, Tuple(var), body,
+    /// t)` (`polys/rootoftools.rs`).
+    RootSum,
 }
 
 /// The relations of `core.relational`.
@@ -914,6 +917,7 @@ impl Head {
             Head::Derivative => "Derivative",
             Head::Subs => "Subs",
             Head::IndexedRoot => "IndexedRoot",
+            Head::RootSum => "RootSum",
             Head::BooleanTrue => "BooleanTrue",
             Head::BooleanFalse => "BooleanFalse",
             Head::And => "And",
@@ -1008,6 +1012,7 @@ impl Head {
                 | Head::Derivative
                 | Head::Subs
                 | Head::IndexedRoot
+                | Head::RootSum
                 | Head::And
                 | Head::Or
                 | Head::Not
@@ -1360,6 +1365,7 @@ impl Basic {
             // a number: the variable of the polynomial is bound
             Head::ComplexRootOf(_) => BTreeSet::new(),
             Head::ImageSet => crate::sets::fancysets::image_set_free_symbols(self),
+            Head::RootSum => crate::polys::rootoftools::free_symbols(self),
             Head::Subs => {
                 // the variables are bound
                 let variables: BTreeSet<Basic> = self.0.args[1].args().iter().cloned().collect();
@@ -1407,6 +1413,9 @@ impl Basic {
         }
         if self.0.args.is_empty() || matches!(self.0.head, Head::ComplexRootOf(_)) {
             return self.clone();
+        }
+        if matches!(self.0.head, Head::RootSum) {
+            return crate::polys::rootoftools::xreplace_plain(self, rules);
         }
         let args: Vec<Basic> = self.0.args.iter().map(|a| a.xreplace(rules)).collect();
         if args.iter().zip(&self.0.args).all(|(a, b)| a.ptr_eq(b)) {

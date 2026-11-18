@@ -43,6 +43,7 @@ pub mod rationaltools;
 pub mod regularchains;
 pub mod rings;
 pub mod rootisolation;
+pub mod rootoftools;
 pub mod roots;
 pub mod rur;
 pub mod sqfreetools;

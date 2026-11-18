@@ -156,7 +156,7 @@ fn unevaluated_add(args: &[Basic]) -> PolyResult<Basic> {
 
 /// `expand_2arg`: a number times a sum distributed, bottom up, the sum
 /// unevaluated.
-fn expand_2arg(e: &Basic) -> PolyResult<Basic> {
+pub(crate) fn expand_2arg(e: &Basic) -> PolyResult<Basic> {
     if e.args().is_empty() {
         return Ok(e.clone());
     }
@@ -188,7 +188,7 @@ pub fn roots_linear(f: &Poly) -> PolyResult<Vec<Basic>> {
 }
 
 /// `sqrt(d)` with the even powers of the factors taken out (`_sqrt`).
-fn sqrt_taken(d: &Basic) -> PolyResult<Basic> {
+pub(crate) fn sqrt_taken(d: &Basic) -> PolyResult<Basic> {
     let factors: Vec<Basic> = if d.is_mul() { d.args().to_vec() } else { vec![d.clone()] };
     let mut taken: Vec<Basic> = Vec::new();
     let mut other: Vec<Basic> = Vec::new();
