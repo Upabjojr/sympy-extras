@@ -110,6 +110,9 @@ pub enum Head {
     /// `sets.powerset`)
     SetOfSets,
     PowerSet,
+    /// `CRootOf(f, k)`, with the coefficients and the variable of `f`
+    /// (`polys.complexrootof`; equal by the coefficients and the index).
+    ComplexRootOf(std::sync::Arc<crate::polys::complexrootof::RootData>),
 }
 
 /// The relations of `core.relational`.
@@ -928,6 +931,7 @@ impl Head {
             Head::MeijerG => "MeijerG",
             Head::ForAll => "ForAll",
             Head::SetOfSets => "SetOfSets",
+            Head::ComplexRootOf(_) => "ComplexRootOf",
             Head::PowerSet => "PowerSet",
             Head::Exists => "Exists",
         }
@@ -1009,6 +1013,7 @@ impl Head {
                 | Head::Exists
                 | Head::SetOfSets
                 | Head::PowerSet
+                | Head::ComplexRootOf(_)
         )
     }
 
@@ -1097,7 +1102,16 @@ impl Basic {
     pub fn new(head: Head, args: Vec<Basic>) -> Basic {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         head.hash_into(&mut hasher);
-        if head.args_are_a_set() {
+        if let Head::ComplexRootOf(data) = &head {
+            // the variable is bound: the polynomial is its coefficients
+            for c in &data.coefficients {
+                c.numerator().hash(&mut hasher);
+                c.denominator().hash(&mut hasher);
+            }
+            if let Some(k) = args.get(1) {
+                k.0.hash.hash(&mut hasher);
+            }
+        } else if head.args_are_a_set() {
             // And, Or, Xor, Equivalent: equal for the same set of arguments
             let mut hashes: Vec<u64> = args.iter().map(|a| a.0.hash).collect();
             hashes.sort_unstable();
@@ -1312,6 +1326,8 @@ impl Basic {
     pub fn free_symbols(&self) -> BTreeSet<Basic> {
         match &self.0.head {
             Head::ForAll | Head::Exists => crate::assumptions::quantifiers::quantifier_free_symbols(self),
+            // a number: the variable of the polynomial is bound
+            Head::ComplexRootOf(_) => BTreeSet::new(),
             Head::Subs => {
                 // the variables are bound
                 let variables: BTreeSet<Basic> = self.0.args[1].args().iter().cloned().collect();
@@ -1357,7 +1373,7 @@ impl Basic {
         if let Some(value) = rules.get(self) {
             return value.clone();
         }
-        if self.0.args.is_empty() {
+        if self.0.args.is_empty() || matches!(self.0.head, Head::ComplexRootOf(_)) {
             return self.clone();
         }
         let args: Vec<Basic> = self.0.args.iter().map(|a| a.xreplace(rules)).collect();
@@ -1383,6 +1399,9 @@ impl PartialEq for Basic {
                 && matches!(other.head(), Head::Reals | Head::Interval)
                 && whole(self)
                 && whole(other);
+        }
+        if let (Head::ComplexRootOf(a), Head::ComplexRootOf(b)) = (&self.0.head, &other.0.head) {
+            return a.coefficients == b.coefficients && self.0.args[1] == other.0.args[1];
         }
         if self.0.head.args_are_a_set() {
             let unique = |args: &[Basic]| -> Vec<Basic> {

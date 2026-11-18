@@ -356,6 +356,7 @@ impl StrPrinter {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Head::ComplexRootOf(_) => crate::polys::complexrootof::print_root(e, &|a: &Basic| self.doprint(a)),
             Head::ForAll | Head::Exists => {
                 crate::assumptions::quantifiers::print_quantifier(e, &|a: &Basic| self.doprint(a))
             }

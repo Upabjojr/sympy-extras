@@ -5,6 +5,7 @@ pub mod berlekampmassey;
 pub mod bigatti;
 pub mod buchberger;
 pub mod cad;
+pub mod complexrootof;
 pub mod complexroots;
 pub mod densearith;
 pub mod densebasic;

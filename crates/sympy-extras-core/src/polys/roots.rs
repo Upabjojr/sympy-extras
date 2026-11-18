@@ -32,7 +32,7 @@ fn small_components(poly: &Poly) -> PolyResult<bool> {
     Ok(true)
 }
 
-fn trivial_roots(poly: &Poly) -> PolyResult<Option<Vec<Basic>>> {
+pub(crate) fn trivial_roots(poly: &Poly) -> PolyResult<Option<Vec<Basic>>> {
     let n: i64 = poly.degree(0)?;
     if n == 1 {
         return Ok(Some(roots_linear(poly)?));

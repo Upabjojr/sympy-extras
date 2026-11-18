@@ -26,6 +26,8 @@ pub enum PolyError {
     /// `RecursionError`: what Python's code runs into without end (the
     /// sum of accumulation bounds and `zoo`).
     Recursion(String),
+    /// `IndexError`: an index out of its range (the index of a root).
+    Index(String),
     /// One of the exceptions of `polys.polyerrors` (`PolynomialError`,
     /// `GeneratorsNeeded`, `CoercionFailed`, ...).
     Polys(PolysErrorKind, String),
@@ -81,6 +83,7 @@ impl fmt::Display for PolyError {
             PolyError::Polys(_, message) => write!(f, "{}", message),
             PolyError::Type(message) => write!(f, "{}", message),
             PolyError::Recursion(message) => write!(f, "{}", message),
+            PolyError::Index(message) => write!(f, "{}", message),
             PolyError::NotImplemented(message) => write!(f, "{}", message),
         }
     }

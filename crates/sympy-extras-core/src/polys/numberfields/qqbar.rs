@@ -832,7 +832,8 @@ fn rat_abs(v: &Rat) -> Rat {
 }
 
 /// The real roots and the other roots, in no particular order.
-fn roots(f: &[Int]) -> PolyResult<(Vec<Algebraic>, Vec<Algebraic>)> {
+/// The real roots and the other roots, in no particular order (`_roots`).
+pub(crate) fn roots(f: &[Int]) -> PolyResult<(Vec<Algebraic>, Vec<Algebraic>)> {
     if f.iter().all(|c| c.is_zero()) {
         return Err(value_error("the zero polynomial".to_string()));
     }

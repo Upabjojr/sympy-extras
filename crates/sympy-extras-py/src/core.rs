@@ -174,6 +174,10 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "PointSet" => Basic::new(Head::PointSet, args()?),
         "SetOfSets" => Basic::new(Head::SetOfSets, args()?),
         "PowerSet" => Basic::new(Head::PowerSet, args()?),
+        "ComplexRootOf" => {
+            let a: Vec<Basic> = args()?;
+            sympy_extras_core::polys::complexrootof::complex_root_of(&a[0], &a[1]).map_err(crate::convert::err)?
+        }
         "ConditionSet" => Basic::new(Head::ConditionSet, args()?),
         "AccumBounds" | "AccumulationBounds" => Basic::new(Head::AccumBounds, args()?),
         "Piecewise" => Basic::new(Head::Piecewise, args()?),
@@ -457,6 +461,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             py.import("sympy_extras.functions.elementary.piecewise")?
                 .getattr(name)?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::ComplexRootOf(_) => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.polys.complexrootof")?
+                .getattr("ComplexRootOf")?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::SetOfSets => {
@@ -2726,6 +2736,38 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     tuple(ab.constraints),
                     tuple(ab.requirements),
                 ]),
+            }
+        }
+        "rootof" | "all_roots" | "real_roots" | "root_count" | "real_roots_indexed" | "crootof_address"
+        | "complex_root_of" => {
+            use sympy_extras_core::polys::complexrootof as cr;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let flag = |b: &Basic| sympy_extras_core::core::logic::truth(b) == Some(true);
+            // the variable: a symbol, or 0 for none
+            let gen = |b: &Basic| if b.is_symbol() { Some(b.clone()) } else { None };
+            let int = |n: usize| Basic::integer((n as i64).into());
+            match (name, a.len()) {
+                ("rootof", 4) => {
+                    let k: i64 = a[1]
+                        .as_rational()
+                        .filter(|v| v.is_int())
+                        .and_then(|v| i64::try_from(v.numerator()).ok())
+                        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("expected an integer root index"))?;
+                    cr::rootof(&a[0], k, gen(&a[2]).as_ref(), flag(&a[3])).map_err(e)?
+                }
+                ("all_roots", 3) => tuple(cr::all_roots(&a[0], gen(&a[1]).as_ref(), flag(&a[2])).map_err(e)?),
+                ("real_roots", 3) => tuple(cr::real_roots(&a[0], gen(&a[1]).as_ref(), flag(&a[2])).map_err(e)?),
+                ("root_count", 2) => {
+                    let (r, n) = cr::root_count(&a[0], gen(&a[1]).as_ref()).map_err(e)?;
+                    tuple(vec![int(r), int(n)])
+                }
+                ("real_roots_indexed", 1) => cr::real_roots_indexed(&a[0]).map_err(e)?,
+                ("complex_root_of", 2) => cr::complex_root_of(&a[0], &a[1]).map_err(e)?,
+                ("crootof_address", 1) if matches!(a[0].head(), Head::ComplexRootOf(_)) => {
+                    let (f, i) = cr::address(&a[0]).map_err(e)?;
+                    tuple(vec![tuple(f.into_iter().map(Basic::integer).collect()), int(i)])
+                }
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
             }
         }
         "set_of_sets" | "power_set" | "powerset" | "power_set_elements" | "finite_elements" => {

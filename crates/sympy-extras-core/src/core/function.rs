@@ -41,6 +41,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::ExprCondPair => crate::functions::elementary::piecewise::checked_pair(&args[0], &args[1]),
         h @ (Head::Hyper | Head::MeijerG) => crate::functions::special::hyper::rebuild_hyper(h, &args),
         h @ (Head::ForAll | Head::Exists) => crate::assumptions::quantifiers::rebuild_quantifier(h, &args),
+        Head::ComplexRootOf(_) => crate::polys::complexrootof::rebuild_root(&args),
         h @ (Head::EmptySet
         | Head::UniversalSet
         | Head::Reals
@@ -201,7 +202,7 @@ pub fn xreplace_evaluated(e: &Basic, rule: &std::collections::HashMap<Basic, Bas
     if let Some(v) = rule.get(e) {
         return Ok(v.clone());
     }
-    if e.args().is_empty() {
+    if e.args().is_empty() || matches!(e.head(), Head::ComplexRootOf(_)) {
         return Ok(e.clone());
     }
     let mut args: Vec<Basic> = Vec::new();

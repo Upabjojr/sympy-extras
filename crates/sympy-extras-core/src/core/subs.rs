@@ -76,6 +76,10 @@ fn subs_node_rec(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Basic> {
         }
         return crate::polys::cad::indexedroot::indexed_root(&replaced, t, k);
     }
+    if matches!(e.head(), Head::ComplexRootOf(_)) {
+        // a number: no substitution of its bound variable changes it
+        return Ok(e.clone());
+    }
     if crate::assumptions::quantifiers::is_quantifier(e) {
         return crate::assumptions::quantifiers::quantifier_subs(e, old, new, &|f: &Basic| subs_node_rec(f, old, new));
     }
