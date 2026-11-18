@@ -2,4 +2,5 @@
 
 pub mod exponential_diophantine;
 pub mod linsolve;
+pub mod parametric;
 pub mod simplex;

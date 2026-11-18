@@ -3,3 +3,4 @@
 
 pub mod operations;
 pub mod recursive;
+pub mod regularchain;

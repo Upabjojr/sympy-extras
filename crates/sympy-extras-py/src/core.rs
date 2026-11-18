@@ -2836,6 +2836,56 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "triangularize" | "parametric_cases" => {
+            // triangularize: Tuple(equations), Tuple(symbols), Tuple(inequations), kalkbrener (0/1)
+            //   -> Tuple(Tuple(Tuple(polys), Tuple(main variables), Tuple(initials)), ...)
+            // parametric_cases: Tuple(equations), Tuple(unknowns), Tuple(parameters) or false,
+            //   Tuple(inequations) -> Tuple(Tuple(condition, solutions or false, Tuple(equations)), ...)
+            if a.len() != 4 {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments"));
+            }
+            let t = |items: Vec<Basic>| Basic::new(Head::Tuple, items);
+            if name == "triangularize" {
+                let chains = sympy_extras_core::polys::regularchains::regularchain::triangularize(
+                    a[0].args(),
+                    a[1].args(),
+                    a[2].args(),
+                    a[3] != Basic::zero(),
+                )
+                .map_err(e)?;
+                let mut out: Vec<Basic> = Vec::new();
+                for c in chains {
+                    out.push(t(vec![
+                        t(c.polys().map_err(e)?),
+                        t(c.main_variables()),
+                        t(c.initials().map_err(e)?),
+                    ]));
+                }
+                t(out)
+            } else {
+                let parameters: Option<&[Basic]> = if matches!(a[2].head(), Head::Tuple) {
+                    Some(a[2].args())
+                } else {
+                    None
+                };
+                let cases = sympy_extras_core::solvers::parametric::parametric_cases(
+                    a[0].args(),
+                    a[1].args(),
+                    parameters,
+                    a[3].args(),
+                )
+                .map_err(e)?;
+                let mut out: Vec<Basic> = Vec::new();
+                for c in cases {
+                    out.push(t(vec![
+                        c.condition,
+                        c.solutions.unwrap_or_else(sympy_extras_core::core::logic::false_),
+                        t(c.equations),
+                    ]));
+                }
+                t(out)
+            }
+        }
         "derivative_steps" => {
             // f, x, branch (0 or 1), depth (-1 for all), minor (0 or 1): the formatted
             // tree, the result and the number of steps
