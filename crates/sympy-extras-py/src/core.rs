@@ -2901,6 +2901,40 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "ex_domain" => {
+            // op, rationalized flag, arguments: add, sub, mul, neg, exquo, invert, pow(a, n), lcm,
+            // gcdex -> Tuple, is_zero, is_negative, normal, canonical_unit
+            use sympy_extras_core::polys::domains::{Domain, ExpressionDomain};
+            let k = ExpressionDomain {
+                rationalized: matches!(a[1].head(), Head::BooleanTrue),
+            };
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let b = |v: bool| sympy_extras_core::core::logic::boolean(v);
+            match a[0].to_string().as_str() {
+                "add" => k.add(&a[2], &a[3]),
+                "sub" => k.sub(&a[2], &a[3]),
+                "mul" => k.mul(&a[2], &a[3]),
+                "neg" => k.neg(&a[2]),
+                "exquo" => k.exquo(&a[2], &a[3]).map_err(e)?,
+                "invert" => k.invert(&a[2]).map_err(e)?,
+                "pow" => k.pow(
+                    &a[2],
+                    a[3].as_rational()
+                        .and_then(|v| u64::try_from(v.numerator()).ok())
+                        .unwrap_or(0),
+                ),
+                "lcm" => k.lcm(&a[2], &a[3]),
+                "gcdex" => {
+                    let (s1, t1, g) = k.gcdex(&a[2], &a[3]).map_err(e)?;
+                    tuple(vec![s1, t1, g])
+                }
+                "is_zero" => b(k.is_zero(&a[2])),
+                "is_negative" => b(k.is_negative(&a[2])),
+                "normal" => k.normal(&a[2]).map_err(e)?,
+                "canonical_unit" => k.canonical_unit(&a[2]),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "radsimp" => {
             // op: radsimp(e, symbolic, max_terms), sqrtdenest(e, max_iter), split_surds(e),
             // rad_rationalize(num, den), unevaluated_mul(*args), sqrt_depth(e), is_algebraic(e)

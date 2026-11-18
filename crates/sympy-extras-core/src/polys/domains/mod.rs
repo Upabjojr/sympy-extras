@@ -3,6 +3,7 @@
 pub mod algebraicfield;
 pub mod bigfinitefield;
 pub mod domain;
+pub mod expressiondomain;
 pub mod finitefield;
 pub mod fractionfield;
 pub mod galoisfield;
@@ -18,6 +19,7 @@ pub mod sparsepolynomialring;
 pub use algebraicfield::{AlgebraicElement, AlgebraicField};
 pub use bigfinitefield::BigFiniteField;
 pub use domain::{ConvertFrom, Domain, SparseRow};
+pub use expressiondomain::{ExpressionDomain, EX, EXR};
 pub use finitefield::{FiniteField, GF};
 pub use fractionfield::{FracElement, FractionField};
 pub use galoisfield::{GaloisElement, GaloisField};
