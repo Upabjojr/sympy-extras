@@ -838,6 +838,9 @@ pub fn rule_for(e: &Basic, target: &str) -> Option<Rule> {
     if let Some(rule) = super::inverse_rewrites::rule_for(e, target) {
         return Some(rule);
     }
+    if let Some(rule) = super::pow_rewrites::rule_for(e, target) {
+        return Some(rule);
+    }
     let f: Option<Function> = match e.head() {
         Head::Function(f) => Some(*f),
         _ => None,

@@ -26,18 +26,18 @@ use crate::functions::apply_function;
 /// An expression under construction: Python's operators on `Expr`, each
 /// one evaluated binary operation, the first error kept.
 #[derive(Clone)]
-struct X(PolyResult<Basic>);
+pub(super) struct X(pub(super) PolyResult<Basic>);
 
 impl X {
-    fn of(b: &Basic) -> X {
+    pub(super) fn of(b: &Basic) -> X {
         X(Ok(b.clone()))
     }
 
-    fn int(n: i64) -> X {
+    pub(super) fn int(n: i64) -> X {
         X(Ok(Basic::integer(n.into())))
     }
 
-    fn binary(self, other: X, f: fn(&Basic, &Basic) -> PolyResult<Basic>) -> X {
+    pub(super) fn binary(self, other: X, f: fn(&Basic, &Basic) -> PolyResult<Basic>) -> X {
         match (self.0, other.0) {
             (Ok(a), Ok(b)) => X(f(&a, &b)),
             (Err(e), _) | (_, Err(e)) => X(Err(e)),
@@ -45,11 +45,11 @@ impl X {
     }
 
     /// `self**n` for an integer `n`.
-    fn pw(self, n: i64) -> X {
+    pub(super) fn pw(self, n: i64) -> X {
         self.binary(X::int(n), crate::core::power::pow)
     }
 
-    fn done(self) -> PolyResult<Option<Basic>> {
+    pub(super) fn done(self) -> PolyResult<Option<Basic>> {
         self.0.map(Some)
     }
 }
@@ -126,28 +126,28 @@ impl Div<i64> for X {
 }
 
 /// `n + x`, `n - x`, `n * x`, `n / x` with a Python int on the left.
-fn n(v: i64) -> X {
+pub(super) fn n(v: i64) -> X {
     X::int(v)
 }
 
-fn call(f: Function, x: X) -> X {
+pub(super) fn call(f: Function, x: X) -> X {
     X(x.0.and_then(|a| apply_function(f, &[a])))
 }
 
 /// The unevaluated node `f(x)` (Python's class constructor).
-fn raw(f: Function, x: X) -> X {
+pub(super) fn raw(f: Function, x: X) -> X {
     X(x.0.map(|a| Basic::new(Head::Function(f), vec![a])))
 }
 
-fn sqrt(x: X) -> X {
+pub(super) fn sqrt(x: X) -> X {
     x.binary(X::of(&Basic::half()), crate::core::power::pow)
 }
 
-fn i() -> X {
+pub(super) fn i() -> X {
     X::of(&Basic::imaginary_unit())
 }
 
-fn pi() -> X {
+pub(super) fn pi() -> X {
     X::of(&Basic::pi())
 }
 

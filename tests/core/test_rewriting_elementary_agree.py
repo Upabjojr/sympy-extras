@@ -68,3 +68,30 @@ def test_rewrite_elementary(rust: Any, seed: int) -> None:
         if got == 'SKIP':
             continue
         assert got == outcome(lambda: e.rewrite(*[c for c, _ in chosen], cls)), (e, name, chosen)
+
+
+def special(rng: random.Random) -> Any:
+    from sympy_extras.core import I, Rational, Symbol, pi
+    from sympy_extras.functions import cos, cot, csc, exp, fibonacci, log, lucas, sec, sin, tan, tribonacci
+    x = Symbol('x')
+    n = Symbol('n', integer=True)
+    angle = lambda: pi*Rational(rng.choice([1, 2, 3, 7, -1]), rng.choice([3, 5, 17, 4, 8, 12, 15, 16, 24, 30, 51, 85, 7]))
+    builders = [lambda: rng.choice([cos, sin, tan, cot, sec, csc])(angle()),
+                lambda: rng.choice([cos, sin, tan, cot, sec, csc])(log(x)), lambda: exp(I*angle()),
+                lambda: exp(Rational(2, 3)*log(x)), lambda: exp(x*log(3)), lambda: fibonacci(n), lambda: lucas(n),
+                lambda: tribonacci(n), lambda: cos(x)*sin(pi/5) + tan(pi/8), lambda: exp(I*pi*x)]
+    return rng.choice(builders)()
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_rewrite_sqrt_pow(rust: Any, seed: int) -> None:
+    from sympy_extras.core import Integer, Symbol
+    rc = load("sympy_extras_rs.core")
+    rng = random.Random(stable_seed("rewriting sqrt pow", seed))
+    for _ in range(4):
+        e = special(rng)
+        name = rng.choice(['sqrt', 'pow', 'Pow'])
+        got = outcome(lambda: rc.logic_call('rewrite', [e, Symbol(name), Integer(1)]))
+        if got == 'SKIP':
+            continue
+        assert got == outcome(lambda: e.rewrite(name)), (e, name)
