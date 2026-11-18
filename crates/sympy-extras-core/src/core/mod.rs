@@ -37,6 +37,7 @@ pub mod exprtools;
 pub mod function;
 pub mod fuzzy;
 pub mod intfunc;
+pub mod kind;
 pub mod logic;
 pub mod matching;
 pub mod meromorphic;
@@ -52,6 +53,7 @@ pub mod rewriting;
 pub mod sorting;
 pub mod subs;
 pub mod symbol;
+pub mod sympify;
 pub mod traversal;
 
 pub use basic::{Basic, Function, Head, Node};

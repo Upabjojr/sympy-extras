@@ -2836,6 +2836,13 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "kind" => Basic::new(
+            Head::Symbol(std::sync::Arc::new(sympy_extras_core::core::symbol::SymbolData::new(
+                &sympy_extras_core::core::kind::kind_of(&a[0]).to_string(),
+                &[],
+            ))),
+            vec![],
+        ),
         "parse" => {
             // the text as the name of a symbol, evaluate (a boolean) -> the expression
             let text: String = match a[0].head() {
