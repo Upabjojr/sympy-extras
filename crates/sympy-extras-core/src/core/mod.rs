@@ -50,6 +50,7 @@ pub mod parameters;
 pub mod parsing;
 pub mod power;
 pub mod printing;
+pub mod refine;
 pub mod relational;
 pub mod rewriting;
 pub mod sorting;

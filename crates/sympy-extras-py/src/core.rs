@@ -2901,6 +2901,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "refine" => sympy_extras_core::core::refine::refine(&a[0], &a[1]).map_err(e)?,
         "satask" => sympy_extras_core::core::logic::boolean(
             sympy_extras_core::assumptions::satask::predicates_consistent(&a[0]).map_err(e)?,
         ),
