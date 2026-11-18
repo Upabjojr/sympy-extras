@@ -44,6 +44,7 @@ pub mod modulo;
 pub mod mul;
 pub mod numbers;
 pub mod parameters;
+pub mod parsing;
 pub mod power;
 pub mod printing;
 pub mod relational;

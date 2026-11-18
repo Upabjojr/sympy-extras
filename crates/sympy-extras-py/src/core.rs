@@ -2836,6 +2836,17 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "parse" => {
+            // the text as the name of a symbol, evaluate (a boolean) -> the expression
+            let text: String = match a[0].head() {
+                Head::Symbol(d) => d.name.clone(),
+                _ => a[0].to_string(),
+            };
+            let evaluate: bool = a
+                .get(1)
+                .map_or(true, |b| sympy_extras_core::core::logic::truth(b) == Some(true));
+            sympy_extras_core::core::parsing::parse(&text, evaluate).map_err(e)?
+        }
         "rosenfeld" => {
             // Tuple(equations), Tuple(functions), Tuple(variables) (empty: the default),
             // Tuple(blocks) (empty: orderly), Tuple(inequations), Tuple(probes) ->

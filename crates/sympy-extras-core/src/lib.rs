@@ -42,11 +42,11 @@ pub mod physics;
 pub mod polys;
 pub mod random;
 pub mod series;
-pub mod timeout;
 pub mod sets;
 pub mod simplify;
 pub mod solvers;
 pub mod steps;
+pub mod timeout;
 
 /// Version of the crate, kept equal to `sympy_extras.__version__`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

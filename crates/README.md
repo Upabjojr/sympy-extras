@@ -34,6 +34,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `_timeout.py` | `attempt` without the clock (`timeout.rs`) | the computation runs to its end; the give-up errors (every `PolyError` but `Index`) are `None`; the alarm-signal time limits and the preparation of SymPy are not ported (Python-specific) |
 | `core/parameters.py` | `evaluate`, `evaluate_guard`, `distribute_guard`, `divide_error` (`core/parameters.rs`) | per-thread switches, the scope of a `with` block |
 | `core/bridge.py` | not needed | the foreign (SymPy) nodes do not exist in the Rust core: every caller's foreign branch is dead, which is the Python's behaviour without a registered bridge (`available()` false, knowledge "unknown") |
+| `core/parsing.py` | `parse`, `function_named` (`core/parsing.rs`) | the recursive descent of the Python; the function heads by SymPy's names (the table generated from `Function::name`, without the `HyperRep_*` and `Mod` heads which Python parses as undefined functions); `sqrt`, `cbrt`, `root`, `ln`, two-argument `log`; decimals and the names without a Rust head are `NotImplemented`; `ParseUnsupported` is a `Value` error |
 | `polys/domains/domain.py` | done | trait `Domain` with `factor_dense` and `nullspace` (`try_sparse_echelon` gives the `ValueError` of a non-unit pivot over a ring); `to_expr`/`from_expr` and the root isolation hooks wait for the ported modules |
 | `polys/domains/integerring.py` | done | |
 | `polys/domains/rationalfield.py` | done | with the fraction-free sparse echelon form |
