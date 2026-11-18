@@ -121,6 +121,11 @@ impl Algebra {
         Ok(algebra)
     }
 
+    /// The position of a standard monomial.
+    pub fn index_of(&self, m: &Monomial) -> Option<usize> {
+        self.index.get(m).copied()
+    }
+
     /// The dimension of the quotient algebra.
     pub fn dimension(&self) -> usize {
         self.monomials.len()

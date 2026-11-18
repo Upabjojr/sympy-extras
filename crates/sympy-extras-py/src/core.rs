@@ -2836,6 +2836,37 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "rur" => {
+            // Tuple(polys), Tuple(gens), t -> Tuple(form, polynomial, characteristic, denominator,
+            // Tuple(numerators), Tuple(polynomials), Tuple(solutions), Tuple(real solutions)), each
+            // solution a Tuple of the values of the variables
+            use sympy_extras_core::polys::hermite::System;
+            use sympy_extras_core::polys::rur::{rur, to_expr};
+            let r = rur(&System::Polys(a[0].args(), a[1].args()), a.get(2)).map_err(e)?;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let polys = |v: &[sympy_extras_core::polys::rur::QPoly]| -> PyResult<Basic> {
+                Ok(tuple(v.iter().map(to_expr).collect::<Result<_, _>>().map_err(e)?))
+            };
+            let points = |real: bool| -> PyResult<Basic> {
+                let found = r.solutions(real).map_err(e)?;
+                Ok(tuple(
+                    found
+                        .into_iter()
+                        .map(|p| tuple(p.into_iter().map(|(_, v)| v).collect()))
+                        .collect(),
+                ))
+            };
+            tuple(vec![
+                r.form.clone(),
+                to_expr(&r.polynomial).map_err(e)?,
+                to_expr(&r.characteristic).map_err(e)?,
+                to_expr(&r.denominator).map_err(e)?,
+                polys(&r.numerators)?,
+                polys(&r.polynomials().map_err(e)?)?,
+                points(false)?,
+                points(true)?,
+            ])
+        }
         "hermite_form" => {
             // op (a symbol), Tuple(polys), Tuple(gens), extra... ; decide: the formula as the
             // extra argument, None as an empty Tuple

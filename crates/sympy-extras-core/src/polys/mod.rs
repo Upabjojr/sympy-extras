@@ -43,6 +43,7 @@ pub mod regularchains;
 pub mod rings;
 pub mod rootisolation;
 pub mod roots;
+pub mod rur;
 pub mod sqfreetools;
 pub mod stronggroebner;
 pub mod subresultants;

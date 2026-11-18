@@ -11,8 +11,8 @@
 //! The decompositions of `idealdecomposition` (the radical in positive
 //! dimension, minimal and associated primes, primary decompositions) are
 //! reached over the rationals by downcasting (`NotImplemented` over the
-//! other fields, as in the Python); the rational univariate
-//! representation of `rur` is not ported yet. The Gröbner bases are computed by F4 directly (the
+//! other fields, as in the Python), and so is the rational univariate
+//! representation of `rur`. The Gröbner bases are computed by F4 directly (the
 //! Python falls back on the modular algorithm after a time limit; the
 //! reduced basis is the same).
 
@@ -1102,6 +1102,13 @@ impl<K: Domain + 'static> Ideal<K> {
             .into_iter()
             .map(Ideal::back)
             .collect())
+    }
+
+    /// The rational univariate representation (zero-dimensional ideals
+    /// over the rationals, `rur`).
+    pub fn rur(&self, t: Option<&Basic>) -> PolyResult<super::rur::RationalUnivariateRepresentation> {
+        let rational = self.rational("real zeros are counted for ideals over QQ")?;
+        super::rur::rur(&super::hermite::System::Ideal(rational), t)
     }
 
     /// Whether the ideal is primary.
