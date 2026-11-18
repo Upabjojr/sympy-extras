@@ -44,6 +44,7 @@ pub mod parameters;
 pub mod power;
 pub mod printing;
 pub mod relational;
+pub mod rewriting;
 pub mod sorting;
 pub mod subs;
 pub mod symbol;

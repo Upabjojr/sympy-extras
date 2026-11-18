@@ -2753,6 +2753,24 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 ]),
             }
         }
+        "rewrite" => {
+            // e, Symbol(target name), piecewise (0 or 1), sample nodes of the patterns
+            use sympy_extras_core::core::rewriting::{rewrite, RewriteHints};
+            if a.len() < 3 {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments"));
+            }
+            let mut patterns: Vec<Function> = Vec::new();
+            for node in &a[3..] {
+                match node.head() {
+                    Head::Function(f) => patterns.push(*f),
+                    _ => return Err(pyo3::exceptions::PyTypeError::new_err("a pattern is a function node")),
+                }
+            }
+            let hints = RewriteHints {
+                piecewise: a[2] != Basic::zero(),
+            };
+            rewrite(&a[0], &patterns, &a[1].to_string(), &hints).map_err(e)?
+        }
         "count_ops" | "count_ops_visual" => {
             use sympy_extras_core::core::function as fc;
             if name == "count_ops" {
