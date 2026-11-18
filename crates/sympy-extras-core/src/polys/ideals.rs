@@ -9,14 +9,16 @@
 //! maximality test and the change of order (FGLM or the Gröbner walk).
 //!
 //! The decompositions of `idealdecomposition` (the radical in positive
-//! dimension, minimal and associated primes, primary decompositions) and
-//! the rational univariate representation of `rur` are not ported yet
-//! (`NotImplemented`). The Gröbner bases are computed by F4 directly (the
+//! dimension, minimal and associated primes, primary decompositions) are
+//! reached over the rationals by downcasting (`NotImplemented` over the
+//! other fields, as in the Python); the rational univariate
+//! representation of `rur` is not ported yet. The Gröbner bases are computed by F4 directly (the
 //! Python falls back on the modular algorithm after a time limit; the
 //! reduced basis is the same).
 
 #![allow(clippy::mutable_key_type)]
 
+use std::any::Any;
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -25,7 +27,7 @@ use crate::core::symbol::{Dummy, Symbol};
 use crate::error::{value_error, PolyError, PolyResult};
 use crate::numbers::{Int, Rat};
 
-use super::domains::Domain;
+use super::domains::{Domain, RationalField};
 use super::rings::{
     monomial_div, monomial_divides, monomial_mul, Monomial, MonomialOrder, PolyElement, PolyRing, Terms,
 };
@@ -207,7 +209,7 @@ pub struct Ideal<K: Domain> {
     pub gens: Vec<PolyElement<K>>,
 }
 
-impl<K: Domain> std::fmt::Display for Ideal<K> {
+impl<K: Domain + 'static> std::fmt::Display for Ideal<K> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let gens: Vec<String> = self
             .exprs()
@@ -224,7 +226,7 @@ pub enum PolyLike<'a, K: Domain> {
     Element(&'a PolyElement<K>),
 }
 
-impl<K: Domain> Ideal<K> {
+impl<K: Domain + 'static> Ideal<K> {
     fn empty(symbols: &[Basic], domain: K, order: MonomialOrder) -> PolyResult<Ideal<K>> {
         if symbols.is_empty() {
             return Err(value_error("no variables: give the symbols of the ring".to_string()));
@@ -938,16 +940,15 @@ impl<K: Domain> Ideal<K> {
         self.minimal_polynomial(&PolyLike::Expr(x))
     }
 
-    /// The radical: by Seidenberg's lemma in dimension zero; the positive
-    /// dimension (`idealdecomposition`) is not ported (`radical`).
+    /// The radical: by Seidenberg's lemma in dimension zero, by the
+    /// regular chains of `idealdecomposition` otherwise (`radical`).
     pub fn radical(&self) -> PolyResult<Ideal<K>> {
         if self.is_whole_ring()? {
             return self.reduced();
         }
         if !self.is_zero_dimensional()? {
-            return Err(not_implemented(
-                "the radical of an ideal of positive dimension (idealdecomposition) is not ported",
-            ));
+            let rational = self.rational("ideals of positive dimension are decomposed over the rationals only")?;
+            return Ok(Ideal::back(super::idealdecomposition::radical(rational)?));
         }
         use super::densearith::dup_quo;
         use super::densetools::dup_diff;
@@ -1039,8 +1040,8 @@ impl<K: Domain> Ideal<K> {
         ))
     }
 
-    /// Whether the ideal is prime: maximal in dimension zero; the positive
-    /// dimension needs the minimal primes (not ported).
+    /// Whether the ideal is prime: maximal in dimension zero, its own only
+    /// minimal prime otherwise.
     pub fn is_prime(&self) -> PolyResult<bool> {
         if self.is_whole_ring()? {
             return Ok(false);
@@ -1048,9 +1049,65 @@ impl<K: Domain> Ideal<K> {
         if self.is_zero_dimensional()? {
             return self.is_maximal();
         }
-        Err(not_implemented(
-            "the minimal primes (idealdecomposition) are not ported",
-        ))
+        let primes: Vec<Ideal<K>> = self.minimal_primes()?;
+        Ok(primes.len() == 1 && primes[0].equals(self)?)
+    }
+
+    /// The ideal over the rationals (the same type), for the
+    /// decompositions of `idealdecomposition`.
+    fn rational(&self, message: &str) -> PolyResult<&Ideal<RationalField>> {
+        (self as &dyn Any)
+            .downcast_ref::<Ideal<RationalField>>()
+            .ok_or_else(|| not_implemented(message))
+    }
+
+    fn back(ideal: Ideal<RationalField>) -> Ideal<K> {
+        *(Box::new(ideal) as Box<dyn Any>)
+            .downcast::<Ideal<K>>()
+            .expect("an ideal over the rationals")
+    }
+
+    /// The equidimensional parts of the radical, by decreasing dimension.
+    pub fn equidimensional_parts(&self) -> PolyResult<Vec<Ideal<K>>> {
+        let rational = self.rational("ideals of positive dimension are decomposed over the rationals only")?;
+        Ok(super::idealdecomposition::equidimensional_parts(rational)?
+            .into_iter()
+            .map(Ideal::back)
+            .collect())
+    }
+
+    /// The minimal primes, by decreasing dimension.
+    pub fn minimal_primes(&self) -> PolyResult<Vec<Ideal<K>>> {
+        let rational = self.rational("ideals of positive dimension are decomposed over the rationals only")?;
+        Ok(super::idealdecomposition::minimal_primes(rational)?
+            .into_iter()
+            .map(Ideal::back)
+            .collect())
+    }
+
+    /// An irredundant primary decomposition, as pairs of a primary ideal
+    /// and its associated prime.
+    pub fn primary_decomposition(&self) -> PolyResult<Vec<(Ideal<K>, Ideal<K>)>> {
+        let rational = self.rational("ideals are decomposed over the rationals only")?;
+        Ok(super::idealdecomposition::primary_decomposition(rational)?
+            .into_iter()
+            .map(|(q, p)| (Ideal::back(q), Ideal::back(p)))
+            .collect())
+    }
+
+    /// The associated primes, minimal and embedded, by decreasing dimension.
+    pub fn associated_primes(&self) -> PolyResult<Vec<Ideal<K>>> {
+        let rational = self.rational("ideals are decomposed over the rationals only")?;
+        Ok(super::idealdecomposition::associated_primes(rational)?
+            .into_iter()
+            .map(Ideal::back)
+            .collect())
+    }
+
+    /// Whether the ideal is primary.
+    pub fn is_primary(&self) -> PolyResult<bool> {
+        let rational = self.rational("ideals are decomposed over the rationals only")?;
+        super::idealdecomposition::is_primary(rational)
     }
 
     /// The reduced Gröbner basis for another order, by FGLM for
@@ -1113,7 +1170,7 @@ fn dot<K: Domain>(row: &[K::Elem], v: &[K::Elem], k: &K) -> K::Elem {
 /// further arguments `extra` (expressions; a `Tuple` stands for a list).
 /// The results are expressions (a `Tuple` for a list, a boolean or an
 /// integer for the predicates and the counts).
-pub fn ideal_operation<K: Domain>(
+pub fn ideal_operation<K: Domain + 'static>(
     op: &str,
     gens: &[Basic],
     symbols: &[Basic],
@@ -1200,6 +1257,34 @@ pub fn ideal_operation<K: Domain>(
             exprs(&result, &result.groebner_basis(None)?)?
         }
         "is_radical" => boolean(ideal.is_radical()?),
+        "is_primary" => boolean(ideal.is_primary()?),
+        "equidimensional_parts" | "minimal_primes" | "associated_primes" => {
+            let found: Vec<Ideal<K>> = match op {
+                "equidimensional_parts" => ideal.equidimensional_parts()?,
+                "minimal_primes" => ideal.minimal_primes()?,
+                _ => ideal.associated_primes()?,
+            };
+            tuple(
+                found
+                    .iter()
+                    .map(|i| exprs(i, &i.groebner_basis(None)?))
+                    .collect::<PolyResult<_>>()?,
+            )
+        }
+        "primary_decomposition" => {
+            let found: Vec<(Ideal<K>, Ideal<K>)> = ideal.primary_decomposition()?;
+            tuple(
+                found
+                    .iter()
+                    .map(|(q, p)| {
+                        Ok(tuple(vec![
+                            exprs(q, &q.groebner_basis(None)?)?,
+                            exprs(p, &p.groebner_basis(None)?)?,
+                        ]))
+                    })
+                    .collect::<PolyResult<_>>()?,
+            )
+        }
         "is_maximal" => boolean(ideal.is_maximal()?),
         "is_prime" => boolean(ideal.is_prime()?),
         "is_zero_dimensional" => boolean(ideal.is_zero_dimensional()?),

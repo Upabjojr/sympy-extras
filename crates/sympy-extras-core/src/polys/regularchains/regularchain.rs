@@ -246,6 +246,11 @@ impl RegularChain {
         self.chain.elements().iter().map(|p| self.expr(p)).collect()
     }
 
+    /// The variables of the ring of the chain.
+    pub fn symbols(&self) -> &[Basic] {
+        &self.symbols
+    }
+
     /// The main variables of the polynomials, in the same order.
     pub fn main_variables(&self) -> Vec<Basic> {
         self.chain
