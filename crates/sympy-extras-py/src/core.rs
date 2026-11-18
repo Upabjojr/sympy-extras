@@ -210,6 +210,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "ExprCondPair" => Basic::new(Head::ExprCondPair, args()?),
         "Exp" => Basic::new(Head::Function(Function::Exp), args()?),
         "Log" => Basic::new(Head::Function(Function::Log), args()?),
+        "LambertW" => Basic::new(Head::Function(Function::LambertW), args()?),
         "Re" => Basic::new(Head::Function(Function::Re), args()?),
         "Im" => Basic::new(Head::Function(Function::Im), args()?),
         "Conjugate" => Basic::new(Head::Function(Function::Conjugate), args()?),
@@ -617,7 +618,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             let module: &str = match f {
-                Function::Exp | Function::Log => "exponential",
+                Function::Exp | Function::Log | Function::LambertW => "exponential",
                 Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
                     "trigonometric"
                 }
@@ -2918,6 +2919,19 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "to_polynomial" => fc::to_polynomial(&a[1], a[2].args()).map_err(e)?.unwrap_or_else(none),
                 "element" => fc::element(&a[1], &a[2]).map_err(e)?,
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
+        "is" => {
+            // e, Symbol(predicate name) -> true, false or the empty Tuple for None (`e.is_<name>`)
+            let Some(p) = sympy_extras_core::core::assumptions::Predicate::from_name(&a[1].to_string()) else {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "unknown predicate {}",
+                    a[1]
+                )));
+            };
+            match sympy_extras_core::core::expr::is(&a[0], p) {
+                Some(v) => sympy_extras_core::core::logic::boolean(v),
+                None => Basic::new(Head::Tuple, vec![]),
             }
         }
         "ratint" => {

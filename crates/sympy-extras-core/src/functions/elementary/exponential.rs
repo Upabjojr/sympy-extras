@@ -510,6 +510,266 @@ fn log_of_angle(
     Ok(None)
 }
 
+// ---------------------------------------------------------------------
+// LambertW
+
+// PORTED FROM SYMPY: sympy/functions/elementary/exponential.py:LambertW (SymPy 1.14), through
+// sympy_extras
+
+/// The node `LambertW(x)` or `LambertW(x, k)`, unevaluated.
+pub fn lambertw_node(args: Vec<Basic>) -> Basic {
+    Basic::new(Head::Function(Function::LambertW), args)
+}
+
+fn is_zero_truth(e: &Basic) -> Option<bool> {
+    crate::core::expr::is(e, zero)
+}
+
+/// `LambertW.eval`: the values at the special points; `None` otherwise.
+pub fn lambertw_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
+    let x: &Basic = &args[0];
+    let k: Basic = if args.len() > 1 { args[1].clone() } else { Basic::zero() };
+    if args.len() > 1 && is_zero_truth(&k) == Some(true) {
+        return Ok(Some(lambertw(x, None)?));
+    }
+    let e_inv: Basic = pow(&Basic::e(), &Basic::negative_one())?;
+    let minus_one_over_e: Basic = mul(&[Basic::negative_one(), e_inv])?;
+    let half = |c: i64| Basic::from_rational(rat(c, 2));
+    if is_zero_truth(&k) == Some(true) {
+        if is_zero_truth(x) == Some(true) {
+            return Ok(Some(Basic::zero()));
+        }
+        if matches!(x.head(), Head::Exp1) {
+            return Ok(Some(Basic::one()));
+        }
+        if *x == minus_one_over_e {
+            return Ok(Some(Basic::negative_one()));
+        }
+        let log2: Basic = log(&Basic::int(2))?;
+        if *x == mul(&[half(-1), log2.clone()])? {
+            return Ok(Some(mul(&[Basic::negative_one(), log2])?));
+        }
+        if *x == mul(&[Basic::int(2), log2.clone()])? {
+            return Ok(Some(log2));
+        }
+        if *x == mul(&[half(-1), Basic::pi()])? {
+            return Ok(Some(mul(&[Basic::imaginary_unit(), Basic::pi(), half(1)])?));
+        }
+        if *x == exp(&add(&[Basic::one(), Basic::e()])?)? {
+            return Ok(Some(Basic::e()));
+        }
+        if matches!(x.head(), Head::Infinity) {
+            return Ok(Some(x.clone()));
+        }
+    }
+    if is_zero_truth(&k) == Some(false) && is_zero_truth(x) == Some(true) {
+        return Ok(Some(Basic::negative_oo()));
+    }
+    if k == Basic::negative_one() {
+        if *x == mul(&[half(-1), Basic::pi()])? {
+            return Ok(Some(mul(&[half(-1), Basic::imaginary_unit(), Basic::pi()])?));
+        }
+        if *x == minus_one_over_e {
+            return Ok(Some(Basic::negative_one()));
+        }
+        if *x == mul(&[Basic::int(-2), exp(&Basic::int(-2))?])? {
+            return Ok(Some(Basic::int(-2)));
+        }
+    }
+    Ok(None)
+}
+
+/// `LambertW(x)` or the branch `LambertW(x, k)`, evaluated (`lambertw`).
+pub fn lambertw(x: &Basic, k: Option<&Basic>) -> PolyResult<Basic> {
+    let args: Vec<Basic> = match k {
+        Some(k) => vec![x.clone(), k.clone()],
+        None => vec![x.clone()],
+    };
+    if !evaluate() {
+        return Ok(lambertw_node(args));
+    }
+    Ok(lambertw_eval(&args)?.unwrap_or_else(|| lambertw_node(args)))
+}
+
+/// `LambertW.fdiff(1)`: `W/(x (1 + W))`.
+pub fn lambertw_fdiff(e: &Basic, argindex: usize) -> PolyResult<Basic> {
+    if argindex != 1 {
+        return Err(crate::error::not_ported("the derivative of LambertW in its branch"));
+    }
+    let w: Basic = e.clone();
+    mul(&[
+        w.clone(),
+        pow(
+            &mul(&[e.args()[0].clone(), add(&[Basic::one(), w])?])?,
+            &Basic::negative_one(),
+        )?,
+    ])
+}
+
+/// The facts of `LambertW` (`_eval_facts`).
+pub fn lambertw_facts(args: &[Basic]) -> FactList {
+    let x: &Basic = &args[0];
+    let k: Basic = if args.len() > 1 { args[1].clone() } else { Basic::zero() };
+    let mut facts: FactList = FactList::new();
+    facts.set(commutative, true);
+    let ask = |e: &Basic, p: Predicate| crate::core::expr::is(e, p);
+    let Ok(e_inv) = pow(&Basic::e(), &Basic::negative_one()) else {
+        return facts;
+    };
+    let Ok(shifted) = add(&[x.clone(), e_inv]) else {
+        return facts;
+    };
+    let Ok(k1) = add(&[k.clone(), Basic::one()]) else {
+        return facts;
+    };
+    let mut is_real: Option<bool> = None;
+    if ask(&k, zero) == Some(true) {
+        if ask(&shifted, positive) == Some(true) {
+            is_real = Some(true);
+        } else if ask(&shifted, nonpositive) == Some(true) {
+            is_real = Some(false);
+        }
+    } else if ask(&k1, zero) == Some(true) {
+        if ask(x, negative) == Some(true) && ask(&shifted, positive) == Some(true) {
+            is_real = Some(true);
+        } else if ask(x, nonpositive) == Some(true) || ask(&shifted, nonnegative) == Some(true) {
+            is_real = Some(false);
+        }
+    } else if ask(&k, zero) == Some(false) && ask(&k1, zero) == Some(false) && ask(x, extended_real) == Some(true) {
+        is_real = Some(false);
+    }
+    if let Some(v) = is_real {
+        facts.set(extended_real, v);
+    }
+    let a = facts_of(x);
+    if let Some(v) = a.get(&finite) {
+        facts.set(finite, *v);
+    }
+    if args.len() == 1 {
+        if let Some(v) = a.get(&zero) {
+            facts.set(zero, *v);
+        }
+    } else {
+        let kz: Option<bool> = facts_of(&k).get(&zero).copied();
+        let az: Option<bool> = a.get(&zero).copied();
+        if az == Some(false) || kz == Some(false) {
+            facts.set(zero, false);
+        } else if az == Some(true) && kz == Some(true) {
+            facts.set(zero, true);
+        }
+    }
+    if a.get(&zero) == Some(&false) && a.get(&algebraic) == Some(&true) {
+        facts.set(algebraic, false);
+    }
+    facts
+}
+
+/// mpmath's `lambertw(x, k)` at `prec` bits: Halley's iteration from the
+/// series at the branch point near `-1/e`, `x` itself near zero (the
+/// principal branch), the asymptotic `L1 - L2 + L2/L1` elsewhere.
+pub fn lambertw_value(values: &[crate::core::evalf::Complex], prec: usize) -> Option<crate::core::evalf::Complex> {
+    use crate::core::evalf::{complex, complex_sqrt, parts, real_int, Complex, Real};
+    let x: Complex = values[0].clone();
+    let k: i64 = if values.len() > 1 {
+        let (kr, ki) = parts(&values[1]);
+        if !ki.repr().significand().is_zero() {
+            return None;
+        }
+        let kv: f64 = kr.to_f64().value();
+        if kv.fract() != 0.0 || !kv.is_finite() {
+            return None;
+        }
+        kv as i64
+    } else {
+        0
+    };
+    let wp: usize = prec + 40;
+    let r = |v: f64| -> Real { Real::try_from(v).expect("finite").with_precision(wp).value() };
+    let c = |a: f64, b: f64| -> Complex { complex(r(a), r(b)) };
+    let at = |z: &Complex| -> Complex {
+        let (a, b) = parts(z);
+        complex(a.with_precision(wp).value(), b.with_precision(wp).value())
+    };
+    let mut x: Complex = at(&x);
+    // a real argument evaluated with noise in its imaginary part (-pi/2 as
+    // -1.57... - 1e-60 I) is real, as mpmath's mpf is: the side of the cut
+    // of log decides the branch
+    {
+        let (a, b) = parts(&x);
+        let (af, bf) = (a.to_f64().value(), b.to_f64().value());
+        if bf.abs() <= af.abs().max(1.0) * 2f64.powi(-((prec as i32).min(1000) - 8)) {
+            x = complex(a, r(0.0));
+        }
+    }
+    let (xr, xi) = parts(&x);
+    let x_is_zero: bool = xr.repr().significand().is_zero() && xi.repr().significand().is_zero();
+    if x_is_zero {
+        return if k == 0 { Some(c(0.0, 0.0)) } else { None };
+    }
+    let e: Complex = complex(Real::e(wp), r(0.0));
+    let (xf, yf) = (xr.to_f64().value(), xi.to_f64().value());
+    let near_branch: bool = ((xf + (-1.0f64).exp()).powi(2) + yf * yf).sqrt() < 0.3;
+    let one: Complex = c(1.0, 0.0);
+    let two: Complex = c(2.0, 0.0);
+    let mut w: Complex = if (k == 0 || (k == -1 && yf == 0.0 && xf < 0.0)) && near_branch {
+        // p = sqrt(2 (e x + 1)), w = -1 + p - p**2/3 + 11 p**3/72 (k = 0),
+        // with -p on the branch -1
+        let mut p: Complex = complex_sqrt(&(&two * &(&(&e * &x) + &one)), wp);
+        if k == -1 {
+            p = -p;
+        }
+        let p2: Complex = &p * &p;
+        let p3: Complex = &p2 * &p;
+        &(&(&p - &one) - &(&p2 / &c(3.0, 0.0))) + &(&p3 * &c(11.0 / 72.0, 0.0))
+    } else if k == 0 && (xf * xf + yf * yf).sqrt() < 0.5 {
+        x.clone()
+    } else if k == -1 && yf == 0.0 && xf < 0.0 && xf > -(-1.0f64).exp() {
+        // the real branch -1 on (-1/e, 0): log(-x) - log(-log(-x))
+        let l1: Complex = complex(real_int(&Int::from(0), wp), r(0.0)) + (-&x).ln();
+        let l2: Complex = (-&l1).ln();
+        &(&l1 - &l2) + &(&l2 / &l1)
+    } else {
+        let two_pi_i_k: Complex = complex(r(0.0), Real::pi(wp) * real_int(&Int::from(2 * k), wp));
+        let l1: Complex = &x.ln() + &two_pi_i_k;
+        let l2: Complex = l1.ln();
+        &(&l1 - &l2) + &(&l2 / &l1)
+    };
+    let tolerance: f64 = 2f64.powi(-((prec as i32).min(1000)));
+    for _ in 0..200 {
+        {
+            let (a, b) = parts(&w);
+            if a.repr().is_infinite() || b.repr().is_infinite() || a.repr().exponent() > 40 {
+                return None;
+            }
+        }
+        let ew: Complex = w.exp();
+        {
+            let (a, b) = parts(&ew);
+            if a.repr().is_infinite() || b.repr().is_infinite() {
+                return None;
+            }
+        }
+        let f: Complex = &(&w * &ew) - &x;
+        let wp1: Complex = &w + &one;
+        let denominator: Complex = &(&ew * &wp1) - &(&(&(&w + &two) * &f) / &(&two * &wp1));
+        let step: Complex = &f / &denominator;
+        w = &w - &step;
+        let (sr, si) = parts(&step);
+        let (wr, wi) = parts(&w);
+        if wr.repr().is_infinite() || wi.repr().is_infinite() || sr.repr().is_infinite() || si.repr().is_infinite() {
+            return None;
+        }
+        let size: f64 = (sr.to_f64().value().powi(2) + si.to_f64().value().powi(2)).sqrt();
+        let scale: f64 = (wr.to_f64().value().powi(2) + wi.to_f64().value().powi(2))
+            .sqrt()
+            .max(1e-300);
+        if size <= tolerance * scale || size == 0.0 {
+            return Some(at(&w));
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

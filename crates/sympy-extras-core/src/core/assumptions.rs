@@ -1311,6 +1311,7 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
     let mut facts: FactList = match f {
         super::basic::Function::Exp => exp_facts(&e.args()[0]),
         super::basic::Function::Log => log_facts(&e.args()[0]),
+        super::basic::Function::LambertW => crate::functions::elementary::exponential::lambertw_facts(e.args()),
         super::basic::Function::Sin
         | super::basic::Function::Cos
         | super::basic::Function::Tan

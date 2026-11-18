@@ -265,6 +265,13 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             Some(value)
         }
+        Head::Function(super::basic::Function::LambertW) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec)?);
+            }
+            crate::functions::elementary::exponential::lambertw_value(&values, wp)
+        }
         Head::Function(g @ (super::basic::Function::Arg | super::basic::Function::Atan2)) => {
             let mut values: Vec<Complex> = Vec::new();
             for a in e.args() {
@@ -569,6 +576,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Acsch) => crate::functions::elementary::inverse::inverse_value(*g, &v, wp)?,
                 super::basic::Function::Arg
                 | super::basic::Function::Atan2
+                | super::basic::Function::LambertW
                 | super::basic::Function::Max
                 | super::basic::Function::Min
                 | super::basic::Function::DiracDelta

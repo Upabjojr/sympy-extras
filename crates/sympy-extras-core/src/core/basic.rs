@@ -249,6 +249,7 @@ impl UndefinedFunction {
 pub enum Function {
     Exp,
     Log,
+    LambertW,
     Re,
     Im,
     Conjugate,
@@ -412,6 +413,7 @@ impl Function {
         match self {
             Function::Exp => "exp",
             Function::Log => "log",
+            Function::LambertW => "LambertW",
             Function::Re => "re",
             Function::Im => "im",
             Function::Conjugate => "conjugate",
@@ -574,6 +576,7 @@ impl Function {
         match self {
             Function::Exp => "Exp",
             Function::Log => "Log",
+            Function::LambertW => "LambertW",
             Function::Re => "Re",
             Function::Im => "Im",
             Function::Conjugate => "Conjugate",
@@ -740,7 +743,7 @@ impl Function {
             Function::Re => 41,
             Function::Im => 42,
             Function::Arg => 43,
-            Function::Atan2 | Function::Max | Function::Min => 10000,
+            Function::Atan2 | Function::Max | Function::Min | Function::LambertW => 10000,
             Function::Floor | Function::Ceiling | Function::Frac => 10000,
             Function::DiracDelta | Function::Heaviside => 10000,
             Function::Factorial

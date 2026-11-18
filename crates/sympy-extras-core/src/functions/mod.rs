@@ -22,6 +22,7 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
     match f {
         Function::Exp => Ok(e.clone()),
         Function::Log => pow(x, &minus),
+        Function::LambertW => elementary::exponential::lambertw_fdiff(e, argindex),
         Function::Sin => t::cos(x),
         Function::Cos => mul(&[minus, t::sin(x)?]),
         Function::Tan => add(&[Basic::one(), square(e)?]),
@@ -247,6 +248,9 @@ pub fn eval_derivative(f: Function, e: &Basic, s: &Basic) -> PolyResult<Option<B
 /// The evaluating function of a function head (`cls.apply`).
 /// `args` are the arguments of the node (two for `atan2`, one otherwise).
 pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
+    if f == Function::LambertW {
+        return elementary::exponential::lambertw(&args[0], args.get(1));
+    }
     if f == Function::Atan2 {
         return elementary::argument::atan2(&args[0], &args[1]);
     }
@@ -375,7 +379,12 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Beta | Function::BetaInc | Function::BetaIncRegularized => {
             unreachable!("evaluated above with all their arguments")
         }
-        Function::Atan2 | Function::Max | Function::Min | Function::DiracDelta | Function::Heaviside => {
+        Function::Atan2
+        | Function::Max
+        | Function::Min
+        | Function::DiracDelta
+        | Function::Heaviside
+        | Function::LambertW => {
             unreachable!("evaluated above with all their arguments")
         }
         Function::Factorial

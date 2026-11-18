@@ -181,6 +181,7 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         Function::Max
         | Function::Min
         | Function::Floor
+        | Function::LambertW
         | Function::Ceiling
         | Function::Frac
         | Function::DiracDelta
@@ -587,6 +588,7 @@ fn function_real_imag(
         | Function::Max
         | Function::Min
         | Function::Floor
+        | Function::LambertW
         | Function::Ceiling
         | Function::Frac
         | Function::DiracDelta
