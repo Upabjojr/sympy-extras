@@ -87,6 +87,12 @@ pub fn is_set(e: &Basic) -> bool {
             | Head::ConditionSet
             | Head::SetOfSets
             | Head::PowerSet
+            | Head::Naturals
+            | Head::Naturals0
+            | Head::Integers
+            | Head::Rationals
+            | Head::Complexes
+            | Head::ImageSet
     )
 }
 
@@ -277,6 +283,9 @@ fn contains_rule(s: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
         Head::SetOfSets => Some(false_()),
         // an expression is not a set
         Head::PowerSet => None,
+        _ if super::fancysets::is_named_set(s) => super::fancysets::named_contains(s, x),
+        // SymPy solves the equation of the image: not ported
+        Head::ImageSet => None,
         _ => return Err(not_ported("_contains of this set")),
     })
 }
@@ -289,6 +298,8 @@ fn contains_set_rule(s: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
         Head::EmptySet => Some(false_()),
         Head::UniversalSet => Some(true_()),
         Head::Interval | Head::Reals | Head::FiniteSet | Head::ProductSet | Head::PointSet => Some(false_()),
+        // a set is not a number; the images are expressions or tuples
+        _ if super::fancysets::is_named_set(s) || matches!(s.head(), Head::ImageSet) => Some(false_()),
         Head::Union => {
             let mut terms: Vec<Basic> = Vec::new();
             for t in sets_of(s) {
@@ -411,6 +422,7 @@ pub fn inf(s: &Basic) -> PolyResult<Basic> {
             }
             min_(&infima)
         }
+        _ if super::fancysets::is_named_set(s) => super::fancysets::named_inf(s),
         _ => Err(PolyError::NotImplemented(format!("({})._inf", s))),
     }
 }
@@ -427,6 +439,7 @@ pub fn sup(s: &Basic) -> PolyResult<Basic> {
             }
             max_(&suprema)
         }
+        _ if super::fancysets::is_named_set(s) => super::fancysets::named_sup(s),
         _ => Err(PolyError::NotImplemented(format!("({})._sup", s))),
     }
 }
@@ -457,6 +470,7 @@ pub fn is_empty(s: &Basic) -> PolyResult<Truth> {
             }
         }
         Head::FiniteSet | Head::PointSet | Head::SetOfSets => Some(s.args().is_empty()),
+        _ if super::fancysets::is_named_set(s) => Some(false),
         Head::Union => {
             let mut values: Vec<Truth> = Vec::new();
             for t in sets_of(s) {
@@ -479,6 +493,7 @@ pub fn is_empty(s: &Basic) -> PolyResult<Truth> {
 pub fn is_finite_set(s: &Basic) -> PolyResult<Truth> {
     Ok(match s.head() {
         Head::EmptySet | Head::FiniteSet | Head::PointSet | Head::SetOfSets => Some(true),
+        _ if super::fancysets::is_named_set(s) => Some(false),
         Head::UniversalSet => Some(false),
         Head::Interval | Head::Reals => is(&measure(s)?, Predicate::zero),
         Head::Union => {
@@ -1498,6 +1513,10 @@ pub fn rebuild_set(head: &Head, args: &[Basic]) -> PolyResult<Basic> {
         Head::ConditionSet => super::conditionset::condition_set(&args[0], &args[1], &args[2]),
         Head::SetOfSets => set_of_sets(args),
         Head::PowerSet => power_set(&args[0]),
+        Head::Naturals | Head::Naturals0 | Head::Integers | Head::Rationals | Head::Complexes => {
+            Ok(Basic::atom(head.clone()))
+        }
+        Head::ImageSet => super::fancysets::rebuild_image_set(args),
         _ => unreachable!("not a set"),
     }
 }
@@ -1553,6 +1572,8 @@ pub fn print_set(e: &Basic, doprint: &dyn Fn(&Basic) -> String) -> String {
             }
         }
         Head::PowerSet => format!("PowerSet({})", doprint(&e.args()[0])),
+        _ if super::fancysets::is_named_set(e) => super::fancysets::set_name(e).to_string(),
+        Head::ImageSet => super::fancysets::print_image_set(e, doprint),
         Head::Complement | Head::Contains | Head::ProductSet | Head::ConditionSet => {
             let shown: Vec<String> = e.args().iter().map(doprint).collect();
             format!("{}({})", e.class_name(), shown.join(", "))

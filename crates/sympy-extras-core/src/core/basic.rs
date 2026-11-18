@@ -113,6 +113,13 @@ pub enum Head {
     /// `CRootOf(f, k)`, with the coefficients and the variable of `f`
     /// (`polys.complexrootof`; equal by the coefficients and the index).
     ComplexRootOf(std::sync::Arc<crate::polys::complexrootof::RootData>),
+    /// the named sets of numbers and the image of sets (`sets.fancysets`)
+    Naturals,
+    Naturals0,
+    Integers,
+    Rationals,
+    Complexes,
+    ImageSet,
 }
 
 /// The relations of `core.relational`.
@@ -932,6 +939,12 @@ impl Head {
             Head::ForAll => "ForAll",
             Head::SetOfSets => "SetOfSets",
             Head::ComplexRootOf(_) => "ComplexRootOf",
+            Head::Naturals => "NaturalsClass",
+            Head::Naturals0 => "Naturals0Class",
+            Head::Integers => "IntegersClass",
+            Head::Rationals => "RationalsClass",
+            Head::Complexes => "ComplexesClass",
+            Head::ImageSet => "ImageSet",
             Head::PowerSet => "PowerSet",
             Head::Exists => "Exists",
         }
@@ -1014,6 +1027,7 @@ impl Head {
                 | Head::SetOfSets
                 | Head::PowerSet
                 | Head::ComplexRootOf(_)
+                | Head::ImageSet
         )
     }
 
@@ -1328,6 +1342,7 @@ impl Basic {
             Head::ForAll | Head::Exists => crate::assumptions::quantifiers::quantifier_free_symbols(self),
             // a number: the variable of the polynomial is bound
             Head::ComplexRootOf(_) => BTreeSet::new(),
+            Head::ImageSet => crate::sets::fancysets::image_set_free_symbols(self),
             Head::Subs => {
                 // the variables are bound
                 let variables: BTreeSet<Basic> = self.0.args[1].args().iter().cloned().collect();

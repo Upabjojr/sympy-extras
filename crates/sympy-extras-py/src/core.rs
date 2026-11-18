@@ -174,6 +174,12 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "PointSet" => Basic::new(Head::PointSet, args()?),
         "SetOfSets" => Basic::new(Head::SetOfSets, args()?),
         "PowerSet" => Basic::new(Head::PowerSet, args()?),
+        "NaturalsClass" => Basic::atom(Head::Naturals),
+        "Naturals0Class" => Basic::atom(Head::Naturals0),
+        "IntegersClass" => Basic::atom(Head::Integers),
+        "RationalsClass" => Basic::atom(Head::Rationals),
+        "ComplexesClass" => Basic::atom(Head::Complexes),
+        "ImageSet" => Basic::new(Head::ImageSet, args()?),
         "ComplexRootOf" => {
             let a: Vec<Basic> = args()?;
             sympy_extras_core::polys::complexrootof::complex_root_of(&a[0], &a[1]).map_err(crate::convert::err)?
@@ -461,6 +467,15 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             py.import("sympy_extras.functions.elementary.piecewise")?
                 .getattr(name)?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::Naturals | Head::Naturals0 | Head::Integers | Head::Rationals | Head::Complexes => py
+            .import("sympy_extras.sets.fancysets")?
+            .getattr(sympy_extras_core::sets::fancysets::set_name(e))?,
+        Head::ImageSet => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.sets.fancysets")?
+                .getattr("ImageSet")?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::ComplexRootOf(_) => {
@@ -2802,6 +2817,20 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     let (f, i) = cr::address(&a[0]).map_err(e)?;
                     tuple(vec![tuple(f.into_iter().map(Basic::integer).collect()), int(i)])
                 }
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
+            }
+        }
+        "named_set" | "image_set" => {
+            use sympy_extras_core::sets::fancysets as fs;
+            match (name, a.len()) {
+                ("named_set", 1) => match a[0].to_string().as_str() {
+                    "Naturals" => Basic::atom(Head::Naturals),
+                    "Naturals0" => Basic::atom(Head::Naturals0),
+                    "Integers" => Basic::atom(Head::Integers),
+                    "Rationals" => Basic::atom(Head::Rationals),
+                    _ => Basic::atom(Head::Complexes),
+                },
+                ("image_set", n) if n >= 2 => fs::image_set(&a[0], &a[1], &a[2..]).map_err(e)?,
                 _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
             }
         }

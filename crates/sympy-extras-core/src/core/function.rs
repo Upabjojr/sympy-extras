@@ -64,6 +64,12 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         | Head::PointSet
         | Head::SetOfSets
         | Head::PowerSet
+        | Head::Naturals
+        | Head::Naturals0
+        | Head::Integers
+        | Head::Rationals
+        | Head::Complexes
+        | Head::ImageSet
         | Head::ConditionSet) => crate::sets::sets::rebuild_set(h, &args),
         Head::IndexedRoot => {
             let k: usize = args[2]
