@@ -2901,6 +2901,23 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "rc_solutions" => {
+            // Tuple(polys), Tuple(variables), real -> Tuple of points, a point a Tuple of Tuple(v, value)
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let points = sympy_extras_core::polys::regularchains::solutions::exact_solutions(
+                a[0].args(),
+                a[1].args(),
+                matches!(a[2].head(), Head::BooleanTrue),
+                None,
+            )
+            .map_err(e)?;
+            tuple(
+                points
+                    .into_iter()
+                    .map(|p| tuple(p.into_iter().map(|(k, v)| tuple(vec![k, v])).collect()))
+                    .collect(),
+            )
+        }
         "ex_domain" => {
             // op, rationalized flag, arguments: add, sub, mul, neg, exquo, invert, pow(a, n), lcm,
             // gcdex -> Tuple, is_zero, is_negative, normal, canonical_unit

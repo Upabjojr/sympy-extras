@@ -811,6 +811,21 @@ pub fn root_facts(e: &Basic) -> FactList {
     facts
 }
 
+/// The polynomial and the index of a `CRootOf` node as SymPy's `CRootOf`
+/// has them: the irreducible factor in the variable of the node
+/// (`ComplexRootOf.polynomial_root`).
+pub fn polynomial_root(e: &Basic) -> PolyResult<Option<(Poly, usize)>> {
+    let Head::ComplexRootOf(data) = e.head() else {
+        return Ok(None);
+    };
+    let (f, index) = address(e)?;
+    let x: Basic = data.variable.clone();
+    Ok(Some((
+        Poly::new(&factor_expr(&f, &x)?, std::slice::from_ref(&x))?,
+        index,
+    )))
+}
+
 /// The value of an algebraic number at `prec` bits: the middle of its
 /// isolating region refined until each part has a relative width below
 /// `2**-prec` (a real part which is exactly zero is zero).

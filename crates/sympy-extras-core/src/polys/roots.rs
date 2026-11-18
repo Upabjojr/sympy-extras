@@ -1,6 +1,6 @@
 //! Port of `radical_form` and `polynomial_root` of
 //! `sympy_extras/polys/roots.py`: a root object (an `IndexedRoot` with
-//! rational coefficients; SymPy's `CRootOf` is not in the core) written in
+//! rational coefficients or a `CRootOf`) written in
 //! radicals when SymPy's `CRootOf(..., radicals=True)` would: the roots of
 //! linear, quadratic and binomial polynomials, and those of `roots` for a
 //! polynomial whose decomposition has small components, the candidate
@@ -18,6 +18,9 @@ use super::polytools::Poly;
 pub fn polynomial_root(e: &Basic) -> PolyResult<Option<(Poly, usize)>> {
     if matches!(e.head(), Head::IndexedRoot) {
         return super::cad::indexedroot::polynomial_root(e);
+    }
+    if matches!(e.head(), Head::ComplexRootOf(_)) {
+        return super::complexrootof::polynomial_root(e);
     }
     Ok(None)
 }

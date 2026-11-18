@@ -4,3 +4,4 @@
 pub mod operations;
 pub mod recursive;
 pub mod regularchain;
+pub mod solutions;
