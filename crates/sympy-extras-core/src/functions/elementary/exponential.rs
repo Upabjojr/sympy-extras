@@ -667,8 +667,20 @@ pub fn lambertw_facts(args: &[Basic]) -> FactList {
 /// mpmath's `lambertw(x, k)` at `prec` bits: Halley's iteration from the
 /// series at the branch point near `-1/e`, `x` itself near zero (the
 /// principal branch), the asymptotic `L1 - L2 + L2/L1` elsewhere.
+fn is_zero_c(z: &crate::core::evalf::Complex) -> bool {
+    let (a, b) = crate::core::evalf::parts(z);
+    a.repr().significand().is_zero() && b.repr().significand().is_zero()
+}
+
 pub fn lambertw_value(values: &[crate::core::evalf::Complex], prec: usize) -> Option<crate::core::evalf::Complex> {
     use crate::core::evalf::{complex, complex_sqrt, parts, real_int, Complex, Real};
+    let finite_c = |z: &Complex| {
+        let (a, b) = parts(z);
+        !a.repr().is_infinite() && !b.repr().is_infinite()
+    };
+    if values.iter().any(|v| !finite_c(v)) {
+        return None;
+    }
     let x: Complex = values[0].clone();
     let k: i64 = if values.len() > 1 {
         let (kr, ki) = parts(&values[1]);
@@ -723,6 +735,9 @@ pub fn lambertw_value(values: &[crate::core::evalf::Complex], prec: usize) -> Op
         &(&(&p - &one) - &(&p2 / &c(3.0, 0.0))) + &(&p3 * &c(11.0 / 72.0, 0.0))
     } else if k == 0 && (xf * xf + yf * yf).sqrt() < 0.5 {
         x.clone()
+    } else if k == 0 && (xf * xf + yf * yf).sqrt() <= 3.0 && ((xf + 1.0).powi(2) + yf * yf).sqrt() > 0.5 {
+        // log(1 + x): the asymptotic start has log(x) = 0 at x = 1
+        (&x + &one).ln()
     } else if k == -1 && yf == 0.0 && xf < 0.0 && xf > -(-1.0f64).exp() {
         // the real branch -1 on (-1/e, 0): log(-x) - log(-log(-x))
         let l1: Complex = complex(real_int(&Int::from(0), wp), r(0.0)) + (-&x).ln();
@@ -731,6 +746,9 @@ pub fn lambertw_value(values: &[crate::core::evalf::Complex], prec: usize) -> Op
     } else {
         let two_pi_i_k: Complex = complex(r(0.0), Real::pi(wp) * real_int(&Int::from(2 * k), wp));
         let l1: Complex = &x.ln() + &two_pi_i_k;
+        if is_zero_c(&l1) {
+            return None;
+        }
         let l2: Complex = l1.ln();
         &(&l1 - &l2) + &(&l2 / &l1)
     };
@@ -751,8 +769,17 @@ pub fn lambertw_value(values: &[crate::core::evalf::Complex], prec: usize) -> Op
         }
         let f: Complex = &(&w * &ew) - &x;
         let wp1: Complex = &w + &one;
+        if is_zero_c(&wp1) {
+            return None;
+        }
         let denominator: Complex = &(&ew * &wp1) - &(&(&(&w + &two) * &f) / &(&two * &wp1));
+        if is_zero_c(&denominator) || !finite_c(&denominator) {
+            return None;
+        }
         let step: Complex = &f / &denominator;
+        if !finite_c(&step) {
+            return None;
+        }
         w = &w - &step;
         let (sr, si) = parts(&step);
         let (wr, wi) = parts(&w);

@@ -1563,3 +1563,36 @@ mod structural_tests {
         assert_eq!(ask_structural(&Basic::int(-3), odd), Some(true));
     }
 }
+
+/// The given facts which `expr` does not satisfy, with their values on
+/// `expr` (`failing_assumptions`).
+pub fn failing_assumptions(expr: &Basic, assume: &[(Predicate, Option<bool>)]) -> Vec<(Predicate, Option<bool>)> {
+    let facts = facts_of(expr);
+    let mut failing: Vec<(Predicate, Option<bool>)> = Vec::new();
+    for (p, value) in assume {
+        let actual: Option<bool> = facts.get(p).copied();
+        if actual != *value {
+            failing.push((*p, actual));
+        }
+    }
+    failing
+}
+
+/// Whether `expr` satisfies the given facts: `Some(true)`, `Some(false)`
+/// when one fails, `None` when one is unknown (`check_assumptions`).
+pub fn check_assumptions(expr: &Basic, assume: &[(Predicate, Option<bool>)]) -> Option<bool> {
+    let failing = failing_assumptions(expr, assume);
+    if failing.is_empty() {
+        return Some(true);
+    }
+    if failing.iter().any(|(_, v)| v.is_some()) {
+        return Some(false);
+    }
+    None
+}
+
+/// [`check_assumptions`] against the known facts of `against`.
+pub fn check_against(expr: &Basic, against: &Basic) -> Option<bool> {
+    let assume: Vec<(Predicate, Option<bool>)> = facts_of(against).iter().map(|(p, v)| (*p, Some(*v))).collect();
+    check_assumptions(expr, &assume)
+}

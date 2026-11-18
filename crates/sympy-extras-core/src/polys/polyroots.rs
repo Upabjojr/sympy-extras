@@ -1266,7 +1266,100 @@ fn ex_heuristics(e: &Basic, x: &Basic) -> PolyResult<Vec<Basic>> {
     if coefficients.len() == 2 && coefficients.contains_key(&0) && n >= 2 {
         return binomial(i64::from(n), &coefficients[&n], &coefficients[&0]);
     }
-    Err(not_ported("roots over the algebraic domain EX need simplify"))
+    let all: Vec<Basic> = (0..=n)
+        .rev()
+        .map(|k| coefficients.get(&k).cloned().unwrap_or_else(Basic::zero))
+        .collect();
+    ex_formulas(all)
+}
+
+/// The roots, with repetitions, of a polynomial in `x` whose coefficients
+/// are expressions of any kind (SymPy's `roots` over `EX`): a monomial, a
+/// binomial, and the formulas of [`ex_formulas`] (`ex_roots`).
+pub fn ex_roots(e: &Basic, x: &Basic) -> PolyResult<Vec<Basic>> {
+    ex_heuristics(e, x)
+}
+
+fn ex_zero(e: &Basic) -> PolyResult<bool> {
+    use crate::polys::domains::Domain;
+    let k = crate::polys::domains::EX;
+    Ok(k.is_zero(&k.normal(e)?))
+}
+
+fn simplified(e: &Basic) -> PolyResult<Basic> {
+    crate::simplify::simplify::simplify(e, &crate::simplify::simplify::Options::default())
+}
+
+// PORTED FROM SYMPY: sympy/polys/polyroots.py:roots._try_heuristics, roots_linear, roots_quadratic (over EX)
+/// The roots by the formulas of `_try_heuristics` over `EX`: a root `-1`
+/// or `1` divided out, then a linear or a quadratic factor; nothing from a
+/// degree five or more; `NotImplemented` for a cubic or a quartic
+/// (`_ex_formulas`).
+fn ex_formulas(mut c: Vec<Basic>) -> PolyResult<Vec<Basic>> {
+    let k = crate::polys::domains::EX;
+    let mut result: Vec<Basic> = Vec::new();
+    for i in [-1i64, 1] {
+        let len: usize = c.len();
+        let terms: Vec<Basic> = c
+            .iter()
+            .enumerate()
+            .map(|(kk, ci)| mul(&[ci.clone(), pow(&int(i), &int((len - 1 - kk) as i64))?]))
+            .collect::<PolyResult<_>>()?;
+        if ex_zero(&add(&terms)?)? {
+            let mut quotient: Vec<Basic> = Vec::new();
+            let mut carry: Basic = Basic::zero();
+            for ci in &c[..len - 1] {
+                carry = k.normal(&add(&[ci.clone(), mul(&[int(i), carry])?])?)?;
+                quotient.push(carry.clone());
+            }
+            c = quotient;
+            result.push(int(i));
+            break;
+        }
+    }
+    let n: usize = c.len().saturating_sub(1);
+    if n == 1 {
+        result.push(cancel(&mul(&[int(-1), c[1].clone(), pow(&c[0], &int(-1))?])?, &[])?);
+        return Ok(result);
+    }
+    if n >= 5 || n == 0 {
+        return Ok(result);
+    }
+    if n != 2 {
+        return Err(not_ported(&format!("the formulas of degree {} over EX", n)));
+    }
+    let (a, b, cc) = (c[0].clone(), c[1].clone(), c[2].clone());
+    let (mut r0, mut r1): (Basic, Basic);
+    if ex_zero(&cc)? {
+        r0 = Basic::zero();
+        r1 = simplified(&mul(&[int(-1), b, pow(&a, &int(-1))?])?)?;
+    } else if ex_zero(&b)? {
+        let big_r: Basic = sqrt_taken(&simplified(&mul(&[int(-1), cc, pow(&a, &int(-1))?])?)?)?;
+        r0 = mul(&[int(-1), big_r.clone()])?;
+        r1 = big_r;
+    } else {
+        let d: Basic = simplified(&add(&[pow(&b, &int(2))?, mul(&[int(-4), a.clone(), cc])?])?)?;
+        let big_a: Basic = mul(&[int(2), a.clone()])?;
+        let big_b: Basic = simplified(&mul(&[int(-1), b, pow(&big_a, &int(-1))?])?)?;
+        let big_d: Basic = crate::core::exprtools::factor_terms(
+            &mul(&[sqrt_taken(&d)?, pow(&big_a, &int(-1))?])?,
+            false,
+            false,
+            false,
+            true,
+        )?;
+        r0 = add(&[big_b.clone(), mul(&[int(-1), big_d.clone()])?])?;
+        r1 = add(&[big_b, big_d])?;
+        if crate::core::expr::is_true(&a, crate::core::assumptions::Predicate::negative) {
+            std::mem::swap(&mut r0, &mut r1);
+        } else {
+            r0 = expand_2arg(&r0)?;
+            r1 = expand_2arg(&r1)?;
+        }
+    }
+    result.push(cancel(&r0, &[])?);
+    result.push(cancel(&r1, &[])?);
+    Ok(result)
 }
 
 fn try_heuristics(f: &Poly, cubics: bool, quartics: bool) -> PolyResult<Vec<Basic>> {

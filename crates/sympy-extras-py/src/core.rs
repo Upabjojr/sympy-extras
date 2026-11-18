@@ -2921,6 +2921,38 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "solve" => {
+            // op: equation(f, x), lambert(f, x) -> Tuple of solutions, or the symbol NONE for None;
+            // invert(f, x) -> Tuple(r, g); system(Tuple(equations), Tuple(unknowns)) -> Tuple of
+            // solutions, each a Tuple of Tuple(unknown, value), or NONE
+            use sympy_extras_core::solvers::{bivariate, solvers as sv};
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "equation" => sv::solve_equation(&a[1], &a[2])
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "lambert" => bivariate::solve_lambert(&a[1], &a[2])
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "invert" => {
+                    let (r, g) = sv::invert(&a[1], &a[2], &Basic::zero()).map_err(e)?;
+                    tuple(vec![r, g])
+                }
+                "system" => match sv::solve_system(a[1].args(), a[2].args()).map_err(e)? {
+                    None => none(),
+                    Some(solutions) => tuple(
+                        solutions
+                            .into_iter()
+                            .map(|s| tuple(s.into_iter().map(|(k, v)| tuple(vec![k, v])).collect()))
+                            .collect(),
+                    ),
+                },
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "is" => {
             // e, Symbol(predicate name) -> true, false or the empty Tuple for None (`e.is_<name>`)
             let Some(p) = sympy_extras_core::core::assumptions::Predicate::from_name(&a[1].to_string()) else {
