@@ -106,6 +106,11 @@ pub enum Head {
     /// (`assumptions.quantifiers`).
     ForAll,
     Exists,
+    /// a predicate, `Q.positive` or one of the user (`core.assume.Predicate`)
+    Predicate(Arc<crate::core::assume::PredicateData>),
+    /// a predicate applied to arguments: `(predicate, *arguments)`
+    /// (`core.assume.AppliedPredicate`)
+    AppliedPredicate,
     /// a finite set of sets and the power set of a set (`sets.sets`,
     /// `sets.powerset`)
     SetOfSets,
@@ -947,6 +952,8 @@ impl Head {
             Head::ImageSet => "ImageSet",
             Head::PowerSet => "PowerSet",
             Head::Exists => "Exists",
+            Head::Predicate(_) => "Predicate",
+            Head::AppliedPredicate => "AppliedPredicate",
         }
     }
 
@@ -983,6 +990,7 @@ impl Head {
                 // once per distinct name so that the key stays 'static
                 intern(&u.name)
             }
+            Head::Predicate(p) => intern(&crate::core::assume::class_name_of(&p.name)),
             other => other.class_name(),
         }
     }
@@ -1026,6 +1034,7 @@ impl Head {
                 | Head::Exists
                 | Head::SetOfSets
                 | Head::PowerSet
+                | Head::AppliedPredicate
                 | Head::ComplexRootOf(_)
                 | Head::ImageSet
         )
@@ -1054,6 +1063,7 @@ impl Head {
             (Head::Function(a), Head::Function(b)) => a == b,
             (Head::Undefined(a), Head::Undefined(b)) => a == b,
             (Head::Relational(a), Head::Relational(b)) => a == b,
+            (Head::Predicate(a), Head::Predicate(b)) => a == b,
             (a, b) => std::mem::discriminant(a) == std::mem::discriminant(b),
         }
     }
@@ -1062,6 +1072,7 @@ impl Head {
         std::mem::discriminant(self).hash(state);
         match self {
             Head::Relational(op) => op.hash(state),
+            Head::Predicate(p) => p.hash(state),
             Head::Rational { value, .. } => {
                 value.numerator().hash(state);
                 value.denominator().hash(state);

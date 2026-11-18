@@ -269,6 +269,17 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "HyperRep_sinasin" => Basic::new(Head::Function(Function::HyperRepSinasin), args()?),
         "Hyper" => Basic::new(Head::Hyper, args()?),
         "ForAll" => Basic::new(Head::ForAll, args()?),
+        "Predicate" => {
+            let name: String = ob.getattr("name")?.extract()?;
+            let arity: usize = ob.getattr("_arity")?.extract()?;
+            let defined: bool = ob.getattr("_defined")?.extract()?;
+            if defined {
+                sympy_extras_core::core::assume::q(&name, arity)
+            } else {
+                sympy_extras_core::core::assume::predicate(&name, arity)
+            }
+        }
+        "AppliedPredicate" => Basic::new(Head::AppliedPredicate, args()?),
         "Exists" => Basic::new(Head::Exists, args()?),
         "MeijerG" => Basic::new(Head::MeijerG, args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
@@ -514,6 +525,27 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.sets.powerset")?
                 .getattr("PowerSet")?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::Predicate(p) => {
+            let assume = core_module(py, "assume")?;
+            if p.defined {
+                let keys = core_module(py, "ask")?.getattr("Q")?;
+                match keys.getattr(p.name.as_str()) {
+                    Ok(found) => found,
+                    Err(_) => assume
+                        .getattr("Predicate")?
+                        .getattr("_known")?
+                        .call1((p.name.as_str(), p.arity))?,
+                }
+            } else {
+                assume.getattr("Predicate")?.call1((p.name.as_str(), p.arity))?
+            }
+        }
+        Head::AppliedPredicate => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            core_module(py, "assume")?
+                .getattr("AppliedPredicate")?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::ForAll | Head::Exists => {

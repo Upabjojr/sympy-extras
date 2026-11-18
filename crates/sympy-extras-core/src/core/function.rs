@@ -50,6 +50,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::ExprCondPair => crate::functions::elementary::piecewise::checked_pair(&args[0], &args[1]),
         h @ (Head::Hyper | Head::MeijerG) => crate::functions::special::hyper::rebuild_hyper(h, &args),
         h @ (Head::ForAll | Head::Exists) => crate::assumptions::quantifiers::rebuild_quantifier(h, &args),
+        Head::AppliedPredicate => super::assume::rebuild_applied(&args),
         Head::ComplexRootOf(_) => crate::polys::complexrootof::rebuild_root(&args),
         h @ (Head::EmptySet
         | Head::UniversalSet

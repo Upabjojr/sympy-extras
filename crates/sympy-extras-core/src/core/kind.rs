@@ -50,6 +50,8 @@ fn is_boolean_head(h: &Head) -> bool {
             | Head::Contains
             | Head::ForAll
             | Head::Exists
+            | Head::Predicate(_)
+            | Head::AppliedPredicate
     )
 }
 

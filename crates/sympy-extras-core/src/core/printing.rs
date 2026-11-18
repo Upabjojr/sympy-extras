@@ -360,6 +360,16 @@ impl StrPrinter {
             Head::ForAll | Head::Exists => {
                 crate::assumptions::quantifiers::print_quantifier(e, &|a: &Basic| self.doprint(a))
             }
+            Head::Predicate(p) => format!("Q.{}", p.name),
+            Head::AppliedPredicate => format!(
+                "{}({})",
+                self.doprint(&e.args()[0]),
+                e.args()[1..]
+                    .iter()
+                    .map(|a| self.doprint(a))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Head::Hyper | Head::MeijerG => {
                 crate::functions::special::hyper::print_hyper(e, &|a: &Basic| self.doprint(a))
             }

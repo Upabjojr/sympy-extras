@@ -29,6 +29,7 @@
 
 pub mod accumbounds;
 pub mod add;
+pub mod assume;
 pub mod assumptions;
 pub mod basic;
 pub mod evalf;

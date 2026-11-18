@@ -643,6 +643,8 @@ pub fn is_number(e: &Basic) -> bool {
                 | Head::MeijerG
                 | Head::ForAll
                 | Head::Exists
+                | Head::Predicate(_)
+                | Head::AppliedPredicate
         )
     {
         return false;

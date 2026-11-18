@@ -185,6 +185,15 @@ pub fn sort_key(e: &Basic) -> SortKey {
             coefficient: rat(1, 1),
         };
     }
+    if let Head::Predicate(p) = e.head() {
+        // Predicate._compute_sort_key: the class part names the predicate's class
+        return SortKey {
+            class: (5, 0, super::assume::class_name_of(&p.name)),
+            args: (0, ArgsItems::Keys(Vec::new())),
+            exp: None,
+            coefficient: rat(1, 1),
+        };
+    }
     if super::logic::is_boolean(e) {
         // Basic._compute_sort_key (a boolean is not an expression); true
         // and false: their names (BooleanAtom)

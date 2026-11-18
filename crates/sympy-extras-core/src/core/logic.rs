@@ -54,6 +54,8 @@ pub fn is_boolean(e: &Basic) -> bool {
             | Head::Contains
             | Head::ForAll
             | Head::Exists
+            | Head::Predicate(_)
+            | Head::AppliedPredicate
     )
 }
 
