@@ -2467,6 +2467,65 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => return Err(wrong()),
             }
         }
+        "simplify_logic"
+        | "SOPform"
+        | "POSform"
+        | "is_literal"
+        | "is_cnf"
+        | "is_dnf"
+        | "is_nnf"
+        | "to_nnf"
+        | "eliminate_implications"
+        | "distribute_and_over_or"
+        | "distribute_or_over_and"
+        | "to_cnf"
+        | "to_dnf" => {
+            use sympy_extras_core::logic::boolalg as ba;
+            let wrong = || pyo3::exceptions::PyTypeError::new_err("wrong arguments");
+            // flags are passed as the Booleans true/false, the form as the
+            // symbols cnf/dnf (anything else: none), no dontcare as 0
+            let flag = |b: &Basic| sympy_extras_core::core::logic::truth(b) == Some(true);
+            let terms = |b: &Basic| -> PyResult<Vec<ba::Term>> {
+                b.args()
+                    .iter()
+                    .map(|t| {
+                        t.args()
+                            .iter()
+                            .map(|v| {
+                                v.as_rational()
+                                    .and_then(|r| u8::try_from(r.numerator()).ok())
+                                    .ok_or_else(wrong)
+                            })
+                            .collect()
+                    })
+                    .collect()
+            };
+            let boolean = |v: bool| sympy_extras_core::core::logic::boolean(v);
+            match (name, a.len()) {
+                ("simplify_logic", 4) => {
+                    let form: Option<ba::Form> = match a[1].to_string().as_str() {
+                        "cnf" => Some(ba::Form::Cnf),
+                        "dnf" => Some(ba::Form::Dnf),
+                        _ => None,
+                    };
+                    let dontcare: Option<&Basic> = if a[3].is_number_node() { None } else { Some(&a[3]) };
+                    ba::simplify_logic(&a[0], form, flag(&a[2]), dontcare).map_err(e)?
+                }
+                ("SOPform", 3) => ba::sop_form(a[0].args(), &terms(&a[1])?, &terms(&a[2])?).map_err(e)?,
+                ("POSform", 3) => ba::pos_form(a[0].args(), &terms(&a[1])?, &terms(&a[2])?).map_err(e)?,
+                ("is_literal", 1) => boolean(ba::is_literal(&a[0])),
+                ("is_cnf", 1) => boolean(ba::is_cnf(&a[0])),
+                ("is_dnf", 1) => boolean(ba::is_dnf(&a[0])),
+                ("is_nnf", 2) => boolean(ba::is_nnf(&a[0], flag(&a[1]))),
+                ("to_nnf", 2) => ba::to_nnf(&a[0], flag(&a[1])).map_err(e)?,
+                ("eliminate_implications", 1) => ba::eliminate_implications(&a[0]).map_err(e)?,
+                ("distribute_and_over_or", 1) => ba::distribute_and_over_or(&a[0]),
+                ("distribute_or_over_and", 1) => ba::distribute_or_over_and(&a[0]),
+                ("to_cnf", 3) => ba::to_cnf(&a[0], flag(&a[1]), flag(&a[2])).map_err(e)?,
+                ("to_dnf", 3) => ba::to_dnf(&a[0], flag(&a[1]), flag(&a[2])).map_err(e)?,
+                _ => return Err(wrong()),
+            }
+        }
         "hyperrep" | "rewrite_nonrep" | "rewrite_nonrepsmall" => {
             use sympy_extras_core::core::basic::Function as F;
             use sympy_extras_core::functions::special::hyperrep as hr;

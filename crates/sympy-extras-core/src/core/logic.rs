@@ -189,12 +189,75 @@ pub fn equivalent(args: &[Basic]) -> Basic {
     Basic::new(Head::Equivalent, items)
 }
 
-/// The evaluated `ITE(c, a, b)` (`ite`).
+/// The symbols of a boolean tree used as truth values (`binary_symbols`).
+pub fn binary_symbols(e: &Basic) -> Vec<Basic> {
+    let mut found: Vec<Basic> = Vec::new();
+    fn walk(e: &Basic, found: &mut Vec<Basic>) {
+        match e.head() {
+            Head::Symbol(_) | Head::Dummy(..) => {
+                if !found.contains(e) {
+                    found.push(e.clone());
+                }
+            }
+            Head::Relational(_) => {}
+            _ if is_boolean(e) => {
+                for a in e.args() {
+                    if is_boolean(a) || a.is_symbol() || matches!(a.head(), Head::Dummy(..)) {
+                        walk(a, found);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(e, &mut found);
+    found
+}
+
+// PORTED FROM SYMPY: sympy/logic/boolalg.py:ITE.__new__, ITE.eval (SymPy 1.14)
+// Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+// see sympy_extras/LICENSE-SymPy.
+/// The evaluated `ITE(c, a, b)` (`ite`), by SymPy's rules: the branch
+/// chosen by a known condition, the branch when both are equal, the
+/// condition (or its negation) when the branches are `true` and `false`;
+/// an equation `Eq(p, e)` between a symbol `p` used as a truth value in a
+/// branch and something else is false.
 pub fn ite(c: &Basic, a: &Basic, b: &Basic) -> Basic {
-    if let Some(v) = truth(c) {
+    let mut c: Basic = c.clone();
+    if let Head::Relational(op @ (super::basic::RelOp::Eq | super::basic::RelOp::Ne)) = c.head() {
+        let mut binary: Vec<Basic> = binary_symbols(a);
+        for s in binary_symbols(b) {
+            if !binary.contains(&s) {
+                binary.push(s);
+            }
+        }
+        let mut sides: Vec<Basic> = Vec::new();
+        for side in c.args() {
+            if !sides.contains(side) {
+                sides.push(side.clone());
+            }
+        }
+        if sides.iter().filter(|s| !binary.contains(s)).count() == 1 {
+            c = if matches!(op, super::basic::RelOp::Ne) {
+                true_()
+            } else {
+                false_()
+            };
+        }
+    }
+    if let Some(v) = truth(&c) {
         return if v { a.clone() } else { b.clone() };
     }
-    Basic::new(Head::Ite, vec![c.clone(), a.clone(), b.clone()])
+    if a == b {
+        return a.clone();
+    }
+    if truth(a) == Some(true) && truth(b) == Some(false) {
+        return c;
+    }
+    if truth(a) == Some(false) && truth(b) == Some(true) {
+        return not_(&c);
+    }
+    Basic::new(Head::Ite, vec![c, a.clone(), b.clone()])
 }
 
 pub fn nand(args: &[Basic]) -> Basic {

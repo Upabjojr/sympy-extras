@@ -273,6 +273,115 @@ fn has_consecutive_factors(a: &Basic) -> PolyResult<bool> {
     Ok(false)
 }
 
+/// Whether the number `e` is proved zero (`_numeric.proved_zero`): by
+/// `is_zero`, or for an algebraic number without functions by its minimal
+/// polynomial `x`.
+pub fn proved_zero(e: &Basic) -> bool {
+    match super::expr::is(e, Predicate::zero) {
+        Some(true) => return true,
+        Some(false) => return false,
+        None => {}
+    }
+    if !e.free_symbols().is_empty()
+        || e.preorder()
+            .iter()
+            .any(|n| matches!(n.head(), Head::Function(_) | Head::Undefined(_) | Head::Piecewise))
+    {
+        return false;
+    }
+    crate::polys::numberfields::minpoly::minimal_polynomial_coeffs(e).is_ok_and(|c| c == vec![Int::ONE, Int::ZERO])
+}
+
+// PORTED FROM SYMPY: sympy/core/mod.py:Mod.eval (number_eval, by ratio) (SymPy 1.14)
+/// `a - floor(a/b)*b` when the ratio is an integer (`0`) or a real number
+/// whose floor is decided; a ratio too close to an integer is `0` only when
+/// it is proved an integer. Python resolves the hidden zeros of the ratio
+/// first (`_numeric.reliable_form`), not ported: the ratio as it is.
+fn by_ratio(a: &Basic, b: &Basic) -> PolyResult<Option<Basic>> {
+    use super::expr::is;
+    let r: Basic = super::mul::div(a, b)?;
+    if is_true(&r, Predicate::integer) {
+        return Ok(Some(Basic::zero()));
+    }
+    if !super::assumptions::is_number(&r)
+        || is(&r, Predicate::extended_real) != Some(true)
+        || is(&r, Predicate::finite) != Some(true)
+    {
+        return Ok(None);
+    }
+    let n: Basic = crate::functions::elementary::integers::floor(&r)?;
+    if matches!(
+        n.head(),
+        Head::Rational {
+            integer_class: true,
+            ..
+        }
+    ) {
+        return Ok(Some(super::add::add(&[
+            a.clone(),
+            mul(&[Basic::negative_one(), n, b.clone()])?,
+        ])?));
+    }
+    // too close to an integer to tell numerically: an integer only if proved
+    let Some(value) = super::evalf::numeric_value(&r, 340) else {
+        return Ok(None);
+    };
+    let real: f64 = super::evalf::parts(&value).0.to_f64().value();
+    if !real.is_finite() {
+        return Ok(None);
+    }
+    let nearest: Basic = Basic::integer(Int::from(real.round() as i64));
+    if proved_zero(&super::add::add(&[r, mul(&[Basic::negative_one(), nearest])?])?) {
+        return Ok(Some(Basic::zero()));
+    }
+    Ok(None)
+}
+
+// PORTED FROM SYMPY: sympy/core/mod.py:Mod.eval (number_eval, by difference) (SymPy 1.14)
+/// `a - m*b` for the integer `m` with `-2 <= m <= 1` when the signs decide
+/// `0 <= a - m*b < b`: for symbolic arguments only.
+fn by_difference(a: &Basic, b: &Basic) -> PolyResult<Option<Basic>> {
+    use super::add::{add, sub};
+    use super::expr::is;
+    if super::assumptions::is_number(a) && super::assumptions::is_number(b) {
+        return Ok(None);
+    }
+    let positive: bool = is(b, Predicate::positive) == Some(true);
+    if !positive && is(b, Predicate::negative) != Some(true) {
+        return Ok(None);
+    }
+    let le = |u: &Basic, v: &Basic| -> PolyResult<bool> {
+        let d: Basic = sub(v, u)?;
+        let p = if positive {
+            Predicate::extended_nonnegative
+        } else {
+            Predicate::extended_nonpositive
+        };
+        Ok(is(&d, p) == Some(true))
+    };
+    let lt = |u: &Basic, v: &Basic| -> PolyResult<bool> {
+        let d: Basic = sub(v, u)?;
+        let p = if positive {
+            Predicate::extended_positive
+        } else {
+            Predicate::extended_negative
+        };
+        Ok(is(&d, p) == Some(true))
+    };
+    let mut ls: Basic = mul(&[Basic::integer(Int::from(-2)), b.clone()])?;
+    let r: Basic = sub(a, b)?;
+    for _ in 0..4 {
+        if !le(&ls, a)? {
+            return Ok(None);
+        }
+        if lt(&r, &ls)? {
+            return Ok(Some(sub(a, &ls)?));
+        }
+        ls = add(&[ls, b.clone()])?;
+    }
+    Ok(None)
+}
+
 /// The evaluated `p` modulo `q` (`mod`).
 pub fn modulo(a: &Basic, b: &Basic) -> PolyResult<Basic> {
     if !evaluate() {
@@ -310,7 +419,26 @@ pub fn modulo(a: &Basic, b: &Basic) -> PolyResult<Basic> {
             if numer(&ratio) == Int::ONE || numer(&ratio) == -Int::ONE {
                 return Ok(a.clone());
             }
+        } else {
+            // SymPy's denesting: the inner modulus a multiple of the outer
+            // one, or no larger with the same sign
+            if modulo(inner_q, b)? == Basic::zero() {
+                return modulo(inner_p, b);
+            }
+            let room: Basic = mul(&[
+                inner_q.clone(),
+                super::add::add(&[b.clone(), mul(&[Basic::negative_one(), inner_q.clone()])?])?,
+            ])?;
+            if is_true(&room, Predicate::nonnegative) {
+                return Ok(a.clone());
+            }
         }
+    }
+    if let Some(v) = by_ratio(a, b)? {
+        return Ok(v);
+    }
+    if let Some(v) = by_difference(a, b)? {
+        return Ok(v);
     }
     if let Some(common) = common_factor(a, b)? {
         return mul(&[common.clone(), modulo(&divide(a, &common)?, &divide(b, &common)?)?]);
