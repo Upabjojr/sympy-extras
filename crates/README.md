@@ -42,6 +42,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/densetools.py` | done | |
 | `polys/euclidtools.py` | done | |
 | `polys/sqfreetools.py` | done | |
+| Python's `random.Random` (for the ports which must reproduce its choices) | `PyRandom` in `random.rs`: MT19937, CPython's `init_by_array` seeding by integers and (version 2) by strings with a hand-written SHA-512, `getrandbits`, `_randbelow`, `randint` | equal to Python's sequences on string and integer seeds (`tests/core/test_pyrandom_agree.py`); the older SplitMix64 `Rng` stays where the results do not depend on the choices |
 | `polys/galoistools.py` | done | the random choices from a seeded SplitMix64 (`random.rs`); the factorisations are sorted, so equal to Python's |
 | `polys/factortools.py` | done | with Trager's algorithm over number fields (`dup_ext_norm`, `dup_ext_sqf_norm`, `dup_ext_factor`) and van Hoeij's knapsack recombination (`dup_zz_van_hoeij`, from ten modular factors on) |
 | `polys/lattice.py` | done | de Weger's integral LLL, Hermite and Smith normal forms, integer kernels and systems; `ArithmeticError` as `PolyError::Arithmetic`; 2-4x faster than Python |

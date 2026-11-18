@@ -2836,6 +2836,24 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "pyrandom_randint" => {
+            // seed (an Integer, or a Symbol whose name is the string seed), a, b, count
+            use sympy_extras_core::random::PyRandom;
+            let mut rng: PyRandom = match a[0].as_rational() {
+                Some(v) => PyRandom::from_int(v.numerator()),
+                None => PyRandom::from_string(&a[0].to_string()),
+            };
+            let int = |b: &Basic| {
+                b.as_rational()
+                    .and_then(|v| i64::try_from(v.numerator()).ok())
+                    .unwrap_or(0)
+            };
+            let (lo, hi, count) = (int(&a[1]), int(&a[2]), int(&a[3]));
+            Basic::new(
+                Head::Tuple,
+                (0..count).map(|_| Basic::integer(rng.randint(lo, hi).into())).collect(),
+            )
+        }
         "puiseux_expansions" => {
             // F, x, y, point, order, Tuple(domain minpoly), domain alpha -> Tuple(Tuple(ramification,
             // conjugates, series as expr, Tuple(field minpoly), field alpha, order or false, Tuple(scale)))
