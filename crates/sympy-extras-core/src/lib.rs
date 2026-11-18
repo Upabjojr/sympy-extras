@@ -28,6 +28,7 @@
 #![allow(clippy::wrong_self_convention, clippy::type_complexity)]
 
 pub mod assumptions;
+pub mod calculus;
 pub mod concrete;
 pub mod core;
 pub mod error;
