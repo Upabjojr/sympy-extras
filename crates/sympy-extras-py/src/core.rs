@@ -2836,6 +2836,21 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "derivative_steps" => {
+            // f, x, branch (0 or 1), depth (-1 for all), minor (0 or 1): the formatted
+            // tree, the result and the number of steps
+            use sympy_extras_core::steps::core::{count_steps, format_steps};
+            if a.len() != 5 {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments"));
+            }
+            let step =
+                sympy_extras_core::steps::derivatives::derivative_steps(&a[0], &a[1], a[2] != Basic::zero(), Some(100));
+            let depth: Option<usize> = a[3].as_rational().and_then(|v| usize::try_from(v.numerator()).ok());
+            let text: String = format_steps(&step, depth, a[4] != Basic::zero(), "  ");
+            let label = sympy_extras_core::core::Symbol::new(&text, &[]).0;
+            let count = Basic::integer((count_steps(&step) as i64).into());
+            Basic::new(Head::Tuple, vec![label, step.result().map_err(e)?, count])
+        }
         "gammasimp" | "combsimp" => {
             use sympy_extras_core::simplify::gammasimp as gs;
             if name == "gammasimp" {
