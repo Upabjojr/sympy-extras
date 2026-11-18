@@ -2475,6 +2475,60 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => return Err(wrong()),
             }
         }
+        "multiquadratic" => {
+            // [radicands Tuple, operation symbol, element, (element | index)];
+            // an element over QQ: a Tuple of (mask, coefficient) pairs
+            use sympy_extras_core::polys::domains::multiquadratic::{MultiquadraticElement, MultiquadraticField};
+            use sympy_extras_core::polys::domains::{Domain, QQ};
+            let wrong = || pyo3::exceptions::PyTypeError::new_err("wrong arguments");
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            if a.len() < 3 {
+                return Err(wrong());
+            }
+            let small = |b: &Basic| -> PyResult<i64> {
+                b.as_rational()
+                    .and_then(|v| i64::try_from(v.numerator()).ok())
+                    .ok_or_else(wrong)
+            };
+            let radicands: Vec<i64> = a[0].args().iter().map(small).collect::<PyResult<_>>()?;
+            let field = MultiquadraticField::new(QQ, radicands).map_err(e)?;
+            let element = |b: &Basic| -> PyResult<MultiquadraticElement<sympy_extras_core::numbers::Rat>> {
+                let mut m = std::collections::BTreeMap::new();
+                for pair in b.args() {
+                    let mask: u64 = small(&pair.args()[0])? as u64;
+                    let c = pair.args()[1].as_rational().cloned().ok_or_else(wrong)?;
+                    m.insert(mask, c);
+                }
+                Ok(m)
+            };
+            let encode = |m: &MultiquadraticElement<sympy_extras_core::numbers::Rat>| -> Basic {
+                tuple(
+                    m.iter()
+                        .map(|(k, c)| {
+                            tuple(vec![
+                                Basic::integer((*k as i64).into()),
+                                Basic::from_rational(c.clone()),
+                            ])
+                        })
+                        .collect(),
+                )
+            };
+            let x = element(&a[2])?;
+            let label = |t: String| sympy_extras_core::core::Symbol::new(&t, &[]).0;
+            match (a[1].to_string().as_str(), a.len()) {
+                ("to_str", 3) => label(field.to_str(&x)),
+                ("name", 3) => label(field.name()),
+                ("size", 3) => Basic::integer((field.size(&x) as i64).into()),
+                ("invert", 3) => encode(&field.invert(&x).map_err(e)?),
+                ("neg", 3) => encode(&field.neg(&x)),
+                ("add", 4) => encode(&field.add(&x, &element(&a[3])?)),
+                ("sub", 4) => encode(&field.sub(&x, &element(&a[3])?)),
+                ("mul", 4) => encode(&field.mul(&x, &element(&a[3])?)),
+                ("exquo", 4) => encode(&field.exquo(&x, &element(&a[3])?).map_err(e)?),
+                ("conjugate", 4) => encode(&field.conjugate(&x, small(&a[3])? as usize)),
+                _ => return Err(wrong()),
+            }
+        }
         "domain_matrix" => {
             // [domain symbol ZZ/QQ, operation symbol, matrix rows, (second matrix | power)]
             use sympy_extras_core::matrices::domainmatrix::DomainMatrix;

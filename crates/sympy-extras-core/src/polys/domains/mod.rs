@@ -8,6 +8,7 @@ pub mod fractionfield;
 pub mod galoisfield;
 pub mod gaussiandomains;
 pub mod integerring;
+pub mod multiquadratic;
 pub mod polynomialring;
 pub mod rationalfield;
 pub mod sparsefractionfield;
