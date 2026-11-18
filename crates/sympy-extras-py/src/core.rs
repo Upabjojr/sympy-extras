@@ -2775,6 +2775,37 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 ]),
             }
         }
+        "igcd" | "ilcm" | "igcdex" | "mod_inverse" | "integer_nthroot" | "integer_log" | "num_digits" | "trailing" => {
+            use sympy_extras_core::core::intfunc as inf;
+            let mut ints: Vec<sympy_extras_core::numbers::Int> = Vec::new();
+            for x in &a {
+                match x.as_rational() {
+                    Some(v) if v.is_int() => ints.push(v.numerator().clone()),
+                    _ => return Err(pyo3::exceptions::PyTypeError::new_err("integers are expected")),
+                }
+            }
+            let num = |v: sympy_extras_core::numbers::Int| Basic::integer(v);
+            let boolean = sympy_extras_core::core::logic::boolean;
+            match name {
+                "igcd" => num(inf::igcd(&ints)),
+                "ilcm" => num(inf::ilcm(&ints)),
+                "igcdex" => {
+                    let (x, y, g) = inf::igcdex(&ints[0], &ints[1]);
+                    Basic::new(Head::Tuple, vec![num(x), num(y), num(g)])
+                }
+                "mod_inverse" => num(inf::mod_inverse(&ints[0], &ints[1]).map_err(e)?),
+                "integer_nthroot" | "integer_log" => {
+                    let (r, exact) = if name == "integer_nthroot" {
+                        inf::integer_nthroot(&ints[0], &ints[1]).map_err(e)?
+                    } else {
+                        inf::integer_log(&ints[0], &ints[1]).map_err(e)?
+                    };
+                    Basic::new(Head::Tuple, vec![num(r), boolean(exact)])
+                }
+                "num_digits" => num(inf::num_digits(&ints[0], &ints[1])),
+                _ => num(inf::trailing(&ints[0])),
+            }
+        }
         "match" => {
             // expr, pattern, exact (0 or 1), the bindings as Tuple(wild, value); the
             // bindings found as Tuple(Tuple(wild, value), ...) or false

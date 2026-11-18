@@ -36,6 +36,7 @@ pub mod expr;
 pub mod exprtools;
 pub mod function;
 pub mod fuzzy;
+pub mod intfunc;
 pub mod logic;
 pub mod matching;
 pub mod meromorphic;
