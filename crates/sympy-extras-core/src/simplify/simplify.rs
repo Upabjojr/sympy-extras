@@ -1,6 +1,8 @@
-//! Port of `sympy_extras/simplify/simplify.py`, so far [`logcombine`] and
-//! [`posify`] (what `powsimp` needs); `nsimplify` needs `Float`, which the
-//! Rust core does not have.
+//! Port of `sympy_extras/simplify/simplify.py`: [`simplify`],
+//! [`logcombine`], [`posify`], [`collect_abs`], [`inversecombine`] and
+//! [`kroneckersimp`]; `nsimplify` needs `Float`, which the Rust core does
+//! not have, and `besselsimp`, `nc_simplify` and the simplification of
+//! sums and products are not ported.
 
 #![allow(clippy::mutable_key_type)]
 
@@ -201,4 +203,519 @@ pub fn posify(eq: &Basic) -> PolyResult<(Basic, HashMap<Basic, Basic>)> {
     }
     let replaced: Basic = crate::core::subs::subs_mapping(eq, &reps)?;
     Ok((replaced, reps.into_iter().map(|(s, r)| (r, s)).collect()))
+}
+
+// -- collect_abs, inversecombine, kroneckersimp
+
+fn is_non_expr(e: &Basic) -> bool {
+    matches!(e.head(), Head::Tuple) || crate::core::logic::is_boolean(e)
+}
+
+/// `replace` with a predicate and a callable, bottom up; a replaced
+/// subtree is not examined again.
+fn replace(
+    e: &Basic,
+    query: &dyn Fn(&Basic) -> bool,
+    value: &dyn Fn(&Basic) -> PolyResult<Basic>,
+) -> PolyResult<Basic> {
+    let mut n: Basic = e.clone();
+    if !n.args().is_empty() {
+        let args: Vec<Basic> = n
+            .args()
+            .iter()
+            .map(|a| replace(a, query, value))
+            .collect::<PolyResult<_>>()?;
+        if args.as_slice() != n.args() {
+            n = crate::core::function::rebuild_evaluated(&n, args)?;
+        }
+    }
+    if query(&n) {
+        return value(&n);
+    }
+    Ok(n)
+}
+
+fn abs_node(x: Basic) -> Basic {
+    Basic::new(Head::Function(Function::Abs), vec![x])
+}
+
+fn collect_abs_node(e: &Basic) -> PolyResult<Basic> {
+    let factors: Vec<Basic> = if e.is_mul() {
+        crate::core::expr::factors_of(e)
+    } else {
+        vec![e.clone()]
+    };
+    let c: Vec<Basic> = factors
+        .iter()
+        .filter(|f| !crate::core::expr::is_false(f, Predicate::commutative))
+        .cloned()
+        .collect();
+    let nc: Vec<Basic> = factors
+        .iter()
+        .filter(|f| crate::core::expr::is_false(f, Predicate::commutative))
+        .cloned()
+        .collect();
+    let (mut a, mut o): (Vec<Basic>, Vec<Basic>) = (Vec::new(), Vec::new());
+    for i in c {
+        if i.is_function(Function::Abs) {
+            a.push(arg(&i));
+        } else if i.is_pow() && i.args()[0].is_function(Function::Abs) && is_true(&i.args()[1], Predicate::real) {
+            a.push(pow(&arg(&i.args()[0]), &i.args()[1])?);
+        } else {
+            o.push(i);
+        }
+    }
+    if a.len() < 2
+        && !a
+            .iter()
+            .any(|i| i.is_pow() && is_true(&i.args()[1], Predicate::negative))
+    {
+        return Ok(e.clone());
+    }
+    let absarg: Basic = mul(&a)?;
+    let mut big_a: Basic = crate::functions::elementary::complexes::abs_(&absarg)?;
+    let has_abs: bool = big_a.preorder().iter().any(|n| n.is_function(Function::Abs));
+    if has_abs && !big_a.is_function(Function::Abs) {
+        big_a = abs_node(absarg);
+    }
+    let mut parts: Vec<Basic> = vec![big_a];
+    parts.extend(o);
+    parts.extend(nc);
+    mul(&parts)
+}
+
+/// The arguments of several `Abs` of a product joined under one
+/// (`collect_abs`).
+pub fn collect_abs(e: &Basic) -> PolyResult<Basic> {
+    let e: Basic = replace(e, &|x: &Basic| x.is_mul(), &collect_abs_node)?;
+    replace(&e, &|x: &Basic| x.is_pow(), &collect_abs_node)
+}
+
+fn inverse_of(f: Function) -> Option<Function> {
+    use Function as F;
+    Some(match f {
+        F::Exp => F::Log,
+        F::Log => F::Exp,
+        F::Tan => F::Atan,
+        F::Cot => F::Acot,
+        F::Asin => F::Sin,
+        F::Acos => F::Cos,
+        F::Atan => F::Tan,
+        F::Acot => F::Cot,
+        F::Asec => F::Sec,
+        F::Acsc => F::Csc,
+        F::Sinh => F::Asinh,
+        F::Tanh => F::Atanh,
+        F::Coth => F::Acoth,
+        F::Asinh => F::Sinh,
+        F::Acosh => F::Cosh,
+        F::Atanh => F::Tanh,
+        F::Acoth => F::Coth,
+        F::Asech => F::Sech,
+        F::Acsch => F::Csch,
+        F::Erf => F::Erfinv,
+        F::Erfc => F::Erfcinv,
+        F::Erfinv => F::Erf,
+        F::Erfcinv => F::Erfc,
+        _ => return None,
+    })
+}
+
+fn function_of(e: &Basic) -> Option<Function> {
+    match e.head() {
+        Head::Function(f) => Some(*f),
+        _ => None,
+    }
+}
+
+/// Functions of their inverses cancelled (`inversecombine`).
+pub fn inversecombine(e: &Basic) -> PolyResult<Basic> {
+    let exponent = |b: &Basic| -> Option<Basic> {
+        if b.is_function(Function::Exp) {
+            return Some(arg(b));
+        }
+        if b.is_pow() && matches!(b.args()[0].head(), Head::Exp1) {
+            return Some(b.args()[1].clone());
+        }
+        None
+    };
+    let f = |b: &Basic| -> PolyResult<Basic> {
+        let mut rv: Basic = b.clone();
+        if rv.is_function(Function::Log) {
+            if let Some(ex) = exponent(&rv.args()[0]) {
+                rv = ex;
+            }
+        } else if let Some(inv) = function_of(&rv).and_then(inverse_of) {
+            if rv.args().len() == 1 && rv.args()[0].args().len() == 1 && rv.args()[0].is_function(inv) {
+                rv = rv.args()[0].args()[0].clone();
+            }
+        }
+        if rv.is_pow() && matches!(rv.args()[0].head(), Head::Exp1) && rv.args()[1].is_function(Function::Log) {
+            rv = rv.args()[1].args()[0].clone();
+        } else if rv.is_function(Function::Exp) && rv.args()[0].is_function(Function::Log) {
+            rv = rv.args()[0].args()[0].clone();
+        }
+        Ok(rv)
+    };
+    crate::core::traversal::bottom_up(e, &f, false)
+}
+
+/// Products of Kronecker deltas which cannot both be 1 set to 0
+/// (`kroneckersimp`); with a `Piecewise`, its rewriting as Kronecker
+/// deltas is not ported.
+pub fn kroneckersimp(e: &Basic) -> PolyResult<Basic> {
+    let is_delta = |n: &Basic| n.is_function(Function::KroneckerDelta);
+    if !e.preorder().iter().any(is_delta) {
+        return Ok(e.clone());
+    }
+    if e.preorder().iter().any(|n| matches!(n.head(), Head::Piecewise)) {
+        return Err(crate::error::not_ported(
+            "kroneckersimp of a Piecewise (rewrite as KroneckerDelta)",
+        ));
+    }
+    let truth = |a: &Basic, b: &Basic| -> PolyResult<Option<bool>> {
+        Ok(match crate::core::relational::eq(a, b)?.head() {
+            Head::BooleanTrue => Some(true),
+            Head::BooleanFalse => Some(false),
+            _ => None,
+        })
+    };
+    let args_cancel = |a1: &[Basic], a2: &[Basic]| -> PolyResult<bool> {
+        for i1 in 0..2 {
+            for i2 in 0..2 {
+                if truth(&a1[i1], &a2[i2])? == Some(true) && truth(&a1[(i1 + 1) % 2], &a2[(i2 + 1) % 2])? == Some(false)
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    };
+    let cancel_mul = |b: &Basic| -> PolyResult<Basic> {
+        let deltas: Vec<&Basic> = b.args().iter().filter(|a| is_delta(a)).collect();
+        for i in 0..deltas.len() {
+            for j in i + 1..deltas.len() {
+                if args_cancel(deltas[i].args(), deltas[j].args())? {
+                    return mul(&[Basic::zero(), b.clone()]);
+                }
+            }
+        }
+        Ok(b.clone())
+    };
+    let mut e: Basic = e.clone();
+    let mut previous: Option<Basic> = None;
+    while previous.as_ref() != Some(&e) {
+        previous = Some(e.clone());
+        e = replace(&e, &|x: &Basic| x.is_mul(), &cancel_mul)?;
+    }
+    Ok(e)
+}
+
+// -- simplify
+
+/// The measure of `simplify` (`count_ops` by default).
+pub type Measure = fn(&Basic) -> PolyResult<i64>;
+
+/// The options of `simplify`.
+#[derive(Clone, Copy)]
+pub struct Options {
+    pub ratio: f64,
+    pub measure: Measure,
+    pub inverse: bool,
+    pub doit: bool,
+}
+
+impl Default for Options {
+    fn default() -> Options {
+        Options {
+            ratio: 1.7,
+            measure: ops,
+            inverse: false,
+            doit: true,
+        }
+    }
+}
+
+fn first_min(choices: Vec<Basic>, measure: Measure) -> PolyResult<Basic> {
+    let mut best: Option<(i64, Basic)> = None;
+    for c in choices {
+        let k: i64 = measure(&c)?;
+        if best.as_ref().map_or(true, |(b, _)| k < *b) {
+            best = Some((k, c));
+        }
+    }
+    Ok(best.expect("choices").1)
+}
+
+fn shorter(choices: Vec<Basic>, measure: Measure) -> PolyResult<Basic> {
+    if choices.iter().all(|c| *c == choices[0]) {
+        return Ok(choices[0].clone());
+    }
+    first_min(choices, measure)
+}
+
+fn has_head(e: &Basic, test: &dyn Fn(&Basic) -> bool) -> bool {
+    e.preorder().iter().any(test)
+}
+
+fn is_combinatorial(f: Function) -> bool {
+    use Function as F;
+    matches!(
+        f,
+        F::Factorial | F::Factorial2 | F::Subfactorial | F::RisingFactorial | F::FallingFactorial | F::Binomial
+    )
+}
+
+fn expand_with(e: &Basic, power_exp: bool, log: bool) -> PolyResult<Basic> {
+    let hints = crate::core::function::Hints {
+        mul: false,
+        multinomial: false,
+        power_base: false,
+        power_exp,
+        log,
+        force: false,
+        complex: false,
+        trig: false,
+        func: false,
+    };
+    crate::core::function::expand_with(e, true, hints)
+}
+
+fn eval_simplify(e: &Basic, o: &Options) -> PolyResult<Option<Basic>> {
+    match e.head() {
+        Head::Hyper | Head::MeijerG => {
+            return Err(crate::error::not_ported("simplify of hyper and meijerg (hyperexpand)"))
+        }
+        Head::Piecewise => return Err(crate::error::not_ported("simplify of a Piecewise (piecewise_simplify)")),
+        Head::Function(f) if crate::functions::special::bessel::is_bessel(*f) => {
+            return Err(crate::error::not_ported("simplify of a Bessel function (besselsimp)"))
+        }
+        Head::Function(Function::Log) => {
+            let mut new: Basic = log(&simplify(&arg(e), o)?)?;
+            if o.inverse {
+                new = inversecombine(&new)?;
+            }
+            new = expand_with(&new, false, true)?;
+            return Ok(Some(first_min(vec![new, e.clone()], o.measure)?));
+        }
+        Head::Function(Function::Sign) => {
+            let inner: Basic = crate::core::exprtools::factor_terms(&arg(e), false, false, false, true)?;
+            return Ok(Some(crate::functions::elementary::complexes::sign(&inner)?));
+        }
+        Head::Function(f) if is_combinatorial(*f) => {
+            let new: Basic = super::gammasimp::combsimp(e)?;
+            return Ok(Some(
+                if ((o.measure)(&new)? as f64) <= o.ratio * ((o.measure)(e)? as f64) {
+                    new
+                } else {
+                    e.clone()
+                },
+            ));
+        }
+        _ => {}
+    }
+    Ok(None)
+}
+
+fn simplified_arg(a: &Basic, o: &Options) -> PolyResult<Basic> {
+    if matches!(a.head(), Head::Tuple) {
+        let args: Vec<Basic> = a
+            .args()
+            .iter()
+            .map(|x| simplified_arg(x, o))
+            .collect::<PolyResult<_>>()?;
+        return Ok(Basic::new(Head::Tuple, args));
+    }
+    if crate::core::logic::is_boolean(a) {
+        if a.args().is_empty() {
+            return Ok(a.clone());
+        }
+        return Err(crate::error::not_ported(
+            "simplify of a Boolean argument (simplify_boolean)",
+        ));
+    }
+    if matches!(a.head(), Head::ExprCondPair) {
+        return Err(crate::error::not_ported("simplify of a Piecewise (piecewise_simplify)"));
+    }
+    simplify(a, o)
+}
+
+/// The expression simplified: the shortest of SymPy's heuristics by the
+/// measure, the input when every result is more than `ratio` times longer
+/// (`simplify`). Not ported: the simplification of `Piecewise` conditions,
+/// `hyper`/`meijerg` (`hyperexpand`), the Bessel functions (`besselsimp`)
+/// and noncommutative products (`nc_simplify`); the core has no `Sum`,
+/// `Product` or `Float`.
+pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
+    use crate::core::function::expand_mul;
+    let measure: Measure = o.measure;
+    let done = |e: &Basic| -> PolyResult<Basic> {
+        let rv: Basic = if o.doit {
+            crate::core::function::doit(e)?
+        } else {
+            e.clone()
+        };
+        let collected: Basic = collect_abs(&rv)?;
+        shorter(vec![rv, collected], measure)
+    };
+    let e: Basic = expr.clone();
+    if is_true(&e, Predicate::zero) {
+        return Ok(if e.is_number_class() { e } else { Basic::zero() });
+    }
+    if let Some(hook) = eval_simplify(&e, o)? {
+        return Ok(hook);
+    }
+    let original: Basic = collect_abs(&super::signsimp::signsimp(&e, true)?)?;
+    let mut e: Basic = original.clone();
+    if e.args().is_empty() {
+        return Ok(e);
+    }
+    if o.inverse && has_head(&e, &|n| matches!(n.head(), Head::Function(_) | Head::Undefined(..))) {
+        e = inversecombine(&e)?;
+        if e.args().is_empty() {
+            return Ok(e);
+        }
+    }
+    let handled = |x: &Basic| x.is_add() || x.is_mul() || x.is_pow() || x.is_function(Function::Exp);
+    let query = |x: &Basic| !is_non_expr(x) && !x.args().is_empty() && !handled(x);
+    let value = |x: &Basic| -> PolyResult<Basic> {
+        let args: Vec<Basic> = x
+            .args()
+            .iter()
+            .map(|a| simplified_arg(a, o))
+            .collect::<PolyResult<_>>()?;
+        crate::core::function::rebuild_evaluated(x, args)
+    };
+    e = replace(&e, &query, &value)?;
+    if !handled(&e) {
+        return done(&e);
+    }
+    if crate::core::expr::is_false(&e, Predicate::commutative) {
+        return Err(crate::error::not_ported(
+            "simplify of a noncommutative product (nc_simplify)",
+        ));
+    }
+    e = crate::core::traversal::bottom_up(
+        &e,
+        &|w: &Basic| {
+            if is_non_expr(w) {
+                Ok(w.clone())
+            } else {
+                super::radsimp::normal(w)
+            }
+        },
+        false,
+    )?;
+    let (c, p) = crate::core::exprtools::as_content_primitive(&super::powsimp::powsimp_default(&e)?, false, true)?;
+    e = mul(&[c, p])?;
+    let cancel = |x: &Basic| crate::polys::polytools::cancel(x, &[]);
+    let together = |x: &Basic| crate::polys::rationaltools::together(x, true, true);
+    let canceled: Basic = cancel(&e)?;
+    let expr1: Basic = shorter(
+        vec![canceled.clone(), cancel(&super::sqrtdenest::mexpand(&canceled)?)?],
+        measure,
+    )?;
+    let expr2: Basic = shorter(vec![together(&e)?, together(&expr1)?], measure)?;
+    e = if o.ratio == f64::INFINITY {
+        expr2
+    } else {
+        shorter(vec![expr2, expr1, e], measure)?
+    };
+    e = crate::core::exprtools::factor_terms(&e, false, false, false, false)?;
+    let has_f = |x: &Basic, f: Function| has_head(x, &|n| n.is_function(f));
+    if has_f(&e, Function::Sign) {
+        e = crate::core::rewriting::rewrite(&e, &[], "Abs", &crate::core::rewriting::RewriteHints::default())?;
+    }
+    if has_head(&e, &|n| matches!(n.head(), Head::Piecewise)) {
+        e = done(&crate::functions::elementary::piecewise::piecewise_fold(&e, None)?)?;
+        if has_head(&e, &|n| matches!(n.head(), Head::Piecewise)) {
+            return Err(crate::error::not_ported("simplify of a Piecewise (piecewise_simplify)"));
+        }
+    }
+    if has_head(&e, &|n| matches!(n.head(), Head::Hyper | Head::MeijerG)) {
+        return Err(crate::error::not_ported("simplify of hyper and meijerg (hyperexpand)"));
+    }
+    if has_f(&e, Function::KroneckerDelta) {
+        e = kroneckersimp(&e)?;
+    }
+    if has_head(
+        &e,
+        &|n| matches!(n.head(), Head::Function(f) if crate::functions::special::bessel::is_bessel(*f)),
+    ) {
+        return Err(crate::error::not_ported("simplify of a Bessel function (besselsimp)"));
+    }
+    let mut trig_hyper: Vec<Function> = super::fu::TRIG.to_vec();
+    trig_hyper.extend(super::fu::HYPER);
+    if super::fu::has_function(&e, &trig_hyper) {
+        e = super::trigsimp::trigsimp(&e, super::trigsimp::Method::Matching)?;
+    }
+    if has_f(&e, Function::Log) {
+        e = shorter(vec![expand_with(&e, false, true)?, logcombine(&e, false)?], measure)?;
+    }
+    if has_head(
+        &e,
+        &|n| matches!(n.head(), Head::Function(f) if is_combinatorial(*f) || *f == Function::Gamma),
+    ) {
+        e = super::gammasimp::combsimp(&e)?;
+    }
+    use super::powsimp::{powsimp, Combine};
+    let count = |x: &Basic| crate::core::function::count_ops(x);
+    let mut short: Basic = shorter(
+        vec![
+            powsimp(&e, true, Combine::Exp, false, &count)?,
+            super::powsimp::powsimp_default(&e)?,
+            e.clone(),
+        ],
+        measure,
+    )?;
+    short = shorter(vec![short.clone(), cancel(&short)?], measure)?;
+    short = shorter(
+        vec![
+            short.clone(),
+            crate::core::exprtools::factor_terms(&short, false, false, false, true)?,
+            expand_with(&expand_mul(&short, true)?, true, false)?,
+        ],
+        measure,
+    )?;
+    let mut with_exp: Vec<Function> = trig_hyper.clone();
+    with_exp.push(Function::Exp);
+    if super::fu::has_function(&short, &with_exp) {
+        short = super::trigsimp::exptrigsimp(&short)?;
+    }
+    let hollow = |x: &Basic| {
+        x.is_mul()
+            && x.args().len() == 2
+            && x.args()[0].is_number_class()
+            && x.args()[1].is_add()
+            && !crate::core::expr::is_false(x, Predicate::commutative)
+    };
+    e = replace(&short, &hollow, &|x: &Basic| mul(x.args()))?;
+    let (numer, denom) = crate::core::expr::as_numer_denom(&e)?;
+    if denom.is_add() {
+        let (n, d) = super::radsimp::fraction(&super::radsimp::radsimp(
+            &pow(&denom, &Basic::negative_one())?,
+            false,
+            1,
+        )?)?;
+        if n != Basic::one() {
+            e = mul(&[
+                crate::core::function::expand_default(&mul(&[numer, n])?)?,
+                pow(&d, &Basic::negative_one())?,
+            ])?;
+        }
+    }
+    if crate::core::printing::could_extract_minus_sign(&e) {
+        let (n, d) = super::radsimp::fraction(&e)?;
+        if d != Basic::zero() {
+            let flipped: Basic = mul(&[
+                crate::core::mul::neg(&n)?,
+                pow(&crate::core::mul::neg(&d)?, &Basic::negative_one())?,
+            ])?;
+            e = super::signsimp::signsimp(&flipped, true)?;
+        }
+    }
+    if (measure(&e)? as f64) > o.ratio * (measure(&original)? as f64) {
+        e = original;
+    }
+    done(&e)
 }

@@ -2901,6 +2901,39 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "simplify" => {
+            // op (simplify, collect_abs, inversecombine, kroneckersimp), e; simplify: ratio (a rational or
+            // the symbol oo), inverse, doit
+            use sympy_extras_core::simplify::simplify as sm;
+            match a[0].to_string().as_str() {
+                "simplify" => {
+                    let ratio: f64 = match a.get(2) {
+                        Some(r) if matches!(r.head(), Head::Infinity) => f64::INFINITY,
+                        Some(r) => r
+                            .as_rational()
+                            .map(|v| sympy_extras_core::core::evalf::real_rat(v, 64).to_f64().value())
+                            .unwrap_or(1.7),
+                        None => 1.7,
+                    };
+                    let flag = |i: usize, default: bool| match a.get(i).map(|b| b.head()) {
+                        Some(Head::BooleanTrue) => true,
+                        Some(Head::BooleanFalse) => false,
+                        _ => default,
+                    };
+                    let o = sm::Options {
+                        ratio,
+                        inverse: flag(3, false),
+                        doit: flag(4, true),
+                        ..sm::Options::default()
+                    };
+                    sm::simplify(&a[1], &o).map_err(e)?
+                }
+                "collect_abs" => sm::collect_abs(&a[1]).map_err(e)?,
+                "inversecombine" => sm::inversecombine(&a[1]).map_err(e)?,
+                "kroneckersimp" => sm::kroneckersimp(&a[1]).map_err(e)?,
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "settings" => {
             // no argument: the current settings; with the changes (numerical_checks, precision, timeout,
             // no_timeout, groebner_algorithm, time_scale; an empty Tuple for None): the settings inside
