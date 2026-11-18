@@ -97,6 +97,11 @@ pub enum Head {
     /// (`functions.elementary.piecewise`).
     Piecewise,
     ExprCondPair,
+    /// `hyper(Tuple(ap), Tuple(bq), z)` and `meijerg(Tuple(Tuple(an),
+    /// Tuple(aother)), Tuple(Tuple(bm), Tuple(bother)), z)`
+    /// (`functions.special.hyper`).
+    Hyper,
+    MeijerG,
 }
 
 /// The relations of `core.relational`.
@@ -273,6 +278,39 @@ pub enum Function {
     Hermite,
     Laguerre,
     AssocLaguerre,
+    Jacobi,
+    Gegenbauer,
+    AssocLegendre,
+    HermiteProb,
+    AppellF1,
+    BesselJ,
+    BesselY,
+    BesselI,
+    BesselK,
+    Hankel1,
+    Hankel2,
+    BesselIs,
+    BesselKs,
+    SphericalJ,
+    SphericalY,
+    SphericalHankel1,
+    SphericalHankel2,
+    AiryAi,
+    AiryBi,
+    AiryAiPrime,
+    AiryBiPrime,
+    MarcumQ,
+    HyperRepPower1,
+    HyperRepPower2,
+    HyperRepLog1,
+    HyperRepAtanh,
+    HyperRepAsin1,
+    HyperRepAsin2,
+    HyperRepSqrts1,
+    HyperRepSqrts2,
+    HyperRepLog2,
+    HyperRepCosasin,
+    HyperRepSinasin,
     EllipticK,
     EllipticF,
     EllipticE,
@@ -403,6 +441,39 @@ impl Function {
             Function::Hermite => "hermite",
             Function::Laguerre => "laguerre",
             Function::AssocLaguerre => "assoc_laguerre",
+            Function::Jacobi => "jacobi",
+            Function::Gegenbauer => "gegenbauer",
+            Function::AssocLegendre => "assoc_legendre",
+            Function::HermiteProb => "hermite_prob",
+            Function::AppellF1 => "appellf1",
+            Function::BesselJ => "besselj",
+            Function::BesselY => "bessely",
+            Function::BesselI => "besseli",
+            Function::BesselK => "besselk",
+            Function::Hankel1 => "hankel1",
+            Function::Hankel2 => "hankel2",
+            Function::BesselIs => "_besseli",
+            Function::BesselKs => "_besselk",
+            Function::SphericalJ => "jn",
+            Function::SphericalY => "yn",
+            Function::SphericalHankel1 => "hn1",
+            Function::SphericalHankel2 => "hn2",
+            Function::AiryAi => "airyai",
+            Function::AiryBi => "airybi",
+            Function::AiryAiPrime => "airyaiprime",
+            Function::AiryBiPrime => "airybiprime",
+            Function::MarcumQ => "marcumq",
+            Function::HyperRepPower1 => "HyperRep_power1",
+            Function::HyperRepPower2 => "HyperRep_power2",
+            Function::HyperRepLog1 => "HyperRep_log1",
+            Function::HyperRepAtanh => "HyperRep_atanh",
+            Function::HyperRepAsin1 => "HyperRep_asin1",
+            Function::HyperRepAsin2 => "HyperRep_asin2",
+            Function::HyperRepSqrts1 => "HyperRep_sqrts1",
+            Function::HyperRepSqrts2 => "HyperRep_sqrts2",
+            Function::HyperRepLog2 => "HyperRep_log2",
+            Function::HyperRepCosasin => "HyperRep_cosasin",
+            Function::HyperRepSinasin => "HyperRep_sinasin",
             Function::EllipticK => "elliptic_k",
             Function::EllipticF => "elliptic_f",
             Function::EllipticE => "elliptic_e",
@@ -532,6 +603,39 @@ impl Function {
             Function::Hermite => "Hermite",
             Function::Laguerre => "Laguerre",
             Function::AssocLaguerre => "AssocLaguerre",
+            Function::Jacobi => "Jacobi",
+            Function::Gegenbauer => "Gegenbauer",
+            Function::AssocLegendre => "AssocLegendre",
+            Function::HermiteProb => "HermiteProb",
+            Function::AppellF1 => "AppellF1",
+            Function::BesselJ => "BesselJ",
+            Function::BesselY => "BesselY",
+            Function::BesselI => "BesselI",
+            Function::BesselK => "BesselK",
+            Function::Hankel1 => "Hankel1",
+            Function::Hankel2 => "Hankel2",
+            Function::BesselIs => "BesselIs",
+            Function::BesselKs => "BesselKs",
+            Function::SphericalJ => "SphericalJ",
+            Function::SphericalY => "SphericalY",
+            Function::SphericalHankel1 => "SphericalHankel1",
+            Function::SphericalHankel2 => "SphericalHankel2",
+            Function::AiryAi => "AiryAi",
+            Function::AiryBi => "AiryBi",
+            Function::AiryAiPrime => "AiryAiPrime",
+            Function::AiryBiPrime => "AiryBiPrime",
+            Function::MarcumQ => "MarcumQ",
+            Function::HyperRepPower1 => "HyperRep_power1",
+            Function::HyperRepPower2 => "HyperRep_power2",
+            Function::HyperRepLog1 => "HyperRep_log1",
+            Function::HyperRepAtanh => "HyperRep_atanh",
+            Function::HyperRepAsin1 => "HyperRep_asin1",
+            Function::HyperRepAsin2 => "HyperRep_asin2",
+            Function::HyperRepSqrts1 => "HyperRep_sqrts1",
+            Function::HyperRepSqrts2 => "HyperRep_sqrts2",
+            Function::HyperRepLog2 => "HyperRep_log2",
+            Function::HyperRepCosasin => "HyperRep_cosasin",
+            Function::HyperRepSinasin => "HyperRep_sinasin",
             Function::EllipticK => "EllipticK",
             Function::EllipticF => "EllipticF",
             Function::EllipticE => "EllipticE",
@@ -682,6 +786,39 @@ impl Function {
             | Function::Hermite
             | Function::Laguerre
             | Function::AssocLaguerre
+            | Function::Jacobi
+            | Function::Gegenbauer
+            | Function::AssocLegendre
+            | Function::HermiteProb
+            | Function::AppellF1
+            | Function::BesselJ
+            | Function::BesselY
+            | Function::BesselI
+            | Function::BesselK
+            | Function::Hankel1
+            | Function::Hankel2
+            | Function::BesselIs
+            | Function::BesselKs
+            | Function::SphericalJ
+            | Function::SphericalY
+            | Function::SphericalHankel1
+            | Function::SphericalHankel2
+            | Function::AiryAi
+            | Function::AiryBi
+            | Function::AiryAiPrime
+            | Function::AiryBiPrime
+            | Function::MarcumQ
+            | Function::HyperRepPower1
+            | Function::HyperRepPower2
+            | Function::HyperRepLog1
+            | Function::HyperRepAtanh
+            | Function::HyperRepAsin1
+            | Function::HyperRepAsin2
+            | Function::HyperRepSqrts1
+            | Function::HyperRepSqrts2
+            | Function::HyperRepLog2
+            | Function::HyperRepCosasin
+            | Function::HyperRepSinasin
             | Function::EllipticK
             | Function::EllipticF
             | Function::EllipticE
@@ -779,6 +916,8 @@ impl Head {
             Head::AccumBounds => "AccumBounds",
             Head::Piecewise => "Piecewise",
             Head::ExprCondPair => "ExprCondPair",
+            Head::Hyper => "Hyper",
+            Head::MeijerG => "MeijerG",
         }
     }
 
@@ -808,6 +947,8 @@ impl Head {
             Head::TribonacciConstant => "TribonacciConstant",
             Head::Function(f) => f.name(),
             Head::Relational(op) => op.sympy_name(),
+            Head::Hyper => "hyper",
+            Head::MeijerG => "meijerg",
             Head::Undefined(u) => {
                 // the compare name is the function's name, a String: leaked
                 // once per distinct name so that the key stays 'static
@@ -850,6 +991,8 @@ impl Head {
                 | Head::AccumBounds
                 | Head::Piecewise
                 | Head::ExprCondPair
+                | Head::Hyper
+                | Head::MeijerG
         )
     }
 

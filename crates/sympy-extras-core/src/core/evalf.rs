@@ -381,6 +381,38 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::combinatorial::numbers::number_value(*g, &values, prec)
         }
+        Head::Hyper => crate::functions::special::hyper::hyper_node_value(e, prec),
+        Head::Function(
+            g @ (super::basic::Function::AiryAi
+            | super::basic::Function::AiryBi
+            | super::basic::Function::AiryAiPrime
+            | super::basic::Function::AiryBiPrime),
+        ) => {
+            let v: Complex = numeric_value(&e.args()[0], prec + 40)?;
+            crate::functions::special::bessel::airy_value(*g, &[v], prec)
+        }
+        Head::Function(
+            g @ (super::basic::Function::BesselJ
+            | super::basic::Function::BesselY
+            | super::basic::Function::BesselI
+            | super::basic::Function::BesselK
+            | super::basic::Function::Hankel1
+            | super::basic::Function::Hankel2
+            | super::basic::Function::BesselIs
+            | super::basic::Function::BesselKs
+            | super::basic::Function::SphericalJ
+            | super::basic::Function::SphericalY
+            | super::basic::Function::SphericalHankel1
+            | super::basic::Function::SphericalHankel2),
+        ) => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::bessel::bessel_value(*g, &values, prec)
+        }
+        // mpmath's meijerg is not ported
+        Head::MeijerG => None,
         Head::Function(
             g @ (super::basic::Function::Zeta
             | super::basic::Function::DirichletEta
@@ -575,7 +607,42 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::ChebyshevU
                 | super::basic::Function::Hermite
                 | super::basic::Function::Laguerre
-                | super::basic::Function::AssocLaguerre => return None,
+                | super::basic::Function::AssocLaguerre
+                | super::basic::Function::Jacobi
+                | super::basic::Function::Gegenbauer
+                | super::basic::Function::AssocLegendre
+                | super::basic::Function::HermiteProb => return None,
+                // mpmath's appellf1 is not ported
+                super::basic::Function::AppellF1 => return None,
+                // evaluated above
+                super::basic::Function::BesselJ
+                | super::basic::Function::BesselY
+                | super::basic::Function::BesselI
+                | super::basic::Function::BesselK
+                | super::basic::Function::Hankel1
+                | super::basic::Function::Hankel2
+                | super::basic::Function::BesselIs
+                | super::basic::Function::BesselKs
+                | super::basic::Function::SphericalJ
+                | super::basic::Function::SphericalY
+                | super::basic::Function::SphericalHankel1
+                | super::basic::Function::SphericalHankel2
+                | super::basic::Function::AiryAi
+                | super::basic::Function::AiryBi
+                | super::basic::Function::AiryAiPrime
+                | super::basic::Function::AiryBiPrime
+                | super::basic::Function::MarcumQ
+                | super::basic::Function::HyperRepPower1
+                | super::basic::Function::HyperRepPower2
+                | super::basic::Function::HyperRepLog1
+                | super::basic::Function::HyperRepAtanh
+                | super::basic::Function::HyperRepAsin1
+                | super::basic::Function::HyperRepAsin2
+                | super::basic::Function::HyperRepSqrts1
+                | super::basic::Function::HyperRepSqrts2
+                | super::basic::Function::HyperRepLog2
+                | super::basic::Function::HyperRepCosasin
+                | super::basic::Function::HyperRepSinasin => return None,
                 // no numerical value (neither SymPy nor mpmath has one)
                 super::basic::Function::MathieuS
                 | super::basic::Function::MathieuC

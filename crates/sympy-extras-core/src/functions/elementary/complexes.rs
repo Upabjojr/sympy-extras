@@ -144,12 +144,31 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         }
         g @ (Function::Gamma | Function::LogGamma) => crate::functions::special::gamma_functions::gamma_conjugate(g, e),
         Function::Ynm => crate::functions::special::spherical_harmonics::spherical_conjugate(e),
+        g @ (Function::BesselJ
+        | Function::BesselY
+        | Function::BesselI
+        | Function::BesselK
+        | Function::Hankel1
+        | Function::Hankel2
+        | Function::BesselIs
+        | Function::BesselKs
+        | Function::SphericalJ
+        | Function::SphericalY
+        | Function::SphericalHankel1
+        | Function::SphericalHankel2) => crate::functions::special::bessel::bessel_conjugate(g, e),
+        g @ (Function::AiryAi | Function::AiryBi | Function::AiryAiPrime | Function::AiryBiPrime) => {
+            crate::functions::special::bessel::airy_conjugate(g, e)
+        }
         g @ (Function::Legendre
         | Function::ChebyshevT
         | Function::ChebyshevU
         | Function::Hermite
         | Function::Laguerre
-        | Function::AssocLaguerre) => crate::functions::special::polynomials::orthogonal_conjugate(g, e),
+        | Function::AssocLaguerre
+        | Function::Jacobi
+        | Function::Gegenbauer
+        | Function::AssocLegendre
+        | Function::HermiteProb) => crate::functions::special::polynomials::orthogonal_conjugate(g, e),
         g @ (Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi) => {
             crate::functions::special::elliptic_integrals::elliptic_conjugate(g, e)
         }
@@ -175,6 +194,19 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::PolyGamma
         | Function::SingularityFunction
         | Function::Znm
+        | Function::AppellF1
+        | Function::MarcumQ
+        | Function::HyperRepPower1
+        | Function::HyperRepPower2
+        | Function::HyperRepLog1
+        | Function::HyperRepAtanh
+        | Function::HyperRepAsin1
+        | Function::HyperRepAsin2
+        | Function::HyperRepSqrts1
+        | Function::HyperRepSqrts2
+        | Function::HyperRepLog2
+        | Function::HyperRepCosasin
+        | Function::HyperRepSinasin
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -484,6 +516,9 @@ fn function_real_imag(
 ) -> PolyResult<Option<RealImag>> {
     use crate::core::function::expand_with_hints;
     match f {
+        g @ (Function::AiryAi | Function::AiryBi | Function::AiryAiPrime | Function::AiryBiPrime) => {
+            Ok(Some(crate::functions::special::bessel::airy_real_imag(g, e)?))
+        }
         g @ (Function::Erf | Function::Erfc | Function::Erfi) => {
             Ok(crate::functions::special::error_functions::error_real_imag(g, e, deep)?.flatten())
         }
@@ -573,6 +608,10 @@ fn function_real_imag(
         | Function::Hermite
         | Function::Laguerre
         | Function::AssocLaguerre
+        | Function::Jacobi
+        | Function::Gegenbauer
+        | Function::AssocLegendre
+        | Function::HermiteProb
         | Function::EllipticK
         | Function::EllipticF
         | Function::EllipticE
@@ -582,6 +621,31 @@ fn function_real_imag(
         | Function::MathieuSPrime
         | Function::MathieuCPrime
         | Function::Znm
+        | Function::AppellF1
+        | Function::SphericalJ
+        | Function::SphericalY
+        | Function::SphericalHankel1
+        | Function::SphericalHankel2
+        | Function::MarcumQ
+        | Function::HyperRepPower1
+        | Function::HyperRepPower2
+        | Function::HyperRepLog1
+        | Function::HyperRepAtanh
+        | Function::HyperRepAsin1
+        | Function::HyperRepAsin2
+        | Function::HyperRepSqrts1
+        | Function::HyperRepSqrts2
+        | Function::HyperRepLog2
+        | Function::HyperRepCosasin
+        | Function::HyperRepSinasin
+        | Function::BesselJ
+        | Function::BesselY
+        | Function::BesselI
+        | Function::BesselK
+        | Function::Hankel1
+        | Function::Hankel2
+        | Function::BesselIs
+        | Function::BesselKs
         | Function::LowerGamma
         | Function::UpperGamma
         | Function::MultiGamma

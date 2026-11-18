@@ -356,6 +356,9 @@ impl StrPrinter {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Head::Hyper | Head::MeijerG => {
+                crate::functions::special::hyper::print_hyper(e, &|a: &Basic| self.doprint(a))
+            }
             Head::ExprCondPair => format!("({}, {})", self.doprint(&e.args()[0]), self.doprint(&e.args()[1])),
             Head::AccumBounds => format!(
                 "AccumBounds({}, {})",

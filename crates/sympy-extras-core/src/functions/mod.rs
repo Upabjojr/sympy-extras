@@ -100,13 +100,45 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
             crate::core::modulo::modulo_fdiff(e, argindex)
         }
         Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
+        Function::AppellF1 => special::hyper::appellf1_fdiff(e, argindex),
+        g @ (Function::BesselJ
+        | Function::BesselY
+        | Function::BesselI
+        | Function::BesselK
+        | Function::Hankel1
+        | Function::Hankel2
+        | Function::BesselIs
+        | Function::BesselKs
+        | Function::SphericalJ
+        | Function::SphericalY
+        | Function::SphericalHankel1
+        | Function::SphericalHankel2) => special::bessel::bessel_fdiff(g, e, argindex),
+        g @ (Function::AiryAi | Function::AiryBi | Function::AiryAiPrime | Function::AiryBiPrime) => {
+            special::bessel::airy_fdiff(g, e)
+        }
+        Function::MarcumQ => special::bessel::marcumq_fdiff(e, argindex),
+        Function::HyperRepPower1
+        | Function::HyperRepPower2
+        | Function::HyperRepLog1
+        | Function::HyperRepAtanh
+        | Function::HyperRepAsin1
+        | Function::HyperRepAsin2
+        | Function::HyperRepSqrts1
+        | Function::HyperRepSqrts2
+        | Function::HyperRepLog2
+        | Function::HyperRepCosasin
+        | Function::HyperRepSinasin => special::hyper::default_fdiff(e, argindex),
         g @ (Function::Ynm | Function::Znm) => special::spherical_harmonics::spherical_fdiff(g, e, argindex),
         g @ (Function::Legendre
         | Function::ChebyshevT
         | Function::ChebyshevU
         | Function::Hermite
         | Function::Laguerre
-        | Function::AssocLaguerre) => special::polynomials::orthogonal_fdiff(g, e, argindex),
+        | Function::AssocLaguerre
+        | Function::Jacobi
+        | Function::Gegenbauer
+        | Function::AssocLegendre
+        | Function::HermiteProb) => special::polynomials::orthogonal_fdiff(g, e, argindex),
         g @ (Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi) => {
             special::elliptic_integrals::elliptic_fdiff(g, e, argindex)
         }
@@ -253,6 +285,21 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::elliptic_integrals::is_elliptic(f) && special::elliptic_integrals::arity_fits(f, args.len()) {
         return special::elliptic_integrals::elliptic(f, args);
     }
+    if special::bessel::is_airy(f) && args.len() == 1 {
+        return special::bessel::airy(f, &args[0]);
+    }
+    if special::hyperrep::is_hyperrep(f) && args.len() == special::hyperrep::hyperrep_arity(f) {
+        return special::hyperrep::hyperrep(f, args);
+    }
+    if f == Function::MarcumQ && args.len() == 3 {
+        return special::bessel::marcumq(args);
+    }
+    if special::bessel::is_bessel(f) && args.len() == 2 {
+        return special::bessel::bessel(f, args);
+    }
+    if f == Function::AppellF1 && args.len() == 6 {
+        return special::hyper::appellf1(args);
+    }
     if special::polynomials::is_orthogonal(f) && special::polynomials::arity_fits(f, args.len()) {
         return special::polynomials::orthogonal(f, args);
     }
@@ -372,13 +419,46 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
             unreachable!("evaluated above with all their arguments")
         }
         Function::SingularityFunction => unreachable!("evaluated above with all their arguments"),
+        Function::AppellF1 => unreachable!("evaluated above with all their arguments"),
+        Function::BesselJ
+        | Function::BesselY
+        | Function::BesselI
+        | Function::BesselK
+        | Function::Hankel1
+        | Function::Hankel2
+        | Function::BesselIs
+        | Function::BesselKs
+        | Function::SphericalJ
+        | Function::SphericalY
+        | Function::SphericalHankel1
+        | Function::SphericalHankel2
+        | Function::AiryAi
+        | Function::AiryBi
+        | Function::AiryAiPrime
+        | Function::AiryBiPrime
+        | Function::MarcumQ
+        | Function::HyperRepPower1
+        | Function::HyperRepPower2
+        | Function::HyperRepLog1
+        | Function::HyperRepAtanh
+        | Function::HyperRepAsin1
+        | Function::HyperRepAsin2
+        | Function::HyperRepSqrts1
+        | Function::HyperRepSqrts2
+        | Function::HyperRepLog2
+        | Function::HyperRepCosasin
+        | Function::HyperRepSinasin => unreachable!("evaluated above with all their arguments"),
         Function::Ynm | Function::Znm => unreachable!("evaluated above with all their arguments"),
         Function::Legendre
         | Function::ChebyshevT
         | Function::ChebyshevU
         | Function::Hermite
         | Function::Laguerre
-        | Function::AssocLaguerre => unreachable!("evaluated above with all their arguments"),
+        | Function::AssocLaguerre
+        | Function::Jacobi
+        | Function::Gegenbauer
+        | Function::AssocLegendre
+        | Function::HermiteProb => unreachable!("evaluated above with all their arguments"),
         Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
             unreachable!("evaluated above with all their arguments")
         }

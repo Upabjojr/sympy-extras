@@ -1,5 +1,6 @@
 //! Port of `sympy_extras/functions/special`.
 
+pub mod bessel;
 pub mod beta_functions;
 pub mod bsplines;
 pub mod delta_functions;
@@ -7,6 +8,8 @@ pub mod elliptic_integrals;
 pub mod error_functions;
 pub mod gamma_functions;
 pub mod gamma_numeric;
+pub mod hyper;
+pub mod hyperrep;
 pub mod mathieu_functions;
 pub mod polynomials;
 pub mod singularity_functions;

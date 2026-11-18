@@ -211,6 +211,41 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Hermite" => Basic::new(Head::Function(Function::Hermite), args()?),
         "Laguerre" => Basic::new(Head::Function(Function::Laguerre), args()?),
         "AssocLaguerre" => Basic::new(Head::Function(Function::AssocLaguerre), args()?),
+        "Jacobi" => Basic::new(Head::Function(Function::Jacobi), args()?),
+        "Gegenbauer" => Basic::new(Head::Function(Function::Gegenbauer), args()?),
+        "AssocLegendre" => Basic::new(Head::Function(Function::AssocLegendre), args()?),
+        "HermiteProb" => Basic::new(Head::Function(Function::HermiteProb), args()?),
+        "AppellF1" => Basic::new(Head::Function(Function::AppellF1), args()?),
+        "BesselJ" => Basic::new(Head::Function(Function::BesselJ), args()?),
+        "BesselY" => Basic::new(Head::Function(Function::BesselY), args()?),
+        "BesselI" => Basic::new(Head::Function(Function::BesselI), args()?),
+        "BesselK" => Basic::new(Head::Function(Function::BesselK), args()?),
+        "Hankel1" => Basic::new(Head::Function(Function::Hankel1), args()?),
+        "Hankel2" => Basic::new(Head::Function(Function::Hankel2), args()?),
+        "BesselIs" => Basic::new(Head::Function(Function::BesselIs), args()?),
+        "BesselKs" => Basic::new(Head::Function(Function::BesselKs), args()?),
+        "SphericalJ" => Basic::new(Head::Function(Function::SphericalJ), args()?),
+        "SphericalY" => Basic::new(Head::Function(Function::SphericalY), args()?),
+        "SphericalHankel1" => Basic::new(Head::Function(Function::SphericalHankel1), args()?),
+        "SphericalHankel2" => Basic::new(Head::Function(Function::SphericalHankel2), args()?),
+        "AiryAi" => Basic::new(Head::Function(Function::AiryAi), args()?),
+        "AiryBi" => Basic::new(Head::Function(Function::AiryBi), args()?),
+        "AiryAiPrime" => Basic::new(Head::Function(Function::AiryAiPrime), args()?),
+        "AiryBiPrime" => Basic::new(Head::Function(Function::AiryBiPrime), args()?),
+        "MarcumQ" => Basic::new(Head::Function(Function::MarcumQ), args()?),
+        "HyperRep_power1" => Basic::new(Head::Function(Function::HyperRepPower1), args()?),
+        "HyperRep_power2" => Basic::new(Head::Function(Function::HyperRepPower2), args()?),
+        "HyperRep_log1" => Basic::new(Head::Function(Function::HyperRepLog1), args()?),
+        "HyperRep_atanh" => Basic::new(Head::Function(Function::HyperRepAtanh), args()?),
+        "HyperRep_asin1" => Basic::new(Head::Function(Function::HyperRepAsin1), args()?),
+        "HyperRep_asin2" => Basic::new(Head::Function(Function::HyperRepAsin2), args()?),
+        "HyperRep_sqrts1" => Basic::new(Head::Function(Function::HyperRepSqrts1), args()?),
+        "HyperRep_sqrts2" => Basic::new(Head::Function(Function::HyperRepSqrts2), args()?),
+        "HyperRep_log2" => Basic::new(Head::Function(Function::HyperRepLog2), args()?),
+        "HyperRep_cosasin" => Basic::new(Head::Function(Function::HyperRepCosasin), args()?),
+        "HyperRep_sinasin" => Basic::new(Head::Function(Function::HyperRepSinasin), args()?),
+        "Hyper" => Basic::new(Head::Hyper, args()?),
+        "MeijerG" => Basic::new(Head::MeijerG, args()?),
         "EllipticK" => Basic::new(Head::Function(Function::EllipticK), args()?),
         "EllipticF" => Basic::new(Head::Function(Function::EllipticF), args()?),
         "EllipticE" => Basic::new(Head::Function(Function::EllipticE), args()?),
@@ -420,6 +455,28 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 .getattr(name)?
                 .call1(PyTuple::new(py, items)?)?
         }
+        Head::Hyper => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.functions.special.hyper")?
+                .getattr("Hyper")?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::MeijerG => {
+            let (first, second) = (&e.args()[0], &e.args()[1]);
+            let mut items: Vec<Bound<'py, PyAny>> = Vec::new();
+            for t in [
+                &first.args()[0],
+                &first.args()[1],
+                &second.args()[0],
+                &second.args()[1],
+                &e.args()[2],
+            ] {
+                items.push(to_python(py, t)?);
+            }
+            py.import("sympy_extras.functions.special.hyper")?
+                .getattr("MeijerG")?
+                .call1(PyTuple::new(py, items)?)?
+        }
         Head::ConditionSet => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.sets.conditionset")?
@@ -496,7 +553,19 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::ChebyshevU
                 | Function::Hermite
                 | Function::Laguerre
-                | Function::AssocLaguerre => "polynomials",
+                | Function::AssocLaguerre
+                | Function::Jacobi
+                | Function::Gegenbauer
+                | Function::AssocLegendre
+                | Function::HermiteProb => "polynomials",
+                Function::AppellF1 => "hyper",
+                f if sympy_extras_core::functions::special::hyperrep::is_hyperrep(*f) => "hyperrep",
+                f if sympy_extras_core::functions::special::bessel::is_bessel(*f)
+                    || sympy_extras_core::functions::special::bessel::is_airy(*f)
+                    || *f == Function::MarcumQ =>
+                {
+                    "bessel"
+                }
                 Function::EllipticK | Function::EllipticF | Function::EllipticE | Function::EllipticPi => {
                     "elliptic_integrals"
                 }
@@ -534,6 +603,11 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::spherical_harmonics::is_spherical_harmonic(*f)
                 || sympy_extras_core::functions::special::mathieu_functions::is_mathieu(*f)
                 || sympy_extras_core::functions::special::polynomials::is_orthogonal(*f)
+                || *f == Function::AppellF1
+                || sympy_extras_core::functions::special::hyperrep::is_hyperrep(*f)
+                || sympy_extras_core::functions::special::bessel::is_bessel(*f)
+                || sympy_extras_core::functions::special::bessel::is_airy(*f)
+                || *f == Function::MarcumQ
                 || sympy_extras_core::functions::special::elliptic_integrals::is_elliptic(*f)
                 || sympy_extras_core::functions::special::zeta_functions::is_zeta_function(*f)
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
@@ -2356,7 +2430,121 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             }
             ei::elliptic(f, &a).map_err(e)?
         }
-        "legendre" | "chebyshevt" | "chebyshevu" | "hermite" | "laguerre" | "assoc_laguerre" => {
+        "hyper" | "meijerg" | "appellf1" | "hyper_radius" | "hyper_eta" | "hyper_convergence" | "meijerg_nu"
+        | "meijerg_delta" | "meijerg_period" => {
+            use sympy_extras_core::functions::special::hyper as hy;
+            let wrong = || pyo3::exceptions::PyTypeError::new_err("wrong arguments");
+            let tuple_of = |b: &Basic| -> PyResult<Vec<Basic>> {
+                if matches!(b.head(), Head::Tuple) {
+                    Ok(b.args().to_vec())
+                } else {
+                    Err(wrong())
+                }
+            };
+            match (name, a.len()) {
+                ("hyper", 3) => hy::hyper(&tuple_of(&a[0])?, &tuple_of(&a[1])?, &a[2]).map_err(e)?,
+                ("meijerg", 5) => hy::meijerg(
+                    &tuple_of(&a[0])?,
+                    &tuple_of(&a[1])?,
+                    &tuple_of(&a[2])?,
+                    &tuple_of(&a[3])?,
+                    &a[4],
+                )
+                .map_err(e)?,
+                ("appellf1", 6) => hy::appellf1(&a).map_err(e)?,
+                ("hyper_radius", 1) if matches!(a[0].head(), Head::Hyper) => {
+                    hy::radius_of_convergence(&a[0]).map_err(e)?
+                }
+                ("hyper_eta", 1) if matches!(a[0].head(), Head::Hyper) => hy::hyper_eta(&a[0]).map_err(e)?,
+                ("hyper_convergence", 1) if matches!(a[0].head(), Head::Hyper) => {
+                    hy::convergence_statement(&a[0]).map_err(e)?
+                }
+                ("meijerg_nu", 1) if matches!(a[0].head(), Head::MeijerG) => hy::meijerg_nu(&a[0]).map_err(e)?,
+                ("meijerg_delta", 1) if matches!(a[0].head(), Head::MeijerG) => hy::meijerg_delta(&a[0]).map_err(e)?,
+                ("meijerg_period", 1) if matches!(a[0].head(), Head::MeijerG) => {
+                    hy::meijerg_get_period(&a[0]).map_err(e)?
+                }
+                _ => return Err(wrong()),
+            }
+        }
+        "hyperrep" | "rewrite_nonrep" | "rewrite_nonrepsmall" => {
+            use sympy_extras_core::core::basic::Function as F;
+            use sympy_extras_core::functions::special::hyperrep as hr;
+            match name {
+                "rewrite_nonrep" if a.len() == 1 => hr::rewrite_nonrep(&a[0], false).map_err(e)?,
+                "rewrite_nonrepsmall" if a.len() == 1 => hr::rewrite_nonrep(&a[0], true).map_err(e)?,
+                "hyperrep" if !a.is_empty() => {
+                    // the head by its Python name, then the arguments
+                    let label: String = a[0].to_string();
+                    let f: F = [
+                        F::HyperRepPower1,
+                        F::HyperRepPower2,
+                        F::HyperRepLog1,
+                        F::HyperRepAtanh,
+                        F::HyperRepAsin1,
+                        F::HyperRepAsin2,
+                        F::HyperRepSqrts1,
+                        F::HyperRepSqrts2,
+                        F::HyperRepLog2,
+                        F::HyperRepCosasin,
+                        F::HyperRepSinasin,
+                    ]
+                    .into_iter()
+                    .find(|f| f.name() == label)
+                    .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("unknown HyperRep"))?;
+                    if a.len() - 1 != hr::hyperrep_arity(f) {
+                        return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
+                    }
+                    hr::hyperrep(f, &a[1..]).map_err(e)?
+                }
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
+            }
+        }
+        "airyai" | "airybi" | "airyaiprime" | "airybiprime" | "marcumq" => {
+            use sympy_extras_core::core::basic::Function as F;
+            use sympy_extras_core::functions::special::bessel as bs;
+            match (name, a.len()) {
+                ("marcumq", 3) => bs::marcumq(&a).map_err(e)?,
+                ("airyai", 1) => bs::airy(F::AiryAi, &a[0]).map_err(e)?,
+                ("airybi", 1) => bs::airy(F::AiryBi, &a[0]).map_err(e)?,
+                ("airyaiprime", 1) => bs::airy(F::AiryAiPrime, &a[0]).map_err(e)?,
+                ("airybiprime", 1) => bs::airy(F::AiryBiPrime, &a[0]).map_err(e)?,
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments")),
+            }
+        }
+        "besselj" | "bessely" | "besseli" | "besselk" | "hankel1" | "hankel2" | "besselis" | "besselks" | "jn"
+        | "yn" | "hn1" | "hn2" => {
+            use sympy_extras_core::core::basic::Function as F;
+            let f: F = match name {
+                "besselj" => F::BesselJ,
+                "bessely" => F::BesselY,
+                "besseli" => F::BesselI,
+                "besselk" => F::BesselK,
+                "hankel1" => F::Hankel1,
+                "hankel2" => F::Hankel2,
+                "besselis" => F::BesselIs,
+                "besselks" => F::BesselKs,
+                "jn" => F::SphericalJ,
+                "yn" => F::SphericalY,
+                "hn1" => F::SphericalHankel1,
+                _ => F::SphericalHankel2,
+            };
+            if a.len() != 2 {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
+            }
+            sympy_extras_core::functions::special::bessel::bessel(f, &a).map_err(e)?
+        }
+        "chebyshevt_root" | "chebyshevu_root" | "jacobi_normalized" => {
+            use sympy_extras_core::functions::special::polynomials as op;
+            match (name, a.len()) {
+                ("chebyshevt_root", 2) => op::chebyshevt_root(&a[0], &a[1]).map_err(e)?,
+                ("chebyshevu_root", 2) => op::chebyshevu_root(&a[0], &a[1]).map_err(e)?,
+                ("jacobi_normalized", 4) => op::jacobi_normalized(&a[0], &a[1], &a[2], &a[3]).map_err(e)?,
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments")),
+            }
+        }
+        "legendre" | "chebyshevt" | "chebyshevu" | "hermite" | "laguerre" | "assoc_laguerre" | "jacobi"
+        | "gegenbauer" | "assoc_legendre" | "hermite_prob" => {
             use sympy_extras_core::core::basic::Function as F;
             use sympy_extras_core::functions::special::polynomials as op;
             let f: F = match name {
@@ -2365,7 +2553,11 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "chebyshevu" => F::ChebyshevU,
                 "hermite" => F::Hermite,
                 "laguerre" => F::Laguerre,
-                _ => F::AssocLaguerre,
+                "assoc_laguerre" => F::AssocLaguerre,
+                "jacobi" => F::Jacobi,
+                "gegenbauer" => F::Gegenbauer,
+                "assoc_legendre" => F::AssocLegendre,
+                _ => F::HermiteProb,
             };
             if !op::arity_fits(f, a.len()) {
                 return Err(pyo3::exceptions::PyTypeError::new_err("wrong number of arguments"));
