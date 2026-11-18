@@ -2901,6 +2901,39 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "powsimp" => {
+            // op: powsimp(e, deep, combine, force), powdenest(e, force, polar), logcombine(e, force),
+            // posify(e) -> Tuple(e', Tuple(Tuple(dummy, symbol), ...)), multiplicity(p, n)
+            use sympy_extras_core::simplify::powsimp as ps;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let flag = |b: &Basic| matches!(b.head(), Head::BooleanTrue);
+            match a[0].to_string().as_str() {
+                "powsimp" => {
+                    let combine = match a[3].to_string().as_str() {
+                        "exp" => ps::Combine::Exp,
+                        "base" => ps::Combine::Base,
+                        _ => ps::Combine::All,
+                    };
+                    let count = |x: &Basic| sympy_extras_core::core::function::count_ops(x);
+                    ps::powsimp(&a[1], flag(&a[2]), combine, flag(&a[4]), &count).map_err(e)?
+                }
+                "powdenest" => ps::powdenest(&a[1], flag(&a[2]), flag(&a[3])).map_err(e)?,
+                "logcombine" => sympy_extras_core::simplify::simplify::logcombine(&a[1], flag(&a[2])).map_err(e)?,
+                "posify" => {
+                    let (replaced, back) = sympy_extras_core::simplify::simplify::posify(&a[1]).map_err(e)?;
+                    let mut pairs: Vec<Basic> = back.into_iter().map(|(d, s)| tuple(vec![d, s])).collect();
+                    pairs.sort_by_key(|p| p.args()[1].to_string());
+                    tuple(vec![replaced, tuple(pairs)])
+                }
+                "multiplicity" => {
+                    let (Some(p), Some(n)) = (a[1].as_rational(), a[2].as_rational()) else {
+                        return Err(pyo3::exceptions::PyTypeError::new_err("rationals expected"));
+                    };
+                    Basic::int(ps::multiplicity(p, n).map_err(e)?)
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "int_linear" => {
             // op (hnf, diophantine, hilbert, minimal, cooper, presburger, is_presburger) and its
             // arguments; matrices as tuples of rows; None as an empty Tuple
