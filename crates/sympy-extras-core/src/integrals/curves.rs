@@ -1238,3 +1238,773 @@ impl HermitePart<'_> {
         crate::polys::polytools::cancel(&mul(&[int(-1), back, shift])?, &[])
     }
 }
+
+// ---------------------------------------------------------------------
+// The places above the roots of the denominator and the residues
+
+use crate::polys::puiseux::{
+    adjoin_root, degree as field_degree, expansions_in_field, factor_over, generator, in_subfield,
+    minimal_polynomial_of, Embedding, LaurentSeries, PuiseuxExpansion,
+};
+
+/// A factor of the denominator by its coefficients (`FactorKey`).
+type FactorKey = Vec<Number>;
+
+/// A place above a root of the factor `g` (over the coefficient field)
+/// of the denominator, a representative of its conjugates, with the
+/// branch, the embedding of the field into that of the branch, and the
+/// residue of `h dz` there (`_Place`).
+#[derive(Debug, Clone)]
+pub struct Place {
+    pub g: KPoly,
+    pub key: FactorKey,
+    pub branch: PuiseuxExpansion,
+    pub embedding: Embedding,
+    pub residue: Number,
+}
+
+impl Place {
+    pub fn ramification(&self) -> i64 {
+        self.branch.ramification
+    }
+
+    /// The residue as an element of the coefficient field (`residue_in`).
+    pub fn residue_in(&self) -> PolyResult<Number> {
+        in_subfield(&self.residue, &self.branch.field, &self.embedding)
+            .ok_or_else(|| value_error("a residue outside the field of the residues".to_string()))
+    }
+}
+
+fn floor_div(a: i64, b: i64) -> i64 {
+    let q: i64 = a / b;
+    if a % b != 0 && ((a < 0) != (b < 0)) {
+        q - 1
+    } else {
+        q
+    }
+}
+
+/// A polynomial as `{exponent: coefficient}` (`dup_to_dict`).
+fn poly_terms(p: &KPoly) -> BTreeMap<i64, Number> {
+    let top: usize = p.len().saturating_sub(1);
+    p.iter()
+        .enumerate()
+        .filter(|(_, c)| !c.is_empty())
+        .map(|(j, c)| ((top - j) as i64, c.clone()))
+        .collect()
+}
+
+/// A polynomial in `z` as a curve without `y` (`_poly_curve`).
+fn poly_curve(p: &KPoly) -> Curve {
+    if p.is_empty() {
+        Curve::new()
+    } else {
+        Curve::from([(0, poly_terms(p))])
+    }
+}
+
+/// The irreducible factors in SymPy's order of `factor_list`
+/// (`_sorted_factors`).
+fn sorted_factors(factors: Vec<(KPoly, usize)>, k: &AlgebraicField) -> Vec<(KPoly, usize)> {
+    let key = |factor: &(KPoly, usize)| -> (usize, usize, Vec<Number>) {
+        let (f, m) = factor;
+        if k.degree > 1 {
+            return (f.len(), *m, f.clone());
+        }
+        let values: Vec<Rat> = f.iter().map(|c| c.first().cloned().unwrap_or(Rat::ZERO)).collect();
+        let mut common: Int = Int::ONE;
+        for q in &values {
+            common = crate::core::intfunc::ilcm(&[common, Int::from(q.denominator().clone())]);
+        }
+        let mut content: Int = Int::ZERO;
+        for q in &values {
+            content = crate::core::intfunc::igcd(&[content, (q * Rat::from(common.clone())).numerator().clone()]);
+        }
+        let scale: Rat = Rat::from_parts_signed(common, content);
+        (
+            f.len(),
+            *m,
+            values
+                .iter()
+                .map(|q| if q.is_zero() { Vec::new() } else { vec![q * &scale] })
+                .collect(),
+        )
+    };
+    let mut sorted: Vec<(KPoly, usize)> = factors;
+    sorted.sort_by_key(key);
+    sorted
+}
+
+fn factors_over(p: &KPoly, k: &AlgebraicField) -> PolyResult<Vec<(KPoly, usize)>> {
+    Ok(sorted_factors(factor_over(k, p)?, k))
+}
+
+/// The series of the basis elements along `branch`, known below
+/// `t^order` (`_basis_series`).
+fn basis_series(
+    field: &Field,
+    basis: &[FieldElement],
+    branch: &PuiseuxExpansion,
+    order: i64,
+) -> PolyResult<Vec<LaurentSeries>> {
+    let r = &field.r;
+    let mut result: Vec<LaurentSeries> = Vec::new();
+    for w in basis {
+        let mut d: KPoly = r.one();
+        for c in &w.coefficients {
+            d = r.lcm(&d, &c.denom);
+        }
+        // the coordinates are in the powers of the integral generator a_n y,
+        // the branches are those of y
+        let mut numerator: Curve = Curve::new();
+        let mut unit_power: KPoly = r.one();
+        for (i, c) in w.coefficients.iter().enumerate() {
+            if !c.numer.is_empty() {
+                let p: KPoly = r.mul(&r.exquo(&r.mul(&c.numer, &d), &c.denom)?, &unit_power);
+                numerator.insert(i as i64, poly_terms(&p));
+            }
+            unit_power = r.mul(&unit_power, &field.unit);
+        }
+        let series_denominator: LaurentSeries = branch.evaluate(&poly_curve(&d), None)?;
+        let Some(v_d) = series_denominator.valuation() else {
+            return Err(value_error("a denominator vanishing along the branch".to_string()));
+        };
+        let series_numerator: LaurentSeries = branch.evaluate(&numerator, None)?.truncated(order + v_d);
+        let relative: i64 = match series_numerator.valuation() {
+            Some(v_n) => (order - (v_n - v_d) + 1).max(1),
+            None => 1,
+        };
+        result.push(
+            series_numerator
+                .mul(&series_denominator.inverse(relative)?)
+                .truncated(order),
+        );
+    }
+    Ok(result)
+}
+
+/// The multiplicity of `g` in the denominator of `w`
+/// (`_multiplicity_of_root`).
+fn multiplicity_of_root(field: &Field, w: &FieldElement, g: &KPoly, k: &AlgebraicField) -> PolyResult<usize> {
+    let r = &field.r;
+    let mut d: KPoly = r.one();
+    for c in &w.coefficients {
+        d = r.lcm(&d, &c.denom);
+    }
+    let mut p: KPoly = d;
+    let mut multiplicity: usize = 0;
+    while degree_of(&p) >= degree_of(g) {
+        let (quotient, remainder) = crate::polys::densearith::dup_div(&p, g, k)?;
+        if !remainder.is_empty() {
+            break;
+        }
+        p = quotient;
+        multiplicity += 1;
+    }
+    Ok(multiplicity)
+}
+
+fn max_multiplicity(field: &Field, basis: &[FieldElement], g: &KPoly, k: &AlgebraicField) -> PolyResult<usize> {
+    let mut best: usize = 0;
+    for w in basis {
+        best = best.max(multiplicity_of_root(field, w, g, k)?);
+    }
+    Ok(best)
+}
+
+/// The places above one root of each irreducible factor over `k` of the
+/// denominator of the reduced integrand, with their residues (`_places`).
+fn places_of(
+    t: &Transformed,
+    basis: &[FieldElement],
+    reduced: &Reduced,
+    k: &AlgebraicField,
+    orders: &HashMap<FactorKey, i64>,
+) -> PolyResult<Vec<Place>> {
+    let field = &t.field;
+    let (z, big_y) = (&field.x, &field.y);
+    let mut places: Vec<Place> = Vec::new();
+    for (g, _) in factors_over(&reduced.d, k)? {
+        if degree_of(&g) < 1 {
+            continue;
+        }
+        let (k_point, into, beta) = adjoin_root(k, &g)?;
+        let multiplicity: usize = max_multiplicity(field, basis, &g, k)?;
+        let order: i64 = (3 + multiplicity as i64).max(orders.get(&g).copied().unwrap_or(0));
+        let rational_into: Embedding = Embedding::new(rationals(), k_point.clone(), None)?;
+        for branch in expansions_in_field(&t.curve, z, big_y, &k_point, &rational_into, Some(&beta), order, None)? {
+            let l: &AlgebraicField = &branch.field;
+            let e: i64 = branch.ramification;
+            // h = S/D with D of valuation e: the coefficient of t^(-e) needs S below t^1
+            let series: Vec<LaurentSeries> = basis_series(field, basis, &branch, 1)?;
+            let mut s: LaurentSeries = LaurentSeries::constant(l, l.zero());
+            for (a, w) in reduced.numerators.iter().zip(&series) {
+                s = s.add(&branch.evaluate(&poly_curve(a), None)?.mul(w).truncated(1));
+            }
+            let d_series: LaurentSeries = branch.evaluate(&poly_curve(&reduced.d), None)?;
+            let residue: Number = match s.valuation() {
+                // no pole on this branch
+                None => l.zero(),
+                Some(v_s) => {
+                    let h: LaurentSeries = s.mul(&d_series.inverse((2 - v_s).max(1))?);
+                    if h.order.is_some_and(|o| o <= -e) {
+                        return Err(value_error("insufficient precision for the residue".to_string()));
+                    }
+                    // dz = scale e t^(e-1) dt: the residue is scale e [t^(-e)] h
+                    l.mul(&l.mul(&h.coefficient(-e), &branch.scale), &l.from_int(e))
+                }
+            };
+            let embedding: Embedding = into.then(&branch.embedding)?;
+            places.push(Place {
+                g: g.clone(),
+                key: g.clone(),
+                branch,
+                embedding,
+                residue,
+            });
+        }
+    }
+    Ok(places)
+}
+
+// ---------------------------------------------------------------------
+// The logarithmic part
+
+/// `beta/(n m) log(N/den)` (`_LogTerm`).
+#[derive(Debug, Clone)]
+pub struct LogTerm {
+    pub beta: Number,
+    pub n: i64,
+    pub m: i64,
+    pub numerator: FieldElement,
+    /// an element of `K[z]`
+    pub den: KPoly,
+}
+
+/// The splitting field over the rationals of the minimal polynomials of
+/// the residues (`_residue_field`).
+fn residue_field(places: &[Place]) -> PolyResult<AlgebraicField> {
+    let mut k: AlgebraicField = rationals();
+    for place in places {
+        let m: Vec<Rat> = minimal_polynomial_of(&place.residue, &place.branch.field);
+        if m.len() - 1 == 1 {
+            continue;
+        }
+        loop {
+            let lifted: KPoly = m.iter().map(|c| k.from_rational(c)).collect();
+            let factors: Vec<KPoly> = factors_over(&lifted, &k)?
+                .into_iter()
+                .map(|(f, _)| f)
+                .filter(|f| degree_of(f) > 1)
+                .collect();
+            let Some(factor) = factors.first() else {
+                break;
+            };
+            if field_degree(&k) * degree_of(factor) as usize > RESIDUE_FIELD_DEGREE {
+                return Err(value_error("the field of the residues is too large".to_string()));
+            }
+            k = adjoin_root(&k, factor)?.0;
+        }
+    }
+    Ok(k)
+}
+
+/// The coordinates of an element of `k` in the powers of its generator,
+/// low degree first (`_rational_coordinates`).
+fn rational_coordinates(value: &Number, k: &AlgebraicField) -> Vec<Rat> {
+    let mut coefficients: Vec<Rat> = value.iter().rev().cloned().collect();
+    while coefficients.len() < field_degree(k) {
+        coefficients.push(Rat::ZERO);
+    }
+    coefficients
+}
+
+fn sparse(v: &[Rat]) -> BTreeMap<usize, Rat> {
+    v.iter()
+        .enumerate()
+        .filter(|(_, c)| !c.is_zero())
+        .map(|(j, c)| (j, c.clone()))
+        .collect()
+}
+
+fn rank(vectors: &[Vec<Rat>]) -> usize {
+    let rows: Vec<BTreeMap<usize, Rat>> = vectors.iter().map(|v| sparse(v)).collect();
+    QQ.sparse_echelon(&rows).len()
+}
+
+/// A basis over the rationals of the span of `values` and the
+/// coordinates of every value in it (`_rational_basis`).
+fn rational_basis(values: &[Number], k: &AlgebraicField) -> PolyResult<(Vec<Number>, Vec<Vec<Rat>>)> {
+    let vectors: Vec<Vec<Rat>> = values.iter().map(|v| rational_coordinates(v, k)).collect();
+    let dimension: usize = vectors[0].len();
+    let mut chosen: Vec<usize> = Vec::new();
+    let mut current: usize = 0;
+    for (i, vector) in vectors.iter().enumerate() {
+        let mut trial: Vec<Vec<Rat>> = chosen.iter().map(|j| vectors[*j].clone()).collect();
+        trial.push(vector.clone());
+        if rank(&trial) > current {
+            chosen.push(i);
+            current += 1;
+        }
+    }
+    let basis: Vec<Number> = chosen.iter().map(|i| values[*i].clone()).collect();
+    let r: usize = chosen.len();
+    let mut coordinates: Vec<Vec<Rat>> = Vec::new();
+    for vector in &vectors {
+        // c B = v: one equation per coordinate, the unknowns c_j
+        let mut rows: Vec<BTreeMap<usize, Rat>> = Vec::new();
+        for kk in 0..dimension {
+            let mut row: BTreeMap<usize, Rat> = (0..r)
+                .filter(|j| !vectors[chosen[*j]][kk].is_zero())
+                .map(|j| (j, vectors[chosen[j]][kk].clone()))
+                .collect();
+            if !vector[kk].is_zero() {
+                row.insert(r, vector[kk].clone());
+            }
+            if !row.is_empty() {
+                rows.push(row);
+            }
+        }
+        let mut solution: Vec<Rat> = vec![Rat::ZERO; r];
+        for row in QQ.sparse_echelon(&rows) {
+            let pivot: usize = *row.keys().next().expect("a nonzero row");
+            if pivot == r {
+                return Err(value_error("a residue outside the span of the basis".to_string()));
+            }
+            solution[pivot] = row.get(&r).cloned().unwrap_or(Rat::ZERO);
+        }
+        coordinates.push(solution);
+    }
+    Ok((basis, coordinates))
+}
+
+/// `(N, den)` with `u = N/den` of divisor `n sum_P c_P P`, or `None`
+/// (`_function_with_divisor`).
+#[allow(clippy::too_many_arguments)]
+fn function_with_divisor(
+    t: &Transformed,
+    basis: &[FieldElement],
+    orders: &[i64],
+    places: &[Place],
+    coefficients: &[i64],
+    n: i64,
+    k: &AlgebraicField,
+    e_k: &Field,
+) -> PolyResult<Option<(FieldElement, KPoly)>> {
+    let field = &t.field;
+    let r_k = &e_k.r;
+    let mut k_of: HashMap<FactorKey, i64> = HashMap::new();
+    let mut factor_of: HashMap<FactorKey, KPoly> = HashMap::new();
+    for (place, c) in places.iter().zip(coefficients) {
+        let needed: i64 = if *c < 0 {
+            -floor_div(n * c, place.ramification())
+        } else {
+            0
+        };
+        let entry = k_of.entry(place.key.clone()).or_insert(0);
+        *entry = (*entry).max(needed);
+        factor_of.insert(place.key.clone(), place.g.clone());
+    }
+    let mut den: KPoly = r_k.one();
+    for (key, kk) in &k_of {
+        den = r_k.mul(&den, &r_k.pow(&factor_of[key], *kk as u64));
+    }
+    let degree_den: i64 = degree_of(&den);
+    let mut unknowns: Vec<(usize, i64)> = Vec::new();
+    for (i, kk) in orders.iter().enumerate() {
+        for s in 0..(degree_den - kk + 1).max(0) {
+            unknowns.push((i, s));
+        }
+    }
+    if unknowns.is_empty() {
+        return Ok(None);
+    }
+    let d_k: usize = field_degree(k);
+    let columns_count: usize = unknowns.len() * d_k;
+    let mut rows: Vec<Vec<Rat>> = Vec::new();
+    for (place, c) in places.iter().zip(coefficients) {
+        let branch = &place.branch;
+        let e: i64 = branch.ramification;
+        let required: i64 = n * c + k_of[&place.key] * e; // ord_P(N) >= required
+        let multiplicity: i64 = max_multiplicity(field, basis, &place.g, k)? as i64;
+        let lowest: i64 = -e * (multiplicity + 1);
+        if required <= lowest {
+            continue;
+        }
+        let lk: &AlgebraicField = &branch.field;
+        let d_lk: usize = field_degree(lk);
+        let mut theta_powers: Vec<Number> = vec![lk.one()];
+        let generator_k: Number = place.embedding.apply(&generator(k));
+        for _ in 0..d_k.saturating_sub(1) {
+            let next: Number = lk.mul(&theta_powers[theta_powers.len() - 1], &generator_k);
+            theta_powers.push(next);
+        }
+        let series: Vec<LaurentSeries> = basis_series(field, basis, branch, required)?;
+        let z_series: LaurentSeries = branch.x_series()?;
+        let mut columns: Vec<LaurentSeries> = Vec::new();
+        for (i, s) in &unknowns {
+            columns.push(z_series.power(*s as u64).mul(&series[*i]).truncated(required));
+        }
+        if columns.iter().any(|s| s.order.is_some_and(|o| o < required)) {
+            return Err(value_error(
+                "insufficient precision in the divisor conditions".to_string(),
+            ));
+        }
+        for exponent in lowest..required {
+            for coordinate in 0..d_lk {
+                let mut row: Vec<Rat> = vec![Rat::ZERO; columns_count];
+                for (u, s) in columns.iter().enumerate() {
+                    let value: Number = s.coefficient(exponent);
+                    if value.is_empty() {
+                        continue;
+                    }
+                    for rr in 0..d_k {
+                        row[u * d_k + rr] =
+                            rational_coordinates(&lk.mul(&value, &theta_powers[rr]), lk)[coordinate].clone();
+                    }
+                }
+                rows.push(row);
+            }
+        }
+    }
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    let kernel: Vec<Vec<Rat>> = QQ.nullspace(&rows, columns_count)?;
+    let Some(solution) = kernel.first() else {
+        return Ok(None);
+    };
+    let kz = &e_k.kx;
+    let mut big_n: FieldElement = e_k.zero();
+    for (u, (i, s)) in unknowns.iter().enumerate() {
+        let mut coefficient: Number = k.zero();
+        let mut power: Number = k.one();
+        for rr in 0..d_k {
+            coefficient = k.add(&coefficient, &k.mul(&k.from_rational(&solution[u * d_k + rr]), &power));
+            power = k.mul(&power, &generator(k));
+        }
+        if coefficient.is_empty() {
+            continue;
+        }
+        let mut monomial: KPoly = vec![coefficient];
+        monomial.extend((0..*s).map(|_| k.zero()));
+        big_n = e_k.add(&big_n, &e_k.scaled(&basis[*i], &kz.from_ring(&monomial)));
+    }
+    if e_k.is_zero(&big_n) {
+        return Ok(None);
+    }
+    Ok(Some((big_n, den)))
+}
+
+type Divisors = (Vec<(Number, i64, Vec<i64>)>, Vec<Place>);
+
+/// The places and, for each element of a basis of the span of the
+/// residues over the rationals, the common denominator and the integer
+/// coefficients of its divisor (`_divisors`).
+fn divisors_of(
+    t: &Transformed,
+    basis: &[FieldElement],
+    reduced: &Reduced,
+    k: &AlgebraicField,
+    orders: &HashMap<FactorKey, i64>,
+) -> PolyResult<Divisors> {
+    let places: Vec<Place> = places_of(t, basis, reduced, k, orders)?;
+    let residues: Vec<Number> = places.iter().map(|p| p.residue_in()).collect::<PolyResult<_>>()?;
+    if residues.iter().all(|r| r.is_empty()) {
+        return Ok((Vec::new(), places));
+    }
+    let (span, coordinates) = rational_basis(&residues, k)?;
+    let mut divisors: Vec<(Number, i64, Vec<i64>)> = Vec::new();
+    for (j, beta) in span.into_iter().enumerate() {
+        let fractions: Vec<Rat> = (0..places.len()).map(|kk| coordinates[kk][j].clone()).collect();
+        let mut m: Int = Int::ONE;
+        for q in &fractions {
+            m = crate::core::intfunc::ilcm(&[m, Int::from(q.denominator().clone())]);
+        }
+        let m_rat: Rat = Rat::from(m.clone());
+        let ints: Vec<i64> = fractions
+            .iter()
+            .map(|q| i64::try_from((q * &m_rat).numerator()).map_err(|_| value_error("a large divisor".to_string())))
+            .collect::<PolyResult<_>>()?;
+        let m_i64: i64 = i64::try_from(m).map_err(|_| value_error("a large divisor".to_string()))?;
+        divisors.push((beta, m_i64, ints));
+    }
+    Ok((divisors, places))
+}
+
+/// The order (in units of `z`) to which the branches above the roots of
+/// each factor must be known (`_orders_needed`).
+fn orders_needed(
+    field: &Field,
+    basis: &[FieldElement],
+    places: &[Place],
+    coefficients: &[i64],
+    n: i64,
+    k: &AlgebraicField,
+) -> PolyResult<HashMap<FactorKey, i64>> {
+    let mut k_of: HashMap<FactorKey, i64> = HashMap::new();
+    for (place, c) in places.iter().zip(coefficients) {
+        let needed: i64 = if *c < 0 {
+            -floor_div(n * c, place.ramification())
+        } else {
+            0
+        };
+        let entry = k_of.entry(place.key.clone()).or_insert(0);
+        *entry = (*entry).max(needed);
+    }
+    let mut orders: HashMap<FactorKey, i64> = HashMap::new();
+    for (place, c) in places.iter().zip(coefficients) {
+        let e: i64 = place.ramification();
+        let multiplicity: i64 = max_multiplicity(field, basis, &place.g, k)? as i64;
+        let required: i64 = n * c + k_of[&place.key] * e;
+        // the series of y to order `required` plus the denominators' orders
+        let needed: i64 = -floor_div(-(required + e * (multiplicity + 1) + 2), e) + 1;
+        let entry = orders.entry(place.key.clone()).or_insert(0);
+        *entry = (*entry).max(needed);
+    }
+    Ok(orders)
+}
+
+// ---------------------------------------------------------------------
+// The algorithm
+
+/// The pieces of the integral (`CurveIntegral`): the elementary part of
+/// the Hermite reduction and the logarithms in `z`, the field of the
+/// residues, the verdict (`Some(true)` proved not elementary,
+/// `Some(false)` found, `None` undecided) and the integrand left.
+pub struct CurveIntegral<'a> {
+    pub hermite: HermitePart<'a>,
+    pub logs: Vec<LogTerm>,
+    pub residue_field: AlgebraicField,
+    pub nonelementary: Option<bool>,
+    pub remainder: Option<FieldElement>,
+    residue_field_function_field: Option<Field>,
+}
+
+impl CurveIntegral<'_> {
+    fn theta(&self, theta: Option<&Basic>) -> PolyResult<Basic> {
+        let k = &self.residue_field;
+        if let Some(t) = theta {
+            return Ok(t.clone());
+        }
+        if k.degree == 1 {
+            return Ok(Basic::zero());
+        }
+        if matches!(k.alpha_expr.head(), Head::Symbol(_)) {
+            return Err(value_error(format!(
+                "the generator of {} has no expression (a root of its minimal polynomial which is not real and not in radicals)",
+                k.name()
+            )));
+        }
+        Ok(k.alpha_expr.clone())
+    }
+
+    /// The elementary part found, in `x` and the original radicals
+    /// (`elementary_part`).
+    pub fn elementary_part(&self, theta: Option<&Basic>) -> PolyResult<Basic> {
+        let t = &self.hermite.transformed;
+        let generator_expr: Basic = self.theta(theta)?;
+        let mut total: Basic = t.to_x_expr(&t.field, &self.hermite.reduced.g, &generator_expr)?;
+        let k = &self.residue_field;
+        let x: &Basic = &t.integrand.x;
+        for term in &self.logs {
+            let e_k: &Field = self.residue_field_function_field.as_ref().unwrap_or(&t.field);
+            let den: Fraction = t.to_x(
+                &FracElement {
+                    numer: term.den.clone(),
+                    denom: vec![k.one()],
+                },
+                k,
+            )?;
+            let quotient: Basic = mul(&[
+                t.to_x_expr(e_k, &term.numerator, &generator_expr)?,
+                pow(&fraction_expr(&den, x, k, &generator_expr)?, &int(-1))?,
+            ])?;
+            let u: Basic = crate::polys::polytools::cancel(&quotient, &[])?;
+            let coefficient: Basic = mul(&[
+                number_expr(&term.beta, &generator_expr)?,
+                Basic::rational(Int::ONE, Int::from(term.n * term.m))?,
+            ])?;
+            let logarithm: Basic = crate::functions::elementary::exponential::log(&u)?;
+            total = add(&[total, mul(&[coefficient, logarithm])?])?;
+        }
+        Ok(total)
+    }
+
+    /// The remaining integrand in `x` (`remainder_expr`).
+    pub fn remainder_expr(&self, theta: Option<&Basic>) -> PolyResult<Basic> {
+        let Some(remainder) = &self.remainder else {
+            return Ok(Basic::zero());
+        };
+        let t = &self.hermite.transformed;
+        let x: &Basic = &t.integrand.x;
+        let field: &Field = self.residue_field_function_field.as_ref().unwrap_or(&t.field);
+        // the remainder is a function of z integrated in dz = -dx/(x - N)^2
+        let back: Basic = t.to_x_expr(field, remainder, &self.theta(theta)?)?;
+        let shift: Basic = pow(&add(&[x.clone(), int(-t.n)])?, &int(-2))?;
+        crate::polys::polytools::cancel(&mul(&[int(-1), back, shift])?, &[])
+    }
+}
+
+fn plain(hermite: HermitePart<'_>, k: AlgebraicField, verdict: Option<bool>, logs: Vec<LogTerm>) -> CurveIntegral<'_> {
+    let remainder: Option<FieldElement> = hermite.remainder.clone();
+    CurveIntegral {
+        hermite,
+        logs,
+        residue_field: k,
+        nonelementary: verdict,
+        remainder,
+        residue_field_function_field: None,
+    }
+}
+
+/// Trager's algorithm on the curve of the radicals of the integrand
+/// (`integrate_on_curve`).
+pub fn integrate_on_curve(integrand: &AlgebraicIntegrand, logarithms: bool) -> PolyResult<CurveIntegral<'_>> {
+    let hermite: HermitePart = hermite_part(integrand)?;
+    match hermite.nonelementary {
+        Some(false) => {
+            let mut result = plain(hermite, rationals(), Some(false), Vec::new());
+            result.remainder = None;
+            return Ok(result);
+        }
+        Some(true) => return Ok(plain(hermite, rationals(), Some(true), Vec::new())),
+        None => {}
+    }
+    if !logarithms {
+        return Ok(plain(hermite, rationals(), None, Vec::new()));
+    }
+    let t = &hermite.transformed;
+    let field = &t.field;
+    let basis = &hermite.basis;
+    let reduced = &hermite.reduced;
+    let remainder: FieldElement = hermite.remainder.clone().expect("a remainder");
+    let places: Vec<Place> = places_of(t, basis, reduced, &rationals(), &HashMap::new())?;
+    let k: AlgebraicField = residue_field(&places)?;
+    let e_k: Field = FunctionField::new(&field.curve, &field.x, &field.y, k.clone())?;
+    let (mut divisors, mut support) = divisors_of(t, basis, reduced, &k, &HashMap::new())?;
+    if divisors.is_empty() {
+        // no residue and a nonzero remainder: a differential of the first kind
+        let mut result = plain(hermite, k, Some(true), Vec::new());
+        result.residue_field_function_field = Some(e_k);
+        return Ok(result);
+    }
+    let mut logs: Vec<LogTerm> = Vec::new();
+    let mut undecided: bool = false;
+    let mut precision: HashMap<FactorKey, i64> = HashMap::new();
+    for j in 0..divisors.len() {
+        let mut found: Option<(FieldElement, KPoly)> = None;
+        for n in 1..=TORSION_BOUND as i64 {
+            let needed = orders_needed(field, basis, &support, &divisors[j].2, n, &k)?;
+            if needed
+                .iter()
+                .any(|(g, order)| *order > precision.get(g).copied().unwrap_or(0))
+            {
+                for (g, order) in &needed {
+                    let entry = precision.entry(g.clone()).or_insert(0);
+                    *entry = (*entry).max(*order);
+                }
+                (divisors, support) = divisors_of(t, basis, reduced, &k, &precision)?;
+            }
+            let (beta, m, c) = divisors[j].clone();
+            found = function_with_divisor(t, basis, &hermite.orders, &support, &c, n, &k, &e_k)?;
+            if let Some((numerator, den)) = &found {
+                logs.push(LogTerm {
+                    beta,
+                    n,
+                    m,
+                    numerator: numerator.clone(),
+                    den: den.clone(),
+                });
+                break;
+            }
+        }
+        if found.is_none() {
+            undecided = true;
+        }
+    }
+    // the exact check: h - sum beta/(n m) u'/u
+    let kz = &e_k.kx;
+    let mut h_k: FieldElement = Element {
+        coefficients: remainder.coefficients.clone(),
+    };
+    for term in &logs {
+        let u: FieldElement = e_k.scaled(&term.numerator, &kz.invert(&kz.from_ring(&term.den))?);
+        let scale: Number = k.mul(
+            &term.beta,
+            &k.from_rational(&Rat::from_parts_signed(Int::ONE, Int::from(term.n * term.m))),
+        );
+        let ratio: FieldElement = e_k.mul(&e_k.derivative(&u)?, &e_k.invert(&u)?);
+        h_k = e_k.sub(&h_k, &e_k.scaled(&ratio, &kz.from_ring(&[scale])));
+    }
+    let verdict: Option<bool> = if e_k.is_zero(&h_k) {
+        Some(false)
+    } else if undecided {
+        None
+    } else {
+        Some(true)
+    };
+    let left: Option<FieldElement> = if verdict == Some(false) { None } else { Some(h_k) };
+    let mut result = plain(hermite, k, verdict, logs);
+    result.remainder = left;
+    result.residue_field_function_field = Some(e_k);
+    Ok(result)
+}
+
+// ---------------------------------------------------------------------
+// The public functions
+
+/// `(F, h)` with `f == F' + h` (`curve_reduce`); `None` when `f` is not an
+/// algebraic function the parser understands.
+pub fn curve_reduce(f: &Basic, x: &Basic) -> PolyResult<Option<(Basic, Basic)>> {
+    let integrand = match AlgebraicIntegrand::new(f, x) {
+        Ok(i) => i,
+        Err(crate::error::PolyError::Value(_)) => return Ok(None),
+        Err(other) => return Err(other),
+    };
+    match integrate_on_curve(&integrand, true) {
+        Ok(result) => Ok(Some((result.elementary_part(None)?, result.remainder_expr(None)?))),
+        Err(crate::error::PolyError::Value(_)) => Ok(None),
+        Err(other) => Err(other),
+    }
+}
+
+/// An antiderivative of `f` by Trager's algorithm, `None` when not
+/// elementary, not found or `f` is not such a function
+/// (`curve_antiderivative`).
+pub fn curve_antiderivative(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
+    let integrand = match AlgebraicIntegrand::new(f, x) {
+        Ok(i) => i,
+        Err(crate::error::PolyError::Value(_)) => return Ok(None),
+        Err(other) => return Err(other),
+    };
+    let result = match integrate_on_curve(&integrand, true) {
+        Ok(r) => r,
+        Err(crate::error::PolyError::Value(_)) => return Ok(None),
+        Err(other) => return Err(other),
+    };
+    if result.nonelementary != Some(false) || result.remainder.is_some() {
+        return Ok(None);
+    }
+    match result.elementary_part(None) {
+        Ok(e) => Ok(Some(e)),
+        Err(crate::error::PolyError::Value(_)) => Ok(None),
+        Err(other) => Err(other),
+    }
+}
+
+/// Whether the integral of `f` is not elementary: `Some(true)` proved,
+/// `Some(false)` found, `None` undecided or not such a function
+/// (`is_nonelementary_on_curve`).
+pub fn is_nonelementary_on_curve(f: &Basic, x: &Basic) -> PolyResult<Option<bool>> {
+    let integrand = match AlgebraicIntegrand::new(f, x) {
+        Ok(i) => i,
+        Err(crate::error::PolyError::Value(_)) => return Ok(None),
+        Err(other) => return Err(other),
+    };
+    match integrate_on_curve(&integrand, true) {
+        Ok(result) => Ok(result.nonelementary),
+        Err(crate::error::PolyError::Value(_)) => Ok(None),
+        Err(other) => Err(other),
+    }
+}
