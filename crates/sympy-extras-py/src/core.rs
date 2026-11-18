@@ -2753,6 +2753,13 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 ]),
             }
         }
+        "is_meromorphic" => {
+            // True, False or Integer(0) for None
+            match sympy_extras_core::core::meromorphic::is_meromorphic(&a[0], &a[1], &a[2]).map_err(e)? {
+                Some(v) => sympy_extras_core::core::logic::boolean(v),
+                None => Basic::zero(),
+            }
+        }
         "gammasimp" | "combsimp" => {
             use sympy_extras_core::simplify::gammasimp as gs;
             if name == "gammasimp" {
