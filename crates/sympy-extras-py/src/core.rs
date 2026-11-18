@@ -2901,6 +2901,55 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "settings" => {
+            // no argument: the current settings; with the changes (numerical_checks, precision, timeout,
+            // no_timeout, groebner_algorithm, time_scale; an empty Tuple for None): the settings inside
+            // configure and after it
+            use sympy_extras_core::settings as st;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let shown = |s: &st::Settings| {
+                tuple(vec![
+                    sympy_extras_core::core::logic::boolean(s.numerical_checks),
+                    Basic::int(s.precision as i64),
+                    match s.timeout {
+                        Some(t) => sympy_extras_core::core::symbol::Symbol::new(&format!("{}", t), &[]).0,
+                        None => tuple(vec![]),
+                    },
+                    sympy_extras_core::core::symbol::Symbol::new(&format!("{}", s.time_scale), &[]).0,
+                    sympy_extras_core::core::logic::boolean(s.modular_groebner),
+                    sympy_extras_core::core::symbol::Symbol::new(&format!("{}", s.groebner_direct_time), &[]).0,
+                    sympy_extras_core::core::symbol::Symbol::new(s.groebner_algorithm.name(), &[]).0,
+                ])
+            };
+            if a.is_empty() {
+                shown(&st::settings())
+            } else {
+                let given = |i: usize| -> Option<&Basic> {
+                    if matches!(a[i].head(), Head::Tuple) {
+                        None
+                    } else {
+                        Some(&a[i])
+                    }
+                };
+                let float = |b: &Basic| b.to_string().parse::<f64>().unwrap_or(f64::NAN);
+                let changes = st::Changes {
+                    numerical_checks: given(0).map(|b| matches!(b.head(), Head::BooleanTrue)),
+                    precision: given(1).map(|b| b.to_string().parse::<usize>().unwrap_or(30)),
+                    timeout: given(2).map(float),
+                    no_timeout: matches!(a[3].head(), Head::BooleanTrue),
+                    groebner_algorithm: given(4).map(|b| b.to_string()),
+                    time_scale: given(5).map(float),
+                    ..st::Changes::default()
+                };
+                let inside = match st::configure(&changes) {
+                    Ok(_guard) => shown(&st::settings()),
+                    Err(err) => tuple(vec![
+                        sympy_extras_core::core::symbol::Symbol::new(&format!("ERROR {}", err), &[]).0,
+                    ]),
+                };
+                tuple(vec![inside, shown(&st::settings())])
+            }
+        }
         "trigsimp" => {
             // op: futrig(e, hyper), trigsimp(e, method name), exptrigsimp(e)
             use sympy_extras_core::simplify::trigsimp as t;

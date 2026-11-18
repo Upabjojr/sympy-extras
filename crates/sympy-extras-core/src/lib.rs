@@ -44,6 +44,7 @@ pub mod polys;
 pub mod random;
 pub mod series;
 pub mod sets;
+pub mod settings;
 pub mod simplify;
 pub mod solvers;
 pub mod steps;
