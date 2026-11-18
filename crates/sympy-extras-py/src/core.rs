@@ -2836,6 +2836,55 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "pi_groups" | "pi_exponents" | "solve_for" | "dimension_matrix" | "dimension_of" => {
+            // the quantities: Tuple(Tuple(Symbol(name), Tuple(Tuple(Symbol(base), exponent), ...)), ...)
+            use sympy_extras_core::numbers::Rat;
+            use sympy_extras_core::physics::dimensional as dm;
+            let t = |items: Vec<Basic>| Basic::new(Head::Tuple, items);
+            let sym = |n: &str| sympy_extras_core::core::Symbol::new(n, &[]).0;
+            let pairs = |b: &Basic| -> PyResult<Vec<(String, Rat)>> {
+                b.args()
+                    .iter()
+                    .map(|p| {
+                        let value = p.args()[1]
+                            .as_rational()
+                            .cloned()
+                            .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("a rational exponent"))?;
+                        Ok((p.args()[0].to_string(), value))
+                    })
+                    .collect()
+            };
+            let quantities_of = |b: &Basic| -> PyResult<dm::Quantities> {
+                b.args()
+                    .iter()
+                    .map(|q| Ok((q.args()[0].to_string(), pairs(&q.args()[1])?)))
+                    .collect()
+            };
+            let ints = |v: &[sympy_extras_core::numbers::Int]| t(v.iter().map(|x| Basic::integer(x.clone())).collect());
+            match name {
+                "pi_groups" => t(dm::pi_groups(&quantities_of(&a[0])?).map_err(e)?),
+                "pi_exponents" => t(dm::pi_exponents(&quantities_of(&a[0])?)
+                    .map_err(e)?
+                    .iter()
+                    .map(|v| ints(v))
+                    .collect()),
+                "solve_for" => dm::solve_for(&a[0].to_string(), &quantities_of(&a[1])?).map_err(e)?,
+                "dimension_matrix" => {
+                    let (bases, rows) = dm::dimension_matrix(&quantities_of(&a[0])?);
+                    t(vec![
+                        t(bases.iter().map(|b| sym(b)).collect()),
+                        t(rows.iter().map(|r| ints(r)).collect()),
+                    ])
+                }
+                _ => {
+                    let result = dm::dimension_of(&pairs(&a[0])?, &quantities_of(&a[1])?).map_err(e)?;
+                    t(result
+                        .into_iter()
+                        .map(|(b, x)| t(vec![sym(&b), Basic::from_rational(x)]))
+                        .collect())
+                }
+            }
+        }
         "triangularize" | "parametric_cases" => {
             // triangularize: Tuple(equations), Tuple(symbols), Tuple(inequations), kalkbrener (0/1)
             //   -> Tuple(Tuple(Tuple(polys), Tuple(main variables), Tuple(initials)), ...)

@@ -37,6 +37,7 @@ pub mod matrices;
 pub mod ntheory;
 pub mod numbers;
 pub mod orderedmap;
+pub mod physics;
 pub mod polys;
 pub mod random;
 pub mod sets;
