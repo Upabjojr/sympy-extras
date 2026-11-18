@@ -2836,6 +2836,25 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "curve_hermite" => {
+            // f, x -> Tuple(N, elementary part, remainder, verdict: True / False / Integer(0) for None)
+            use sympy_extras_core::integrals::curves::{hermite_part, AlgebraicIntegrand};
+            let integrand = AlgebraicIntegrand::new(&a[0], &a[1]).map_err(e)?;
+            let part = hermite_part(&integrand).map_err(e)?;
+            let verdict = match part.nonelementary {
+                Some(v) => sympy_extras_core::core::logic::boolean(v),
+                None => Basic::zero(),
+            };
+            Basic::new(
+                Head::Tuple,
+                vec![
+                    Basic::integer(part.transformed.n.into()),
+                    part.elementary_part().map_err(e)?,
+                    part.remainder_expr().map_err(e)?,
+                    verdict,
+                ],
+            )
+        }
         "curve_integrand" | "curve_transformed" => {
             // curve_integrand: f, x -> Tuple(curve, element_expr, polynomial_to_expr(element_expr), theta,
             //   Tuple(weights), y); curve_transformed: f, x, N -> Tuple(curve in z and y,

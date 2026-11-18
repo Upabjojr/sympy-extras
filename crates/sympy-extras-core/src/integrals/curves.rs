@@ -13,6 +13,8 @@
 // M. Bronstein, Symbolic integration tutorial, ISSAC 1998, section 2.
 
 #![allow(clippy::mutable_key_type)]
+// the matrix loops index as the Python ones do
+#![allow(clippy::needless_range_loop)]
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -907,5 +909,332 @@ impl<'a> Transformed<'a> {
             scale = kz.mul(&scale, &unit);
         }
         self.integrand.radicals_expr(&coordinates, k, theta)
+    }
+}
+
+// ---------------------------------------------------------------------
+// The Hermite reduction
+
+type Field = FunctionField<AlgebraicField>;
+type FieldElement = Element<AlgebraicField>;
+
+/// The reduced integrand `h = sum_i A_i w_i / D`, `D` squarefree, with the
+/// elementary part `g` subtracted, `f = g' + h` (`_Reduced`).
+pub struct Reduced {
+    pub g: FieldElement,
+    /// elements of `K[z]`
+    pub numerators: Vec<KPoly>,
+    pub d: KPoly,
+}
+
+fn degree_of(p: &KPoly) -> i64 {
+    if p.is_empty() {
+        -1
+    } else {
+        dup_degree(p) as i64
+    }
+}
+
+/// `(A, D)` with `e = sum(A_i w_i)/D`, `D` monic and coprime to the `A_i`
+/// together (`_coordinates_over_common_denominator`).
+fn coordinates_over_common_denominator(
+    field: &Field,
+    e: &FieldElement,
+    basis: &[FieldElement],
+) -> PolyResult<(Vec<KPoly>, KPoly)> {
+    let r = &field.r;
+    let k = &field.k;
+    let coordinates: Vec<Fraction> = field.coordinates(e, basis)?;
+    let mut d: KPoly = r.one();
+    for c in &coordinates {
+        d = r.lcm(&d, &c.denom);
+    }
+    let mut a: Vec<KPoly> = Vec::new();
+    for c in &coordinates {
+        a.push(r.mul(&c.numer, &r.exquo(&d, &c.denom)?));
+    }
+    let mut content: KPoly = d.clone();
+    for p in &a {
+        content = r.gcd(&content, p);
+    }
+    if degree_of(&content) > 0 {
+        a = a.iter().map(|p| r.exquo(p, &content)).collect::<PolyResult<_>>()?;
+        d = r.exquo(&d, &content)?;
+    }
+    let lc: Number = d[0].clone();
+    if lc != k.one() {
+        let inverse: KPoly = vec![k.quo(&k.one(), &lc)?];
+        a = a.iter().map(|p| r.mul(p, &inverse)).collect();
+        d = r.mul(&d, &inverse);
+    }
+    Ok((a, d))
+}
+
+/// `(e, M)` with `e W' = M W`, `e` a polynomial and `M` a polynomial
+/// matrix (`_derivative_matrix`).
+fn derivative_matrix(field: &Field, basis: &[FieldElement]) -> PolyResult<(KPoly, Vec<Vec<KPoly>>)> {
+    let r = &field.r;
+    let mut rows: Vec<Vec<Fraction>> = Vec::new();
+    for w in basis {
+        rows.push(field.coordinates(&field.derivative(w)?, basis)?);
+    }
+    let mut e: KPoly = r.one();
+    for row in &rows {
+        for c in row {
+            e = r.lcm(&e, &c.denom);
+        }
+    }
+    let mut m: Vec<Vec<KPoly>> = Vec::new();
+    for row in &rows {
+        let mut line: Vec<KPoly> = Vec::new();
+        for c in row {
+            line.push(r.mul(&c.numer, &r.exquo(&e, &c.denom)?));
+        }
+        m.push(line);
+    }
+    Ok((e, m))
+}
+
+fn combination(field: &Field, a: &[KPoly], d: &KPoly, basis: &[FieldElement]) -> PolyResult<FieldElement> {
+    let kx = &field.kx;
+    let mut total: FieldElement = field.zero();
+    for (p, w) in a.iter().zip(basis) {
+        if !p.is_empty() {
+            total = field.add(&total, &field.scaled(w, &kx.new_element(p.clone(), d.clone())?));
+        }
+    }
+    Ok(total)
+}
+
+/// `b` with `b Phi = A` modulo `V` (`_solve_modulo`).
+fn solve_modulo(
+    phi: &[Vec<KPoly>],
+    a: &[KPoly],
+    v: &KPoly,
+    r: &PolynomialRing<AlgebraicField>,
+    kx: &FractionField<AlgebraicField>,
+) -> PolyResult<Vec<KPoly>> {
+    use crate::polys::functionfields::{adjugate, determinant};
+    let n: usize = a.len();
+    let phi: Vec<Vec<KPoly>> = phi.to_vec();
+    let det: KPoly = determinant(&phi, r)?;
+    let adj: Vec<Vec<KPoly>> = adjugate(&phi, r, kx)?;
+    let inverse: KPoly = crate::polys::euclidtools::dup_invert(&det, v, &r.ground)
+        .map_err(|_| value_error("the Hermite reduction step has no solution: not an integral basis".to_string()))?;
+    let mut b: Vec<KPoly> = Vec::new();
+    for j in 0..n {
+        let mut total: KPoly = r.zero();
+        for i in 0..n {
+            total = r.add(&total, &r.mul(&a[i], &adj[i][j]));
+        }
+        b.push(r.rem(&r.mul(&total, &inverse), v)?);
+    }
+    Ok(b)
+}
+
+/// Trager's Hermite reduction of `f` in the integral `basis`
+/// (`_hermite_reduce`).
+pub fn hermite_reduce(field: &Field, basis: &[FieldElement], f: &FieldElement) -> PolyResult<Reduced> {
+    let r = &field.r;
+    let kx = &field.kx;
+    let k = &field.k;
+    let n: usize = field.n;
+    let (e, m) = derivative_matrix(field, basis)?;
+    let mut g: FieldElement = field.zero();
+    let (mut a, mut d) = coordinates_over_common_denominator(field, f, basis)?;
+    loop {
+        let factors = crate::polys::sqfreetools::dup_sqf_list(&d, k).1;
+        let top: usize = factors.iter().map(|(_, mult)| *mult).max().unwrap_or(1);
+        if top < 2 {
+            break;
+        }
+        let mut v: KPoly = r.one();
+        for (factor, multiplicity) in &factors {
+            if *multiplicity == top {
+                v = r.mul(&v, factor);
+            }
+        }
+        let u: KPoly = r.exquo(&d, &r.pow(&v, top as u64))?;
+        // e must divide U V: otherwise numerator and denominator are
+        // multiplied by the missing part
+        let missing: KPoly = r.exquo(&e, &r.gcd(&e, &r.mul(&u, &v)))?;
+        if degree_of(&missing) > 0 {
+            a = a.iter().map(|p| r.mul(p, &missing)).collect();
+            d = r.mul(&d, &missing);
+            continue;
+        }
+        // b (U V M / e - (m - 1) U V' I) = A (mod V)
+        let uv_over_e: KPoly = r.exquo(&r.mul(&u, &v), &e)?;
+        let shift: KPoly = r.mul(&r.mul(&r.from_int((top - 1) as i64), &u), &r.diff(&v));
+        let mut phi: Vec<Vec<KPoly>> = Vec::new();
+        for i in 0..n {
+            let mut row: Vec<KPoly> = Vec::new();
+            for j in 0..n {
+                let entry: KPoly = r.mul(&uv_over_e, &m[i][j]);
+                row.push(if i == j { r.sub(&entry, &shift) } else { entry });
+            }
+            phi.push(row);
+        }
+        let b: Vec<KPoly> = solve_modulo(&phi, &a, &v, r, kx)?;
+        let mut big_b: FieldElement = field.zero();
+        for (b_i, w) in b.iter().zip(basis) {
+            if !b_i.is_empty() {
+                big_b = field.add(&big_b, &field.scaled(w, &kx.from_ring(b_i)));
+            }
+        }
+        let term: FieldElement = field.scaled(&big_b, &kx.invert(&kx.from_ring(&r.pow(&v, (top - 1) as u64)))?);
+        g = field.add(&g, &term);
+        let remainder: FieldElement = field.sub(&combination(field, &a, &d, basis)?, &field.derivative(&term)?);
+        (a, d) = coordinates_over_common_denominator(field, &remainder, basis)?;
+    }
+    Ok(Reduced { g, numerators: a, d })
+}
+
+/// The integral basis of `field` (over the rationals) normal at infinity,
+/// with its pole orders there, computed over the plain rationals and
+/// converted (`_normal_basis`).
+pub fn normal_basis(field: &Field) -> PolyResult<(Vec<FieldElement>, Vec<i64>)> {
+    let coefficients: Vec<Vec<Rat>> = field
+        .curve
+        .iter()
+        .map(|p| p.iter().map(|c| c.first().cloned().unwrap_or(Rat::ZERO)).collect())
+        .collect();
+    let plain: FunctionField<crate::polys::domains::RationalField> =
+        FunctionField::new(&coefficients, &field.x, &field.y, QQ)?;
+    let basis = plain.normal_basis()?;
+    let orders: Vec<i64> = plain.pole_orders_at_infinity(&basis)?;
+    let lifted = |p: &[Rat]| -> KPoly {
+        p.iter()
+            .map(|c| if c.is_zero() { Vec::new() } else { vec![c.clone()] })
+            .collect()
+    };
+    let converted: Vec<FieldElement> = basis
+        .iter()
+        .map(|w| Element {
+            coefficients: w
+                .coefficients
+                .iter()
+                .map(|c| FracElement {
+                    numer: lifted(&c.numer),
+                    denom: lifted(&c.denom),
+                })
+                .collect(),
+        })
+        .collect();
+    Ok((converted, orders))
+}
+
+/// An integer which is neither a pole of the integrand nor a root of the
+/// discriminant of the curve (`_regular_integer`).
+pub fn regular_integer(integrand: &AlgebraicIntegrand) -> PolyResult<i64> {
+    let k: AlgebraicField = rationals();
+    let r = &integrand.algebra.r;
+    let mut polynomials: Vec<KPoly> = vec![crate::polys::euclidtools::dup_discriminant(
+        &integrand.curve_coefficients,
+        r,
+    )];
+    for c in &integrand.element.coefficients {
+        polynomials.push(c.denom.clone());
+    }
+    let mut expressions: Vec<Basic> = Vec::new();
+    for g in &integrand.generators {
+        expressions.push(crate::simplify::radsimp::fraction(&crate::polys::polytools::cancel(&g.base, &[])?)?.1);
+    }
+    for n in [0i64, 1, -1, 2, -2, 3, -3, 5, -5, 7, -7, 11, 13, 17, 19, 23] {
+        let point: Number = k.from_int(n);
+        if polynomials
+            .iter()
+            .any(|p| crate::polys::densetools::dup_eval(p, &point, &k).is_empty())
+        {
+            continue;
+        }
+        let rule: HashMap<Basic, Basic> = HashMap::from([(integrand.x.clone(), int(n))]);
+        let mut regular: bool = true;
+        for d in &expressions {
+            if crate::core::function::xreplace_evaluated(d, &rule)? == Basic::zero() {
+                regular = false;
+                break;
+            }
+        }
+        if regular {
+            return Ok(n);
+        }
+    }
+    Err(value_error("no regular integer found".to_string()))
+}
+
+/// The pieces of the Hermite part of the integral: the reduction, the
+/// verdict of Trager's criterion at infinity (`Some(true)`: not
+/// elementary; `Some(false)`: nothing left; `None`: the logarithmic part
+/// decides) and the remainder in `z` (`integrate_on_curve` with
+/// `logarithms=False`).
+pub struct HermitePart<'a> {
+    pub transformed: Transformed<'a>,
+    pub basis: Vec<FieldElement>,
+    pub orders: Vec<i64>,
+    pub reduced: Reduced,
+    pub nonelementary: Option<bool>,
+    pub remainder: Option<FieldElement>,
+}
+
+/// `integrate_on_curve(f, x, logarithms=False)`: the Hermite reduction and
+/// Trager's criterion at infinity.
+pub fn hermite_part(integrand: &AlgebraicIntegrand) -> PolyResult<HermitePart<'_>> {
+    let n: i64 = regular_integer(integrand)?;
+    let transformed: Transformed = Transformed::new(integrand, n)?;
+    let (basis, orders) = normal_basis(&transformed.field)?;
+    let reduced: Reduced = hermite_reduce(&transformed.field, &basis, &transformed.integrand_element)?;
+    let nonzero: Vec<(&KPoly, i64)> = reduced
+        .numerators
+        .iter()
+        .zip(orders.iter().copied())
+        .filter(|(a, _)| !a.is_empty())
+        .collect();
+    if nonzero.is_empty() {
+        return Ok(HermitePart {
+            transformed,
+            basis,
+            orders,
+            reduced,
+            nonelementary: Some(false),
+            remainder: None,
+        });
+    }
+    let remainder: FieldElement = combination(&transformed.field, &reduced.numerators, &reduced.d, &basis)?;
+    // Trager's criterion: h z^2 integral at infinity
+    let pole: i64 = nonzero
+        .iter()
+        .map(|(a, k)| degree_of(a) - degree_of(&reduced.d) + k)
+        .max()
+        .expect("a numerator");
+    let verdict: Option<bool> = if pole > -2 { Some(true) } else { None };
+    Ok(HermitePart {
+        transformed,
+        basis,
+        orders,
+        reduced,
+        nonelementary: verdict,
+        remainder: Some(remainder),
+    })
+}
+
+impl HermitePart<'_> {
+    /// The elementary part of the reduction in `x` and the radicals.
+    pub fn elementary_part(&self) -> PolyResult<Basic> {
+        self.transformed
+            .to_x_expr(&self.transformed.field, &self.reduced.g, &Basic::zero())
+    }
+
+    /// The remaining integrand in `x` (`remainder_expr`).
+    pub fn remainder_expr(&self) -> PolyResult<Basic> {
+        let Some(remainder) = &self.remainder else {
+            return Ok(Basic::zero());
+        };
+        let t = &self.transformed;
+        let x: &Basic = &t.integrand.x;
+        // the remainder is a function of z integrated in dz = -dx/(x - N)^2
+        let back: Basic = t.to_x_expr(&t.field, remainder, &Basic::zero())?;
+        let shift: Basic = pow(&add(&[x.clone(), int(-t.n)])?, &int(-2))?;
+        crate::polys::polytools::cancel(&mul(&[int(-1), back, shift])?, &[])
     }
 }
