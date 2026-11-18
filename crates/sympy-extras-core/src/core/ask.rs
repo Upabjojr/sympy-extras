@@ -7,12 +7,10 @@
 //! relational functions, the connectives by three-valued logic, the
 //! handlers of a predicate first. Then the cases of disjunctive
 //! assumptions, the refutation, and the last steps of SymPy's `ask`
-//! (`assumptions.handlers.final_ask`), reached through a hook which that
-//! module registers ([`set_final_ask`]).
+//! ([`crate::assumptions::handlers::final_ask`]).
 
 #![allow(clippy::mutable_key_type)]
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::core::assumptions::{closure, facts_of, is_consistent, minimal_generators, Facts, Predicate};
@@ -96,18 +94,6 @@ pub fn q(name: &str) -> PolyResult<Basic> {
 /// `Q.name(*args)`.
 pub fn q_applied(name: &str, args: &[Basic]) -> PolyResult<Basic> {
     crate::core::assume::apply(&q(name)?, args)
-}
-
-type FinalAsk = fn(&Basic, &Basic) -> PolyResult<Truth>;
-
-thread_local! {
-    static FINAL_ASK: RefCell<Option<FinalAsk>> = const { RefCell::new(None) };
-}
-
-/// Register the last steps of `ask` (the handlers of the classes and the
-/// SAT search of `assumptions.handlers`).
-pub fn set_final_ask(f: FinalAsk) {
-    FINAL_ASK.with(|h| *h.borrow_mut() = Some(f));
 }
 
 fn defined_name(p: &Basic) -> Option<&str> {
@@ -604,10 +590,7 @@ fn final_ask(prop: &Basic, assumptions: &Basic) -> PolyResult<Truth> {
             "assumptions must be a valid logical expression".to_string(),
         ));
     }
-    match FINAL_ASK.with(|h| *h.borrow()) {
-        Some(f) => f(prop, assumptions),
-        None => Ok(None),
-    }
+    crate::assumptions::handlers::final_ask(prop, assumptions)
 }
 
 fn argument(value: &Basic, role: &str) -> PolyResult<Basic> {
