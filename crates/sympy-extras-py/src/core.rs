@@ -2475,6 +2475,116 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => return Err(wrong()),
             }
         }
+        "domain_matrix" => {
+            // [domain symbol ZZ/QQ, operation symbol, matrix rows, (second matrix | power)]
+            use sympy_extras_core::matrices::domainmatrix::DomainMatrix;
+            use sympy_extras_core::polys::domains::{QQ, ZZ};
+            let wrong = || pyo3::exceptions::PyTypeError::new_err("wrong arguments");
+            if a.len() < 3 {
+                return Err(wrong());
+            }
+            let op: String = a[1].to_string();
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let rats = |m: &Basic| -> PyResult<Vec<Vec<sympy_extras_core::numbers::Rat>>> {
+                m.args()
+                    .iter()
+                    .map(|r| {
+                        r.args()
+                            .iter()
+                            .map(|v| v.as_rational().cloned().ok_or_else(wrong))
+                            .collect()
+                    })
+                    .collect()
+            };
+            macro_rules! run {
+                ($k:expr, $to:expr, $from:expr) => {{
+                    let k = $k;
+                    let to_elem = $to;
+                    let from_elem = $from;
+                    let build = |m: &Basic| -> PyResult<DomainMatrix<_>> {
+                        let rows = rats(m)?
+                            .into_iter()
+                            .map(|r| r.iter().map(&to_elem).collect::<PyResult<Vec<_>>>())
+                            .collect::<PyResult<Vec<_>>>()?;
+                        let width: Option<usize> = if rows.is_empty() { Some(0) } else { None };
+                        DomainMatrix::new(rows, k.clone(), width).map_err(e)
+                    };
+                    let encode = |m: &DomainMatrix<_>| -> Basic {
+                        tuple(
+                            m.rows
+                                .iter()
+                                .map(|r| tuple(r.iter().map(&from_elem).collect()))
+                                .collect(),
+                        )
+                    };
+                    let ints = |v: &[usize]| tuple(v.iter().map(|i| Basic::integer((*i as i64).into())).collect());
+                    let m = build(&a[2])?;
+                    match op.as_str() {
+                        "det" => from_elem(&m.det().map_err(e)?),
+                        "rank" => Basic::integer((m.rank().map_err(e)? as i64).into()),
+                        "rref_den" => {
+                            let (r, d, p) = m.rref_den().map_err(e)?;
+                            tuple(vec![encode(&r), from_elem(&d), ints(&p)])
+                        }
+                        "rref" => {
+                            let (r, p) = m.rref().map_err(e)?;
+                            tuple(vec![encode(&r), ints(&p)])
+                        }
+                        "nullspace" => tuple(
+                            m.nullspace()
+                                .map_err(e)?
+                                .iter()
+                                .map(|v| tuple(v.iter().map(&from_elem).collect()))
+                                .collect(),
+                        ),
+                        "inv_den" => {
+                            let (n, d) = m.inv_den().map_err(e)?;
+                            tuple(vec![encode(&n), from_elem(&d)])
+                        }
+                        "inv" => encode(&m.inv().map_err(e)?),
+                        "charpoly" => tuple(m.charpoly().map_err(e)?.iter().map(&from_elem).collect()),
+                        "adjugate" => encode(&m.adjugate().map_err(e)?),
+                        "transpose" => encode(&m.transpose()),
+                        "repr" => sympy_extras_core::core::Symbol::new(&m.to_str(), &[]).0,
+                        "solve_den" if a.len() == 4 => match m.solve_den(&build(&a[3])?).map_err(e)? {
+                            None => tuple(Vec::new()),
+                            Some((x, d)) => tuple(vec![encode(&x), from_elem(&d)]),
+                        },
+                        "mul" if a.len() == 4 => encode(&m.mul(&build(&a[3])?).map_err(e)?),
+                        "add" if a.len() == 4 => encode(&m.add(&build(&a[3])?).map_err(e)?),
+                        "pow" if a.len() == 4 => {
+                            let n: i64 = a[3]
+                                .as_rational()
+                                .and_then(|v| i64::try_from(v.numerator()).ok())
+                                .ok_or_else(wrong)?;
+                            encode(&m.pow(n).map_err(e)?)
+                        }
+                        _ => return Err(wrong()),
+                    }
+                }};
+            }
+            match a[0].to_string().as_str() {
+                "ZZ" => run!(
+                    ZZ,
+                    |v: &sympy_extras_core::numbers::Rat| -> PyResult<sympy_extras_core::numbers::Int> {
+                        if v.is_int() {
+                            Ok(v.numerator().clone())
+                        } else {
+                            Err(wrong())
+                        }
+                    },
+                    |v: &sympy_extras_core::numbers::Int| Basic::integer(v.clone())
+                ),
+                "QQ" => run!(
+                    QQ,
+                    |v: &sympy_extras_core::numbers::Rat| -> PyResult<sympy_extras_core::numbers::Rat> {
+                        Ok(v.clone())
+                    },
+                    |v: &sympy_extras_core::numbers::Rat| Basic::from_rational(v.clone())
+                ),
+                _ => return Err(wrong()),
+            }
+        }
         "polynomial_abstraction" => {
             use sympy_extras_core::assumptions::bounds as bd;
             let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
