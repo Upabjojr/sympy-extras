@@ -237,8 +237,8 @@ pub fn replace_where(
     Ok(node)
 }
 
-/// The hints of an expansion (`expand`'s keywords; `func` and `trig` are
-/// not ported).
+/// The hints of an expansion (`expand`'s keywords; `func` is not
+/// ported).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hints {
     pub mul: bool,
@@ -249,6 +249,9 @@ pub struct Hints {
     pub force: bool,
     /// Every node as `re + I*im` (SymPy's `complex`), before the others.
     pub complex: bool,
+    /// The trigonometric and hyperbolic functions expanded (SymPy's
+    /// `trig`).
+    pub trig: bool,
 }
 
 impl Hints {
@@ -261,6 +264,7 @@ impl Hints {
         log: true,
         force: false,
         complex: false,
+        trig: false,
     };
     const NONE: Hints = Hints {
         mul: false,
@@ -270,6 +274,7 @@ impl Hints {
         log: false,
         force: false,
         complex: false,
+        trig: false,
     };
 }
 
@@ -662,6 +667,31 @@ pub fn expand_with(e: &Basic, deep: bool, hints: Hints) -> PolyResult<Basic> {
         )?;
         hints.complex = false;
     }
+    if hints.trig {
+        // SymPy's sorted hints: trig after log, multinomial, mul and the
+        // power hints, then the loop of multinomial, mul and log
+        if hints.mul || hints.multinomial || hints.power_exp || hints.log {
+            let before = Hints {
+                power_base: false,
+                force: false,
+                complex: false,
+                trig: false,
+                ..hints
+            };
+            e = expand_pass(&e, deep, before)?;
+        }
+        let trig_hints = Hints {
+            complex: false,
+            force: false,
+            trig: true,
+            ..hints
+        };
+        e = expand_trig(&e, deep, &trig_hints)?;
+        hints.trig = false;
+        if !(hints.mul || hints.multinomial || hints.log) {
+            return Ok(e);
+        }
+    }
     if hints.log && (hints.mul || hints.multinomial) {
         e = expand_pass(
             &e,
@@ -748,6 +778,28 @@ pub fn expand_with_hints(e: &Basic, hints: Option<&Hints>, complex: Option<bool>
             expand_with(e, true, h)
         }
     }
+}
+
+// PORTED FROM SYMPY: sympy/core/expr.py:Expr._expand_hint with the _eval_expand_trig methods (SymPy 1.14)
+/// The trigonometric and hyperbolic functions (their arguments first)
+/// expanded by their rules (`_expand_trig`).
+fn expand_trig(e: &Basic, deep: bool, hints: &Hints) -> PolyResult<Basic> {
+    let mut e: Basic = e.clone();
+    if deep && !e.args().is_empty() && !e.is_atom() {
+        let mut args: Vec<Basic> = Vec::new();
+        for a in e.args() {
+            args.push(expand_trig(a, deep, hints)?);
+        }
+        if args.iter().zip(e.args()).any(|(new, old)| new != old) {
+            e = rebuild_evaluated(&e, args)?;
+        }
+    }
+    if let Some(new) = crate::functions::elementary::expand_trig::expand_trig_node(&e, hints)? {
+        if new != e {
+            return Ok(new);
+        }
+    }
+    Ok(e)
 }
 
 /// Every node (its arguments first) as `re + I*im` (`_expand_complex`).

@@ -230,6 +230,7 @@ fn solve_as_poly(f: &Basic, x: &Basic) -> PolyResult<Option<Solutions>> {
             log: false,
             force: false,
             complex: true,
+            trig: false,
         };
         let mut expanded: Vec<Basic> = Vec::new();
         for s in solutions {

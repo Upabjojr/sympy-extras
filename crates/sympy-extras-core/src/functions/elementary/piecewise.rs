@@ -141,7 +141,7 @@ fn eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
 }
 
 /// `as_coeff_Mul(rational=True)`.
-fn as_coeff_mul_rational(e: &Basic) -> (Basic, Basic) {
+pub(crate) fn as_coeff_mul_rational(e: &Basic) -> (Basic, Basic) {
     if e.as_rational().is_some_and(|v| !v.is_zero()) {
         return (e.clone(), Basic::one());
     }

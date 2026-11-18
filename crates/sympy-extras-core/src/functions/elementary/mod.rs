@@ -2,6 +2,7 @@
 
 pub mod argument;
 pub mod complexes;
+pub mod expand_trig;
 pub mod exponential;
 pub mod hyperbolic;
 pub mod integers;
