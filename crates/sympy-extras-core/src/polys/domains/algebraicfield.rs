@@ -129,9 +129,42 @@ impl AlgebraicField {
 impl Domain for AlgebraicField {
     type Elem = AlgebraicElement;
 
-    /// `QQ<alpha>`.
+    /// `QQ<alpha>` (`QQ` for the rationals as the field of degree one, the
+    /// name `puiseux.RATIONALS` is given).
     fn name(&self) -> String {
+        if self.degree == 1 && self.alpha_expr == Basic::zero() {
+            return "QQ".to_string();
+        }
         format!("QQ<{}>", self.alpha_expr)
+    }
+
+    /// The element as an expression in `alpha_expr` (`to_expr`).
+    fn to_expr(&self, a: &AlgebraicElement) -> PolyResult<Basic> {
+        use crate::core::add::add;
+        use crate::core::mul::mul;
+        use crate::core::power::pow;
+        let n: usize = a.len().saturating_sub(1);
+        let mut parts: Vec<Basic> = Vec::new();
+        for (i, c) in a.iter().enumerate() {
+            if !c.is_zero() {
+                let k: usize = n - i;
+                let value: Basic = Basic::from_rational(c.clone());
+                if k == 0 {
+                    parts.push(value);
+                } else {
+                    let power: Basic = if k == 1 {
+                        self.alpha_expr.clone()
+                    } else {
+                        pow(&self.alpha_expr, &Basic::integer(k.into()))?
+                    };
+                    parts.push(mul(&[value, power])?);
+                }
+            }
+        }
+        if parts.is_empty() {
+            return Ok(Basic::zero());
+        }
+        add(&parts)
     }
 
     fn is_field(&self) -> bool {

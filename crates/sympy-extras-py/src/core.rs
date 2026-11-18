@@ -2836,6 +2836,71 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "puiseux_field_from_polynomial" | "puiseux_field_of" | "puiseux_adjoin_root" | "puiseux_factor_over" => {
+            // a field travels as (Tuple(minpoly), alpha), a number as Tuple(coordinates)
+            use sympy_extras_core::numbers::Rat;
+            use sympy_extras_core::polys::domains::AlgebraicField;
+            use sympy_extras_core::polys::puiseux as px;
+            let t = |items: Vec<Basic>| Basic::new(Head::Tuple, items);
+            let rats = |b: &Basic| -> PyResult<Vec<Rat>> {
+                b.args()
+                    .iter()
+                    .map(|c| {
+                        c.as_rational()
+                            .cloned()
+                            .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("rationals"))
+                    })
+                    .collect()
+            };
+            let number = |v: &[Rat]| t(v.iter().map(|q| Basic::from_rational(q.clone())).collect());
+            let field = |k: &AlgebraicField| t(vec![number(&k.minpoly), k.alpha_expr.clone()]);
+            let field_from = |m: &Basic, alpha: &Basic| -> PyResult<AlgebraicField> {
+                let minpoly = rats(m)?;
+                if minpoly.len() <= 2 {
+                    return Ok(px::rationals());
+                }
+                AlgebraicField::new(minpoly, alpha.clone()).map_err(e)
+            };
+            match name {
+                "puiseux_field_from_polynomial" => field(&px::field_from_polynomial(&rats(&a[0])?).map_err(e)?),
+                "puiseux_field_of" => {
+                    let (k, c) = px::field_of(&a[0]).map_err(e)?;
+                    t(vec![field(&k), number(&c)])
+                }
+                "puiseux_adjoin_root" => {
+                    let k = field_from(&a[0], &a[1])?;
+                    let psi: Vec<Vec<Rat>> = a[2].args().iter().map(&rats).collect::<PyResult<_>>()?;
+                    let (l, into, u) = px::adjoin_root(&k, &psi).map_err(e)?;
+                    let image = into
+                        .image
+                        .as_ref()
+                        .map_or_else(sympy_extras_core::core::logic::false_, |v| number(v));
+                    let back = px::in_subfield(&into.apply(&px::generator(&k)), &l, &into)
+                        .map_or_else(sympy_extras_core::core::logic::false_, |v| number(&v));
+                    t(vec![
+                        field(&l),
+                        image,
+                        number(&u),
+                        number(&px::minimal_polynomial_of(&u, &l)),
+                        back,
+                    ])
+                }
+                _ => {
+                    let k = field_from(&a[0], &a[1])?;
+                    let f: Vec<Vec<Rat>> = a[2].args().iter().map(&rats).collect::<PyResult<_>>()?;
+                    let factors = px::factor_over(&k, &f).map_err(e)?;
+                    t(factors
+                        .into_iter()
+                        .map(|(g, m)| {
+                            t(vec![
+                                t(g.iter().map(|c| number(c)).collect()),
+                                Basic::integer((m as i64).into()),
+                            ])
+                        })
+                        .collect())
+                }
+            }
+        }
         "pi_groups" | "pi_exponents" | "solve_for" | "dimension_matrix" | "dimension_of" => {
             // the quantities: Tuple(Tuple(Symbol(name), Tuple(Tuple(Symbol(base), exponent), ...)), ...)
             use sympy_extras_core::numbers::Rat;

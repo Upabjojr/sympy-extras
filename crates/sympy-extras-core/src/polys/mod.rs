@@ -33,6 +33,7 @@ pub mod polyclasses;
 pub mod polyroots;
 pub mod polytools;
 pub mod polyutils;
+pub mod puiseux;
 pub mod rationalsolve;
 pub mod rationaltools;
 pub mod regularchains;
