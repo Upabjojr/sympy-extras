@@ -234,7 +234,8 @@ def _classes_by_name() -> dict[str, type[DefinedFunction]]:
         importlib.import_module('sympy_extras.functions')  # the classes register by being defined
 
         def walk(c: type) -> None:
-            for s in c.__subclasses__():
+            subclasses: list[type] = c.__subclasses__()
+            for s in subclasses:
                 if issubclass(s, DefinedFunction) and s.function_name != 'f':
                     _CLASSES.setdefault(s.function_name, s)
                 walk(s)

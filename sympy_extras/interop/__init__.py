@@ -81,13 +81,15 @@ _to_sympy_cache: dict[int, tuple[Basic, SymPyBasic]] = {}
 
 
 class _ConversionCache:
-    """The registration of the conversion cache with ``clear_cache``."""
+    """The registration of the conversion cache with ``clear_cache``. The
+    pairing of the dummies is not a cache but their identity, and is kept:
+    emptied, a dummy converted before (the ``x`` of a module-level pattern
+    excluding it) and after would become two SymPy dummies, and the patterns
+    of a face would stop agreeing with their native ones."""
 
     def clear(self) -> None:
         _from_sympy_cache.clear()
         _to_sympy_cache.clear()
-        _dummies_from_sympy.clear()
-        _dummies_to_sympy.clear()
 
 _RELATIONAL_TO_SYMPY: dict[type[Relational], type[SymPyRelational]] = {
     Eq: sympy.Eq, Ne: sympy.Ne, Lt: sympy.Lt, Le: sympy.Le, Gt: sympy.Gt, Ge: sympy.Ge}

@@ -349,7 +349,8 @@ def _native_classes() -> dict[str, list[type]]:
     seen: set[type] = set()
     while todo:
         c = todo.pop()
-        for sub in c.__subclasses__():
+        subclasses: list[type] = c.__subclasses__()
+        for sub in subclasses:
             if sub in seen:
                 continue
             seen.add(sub)
