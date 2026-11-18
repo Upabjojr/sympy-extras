@@ -2738,6 +2738,41 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 ]),
             }
         }
+        "postorder_traversal" | "iterargs" | "iterfreeargs" | "fuzzy_group" | "bottom_up_x2" | "use_x2" => {
+            use sympy_extras_core::core::{fuzzy, traversal as tv};
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let flag = |b: &Basic| sympy_extras_core::core::logic::truth(b) == Some(true);
+            // the function of the tests: the symbol x replaced by 2
+            let x2 = |n: &Basic| -> sympy_extras_core::error::PolyResult<Basic> {
+                Ok(if n.is_symbol() && n.to_string() == "x" {
+                    Basic::integer(2i64.into())
+                } else {
+                    n.clone()
+                })
+            };
+            match (name, a.len()) {
+                ("postorder_traversal", 1) => tuple(tv::postorder_traversal(&a[0])),
+                ("iterargs", 1) => tuple(tv::iterargs(&a[0])),
+                ("iterfreeargs", 1) => tuple(tv::iterfreeargs(&a[0])),
+                ("fuzzy_group", 2) => {
+                    let values: Vec<Option<bool>> =
+                        a[0].args().iter().map(sympy_extras_core::core::logic::truth).collect();
+                    match fuzzy::fuzzy_group(values, flag(&a[1])) {
+                        Some(v) => sympy_extras_core::core::logic::boolean(v),
+                        None => Basic::integer(0i64.into()),
+                    }
+                }
+                ("bottom_up_x2", 2) => tv::bottom_up(&a[0], &x2, flag(&a[1])).map_err(e)?,
+                ("use_x2", 2) => {
+                    let level: usize = a[1]
+                        .as_rational()
+                        .and_then(|v| usize::try_from(v.numerator()).ok())
+                        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("a level"))?;
+                    tv::use_at(&a[0], &x2, level).map_err(e)?
+                }
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
+            }
+        }
         "rootof" | "all_roots" | "real_roots" | "root_count" | "real_roots_indexed" | "crootof_address"
         | "complex_root_of" => {
             use sympy_extras_core::polys::complexrootof as cr;

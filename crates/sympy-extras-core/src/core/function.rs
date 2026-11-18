@@ -27,7 +27,16 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
             let counts: Vec<(Basic, u64)> = derivative_counts(&e.rebuild(args.clone()));
             diff(&args[0], &counts)
         }
-        Head::Subs => substituted(&args[0], args[1].args(), args[2].args()),
+        Head::Subs => {
+            // Subs._evaluated: the variables are symbols (_as_symbol)
+            if let Some(v) = args[1].args().iter().find(|v| !v.is_symbol()) {
+                return Err(crate::error::PolyError::Type(format!(
+                    "a symbol is expected, got {}",
+                    v
+                )));
+            }
+            substituted(&args[0], args[1].args(), args[2].args())
+        }
         Head::And => Ok(super::logic::and_(&args)),
         Head::Or => Ok(super::logic::or_(&args)),
         Head::Not => Ok(super::logic::not_(&args[0])),
