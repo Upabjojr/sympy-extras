@@ -2467,6 +2467,40 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => return Err(wrong()),
             }
         }
+        "to_clauses" | "clauses_conjunction" | "propositional_models" | "is_satisfiable" => {
+            use sympy_extras_core::logic::{cnf, dpll2};
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let encode = |c: &cnf::Clauses| -> Basic {
+                tuple(vec![
+                    tuple(c.atoms.clone()),
+                    tuple(
+                        c.clauses
+                            .iter()
+                            .map(|cl| tuple(cl.iter().map(|l| Basic::integer((*l).into())).collect()))
+                            .collect(),
+                    ),
+                ])
+            };
+            let clauses: Vec<cnf::Clauses> = a.iter().map(|f| cnf::to_clauses(f, None)).collect();
+            match (name, a.len()) {
+                ("to_clauses", 1) => encode(&clauses[0]),
+                ("clauses_conjunction", _) => encode(&cnf::conjunction(&clauses)),
+                ("propositional_models", 1) => tuple(
+                    dpll2::propositional_models(&clauses[0], None)
+                        .into_iter()
+                        .map(|m| {
+                            tuple(
+                                m.into_iter()
+                                    .map(|(atom, v)| tuple(vec![atom, sympy_extras_core::core::logic::boolean(v)]))
+                                    .collect(),
+                            )
+                        })
+                        .collect(),
+                ),
+                ("is_satisfiable", 1) => sympy_extras_core::core::logic::boolean(dpll2::is_satisfiable(&clauses[0])),
+                _ => return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments")),
+            }
+        }
         "simplify_logic"
         | "SOPform"
         | "POSform"
