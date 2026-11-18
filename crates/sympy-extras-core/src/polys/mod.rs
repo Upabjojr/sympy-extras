@@ -7,6 +7,7 @@ pub mod buchberger;
 pub mod cad;
 pub mod complexrootof;
 pub mod complexroots;
+pub mod comprehensive;
 pub mod densearith;
 pub mod densebasic;
 pub mod densetools;

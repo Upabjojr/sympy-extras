@@ -2836,6 +2836,45 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "complex_reduction" => {
+            // cgs: op, Tuple(polys), Tuple(variables), Tuple(parameters) -> Tuple of
+            //   Tuple(Tuple(equations), Tuple(nonzero), Tuple(basis));
+            // exists: op, Tuple(equations), Tuple(inequations), Tuple(variables) -> formula;
+            // qe: op, formula, Tuple of Tuple(exists/forall, variable) -> formula;
+            // reduce: op, formula -> formula
+            use sympy_extras_core::polys::comprehensive as cp;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            match a[0].to_string().as_str() {
+                "cgs" => {
+                    let branches =
+                        cp::comprehensive_groebner_system(a[1].args(), a[2].args(), a[3].args()).map_err(e)?;
+                    tuple(
+                        branches
+                            .into_iter()
+                            .map(|b| tuple(vec![tuple(b.equations), tuple(b.nonzero), tuple(b.basis)]))
+                            .collect(),
+                    )
+                }
+                "exists" => cp::exists_complex(a[1].args(), a[2].args(), a[3].args()).map_err(e)?,
+                "qe" => {
+                    let prefix: Vec<(cp::Quantifier, Basic)> = a[2]
+                        .args()
+                        .iter()
+                        .map(|q| {
+                            let kind = if q.args()[0].to_string() == "exists" {
+                                cp::Quantifier::Exists
+                            } else {
+                                cp::Quantifier::Forall
+                            };
+                            (kind, q.args()[1].clone())
+                        })
+                        .collect();
+                    cp::complex_quantifier_elimination(&a[1], &prefix).map_err(e)?
+                }
+                "reduce" => cp::reduce_complex(&a[1]).map_err(e)?,
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "rur" => {
             // Tuple(polys), Tuple(gens), t -> Tuple(form, polynomial, characteristic, denominator,
             // Tuple(numerators), Tuple(polynomials), Tuple(solutions), Tuple(real solutions)), each
