@@ -3,6 +3,7 @@
 pub mod bivariate;
 pub mod exponential_diophantine;
 pub mod integers;
+pub mod lie;
 pub mod linsolve;
 pub mod parametric;
 pub mod simplex;

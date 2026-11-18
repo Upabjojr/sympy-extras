@@ -2953,6 +2953,87 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "lie" => {
+            // op: symmetries(eqs, funcs, degree, basis, superposition) -> Tuple of Tuple(Tuple(xi),
+            // Tuple(eta), Symbol(generator)); check(eqs, funcs, Tuple(xi + eta)) -> bool;
+            // condition(eqs, funcs, Tuple(xi + eta)) -> Tuple; system(eqs, funcs) -> Tuple(Tuple(eqs),
+            // Tuple(unknowns), Tuple(base)); janet(eqs, funcs) -> dimension; leading(eqs, funcs) ->
+            // Tuple of Tuple(jet, value); characteristic/commutator/prolong on symmetries
+            use sympy_extras_core::solvers::lie;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let small = |b: &Basic| -> PyResult<u32> {
+                b.to_string()
+                    .parse::<u32>()
+                    .map_err(|_| pyo3::exceptions::PyValueError::new_err("a small integer"))
+            };
+            let funcs = a[2].args();
+            match a[0].to_string().as_str() {
+                "symmetries" => tuple(
+                    lie::symmetries(
+                        a[1].args(),
+                        funcs,
+                        small(&a[3])?,
+                        a[4].args(),
+                        a[5].to_string() == "True",
+                    )
+                    .map_err(e)?
+                    .into_iter()
+                    .map(|s| {
+                        let g = sympy_extras_core::core::symbol::Symbol::new(&s.generator(), &[]).0;
+                        tuple(vec![tuple(s.xi), tuple(s.eta), g])
+                    })
+                    .collect(),
+                ),
+                "check" => sympy_extras_core::core::logic::boolean(
+                    lie::check_symmetry(a[1].args(), funcs, a[3].args()).map_err(e)?,
+                ),
+                "condition" => tuple(lie::infinitesimal_condition(a[1].args(), funcs, a[3].args()).map_err(e)?),
+                "system" => {
+                    let (sys, unknowns, base) = lie::determining_system(a[1].args(), funcs).map_err(e)?;
+                    tuple(vec![tuple(sys), tuple(unknowns), tuple(base)])
+                }
+                "janet" => lie::symmetry_janet_basis(a[1].args(), funcs)
+                    .map_err(e)?
+                    .dimension()
+                    .map_err(e)?,
+                "leading" => {
+                    let jets = lie::JetSpace::new(funcs).map_err(e)?;
+                    let eqs: Vec<Basic> = a[1]
+                        .args()
+                        .iter()
+                        .map(|q| jets.to_jet(q))
+                        .collect::<Result<_, _>>()
+                        .map_err(e)?;
+                    tuple(
+                        lie::leading_derivatives(&jets, &eqs)
+                            .map_err(e)?
+                            .into_iter()
+                            .map(|(k, v)| tuple(vec![k, v]))
+                            .collect(),
+                    )
+                }
+                "symmetry" => {
+                    // symmetry(_, funcs, Tuple(xi + eta), what, [other / order / expr])
+                    let jets = lie::JetSpace::new(funcs).map_err(e)?;
+                    let p = jets.p();
+                    let s =
+                        lie::Symmetry::new(&jets, a[3].args()[..p].to_vec(), a[3].args()[p..].to_vec()).map_err(e)?;
+                    match a[4].to_string().as_str() {
+                        "characteristic" => tuple(s.characteristic().map_err(e)?),
+                        "commutator" => {
+                            let o = lie::Symmetry::new(&jets, a[5].args()[..p].to_vec(), a[5].args()[p..].to_vec())
+                                .map_err(e)?;
+                            let c = s.commutator(&o).map_err(e)?;
+                            tuple(vec![tuple(c.xi), tuple(c.eta)])
+                        }
+                        "apply" => s.apply(&jets.to_jet(&a[5]).map_err(e)?).map_err(e)?,
+                        "generator" => sympy_extras_core::core::symbol::Symbol::new(&s.generator(), &[]).0,
+                        other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+                    }
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "is" => {
             // e, Symbol(predicate name) -> true, false or the empty Tuple for None (`e.is_<name>`)
             let Some(p) = sympy_extras_core::core::assumptions::Predicate::from_name(&a[1].to_string()) else {
