@@ -37,6 +37,7 @@ pub mod logic;
 pub mod matrices;
 pub mod ntheory;
 pub mod numbers;
+pub mod numeric;
 pub mod orderedmap;
 pub mod physics;
 pub mod polys;

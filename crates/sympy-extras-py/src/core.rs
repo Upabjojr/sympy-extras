@@ -2868,6 +2868,59 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "reliable" => {
+            // op (form, value, complex, proved_zero), e, digits, Tuple of Tuple(symbol, value) ->
+            // form: the expression or Tuple() for None; value: Tuple(re, im) as exact rationals of the
+            // binary floats or Tuple(); complex: Tuple(re, im) of the f64 as rationals or Tuple();
+            // proved_zero: a boolean
+            use sympy_extras_core::numeric as nm;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let digits: usize = a.get(2).map(|d| d.to_string().parse().unwrap_or(20)).unwrap_or(20);
+            let values: Vec<(Basic, Basic)> = a
+                .get(3)
+                .map(|t| {
+                    t.args()
+                        .iter()
+                        .map(|p| (p.args()[0].clone(), p.args()[1].clone()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let exact = |x: &sympy_extras_core::core::evalf::Real| -> Basic {
+                let r = x.repr();
+                let significand: sympy_extras_core::numbers::Int = r.significand().clone();
+                let exponent: isize = r.exponent();
+                let value: sympy_extras_core::numbers::Rat = if exponent >= 0 {
+                    sympy_extras_core::numbers::Rat::from(significand << exponent as usize)
+                } else {
+                    sympy_extras_core::numbers::rat_from_parts(
+                        significand,
+                        sympy_extras_core::numbers::Int::ONE << (-exponent) as usize,
+                    )
+                };
+                Basic::from_rational(value)
+            };
+            match a[0].to_string().as_str() {
+                "form" => nm::reliable_form(&a[1], digits).unwrap_or_else(|| tuple(Vec::new())),
+                "value" => match nm::reliable_value(&a[1], digits, &values) {
+                    Some(z) => {
+                        let (re, im) = sympy_extras_core::core::evalf::parts(&z);
+                        tuple(vec![exact(&re), exact(&im)])
+                    }
+                    None => tuple(Vec::new()),
+                },
+                "complex" => match nm::reliable_complex(&a[1], digits, &values) {
+                    Some((x, y)) => {
+                        let f = |v: f64| -> Basic {
+                            exact(&sympy_extras_core::core::evalf::Real::try_from(v).expect("a finite float"))
+                        };
+                        tuple(vec![f(x), f(y)])
+                    }
+                    None => tuple(Vec::new()),
+                },
+                "proved_zero" => sympy_extras_core::core::logic::boolean(nm::proved_zero(&a[1])),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "kind" => Basic::new(
             Head::Symbol(std::sync::Arc::new(sympy_extras_core::core::symbol::SymbolData::new(
                 &sympy_extras_core::core::kind::kind_of(&a[0]).to_string(),
