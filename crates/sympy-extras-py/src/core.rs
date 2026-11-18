@@ -2836,6 +2836,57 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "thue" | "thue_units" | "thue_norm" | "thue_short" => {
+            // thue: F, m, x, y -> Tuple of (x, y); thue_units: Tuple(g) -> Tuple(Tuple(units),
+            // Tuple(torsion)); thue_norm: Tuple(g), norm, Tuple(units) -> Tuple(elements);
+            // thue_short: Tuple(rows), radius (a rational) -> Tuple(combinations)
+            use sympy_extras_core::numbers::Int;
+            use sympy_extras_core::solvers::thue_equation as th;
+            let int = |b: &Basic| -> PyResult<Int> {
+                match b.as_rational() {
+                    Some(v) if v.is_int() => Ok(v.numerator().clone()),
+                    _ => Err(pyo3::exceptions::PyValueError::new_err("an integer")),
+                }
+            };
+            let ints = |b: &Basic| -> PyResult<Vec<Int>> { b.args().iter().map(int).collect() };
+            let elements = |v: &[Vec<Int>]| -> Basic {
+                Basic::new(
+                    Head::Tuple,
+                    v.iter()
+                        .map(|e| Basic::new(Head::Tuple, e.iter().map(|c| Basic::integer(c.clone())).collect()))
+                        .collect(),
+                )
+            };
+            match name {
+                "thue" => {
+                    let found = th::thue(&a[0], &int(&a[1])?, &a[2], &a[3], 64).map_err(e)?;
+                    elements(&found.into_iter().map(|(x, y)| vec![x, y]).collect::<Vec<_>>())
+                }
+                "thue_units" => {
+                    let (units, torsion) = th::units_of_order(&ints(&a[0])?, 64).map_err(e)?;
+                    Basic::new(Head::Tuple, vec![elements(&units), elements(&torsion)])
+                }
+                "thue_norm" => {
+                    let units: Vec<Vec<Int>> = a[2].args().iter().map(ints).collect::<PyResult<_>>()?;
+                    elements(&th::elements_of_norm(&ints(&a[0])?, &int(&a[1])?, &units, 100000).map_err(e)?)
+                }
+                _ => {
+                    let rows: Vec<Vec<Int>> = a[0].args().iter().map(ints).collect::<PyResult<_>>()?;
+                    let radius: f64 = a[1].to_string().parse::<f64>().unwrap_or_else(|_| {
+                        let v = a[1].as_rational().cloned().unwrap_or_default();
+                        sympy_extras_core::numbers::numer(&v).to_f64().value()
+                            / sympy_extras_core::numbers::denom(&v).to_f64().value()
+                    });
+                    let found = th::short_vectors(&rows, radius, 0).map_err(e)?;
+                    elements(
+                        &found
+                            .into_iter()
+                            .map(|v| v.into_iter().map(Int::from).collect())
+                            .collect::<Vec<_>>(),
+                    )
+                }
+            }
+        }
         "field_matrix" => {
             // op (a symbol), rows, cols, entries..., [rows2, cols2, entries2...] -> a Tuple of
             // Tuple(rows, cols, Tuple(entries)) (rref: the pivots last, rank: an Integer)
