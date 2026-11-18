@@ -91,6 +91,16 @@ pub enum MonomialOrder {
 }
 
 impl MonomialOrder {
+    /// The order of a name, `lex`, `grlex` or `grevlex` (`as_order`).
+    pub fn named(name: &str) -> PolyResult<MonomialOrder> {
+        match name {
+            "lex" => Ok(MonomialOrder::Lex),
+            "grlex" => Ok(MonomialOrder::Grlex),
+            "grevlex" => Ok(MonomialOrder::Grevlex),
+            _ => Err(value_error(format!("unknown monomial order '{}'", name))),
+        }
+    }
+
     /// `orderings.WeightOrder(weights, tail)`; `Value` for a negative weight.
     pub fn weight(weights: Vec<Int>, tail: MonomialOrder) -> PolyResult<MonomialOrder> {
         if weights.iter().any(is_negative) {
@@ -687,6 +697,15 @@ mod tests {
         assert!(!b.is_graded(3) && !w.is_graded(2) && !MonomialOrder::Lex.is_graded(2));
         let graded_weight = MonomialOrder::weight(vec![int(1), int(1)], MonomialOrder::Lex).unwrap();
         assert!(graded_weight.is_graded(2));
+        // as_order and elimination_order
+        assert_eq!(MonomialOrder::named("grevlex").unwrap(), MonomialOrder::Grevlex);
+        assert!(MonomialOrder::named("revlex").is_err());
+        assert_eq!(
+            MonomialOrder::elimination(1, 3, MonomialOrder::Grevlex),
+            MonomialOrder::Block(vec![(MonomialOrder::Grevlex, 1), (MonomialOrder::Grevlex, 2)])
+        );
+        assert_eq!(MonomialOrder::elimination(0, 3, MonomialOrder::Grevlex), MonomialOrder::Grevlex);
+        assert_eq!(MonomialOrder::elimination(3, 3, MonomialOrder::Lex), MonomialOrder::Lex);
         assert!(MonomialOrder::weight(vec![int(-1)], MonomialOrder::Lex).is_err());
     }
 
