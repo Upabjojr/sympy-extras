@@ -190,7 +190,7 @@ fn rule_of(e: &Basic) -> Option<BoundRule> {
 }
 
 /// Whether `e` is a polynomial in `syms` (`is_polynomial`, `True` only).
-fn is_polynomial_in(e: &Basic, syms: &BTreeSet<Basic>) -> bool {
+pub(crate) fn is_polynomial_in(e: &Basic, syms: &BTreeSet<Basic>) -> bool {
     if !e.free_symbols().iter().any(|s| syms.contains(s)) {
         return true;
     }

@@ -2868,6 +2868,39 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "facts" => {
+            // op (facts, normalize, to_predicates, to_polynomial, element), arguments ->
+            // facts: Tuple(assumptions), domain or Tuple(), Tuple(symbols) -> Tuple(formula,
+            //   Tuple(conjuncts), predicates, Tuple(real), Tuple(integer), polynomial);
+            // normalize, to_predicates: formula; to_polynomial: formula, Tuple(real);
+            // element: x, domain. None as Tuple()
+            use sympy_extras_core::assumptions::facts as fc;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || tuple(Vec::new());
+            match a[0].to_string().as_str() {
+                "facts" => {
+                    let domain: Option<&Basic> = if matches!(a[2].head(), Head::Tuple) {
+                        None
+                    } else {
+                        Some(&a[2])
+                    };
+                    let f = fc::Facts::new(a[1].args(), domain, a[3].args()).map_err(e)?;
+                    tuple(vec![
+                        f.formula.clone(),
+                        tuple(f.conjuncts.clone()),
+                        f.predicates.clone(),
+                        tuple(f.real.clone()),
+                        tuple(f.integer.clone()),
+                        f.polynomial.clone(),
+                    ])
+                }
+                "normalize" => fc::normalize(&a[1]).map_err(e)?,
+                "to_predicates" => fc::to_predicates(&a[1]).map_err(e)?.unwrap_or_else(none),
+                "to_polynomial" => fc::to_polynomial(&a[1], a[2].args()).map_err(e)?.unwrap_or_else(none),
+                "element" => fc::element(&a[1], &a[2]).map_err(e)?,
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "satask" => sympy_extras_core::core::logic::boolean(
             sympy_extras_core::assumptions::satask::predicates_consistent(&a[0]).map_err(e)?,
         ),
