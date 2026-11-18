@@ -2920,6 +2920,41 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "ratint" => {
+            // op: ratint(f, x, symbol, real), ratint_pair(p, q, x, symbol, real) (real: true, false or
+            // the symbol None), ratpart(f, g, x), polynomial_part(f, g, x), logpart(f, g, x, t),
+            // log_to_atan(f, g, x), log_to_real(h, q, x, t, complex_only) -> empty Tuple for None
+            use sympy_extras_core::integrals::risch::rationaltools as rt;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let real = |b: &Basic| match b.head() {
+                Head::BooleanTrue => Some(true),
+                Head::BooleanFalse => Some(false),
+                _ => None,
+            };
+            match a[0].to_string().as_str() {
+                "ratint" => rt::ratint(&rt::Integrand::of(&a[1]).map_err(e)?, &a[2], &a[3], real(&a[4])).map_err(e)?,
+                "ratint_pair" => {
+                    rt::ratint(&rt::Integrand::pair(&a[1], &a[2]), &a[3], &a[4], real(&a[5])).map_err(e)?
+                }
+                "ratpart" => {
+                    let (x, y) = rt::ratint_ratpart(&a[1], &a[2], &a[3]).map_err(e)?;
+                    tuple(vec![x, y])
+                }
+                "polynomial_part" => {
+                    let (x, y) = rt::polynomial_part(&a[1], &a[2], &a[3]).map_err(e)?;
+                    tuple(vec![x, y])
+                }
+                "logpart" => {
+                    let pairs = rt::ratint_logpart(&a[1], &a[2], &a[3], Some(&a[4])).map_err(e)?;
+                    tuple(pairs.into_iter().map(|(x, y)| tuple(vec![x, y])).collect())
+                }
+                "log_to_atan" => rt::log_to_atan(&a[1], &a[2], &a[3]).map_err(e)?,
+                "log_to_real" => rt::log_to_real(&a[1], &a[2], &a[3], &a[4], matches!(a[5].head(), Head::BooleanTrue))
+                    .map_err(e)?
+                    .unwrap_or_else(|| tuple(vec![])),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "root_sum" => {
             // op: root_sum(f, var, body (or empty Tuples for the identity), t (or empty Tuple), auto,
             // quadratic), doit(node), diff(node, s), value(node, digits) -> Tuple(re, im) as rationals

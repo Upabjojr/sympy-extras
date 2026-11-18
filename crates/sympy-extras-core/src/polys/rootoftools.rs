@@ -173,7 +173,7 @@ pub fn generic_constants(e: &Basic, radicals: bool) -> PolyResult<(Basic, HashMa
 /// The polynomial of a `RootSum` after `preprocess_roots`: a `Poly` over a
 /// polynomial domain (`back` restoring its constants), or the
 /// coefficients over `EX` (`poly` is `None`).
-struct Polynomial {
+pub(crate) struct Polynomial {
     poly: Option<Poly>,
     back: HashMap<Basic, Basic>,
     coefficients: Vec<Basic>,
@@ -181,7 +181,7 @@ struct Polynomial {
 }
 
 impl Polynomial {
-    fn new(
+    pub(crate) fn new(
         poly: Option<Poly>,
         coefficients: Vec<Basic>,
         t: &Basic,
@@ -222,7 +222,7 @@ impl Polynomial {
     }
 }
 
-fn is_failure(e: &PolyError) -> bool {
+pub(crate) fn is_failure(e: &PolyError) -> bool {
     !matches!(
         e,
         PolyError::Index(_) | PolyError::Recursion(_) | PolyError::Arithmetic(_)
@@ -285,7 +285,7 @@ fn simplified(e: &Basic) -> R {
     Ok(found.unwrap_or_else(|| e.clone()))
 }
 
-fn linear_root(p: &Polynomial) -> R {
+pub(crate) fn linear_root(p: &Polynomial) -> R {
     if let Some(poly) = &p.poly {
         return p.restored(&crate::polys::polyroots::roots_linear(poly)?[0]);
     }
@@ -297,7 +297,7 @@ fn linear_root(p: &Polynomial) -> R {
     ])?)
 }
 
-fn quadratic_roots(p: &Polynomial) -> PolyResult<Vec<Basic>> {
+pub(crate) fn quadratic_roots(p: &Polynomial) -> PolyResult<Vec<Basic>> {
     if let Some(poly) = &p.poly {
         return crate::polys::polyroots::roots_quadratic(poly)?
             .iter()
