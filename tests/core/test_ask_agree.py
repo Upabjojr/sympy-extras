@@ -1,7 +1,5 @@
-"""``sympy_extras.core.ask`` and ``sympy_extras.assumptions.handlers``
-against their Rust ports, up to the SAT search of ``satask`` (not ported
-yet: patched to "consistent" on the Python side, so that it decides
-nothing): the facts of the assumptions
+"""``sympy_extras.core.ask``, ``sympy_extras.assumptions.handlers`` and
+``sympy_extras.assumptions.satask`` against their Rust ports: the facts of the assumptions
 about subexpressions, their closure and consistency, the answers of the
 old assumptions on dummies carrying them, the relations, the
 connectives, ``is_true``, the cases of disjunctive assumptions and the
@@ -51,10 +49,8 @@ def _assumptions() -> list[Any]:
 def test_ask(rust: Any, index: int, monkeypatch: Any) -> None:
     import importlib
     python_ask = importlib.import_module('sympy_extras.core.ask')
-    satask = importlib.import_module('sympy_extras.assumptions.satask')
     from sympy_extras.core import Tuple
     rc = load("sympy_extras_rs.core")
-    monkeypatch.setattr(satask, 'predicates_consistent', lambda formula: True)
     assumptions = _assumptions()[index]
     for prop in _propositions():
         def got() -> Any:
@@ -62,3 +58,18 @@ def test_ask(rust: Any, index: int, monkeypatch: Any) -> None:
             return None if isinstance(r, Tuple) else bool(r)
         expected = outcome(lambda: python_ask.ask(prop, assumptions))
         assert outcome(got) == expected, (prop, assumptions)
+
+
+def test_predicates_consistent(rust: Any) -> None:
+    from sympy_extras.assumptions.satask import predicates_consistent
+    from sympy_extras.core import Q, Symbol
+    from sympy_extras.functions import Abs
+    rc = load("sympy_extras_rs.core")
+    x, y = Symbol('x'), Symbol('y')
+    formulas = [Q.positive(x) & Q.integer(x), Q.positive(x) & Q.negative(x), Q.positive(x) & Q.positive(y) & Q.negative(x + y),
+                Q.even(x) & Q.odd(x), Q.prime(x) & Q.composite(x), Q.zero(x*y) & Q.nonzero(x) & Q.nonzero(y),
+                Q.negative(Abs(x)), Q.real(x) & Q.imaginary(x) & Q.nonzero(x), Q.rational(x) & Q.irrational(x),
+                Q.positive(x**2) | Q.zero(x), x > 1, Q.gt(x, 1) & Q.lt(x, 0), Q.even(2) , Q.odd(2), Q.positive(-1),
+                Q.integer(x) & Q.integer(y) & Q.odd(x*y) & Q.even(x)]
+    for f in formulas:
+        assert bool(rc.logic_call('satask', [f])) == predicates_consistent(f), f

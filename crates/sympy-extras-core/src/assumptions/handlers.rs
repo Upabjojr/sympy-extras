@@ -5,9 +5,7 @@
 //! answers by the rules of the class of the argument, asking questions
 //! about its arguments under the same assumptions; [`final_ask`] tries the
 //! handlers, the scaled literal (the frequent case of SymPy's
-//! `lra_satask`), then the SAT search of `satask`, reached through a hook
-//! ([`set_predicates_consistent`]) which answers nothing until that module
-//! is ported. The numbers are evaluated by `reliable_complex` at 15 digits.
+//! `lra_satask`), then the SAT search of `satask`. The numbers are evaluated by `reliable_complex` at 15 digits.
 
 use std::cell::RefCell;
 
@@ -1281,12 +1279,6 @@ const MAX_DEPTH: usize = 40;
 
 thread_local! {
     static DEPTH: RefCell<usize> = const { RefCell::new(0) };
-    static CONSISTENT: RefCell<Option<fn(&Basic) -> PolyResult<bool>>> = const { RefCell::new(None) };
-}
-
-/// Register the SAT search of `satask` (`predicates_consistent`).
-pub fn set_predicates_consistent(f: fn(&Basic) -> PolyResult<bool>) {
-    CONSISTENT.with(|c| *c.borrow_mut() = Some(f));
 }
 
 /// The answer of the handler of the predicate for the class of its
@@ -1319,9 +1311,7 @@ pub fn final_ask(proposition: &Basic, assumptions: &Basic) -> R {
     if let Some(answer) = scaled_literal(proposition, assumptions)? {
         return Ok(Some(answer));
     }
-    let Some(consistent) = CONSISTENT.with(|c| *c.borrow()) else {
-        return Ok(None);
-    };
+    let consistent = super::satask::predicates_consistent;
     let can_be_true: bool = consistent(&and_(&[assumptions.clone(), proposition.clone()]))?;
     let can_be_false: bool = consistent(&and_(&[assumptions.clone(), not_(proposition)]))?;
     if can_be_true && can_be_false {

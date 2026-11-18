@@ -2868,6 +2868,9 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "satask" => sympy_extras_core::core::logic::boolean(
+            sympy_extras_core::assumptions::satask::predicates_consistent(&a[0]).map_err(e)?,
+        ),
         "ask" => {
             // proposition, assumptions, [Tuple(context)] -> True, False, or Tuple() for None
             let context: Option<Vec<Basic>> = a.get(2).map(|c| c.args().to_vec());
