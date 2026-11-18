@@ -2753,6 +2753,14 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 ]),
             }
         }
+        "gammasimp" | "combsimp" => {
+            use sympy_extras_core::simplify::gammasimp as gs;
+            if name == "gammasimp" {
+                gs::gammasimp(&a[0]).map_err(e)?
+            } else {
+                gs::combsimp(&a[0]).map_err(e)?
+            }
+        }
         "rewrite" => {
             // e, Symbol(target name), piecewise (0 or 1), sample nodes of the patterns
             use sympy_extras_core::core::rewriting::{rewrite, RewriteHints};
