@@ -2836,6 +2836,51 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "puiseux_expansions" => {
+            // F, x, y, point, order, Tuple(domain minpoly), domain alpha -> Tuple(Tuple(ramification,
+            // conjugates, series as expr, Tuple(field minpoly), field alpha, order or false, Tuple(scale)))
+            use sympy_extras_core::numbers::Rat;
+            use sympy_extras_core::polys::domains::AlgebraicField;
+            use sympy_extras_core::polys::puiseux as px;
+            if a.len() != 7 {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments"));
+            }
+            let t = |items: Vec<Basic>| Basic::new(Head::Tuple, items);
+            let minpoly: Vec<Rat> = a[5]
+                .args()
+                .iter()
+                .map(|c| {
+                    c.as_rational()
+                        .cloned()
+                        .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("rationals"))
+                })
+                .collect::<PyResult<_>>()?;
+            let domain: AlgebraicField = if minpoly.len() <= 2 {
+                px::rationals()
+            } else {
+                AlgebraicField::new(minpoly, a[6].clone()).map_err(e)?
+            };
+            let order: i64 = a[4]
+                .as_rational()
+                .and_then(|v| i64::try_from(v.numerator()).ok())
+                .unwrap_or(4);
+            let found = px::puiseux_expansions(&a[0], &a[1], &a[2], &a[3], order, &domain).map_err(e)?;
+            let number = |v: &[Rat]| t(v.iter().map(|q| Basic::from_rational(q.clone())).collect());
+            let mut out: Vec<Basic> = Vec::new();
+            for b in found {
+                out.push(t(vec![
+                    Basic::integer(b.ramification.into()),
+                    Basic::integer((b.conjugates as i64).into()),
+                    b.as_expr(None).map_err(e)?,
+                    number(&b.field.minpoly),
+                    b.field.alpha_expr.clone(),
+                    b.order()
+                        .map_or_else(sympy_extras_core::core::logic::false_, |o| Basic::integer(o.into())),
+                    number(&b.scale),
+                ]));
+            }
+            t(out)
+        }
         "puiseux_field_from_polynomial" | "puiseux_field_of" | "puiseux_adjoin_root" | "puiseux_factor_over" => {
             // a field travels as (Tuple(minpoly), alpha), a number as Tuple(coordinates)
             use sympy_extras_core::numbers::Rat;

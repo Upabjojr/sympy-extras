@@ -287,5 +287,8 @@ pub fn shown_parts(e: &Basic) -> (Basic, Basic, usize) {
     let plain: Basic = Symbol::new(&variable_name(t), &[]).0;
     let mut rule: HashMap<Basic, Basic> = HashMap::new();
     rule.insert(t.clone(), plain.clone());
-    (f.xreplace(&rule), plain, k)
+    // evaluated, as Python's _sympystr does: the terms in the printing
+    // order of the plain symbol
+    let shown: Basic = crate::core::function::xreplace_evaluated(f, &rule).unwrap_or_else(|_| f.xreplace(&rule));
+    (shown, plain, k)
 }

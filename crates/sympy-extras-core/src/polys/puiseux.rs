@@ -581,6 +581,646 @@ pub fn in_subfield(c: &Number, l: &AlgebraicField, into: &Embedding) -> Option<N
     Some(dup_strip(&solution, &QQ))
 }
 
+// ---------------------------------------------------------------------
+// The expansions
+
+/// A polynomial in `x` and `y` over a number field: `{i: {k: coefficient
+/// of x**k y**i}}`, the exponents of `x` possibly negative inside the
+/// algorithm (`Curve`).
+pub type Curve = BTreeMap<i64, BTreeMap<i64, Number>>;
+
+/// One branch of the curve `F(x, y) = 0` above `point` (an expression, or
+/// `oo`): `y = sum c_k t^k` with `x - point = scale t^e` (`x = 1/(scale
+/// t^e)` at infinity), the coefficients in `field`, known for `k < order`;
+/// it stands for `conjugates` branches; `embedding` maps the coefficient
+/// field of the curve (with the point) into `field` (`PuiseuxExpansion`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PuiseuxExpansion {
+    pub point: Basic,
+    /// the point as an element of `field` (`None` at infinity)
+    pub point_element: Option<Number>,
+    pub ramification: i64,
+    pub field: AlgebraicField,
+    pub series: LaurentSeries,
+    pub conjugates: usize,
+    pub x: Basic,
+    pub y: Basic,
+    pub scale: Number,
+    pub embedding: Embedding,
+}
+
+impl PuiseuxExpansion {
+    pub fn order(&self) -> Option<i64> {
+        self.series.order
+    }
+
+    pub fn at_infinity(&self) -> bool {
+        self.point_element.is_none()
+    }
+
+    /// The series in `x`, the coefficients as expressions (`as_expr`).
+    pub fn as_expr(&self, x: Option<&Basic>) -> PolyResult<Basic> {
+        let x_: &Basic = x.unwrap_or(&self.x);
+        let scale: Basic = self.field.to_expr(&self.scale)?;
+        if self.at_infinity() {
+            let variable: Basic = crate::core::mul::mul(&[scale, x_.clone()])?;
+            return self.series.as_expr(&variable, self.ramification, true);
+        }
+        let variable: Basic = crate::core::mul::div(&crate::core::add::sub(x_, &self.point)?, &scale)?;
+        self.series.as_expr(&variable, self.ramification, false)
+    }
+
+    /// `x` as a series in `t` (`x_series`).
+    pub fn x_series(&self) -> PolyResult<LaurentSeries> {
+        let k = &self.field;
+        match &self.point_element {
+            None => Ok(LaurentSeries::monomial(k, k.invert(&self.scale)?, -self.ramification)),
+            Some(point) => Ok(LaurentSeries::new(
+                k.clone(),
+                BTreeMap::from([(0, point.clone()), (self.ramification, self.scale.clone())]),
+                None,
+            )),
+        }
+    }
+
+    /// The polynomial `p` in `x` and `y` (coefficients in the source of
+    /// `embedding`) along the branch, as a series in `t` (`evaluate`).
+    pub fn evaluate(&self, p: &Curve, order: Option<i64>) -> PolyResult<LaurentSeries> {
+        let k = &self.field;
+        let xs: LaurentSeries = self.x_series()?;
+        let ys: LaurentSeries = match order {
+            None => self.series.clone(),
+            Some(o) => self.series.truncated(o),
+        };
+        let mut total: LaurentSeries = LaurentSeries::constant(k, k.zero());
+        let top: i64 = p.keys().next_back().copied().unwrap_or(0).max(0);
+        let empty: BTreeMap<i64, Number> = BTreeMap::new();
+        for i in (0..=top).rev() {
+            total = total
+                .mul(&ys)
+                .add(&evaluate_x(p.get(&i).unwrap_or(&empty), &xs, k, &self.embedding));
+        }
+        Ok(total)
+    }
+
+    /// `evaluate` of a polynomial given as an expression in `x` and `y`
+    /// (`evaluate_expr`).
+    pub fn evaluate_expr(&self, p: &Basic, order: Option<i64>) -> PolyResult<LaurentSeries> {
+        let curve: Curve = curve_from_expr(p, &self.x, &self.y, &self.embedding.source)?;
+        self.evaluate(&curve, order)
+    }
+}
+
+fn evaluate_x(p: &BTreeMap<i64, Number>, xs: &LaurentSeries, k: &AlgebraicField, convert: &Embedding) -> LaurentSeries {
+    let mut total: LaurentSeries = LaurentSeries::constant(k, k.zero());
+    let top: i64 = p.keys().next_back().copied().unwrap_or(0).max(0);
+    for j in (0..=top).rev() {
+        let c: Number = p.get(&j).map_or_else(|| k.zero(), |c| convert.apply(c));
+        total = total.mul(xs).add(&LaurentSeries::constant(k, c));
+    }
+    total
+}
+
+fn symbol_name(s: &Basic) -> String {
+    match s.head() {
+        crate::core::basic::Head::Symbol(d) | crate::core::basic::Head::Dummy(d, _) => d.name.clone(),
+        _ => s.to_string(),
+    }
+}
+
+/// The polynomial `f` in `x` and `y` with coefficients in `k` as
+/// `{i: {k: coefficient of x**k y**i}}` (`curve_from_expr`).
+pub fn curve_from_expr(f: &Basic, x: &Basic, y: &Basic, k: &AlgebraicField) -> PolyResult<Curve> {
+    let terms = crate::polys::polyutils::dict_from_expr(f, &[symbol_name(y), symbol_name(x)], k)?;
+    let mut p: Curve = Curve::new();
+    for (m, c) in terms {
+        p.entry(m[0] as i64).or_default().insert(m[1] as i64, c);
+    }
+    Ok(p)
+}
+
+/// The vertices of the lower convex hull of `points` (distinct abscissae,
+/// sorted) (`_lower_hull`).
+fn lower_hull(points: &[(i64, i64)]) -> Vec<(i64, i64)> {
+    let mut hull: Vec<(i64, i64)> = Vec::new();
+    for &(x3, y3) in points {
+        while hull.len() >= 2 {
+            let (x1, y1) = hull[hull.len() - 2];
+            let (x2, y2) = hull[hull.len() - 1];
+            if (y2 - y1) * (x3 - x1) >= (y3 - y1) * (x2 - x1) {
+                hull.pop();
+            } else {
+                break;
+            }
+        }
+        hull.push((x3, y3));
+    }
+    hull
+}
+
+fn power(u: &Number, k: i64, field: &AlgebraicField) -> PolyResult<Number> {
+    field.pow_signed(u, k)
+}
+
+/// `P(lambda s^q, s^p (c + Y))`, `lambda` the scale (`_poly2_substitute`).
+fn poly2_substitute(
+    p_curve: &Curve,
+    q: i64,
+    p: i64,
+    c: &Number,
+    scale: &Number,
+    k: &AlgebraicField,
+) -> PolyResult<Curve> {
+    let mut result: Curve = Curve::new();
+    let degree_y: i64 = p_curve.keys().next_back().copied().unwrap_or(0);
+    let mut powers_of_c: Vec<Number> = vec![k.one()];
+    for _ in 0..degree_y {
+        let next: Number = k.mul(&powers_of_c[powers_of_c.len() - 1], c);
+        powers_of_c.push(next);
+    }
+    let mut binomials: Vec<Vec<i64>> = vec![vec![1]];
+    for i in 1..=degree_y as usize {
+        let mut row: Vec<i64> = vec![1];
+        for j in 1..i {
+            row.push(binomials[i - 1][j - 1] + binomials[i - 1][j]);
+        }
+        row.push(1);
+        binomials.push(row);
+    }
+    let mut scale_powers: BTreeMap<i64, Number> = BTreeMap::new();
+    for (&i, a) in p_curve {
+        for j in 0..=i {
+            let factor: Number = k.mul(
+                &k.from_int(binomials[i as usize][j as usize]),
+                &powers_of_c[(i - j) as usize],
+            );
+            if factor.is_empty() {
+                continue;
+            }
+            for (&e, coefficient) in a {
+                let scaled: Number = match scale_powers.get(&e) {
+                    Some(v) => v.clone(),
+                    None => {
+                        let v: Number = power(scale, e, k)?;
+                        scale_powers.insert(e, v.clone());
+                        v
+                    }
+                };
+                let exponent: i64 = q * e + p * i;
+                let target = result.entry(j).or_default();
+                let previous: Number = target.get(&exponent).cloned().unwrap_or_default();
+                target.insert(
+                    exponent,
+                    k.add(&previous, &k.mul(&k.mul(&factor, coefficient), &scaled)),
+                );
+            }
+        }
+    }
+    Ok(poly2_clean(result))
+}
+
+fn poly2_convert(p: &Curve, into: &Embedding) -> Curve {
+    p.iter()
+        .map(|(i, a)| (*i, a.iter().map(|(k, v)| (*k, into.apply(v))).collect()))
+        .collect()
+}
+
+fn poly2_shift(p: &Curve, nu: i64) -> Curve {
+    p.iter()
+        .map(|(i, a)| (*i, a.iter().map(|(k, v)| (k - nu, v.clone())).collect()))
+        .collect()
+}
+
+fn poly2_clean(p: Curve) -> Curve {
+    p.into_iter()
+        .map(|(i, a)| {
+            (
+                i,
+                a.into_iter()
+                    .filter(|(_, v)| !v.is_empty())
+                    .collect::<BTreeMap<i64, Number>>(),
+            )
+        })
+        .filter(|(_, a)| !a.is_empty())
+        .collect()
+}
+
+/// `P(s, Y(s))`, the terms of exponent at least `order` dropped along the
+/// way (`_poly2_evaluate`).
+fn poly2_evaluate(p: &Curve, y: &LaurentSeries, k: &AlgebraicField, order: Option<i64>) -> LaurentSeries {
+    let degree_y: i64 = p.keys().next_back().copied().unwrap_or(0);
+    let mut total: LaurentSeries = LaurentSeries::constant(k, k.zero());
+    let empty: BTreeMap<i64, Number> = BTreeMap::new();
+    for i in (0..=degree_y.max(0)).rev() {
+        let mut coefficients: BTreeMap<i64, Number> = p.get(&i).unwrap_or(&empty).clone();
+        if let Some(o) = order {
+            coefficients.retain(|e, _| *e < o);
+        }
+        total = total.mul(y).add(&LaurentSeries::new(k.clone(), coefficients, None));
+        if let Some(o) = order {
+            total = total.truncated(o);
+        }
+    }
+    total
+}
+
+fn poly2_derivative(p: &Curve, k: &AlgebraicField) -> Curve {
+    poly2_clean(
+        p.iter()
+            .filter(|(i, _)| **i >= 1)
+            .map(|(i, a)| (i - 1, a.iter().map(|(e, v)| (*e, k.mul(&k.from_int(*i), v))).collect()))
+            .collect(),
+    )
+}
+
+/// `P(x + a, y)` (`_poly2_translate`).
+fn poly2_translate(p: &Curve, a: &Number, k: &AlgebraicField) -> Curve {
+    if a.is_empty() {
+        return p.clone();
+    }
+    let mut result: Curve = Curve::new();
+    for (&i, coefficients) in p {
+        let highest: i64 = coefficients.keys().next_back().copied().unwrap_or(0);
+        let mut shifted: BTreeMap<i64, Number> = BTreeMap::new();
+        for e in (0..=highest).rev() {
+            let mut new: BTreeMap<i64, Number> = BTreeMap::new();
+            for (j, c) in &shifted {
+                let up: Number = new.get(&(j + 1)).cloned().unwrap_or_default();
+                new.insert(j + 1, k.add(&up, c));
+                let same: Number = new.get(j).cloned().unwrap_or_default();
+                new.insert(*j, k.add(&same, &k.mul(c, a)));
+            }
+            if let Some(c_e) = coefficients.get(&e) {
+                let zero: Number = new.get(&0).cloned().unwrap_or_default();
+                new.insert(0, k.add(&zero, c_e));
+            }
+            shifted = new;
+        }
+        result.insert(i, shifted);
+    }
+    poly2_clean(result)
+}
+
+/// The power series root `Y(s)`, `Y(0) = 0`, of `P(s, Y)`, `Y = 0` a
+/// simple root of `P(0, Y)`, known below `s**order` (`_newton_root`).
+fn newton_root(p: &Curve, k: &AlgebraicField, order: i64) -> PolyResult<LaurentSeries> {
+    let dp: Curve = poly2_derivative(p, k);
+    let mut root: LaurentSeries = LaurentSeries::new(k.clone(), BTreeMap::new(), Some(1));
+    let mut precision: i64 = 1;
+    while precision < order {
+        precision = (2 * precision).min(order);
+        // the approximation taken as exact: the value of P at it is exact
+        let approximation: LaurentSeries = LaurentSeries::new(k.clone(), root.terms.clone(), None);
+        let value: LaurentSeries = poly2_evaluate(p, &approximation, k, Some(precision));
+        if value.is_zero() {
+            root = LaurentSeries::new(k.clone(), root.terms.clone(), Some(precision));
+            continue;
+        }
+        let derivative: LaurentSeries = poly2_evaluate(&dp, &approximation, k, Some(precision));
+        let correction: LaurentSeries = value.mul(&derivative.inverse(precision)?).truncated(precision);
+        root = approximation.sub(&correction).truncated(precision);
+    }
+    Ok(root.truncated(order))
+}
+
+/// A branch found by the recursion (`_Branch`).
+#[derive(Debug, Clone)]
+struct Branch {
+    q: i64,
+    scale: Number,
+    series: LaurentSeries,
+    field: AlgebraicField,
+    conjugates: usize,
+    embedding: Embedding,
+}
+
+/// The characteristic polynomial of the edge in `u = c^q`, highest degree
+/// first (`_characteristic`).
+fn characteristic(p: &Curve, edge: ((i64, i64), (i64, i64)), q: i64, k: &AlgebraicField) -> Vec<Number> {
+    let ((i0, v0), (i1, v1)) = edge;
+    let p_over_q: Rat = Rat::from_parts_signed(Int::from(v0 - v1), Int::from(i1 - i0));
+    let degree_u: i64 = (i1 - i0) / q;
+    let mut coefficients: Vec<Number> = vec![k.zero(); (degree_u + 1) as usize];
+    for i in i0..=i1 {
+        if (i - i0) % q != 0 {
+            continue;
+        }
+        let Some(a) = p.get(&i) else {
+            continue;
+        };
+        let Some((&v, c)) = a.iter().next() else {
+            continue;
+        };
+        if Rat::from(v) == Rat::from(v0) - &p_over_q * Rat::from(i - i0) {
+            coefficients[(degree_u - (i - i0) / q) as usize] = c.clone();
+        }
+    }
+    coefficients
+}
+
+fn floor_div(a: i64, b: i64) -> i64 {
+    let q: i64 = a / b;
+    if (a % b != 0) && ((a < 0) != (b < 0)) {
+        q - 1
+    } else {
+        q
+    }
+}
+
+/// `(l, m)` with `l*q - m*p == 1` (`q > 0`, `gcd(p, q) == 1`), `m = 0` for
+/// `q == 1` (`_bezout`).
+fn bezout(q: i64, p: i64) -> (i64, i64) {
+    if q == 1 {
+        return (1, 0);
+    }
+    let (mut old_r, mut r) = (q, p);
+    let (mut old_s, mut s) = (1i64, 0i64);
+    let (mut old_t, mut t) = (0i64, 1i64);
+    while r != 0 {
+        let quotient: i64 = floor_div(old_r, r);
+        (old_r, r) = (r, old_r - quotient * r);
+        (old_s, s) = (s, old_s - quotient * s);
+        (old_t, t) = (t, old_t - quotient * t);
+    }
+    let sign: i64 = if old_r == 1 { 1 } else { -1 };
+    (sign * old_s, -sign * old_t)
+}
+
+/// The key of the linear factor `z - r` in SymPy's order of the factors
+/// (`_factor_key`).
+fn factor_key(r: &Number, l: &AlgebraicField) -> Vec<Rat> {
+    if l.degree > 1 {
+        return l.neg(r);
+    }
+    let value: Rat = r.first().cloned().unwrap_or(Rat::ZERO);
+    vec![
+        Rat::from(Int::from(value.denominator().clone())),
+        Rat::from(-value.numerator().clone()),
+    ]
+}
+
+/// `(c, scale)` with `c^q = u scale^p`: a `q`-th root of `u` in `L` when
+/// there is one, else Duval's `c = u^l`, `lambda = u^m`
+/// (`_root_and_scale`).
+fn root_and_scale(u: &Number, q: i64, p: i64, l: &AlgebraicField) -> PolyResult<(Number, Number)> {
+    if q > 1 {
+        let mut binomial: Vec<Number> = vec![l.one()];
+        binomial.extend((0..q - 1).map(|_| l.zero()));
+        binomial.push(l.neg(u));
+        let mut roots: Vec<Number> = Vec::new();
+        for (factor, _) in factor_over(l, &binomial)? {
+            if factor.len() == 2 {
+                roots.push(l.neg(&l.quo(&factor[1], &factor[0])?));
+            }
+        }
+        if let Some(best) = roots.into_iter().min_by_key(|r| factor_key(r, l)) {
+            // the first linear factor in SymPy's order
+            return Ok((best, l.one()));
+        }
+    }
+    let (mut a, mut m) = bezout(q, p);
+    // the other solutions: (l + p t, m + q t)
+    while m < 0 {
+        a += p;
+        m += q;
+    }
+    while m >= q {
+        a -= p;
+        m -= q;
+    }
+    Ok((power(u, a, l)?, power(u, m, l)?))
+}
+
+fn ceil_rat(r: &Rat) -> i64 {
+    let floor: Int = (-r).floor();
+    i64::try_from(-floor).unwrap_or(i64::MAX)
+}
+
+/// The branches of `P(s, Y) = 0` through the vertex `(follow, 0)` (all the
+/// roots when `first`) (`_expand`).
+fn expand(
+    p_in: &Curve,
+    k: &AlgebraicField,
+    follow: i64,
+    first: bool,
+    order_x: &Rat,
+    ramification_so_far: i64,
+    offset: i64,
+) -> PolyResult<Vec<Branch>> {
+    let mut p: Curve = poly2_clean(p_in.clone());
+    let mut follow: i64 = follow;
+    let mut branches: Vec<Branch> = Vec::new();
+    if !first && !p.contains_key(&0) {
+        // Y = 0 is an exact root
+        branches.push(Branch {
+            q: 1,
+            scale: k.one(),
+            series: LaurentSeries::new(k.clone(), BTreeMap::new(), None),
+            field: k.clone(),
+            conjugates: 1,
+            embedding: Embedding::new(k.clone(), k.clone(), None)?,
+        });
+        p = p
+            .into_iter()
+            .filter(|(i, _)| *i >= 1)
+            .map(|(i, a)| (i - 1, a))
+            .collect();
+        follow -= 1;
+        if follow == 0 {
+            return Ok(branches);
+        }
+    }
+    let indices: Vec<i64> = p.keys().copied().filter(|i| first || *i <= follow).collect();
+    let points: Vec<(i64, i64)> = indices
+        .iter()
+        .map(|i| (*i, *p[i].keys().next().expect("a term")))
+        .collect();
+    let hull: Vec<(i64, i64)> = lower_hull(&points);
+    for pair in hull.windows(2) {
+        let ((i0, v0), (i1, v1)) = (pair[0], pair[1]);
+        let slope: Rat = Rat::from_parts_signed(Int::from(v0 - v1), Int::from(i1 - i0));
+        if !first && slope <= Rat::ZERO {
+            continue;
+        }
+        let pp: i64 = i64::try_from(slope.numerator()).expect("a small slope");
+        let q: i64 = i64::try_from(slope.denominator()).expect("a small slope");
+        let chi: Vec<Number> = characteristic(&p, ((i0, v0), (i1, v1)), q, k);
+        for (psi, multiplicity) in factor_over(k, &chi)? {
+            let (l, into, u) = adjoin_root(k, &psi)?;
+            let (c, scale) = root_and_scale(&u, q, pp, &l)?;
+            let p1: Curve = poly2_substitute(&poly2_convert(&p, &into), q, pp, &c, &scale, &l)?;
+            let nu: i64 = p1.values().flat_map(|a| a.keys().copied()).min().unwrap_or(0);
+            let p1: Curve = poly2_shift(&p1, nu);
+            let ramification: i64 = ramification_so_far * q;
+            let total_offset: i64 = offset * q + pp;
+            if multiplicity == 1 {
+                // at least the leading term, whatever the order asked
+                let needed: i64 = (ceil_rat(&(order_x * Rat::from(ramification))) - total_offset).max(1);
+                let root: LaurentSeries = newton_root(&p1, &l, needed)?;
+                let series: LaurentSeries = LaurentSeries::constant(&l, c.clone()).add(&root).shifted(pp);
+                branches.push(Branch {
+                    q,
+                    scale,
+                    series,
+                    field: l.clone(),
+                    conjugates: psi.len() - 1,
+                    embedding: into,
+                });
+            } else {
+                for sub in expand(&p1, &l, multiplicity as i64, false, order_x, ramification, total_offset)? {
+                    // Y = s^p (c + Y1), s = sub.scale u^sub.q
+                    let deeper: &Embedding = &sub.embedding;
+                    let series: LaurentSeries = LaurentSeries::constant(&sub.field, deeper.apply(&c))
+                        .add(&sub.series)
+                        .shifted(pp * sub.q);
+                    let total_scale: Number = sub.field.mul(&deeper.apply(&scale), &power(&sub.scale, q, &sub.field)?);
+                    branches.push(Branch {
+                        q: q * sub.q,
+                        scale: total_scale,
+                        series,
+                        field: sub.field.clone(),
+                        conjugates: (psi.len() - 1) * sub.conjugates,
+                        embedding: into.then(deeper)?,
+                    });
+                }
+            }
+        }
+    }
+    Ok(branches)
+}
+
+type SortKey = (i64, usize, Vec<(i64, Vec<Rat>)>);
+
+/// A deterministic order of the branches (`_sort_key`).
+fn sort_key(b: &PuiseuxExpansion) -> SortKey {
+    (
+        b.ramification,
+        b.conjugates,
+        b.series
+            .terms
+            .iter()
+            .map(|(e, c)| (*e, coefficient_list(c, &b.field)))
+            .collect(),
+    )
+}
+
+/// The expansions of `f(x, y) = 0` above the element `point` of `k`
+/// (`None` for infinity), `into` the embedding of the coefficient field of
+/// `f` into `k` (`expansions_in_field`).
+#[allow(clippy::too_many_arguments)]
+pub fn expansions_in_field(
+    f: &Curve,
+    x: &Basic,
+    y: &Basic,
+    k: &AlgebraicField,
+    into: &Embedding,
+    point: Option<&Number>,
+    order: i64,
+    point_expr: Option<&Basic>,
+) -> PolyResult<Vec<PuiseuxExpansion>> {
+    let n: i64 = f.keys().next_back().copied().unwrap_or(0);
+    let p: Curve = match point {
+        None => {
+            let d: i64 = f.values().flat_map(|a| a.keys().copied()).max().unwrap_or(0).max(0);
+            // t^d F(1/t, y)
+            let reversed: Curve = f
+                .iter()
+                .map(|(i, a)| (*i, a.iter().map(|(e, c)| (d - e, c.clone())).collect()))
+                .collect();
+            poly2_convert(&reversed, into)
+        }
+        Some(a) => poly2_translate(&poly2_convert(f, into), a, k),
+    };
+    let order_x: Rat = Rat::from(order);
+    let found: Vec<Branch> = expand(&p, k, n, true, &order_x, 1, 0)?;
+    let expression: Basic = match point {
+        None => Basic::oo(),
+        Some(a) => match point_expr {
+            Some(e) => e.clone(),
+            None => k.to_expr(a)?,
+        },
+    };
+    let mut result: Vec<PuiseuxExpansion> = Vec::new();
+    for branch in found {
+        let series: LaurentSeries = if branch.series.order.is_none() {
+            branch.series.truncated(ceil_rat(&(&order_x * Rat::from(branch.q))))
+        } else {
+            branch.series.clone()
+        };
+        let point_element: Option<Number> = point.map(|a| branch.embedding.apply(a));
+        result.push(PuiseuxExpansion {
+            point: expression.clone(),
+            point_element,
+            ramification: branch.q,
+            field: branch.field,
+            series,
+            conjugates: branch.conjugates,
+            x: x.clone(),
+            y: y.clone(),
+            scale: branch.scale,
+            embedding: branch.embedding,
+        });
+    }
+    result.sort_by_key(sort_key);
+    Ok(result)
+}
+
+/// The Puiseux expansions of the roots `y` of `f(x, y) = 0` above `x =
+/// point` (an algebraic number, or `oo`), one per conjugacy class, the
+/// coefficients of `(x - a)^(k/e)` known for `k/e < order`; the
+/// coefficients of `f` in `domain` (`puiseux_expansions`).
+pub fn puiseux_expansions(
+    f: &Basic,
+    x: &Basic,
+    y: &Basic,
+    point: &Basic,
+    order: i64,
+    domain: &AlgebraicField,
+) -> PolyResult<Vec<PuiseuxExpansion>> {
+    use crate::core::basic::Head;
+    let curve: Curve = curve_from_expr(f, x, y, domain)?;
+    let same: Embedding = Embedding::new(domain.clone(), domain.clone(), None)?;
+    if matches!(point.head(), Head::Infinity) {
+        return expansions_in_field(&curve, x, y, domain, &same, None, order, None);
+    }
+    if let (Head::Rational { .. }, Some(v)) = (point.head(), point.as_rational()) {
+        let element: Number = domain.from_rational(v);
+        return expansions_in_field(&curve, x, y, domain, &same, Some(&element), order, Some(point));
+    }
+    let (k_point, element) = field_of(point)?;
+    if k_point.degree == 1 {
+        let converted: Number = element
+            .first()
+            .map_or_else(|| domain.zero(), |v| domain.from_rational(v));
+        return expansions_in_field(&curve, x, y, domain, &same, Some(&converted), order, Some(point));
+    }
+    if domain.degree > 1 {
+        // the point adjoined to the field of the coefficients
+        let m: Vec<Rat> = minimal_polynomial_of(&element, &k_point);
+        let lifted: Vec<Number> = m.iter().map(|c| domain.from_rational(c)).collect();
+        let factor: Vec<Number> = factor_over(domain, &lifted)?
+            .into_iter()
+            .next()
+            .map(|(f, _)| f)
+            .unwrap_or_default();
+        let (k, into, a) = adjoin_root(domain, &factor)?;
+        return expansions_in_field(&curve, x, y, &k, &into, Some(&a), order, None);
+    }
+    let into: Embedding = Embedding::new(rationals(), k_point.clone(), None)?;
+    expansions_in_field(&curve, x, y, &k_point, &into, Some(&element), order, Some(point))
+}
+
+/// The expansions above `x = oo` (`branches_at_infinity`).
+pub fn branches_at_infinity(
+    f: &Basic,
+    x: &Basic,
+    y: &Basic,
+    order: i64,
+    domain: &AlgebraicField,
+) -> PolyResult<Vec<PuiseuxExpansion>> {
+    puiseux_expansions(f, x, y, &Basic::oo(), order, domain)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

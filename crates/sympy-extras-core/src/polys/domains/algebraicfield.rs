@@ -138,6 +138,69 @@ impl Domain for AlgebraicField {
         format!("QQ<{}>", self.alpha_expr)
     }
 
+    /// A core expression built from rationals and `alpha_expr` (and, when
+    /// `alpha_expr` is a radical `b**(1/n)`, the powers `b**(k/n)`) by
+    /// sums, products and integer powers (`from_expr`).
+    fn from_expr(&self, e: &Basic) -> PolyResult<AlgebraicElement> {
+        use crate::core::basic::Head;
+        let alpha: &Basic = &self.alpha_expr;
+        let mut radical: Option<(Basic, Int)> = None;
+        if alpha.is_pow() {
+            if let Some(r) = alpha.args()[1].as_rational() {
+                if r.numerator().is_one() && *r.denominator() > dashu_int::UBig::ONE {
+                    radical = Some((alpha.args()[0].clone(), Int::from(r.denominator().clone())));
+                }
+            }
+        }
+        if e == alpha {
+            return Ok(self.alpha());
+        }
+        if let (Head::Rational { .. }, Some(v)) = (e.head(), e.as_rational()) {
+            return Ok(self.from_rational(v));
+        }
+        if let Some((base, index)) = &radical {
+            if e.is_pow() && e.args()[0] == *base {
+                if let Some(r) = e.args()[1].as_rational() {
+                    if Int::from(r.denominator().clone()) == *index {
+                        let k: i64 = i64::try_from(r.numerator()).map_err(|_| value_error("too large".to_string()))?;
+                        return self.pow_signed(&self.alpha(), k);
+                    }
+                }
+            }
+        }
+        if e.is_add() {
+            let mut total: AlgebraicElement = self.zero();
+            for a in e.args() {
+                total = self.add(&total, &self.from_expr(a)?);
+            }
+            return Ok(total);
+        }
+        if e.is_mul() {
+            let mut product: AlgebraicElement = self.one();
+            for a in e.args() {
+                product = self.mul(&product, &self.from_expr(a)?);
+            }
+            return Ok(product);
+        }
+        if e.is_pow()
+            && matches!(
+                e.args()[1].head(),
+                Head::Rational {
+                    integer_class: true,
+                    ..
+                }
+            )
+        {
+            let base: AlgebraicElement = self.from_expr(&e.args()[0])?;
+            let n: i64 = e.args()[1]
+                .as_rational()
+                .and_then(|r| i64::try_from(r.numerator()).ok())
+                .ok_or_else(|| value_error("too large".to_string()))?;
+            return self.pow_signed(&base, n);
+        }
+        Err(value_error(format!("{} is not an element of {}", e, self.name())))
+    }
+
     /// The element as an expression in `alpha_expr` (`to_expr`).
     fn to_expr(&self, a: &AlgebraicElement) -> PolyResult<Basic> {
         use crate::core::add::add;
