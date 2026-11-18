@@ -2901,6 +2901,58 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "virtual_sub" => {
+            // op (linear, quadratic, nnf, with_sides, linear_qe, qe), formula, [x | Tuple of
+            // Tuple(exists/forall, variable)] -> formula, or Tuple(formula, Tuple(remaining prefix))
+            use sympy_extras_core::assumptions::quantifiers::QuantifierKind;
+            use sympy_extras_core::polys::virtual_substitution as vs;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let prefix_of = |b: &Basic| -> Vec<(QuantifierKind, Basic)> {
+                b.args()
+                    .iter()
+                    .map(|q| {
+                        let k = if q.args()[0].to_string() == "exists" {
+                            QuantifierKind::Exists
+                        } else {
+                            QuantifierKind::ForAll
+                        };
+                        (k, q.args()[1].clone())
+                    })
+                    .collect()
+            };
+            let shown = |p: &[(QuantifierKind, Basic)]| -> Basic {
+                tuple(
+                    p.iter()
+                        .map(|(k, v)| {
+                            let name = if *k == QuantifierKind::Exists {
+                                "exists"
+                            } else {
+                                "forall"
+                            };
+                            tuple(vec![
+                                sympy_extras_core::core::symbol::Symbol::new(name, &[]).0,
+                                v.clone(),
+                            ])
+                        })
+                        .collect(),
+                )
+            };
+            match a[0].to_string().as_str() {
+                "linear" => vs::eliminate_linear(&a[1], &a[2]).map_err(e)?,
+                "quadratic" => vs::eliminate_quadratic(&a[1], &a[2]).map_err(e)?,
+                "nnf" => vs::to_nnf(&a[1]),
+                "with_sides" => vs::with_sides(&a[1]).map_err(e)?,
+                "linear_qe" => {
+                    let (f, rest) = vs::linear_quantifier_elimination(&a[1], &prefix_of(&a[2])).map_err(e)?;
+                    tuple(vec![f, shown(&rest)])
+                }
+                "qe" => {
+                    let (f, rest) = vs::virtual_substitution_elimination(&a[1], &prefix_of(&a[2]), 12, 2).map_err(e)?;
+                    tuple(vec![f, shown(&rest)])
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "refine" => sympy_extras_core::core::refine::refine(&a[0], &a[1]).map_err(e)?,
         "satask" => sympy_extras_core::core::logic::boolean(
             sympy_extras_core::assumptions::satask::predicates_consistent(&a[0]).map_err(e)?,

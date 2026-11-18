@@ -48,4 +48,5 @@ pub mod rur;
 pub mod sqfreetools;
 pub mod stronggroebner;
 pub mod subresultants;
+pub mod virtual_substitution;
 pub mod zerodim;
