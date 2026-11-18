@@ -78,7 +78,7 @@ pub fn rational_power_is_kept(base: &Rat, exp: &Rat) -> bool {
     r.is_one() && t == *base.numerator() && g == numer(exp)
 }
 
-fn pow_node(base: Basic, exp: Basic) -> Basic {
+pub(crate) fn pow_node(base: Basic, exp: Basic) -> Basic {
     Basic::new(Head::Pow, vec![base, exp])
 }
 
@@ -592,6 +592,9 @@ fn power_of_product(base: &Basic, exp: &Basic) -> PolyResult<Option<Basic>> {
 pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
     if !evaluate() {
         return Ok(pow_node(base.clone(), exp.clone()));
+    }
+    if super::series::is_order(base) || super::series::is_order(exp) {
+        return super::order::order_power(base, exp);
     }
     if base.is_number_node() && exp.is_number_node() {
         return number_pow(base, exp);

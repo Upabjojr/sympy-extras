@@ -28,6 +28,18 @@ pub fn err(e: PolyError) -> PyErr {
         PolyError::Type(message) => pyo3::exceptions::PyTypeError::new_err(message),
         PolyError::Recursion(message) => pyo3::exceptions::PyRecursionError::new_err(message),
         PolyError::Index(message) => pyo3::exceptions::PyIndexError::new_err(message),
+        PolyError::Pole(message) => Python::with_gil(|py| {
+            match py
+                .import("sympy_extras.core.coreerrors")
+                .and_then(|m| m.getattr("PoleError"))
+            {
+                Ok(class) => match class.call1((message.clone(),)) {
+                    Ok(value) => PyErr::from_value(value),
+                    Err(e) => e,
+                },
+                Err(e) => e,
+            }
+        }),
     }
 }
 

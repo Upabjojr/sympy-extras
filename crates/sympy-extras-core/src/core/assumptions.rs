@@ -1283,7 +1283,7 @@ fn eval_facts(e: &Basic) -> FactList {
             }
             facts
         }
-        Head::Derivative | Head::Subs => {
+        Head::Derivative | Head::Subs | Head::Order => {
             let mut facts: FactList = FactList::new();
             if let Some(v) = facts_of(&e.args()[0]).get(&commutative) {
                 facts.set(commutative, *v);

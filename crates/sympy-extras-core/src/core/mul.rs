@@ -63,6 +63,9 @@ pub fn mul(args: &[Basic]) -> PolyResult<Basic> {
     if nonidentity.len() == 1 {
         return Ok(nonidentity[0].clone());
     }
+    if flattened(&factors).iter().any(super::series::is_order) {
+        return super::order::product_with_orders(&factors);
+    }
     if flattened(&factors).iter().any(super::accumbounds::is_bounds) {
         return super::accumbounds::product_with_bounds(&factors);
     }
@@ -511,6 +514,10 @@ pub fn neg_operator(a: &Basic) -> PolyResult<Basic> {
 pub fn neg(a: &Basic) -> PolyResult<Basic> {
     if a.is_number_node() {
         return mul(&[Basic::negative_one(), a.clone()]);
+    }
+    if super::series::is_order(a) {
+        // Order.__neg__
+        return Ok(a.clone());
     }
     if a.is_add() {
         // SymPy's Add.__neg__ distributes

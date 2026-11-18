@@ -128,6 +128,9 @@ pub enum Head {
     /// `RootSum(f, Lambda(var, body))`: the arguments `(f, Tuple(var), body,
     /// t)` (`polys/rootoftools.rs`).
     RootSum,
+    /// `O(expr, (x, point), ...)`: the arguments `(expr, Tuple(x, point),
+    /// ...)` (`core/order.rs`).
+    Order,
 }
 
 /// The relations of `core.relational`.
@@ -921,6 +924,7 @@ impl Head {
             Head::Subs => "Subs",
             Head::IndexedRoot => "IndexedRoot",
             Head::RootSum => "RootSum",
+            Head::Order => "Order",
             Head::BooleanTrue => "BooleanTrue",
             Head::BooleanFalse => "BooleanFalse",
             Head::And => "And",
@@ -1016,6 +1020,7 @@ impl Head {
                 | Head::Subs
                 | Head::IndexedRoot
                 | Head::RootSum
+                | Head::Order
                 | Head::And
                 | Head::Or
                 | Head::Not

@@ -67,6 +67,11 @@ fn subs_node_rec(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Basic> {
     if matches!(e.head(), Head::RootSum) {
         return crate::polys::rootoftools::subs(e, old, new);
     }
+    if matches!(e.head(), Head::Order) {
+        if let Some(r) = crate::core::order::subs(e, old, new)? {
+            return Ok(r);
+        }
+    }
     if matches!(e.head(), Head::IndexedRoot) {
         // the variable is bound: a substitution of it leaves the root alone
         let (f, t, k) = crate::polys::cad::indexedroot::parts(e);

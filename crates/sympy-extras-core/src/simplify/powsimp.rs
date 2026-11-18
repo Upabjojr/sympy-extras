@@ -28,7 +28,7 @@ pub enum Combine {
 /// The measure of the bases tried first (`count_ops` by default).
 pub type Measure<'a> = &'a dyn Fn(&Basic) -> PolyResult<i64>;
 
-fn count_ops(e: &Basic) -> PolyResult<i64> {
+pub(crate) fn count_ops(e: &Basic) -> PolyResult<i64> {
     crate::core::function::count_ops(e)
 }
 

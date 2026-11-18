@@ -28,6 +28,9 @@ pub enum PolyError {
     Recursion(String),
     /// `IndexError`: an index out of its range (the index of a root).
     Index(String),
+    /// `core.coreerrors.PoleError`: a series asked at a pole it cannot
+    /// handle.
+    Pole(String),
     /// One of the exceptions of `polys.polyerrors` (`PolynomialError`,
     /// `GeneratorsNeeded`, `CoercionFailed`, ...).
     Polys(PolysErrorKind, String),
@@ -84,6 +87,7 @@ impl fmt::Display for PolyError {
             PolyError::Type(message) => write!(f, "{}", message),
             PolyError::Recursion(message) => write!(f, "{}", message),
             PolyError::Index(message) => write!(f, "{}", message),
+            PolyError::Pole(message) => write!(f, "{}", message),
             PolyError::NotImplemented(message) => write!(f, "{}", message),
         }
     }
@@ -109,4 +113,9 @@ pub fn arithmetic_error(message: String) -> PolyError {
 /// `NotImplementedError(message)`: a part of the Python core not ported yet.
 pub fn not_ported(message: &str) -> PolyError {
     PolyError::NotImplemented(format!("not ported to the Rust core yet: {}", message))
+}
+
+/// A `PoleError`.
+pub fn pole_error(message: &str) -> PolyError {
+    PolyError::Pole(message.to_string())
 }

@@ -58,6 +58,16 @@ pub fn add(args: &[Basic]) -> PolyResult<Basic> {
             super::accumbounds::is_bounds(a)
         }
     };
+    let has_order = |a: &Basic| {
+        if a.is_add() {
+            a.args().iter().any(super::series::is_order)
+        } else {
+            super::series::is_order(a)
+        }
+    };
+    if stack.iter().any(has_order) {
+        return super::order::sum_with_orders(&stack);
+    }
     if stack.iter().any(has_bounds) {
         return super::accumbounds::sum_with_bounds(&stack);
     }

@@ -191,6 +191,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "RationalsClass" => Basic::atom(Head::Rationals),
         "ComplexesClass" => Basic::atom(Head::Complexes),
         "ImageSet" => Basic::new(Head::ImageSet, args()?),
+        "Order" => Basic::new(Head::Order, args()?),
         "RootSum" => {
             // RootSum(f, Lambda(var, body), t): the Lambda flattened
             let fun = ob.getattr("fun")?;
@@ -522,6 +523,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             py.import("sympy_extras.polys.rootoftools")?
                 .getattr("RootSum")?
                 .call1((to_python(py, f)?, lambda, to_python(py, t)?))?
+        }
+        Head::Order => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.core.order")?
+                .getattr("Order")?
+                .call1(PyTuple::new(py, items)?)?
         }
         Head::ImageSet => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
@@ -3031,6 +3038,64 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
                     }
                 }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
+        "series" => {
+            // op: order(e, Tuple(Tuple(x, p), ...)); contains(o, e) -> bool or the empty Tuple;
+            // leading(e, Tuple(symbols)); leadterm(e, x) -> Tuple(c, e); nseries(e, x, n);
+            // series(e, x, x0, n, Symbol(dir)); getn(e) -> n or the empty Tuple;
+            // extract(e, Tuple(symbols)) -> Tuple of Tuple(term, order); subs(e, old, new);
+            // add(Tuple(terms)), mul(Tuple(factors)), pow(b, e) evaluated; dir(e, x, cdir)
+            use sympy_extras_core::core::{order as od, series as sr};
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let small = |b: &Basic| -> PyResult<i64> {
+                b.to_string()
+                    .parse::<i64>()
+                    .map_err(|_| pyo3::exceptions::PyValueError::new_err("a small integer"))
+            };
+            match a[0].to_string().as_str() {
+                "order" => {
+                    let limits: Vec<(Basic, Basic)> = a[2]
+                        .args()
+                        .iter()
+                        .map(|t| (t.args()[0].clone(), t.args()[1].clone()))
+                        .collect();
+                    od::order(&a[1], &limits).map_err(e)?
+                }
+                "contains" => match od::contains(&a[1], &a[2]).map_err(e)? {
+                    Some(v) => sympy_extras_core::core::logic::boolean(v),
+                    None => tuple(vec![]),
+                },
+                "leading" => sr::as_leading_term(&a[1], a[2].args(), None, &Basic::zero()).map_err(e)?,
+                "leadterm" => {
+                    let (c, ex) = sr::leadterm(&a[1], &a[2], None, &Basic::zero()).map_err(e)?;
+                    tuple(vec![c, ex])
+                }
+                "nseries" => sr::nseries(&a[1], &a[2], small(&a[3])?, None, &Basic::zero()).map_err(e)?,
+                "series" => sr::series(
+                    &a[1],
+                    Some(&a[2]),
+                    &a[3],
+                    small(&a[4])?,
+                    &a[5].to_string(),
+                    None,
+                    &Basic::zero(),
+                )
+                .map_err(e)?,
+                "getn" => od::getn(&a[1]).map_err(e)?.unwrap_or_else(|| tuple(vec![])),
+                "extract" => tuple(
+                    od::extract_leading_order(&a[1], a[2].args(), None)
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|(t, o)| tuple(vec![t, o]))
+                        .collect(),
+                ),
+                "subs" => sympy_extras_core::core::subs::subs(&a[1], &a[2], &a[3]).map_err(e)?,
+                "add" => sympy_extras_core::core::add::add(a[1].args()).map_err(e)?,
+                "mul" => sympy_extras_core::core::mul::mul(a[1].args()).map_err(e)?,
+                "pow" => sympy_extras_core::core::power::pow(&a[1], &a[2]).map_err(e)?,
+                "dir" => sr::dir(&a[1], &a[2], &a[3]).map_err(e)?,
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }

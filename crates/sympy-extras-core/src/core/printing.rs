@@ -304,7 +304,16 @@ pub fn ordered_terms(terms: &[Basic]) -> Vec<Basic> {
             .then(a.2.cmp(&b.2))
             .then(a.3.cmp(&b.3))
     });
-    keyed.into_iter().map(|(_, t)| t).collect()
+    let (mut plain, orders): (Vec<Basic>, Vec<Basic>) = keyed
+        .into_iter()
+        .map(|(_, t)| t)
+        .partition(|t| !matches!(t.head(), Head::Order));
+    if !orders.is_empty() {
+        // a series is printed in increasing order: x - x**3/6 + O(x**5)
+        plain.reverse();
+    }
+    plain.extend(orders);
+    plain
 }
 
 /// The printer of [`sstr`].
@@ -413,6 +422,7 @@ impl StrPrinter {
                 format!("IndexedRoot({}, {}, {})", self.doprint(&f), self.doprint(&t), k)
             }
             Head::RootSum => crate::polys::rootoftools::print(e, &|a: &Basic| self.doprint(a)),
+            Head::Order => crate::core::order::print(e, &|a: &Basic| self.doprint(a)),
             Head::Subs => {
                 let (expr, variables, point) = (&e.args()[0], e.args()[1].args(), e.args()[2].args());
                 if variables.len() == 1 {
