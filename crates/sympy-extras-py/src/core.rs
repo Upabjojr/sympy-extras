@@ -2836,6 +2836,51 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "hermite_form" => {
+            // op (a symbol), Tuple(polys), Tuple(gens), extra... ; decide: the formula as the
+            // extra argument, None as an empty Tuple
+            use sympy_extras_core::polys::hermite as hm;
+            use sympy_extras_core::polys::ideals::PolyLike;
+            let op: String = a[0].to_string();
+            let (polys, gens) = (a[1].args(), a[2].args());
+            let system = hm::System::Polys(polys, gens);
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let rational = |r: &sympy_extras_core::numbers::Rat| Basic::from_rational(r.clone());
+            match op.as_str() {
+                "count_real" => Basic::int(hm::count_real_solutions(&system).map_err(e)?),
+                "count_complex" => Basic::int(hm::count_complex_solutions(&system).map_err(e)?),
+                "tarski" => Basic::int(hm::tarski_query(&system, Some(&PolyLike::Expr(&a[3]))).map_err(e)?),
+                "sign_counts" => {
+                    let c = hm::real_sign_counts(&system, &PolyLike::Expr(&a[3])).map_err(e)?;
+                    tuple(vec![Basic::int(c.zero), Basic::int(c.positive), Basic::int(c.negative)])
+                }
+                "sign_determination" => {
+                    let likes: Vec<PolyLike<_>> = a[3].args().iter().map(PolyLike::Expr).collect();
+                    let counts = hm::sign_determination(&system, &likes).map_err(e)?;
+                    tuple(
+                        counts
+                            .into_iter()
+                            .map(|(s, c)| {
+                                tuple(vec![
+                                    tuple(s.into_iter().map(|v| Basic::int(v as i64)).collect()),
+                                    Basic::int(c),
+                                ])
+                            })
+                            .collect(),
+                    )
+                }
+                "matrix" => {
+                    let g = a.get(3).map(PolyLike::Expr);
+                    let rows = hm::hermite_matrix(&system, g.as_ref()).map_err(e)?;
+                    tuple(rows.iter().map(|r| tuple(r.iter().map(rational).collect())).collect())
+                }
+                "decide" => match hm::decide_zero_dimensional(&a[3], gens, 64).map_err(e)? {
+                    Some(v) => sympy_extras_core::core::logic::boolean(v),
+                    None => tuple(Vec::new()),
+                },
+                _ => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", op))),
+            }
+        }
         "ideal" => {
             // op (a symbol), Tuple(gens), Tuple(symbols), order (a symbol), modulus (0 for QQ),
             // extra arguments... -> the result of ideal_operation

@@ -21,6 +21,7 @@ pub mod galoisfactor;
 pub mod galoistools;
 pub mod gaussianfactor;
 pub mod groebnerwalk;
+pub mod hermite;
 pub mod heuristicgcd;
 pub mod hilbert;
 pub mod idealdecomposition;
