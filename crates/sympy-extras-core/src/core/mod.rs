@@ -55,6 +55,7 @@ pub mod refine;
 pub mod relational;
 pub mod rewriting;
 pub mod series;
+pub mod series_trig;
 pub mod sorting;
 pub mod subs;
 pub mod symbol;

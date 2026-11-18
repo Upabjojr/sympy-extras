@@ -13,7 +13,8 @@ import pytest
 from sympy_extras.core import Integer, Rational, Symbol, Tuple, oo
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.order import Order, order
-from sympy_extras.functions import exp, log, sqrt
+from sympy_extras.core import pi
+from sympy_extras.functions import cos, cosh, cot, coth, csc, csch, exp, log, sec, sech, sin, sinh, sqrt, tan, tanh
 
 from ..conftest import load
 
@@ -49,6 +50,12 @@ EXPRESSIONS: list[Basic] = [
     x**3*exp(x), log(1 + x)**2, exp(x)**2, 1/(1 + exp(x)), log(exp(x) + 1), (x + 2)**-2, x/(1 - x - x**2),
     exp(-x)*(1 + x), log((1 + x)/(1 - x)), y*exp(y*x), (1 + 2*x)**Rational(3, 2), 1/sqrt(1 - x), x**y,
     exp(x*y) - exp(x), log(x + x**2), x**2*log(x)**2, 1/log(1 + x), sqrt(xp + xp**3),
+    # the trigonometric and hyperbolic functions
+    sin(x), cos(x), tan(x), cot(x), sec(x), csc(x), sinh(x), cosh(x), tanh(x), coth(x), sech(x), csch(x),
+    sin(x)/x, (1 - cos(x))/x**2, tan(x) - x, x/sin(x), sin(2*x + 1), cos(pi/2 + x), tan(pi/2 + x), cot(pi + x),
+    sec(pi/2 + x), csc(pi + x), sin(1/x), cos(1/x), tan(1/x), sin(x)**2 + cos(x)**2, exp(sin(x)), log(cos(x)),
+    sinh(x)/x, cosh(x) - 1, tanh(2*x), coth(x) - 1/x, sech(x**2), csch(x)*x, sin(x)*sinh(x), cos(x + y),
+    tan(x)**2, sin(sin(x)), cos(x)**Rational(1, 2), 1/(1 - cos(x)), sinh(1/x), tanh(1/x),
 ]
 
 

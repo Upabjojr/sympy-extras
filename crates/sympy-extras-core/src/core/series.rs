@@ -583,7 +583,7 @@ fn class_name(e: &Basic) -> String {
     e.class_name().to_string()
 }
 
-fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) -> R {
+pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) -> R {
     match e.head() {
         Head::Add => add_leading_term(e, x, logx, cdir),
         Head::Mul => {
@@ -598,6 +598,7 @@ fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic
         Head::Order => Ok(e.clone()),
         Head::Function(Function::Exp) => exp_leading_term(e, x, logx, cdir),
         Head::Function(Function::Log) => log_leading_term(e, x, logx, cdir),
+        Head::Function(f) if super::series_trig::is_trig(*f) => super::series_trig::leading_term(e, *f, x, logx, cdir),
         Head::Function(_) => {
             let name: String = class_name(e);
             if OWN_LEADING_TERM.contains(&name.as_str()) {
@@ -917,6 +918,7 @@ pub fn eval_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &B
         Head::Order => Ok(e.clone()),
         Head::Function(Function::Exp) => exp_nseries(e, x, n, logx, cdir),
         Head::Function(Function::Log) => log_nseries(e, x, n, logx, cdir),
+        Head::Function(f) if super::series_trig::is_trig(*f) => super::series_trig::nseries(e, *f, x, n, logx, cdir),
         Head::Function(_) => {
             let name: String = class_name(e);
             if OWN_NSERIES.contains(&name.as_str()) {
@@ -1061,7 +1063,7 @@ fn generic_function_nseries(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) 
 
 /// `Application._eval_nseries` (`one_argument`: whether `nargs` is `{1}`,
 /// `None` for any number of arguments).
-fn application_nseries(
+pub(crate) fn application_nseries(
     f: &Basic,
     x: &Basic,
     n: i64,
@@ -1122,6 +1124,7 @@ pub fn taylor_term(f: &Basic, n: i64, a: &Basic, previous: Option<&Basic>) -> R 
                 pow(&int(n + 1), &Basic::negative_one())?,
             ])
         }
+        Head::Function(g) if super::series_trig::is_trig(*g) => super::series_trig::taylor_term(*g, n, a),
         Head::Function(_) if OWN_NSERIES.contains(&class_name(f).as_str()) => {
             Err(not_ported(&format!("the Taylor terms of {}", f.class_name())))
         }
@@ -1157,7 +1160,9 @@ fn coeff_exp_in(term: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
 /// The coefficient and exponent of a term `c*x**e` by its factors (the
 /// `coeff_exp` of `Pow._eval_nseries` and `log._eval_nseries`).
 fn coeff_exp_by_factors(term: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
-    let mut coeff: Vec<Basic> = Vec::new();
+    // the coefficient multiplied factor by factor, as Python does (a -1
+    // meeting a sum distributes over it)
+    let mut coeff: Basic = Basic::one();
     let mut exponent: Basic = Basic::zero();
     for factor in factors_of(term) {
         if factor.has(x) {
@@ -1171,10 +1176,10 @@ fn coeff_exp_by_factors(term: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
                 };
             }
         } else {
-            coeff.push(factor);
+            coeff = mul(&[coeff, factor])?;
         }
     }
-    Ok((mul(&coeff)?, exponent))
+    Ok((coeff, exponent))
 }
 
 fn mul_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic) -> R {
