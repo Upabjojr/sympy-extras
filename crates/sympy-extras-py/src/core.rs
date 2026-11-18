@@ -2836,6 +2836,25 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 None => Basic::zero(),
             }
         }
+        "ideal" => {
+            // op (a symbol), Tuple(gens), Tuple(symbols), order (a symbol), modulus (0 for QQ),
+            // extra arguments... -> the result of ideal_operation
+            use sympy_extras_core::polys::ideals::ideal_operation;
+            use sympy_extras_core::polys::rings::MonomialOrder;
+            let op: String = a[0].to_string();
+            let order: MonomialOrder = MonomialOrder::named(&a[3].to_string()).map_err(e)?;
+            let modulus: u64 = a[4]
+                .to_string()
+                .parse()
+                .map_err(|_| pyo3::exceptions::PyValueError::new_err("a modulus"))?;
+            let (gens, symbols, extra) = (a[1].args(), a[2].args(), &a[5..]);
+            if modulus == 0 {
+                ideal_operation(&op, gens, symbols, sympy_extras_core::polys::domains::QQ, order, extra).map_err(e)?
+            } else {
+                let k = sympy_extras_core::polys::domains::GF(modulus).map_err(e)?;
+                ideal_operation(&op, gens, symbols, k, order, extra).map_err(e)?
+            }
+        }
         "thue" | "thue_units" | "thue_norm" | "thue_short" => {
             // thue: F, m, x, y -> Tuple of (x, y); thue_units: Tuple(g) -> Tuple(Tuple(units),
             // Tuple(torsion)); thue_norm: Tuple(g), norm, Tuple(units) -> Tuple(elements);
