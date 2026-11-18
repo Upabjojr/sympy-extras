@@ -42,6 +42,7 @@ pub mod random;
 pub mod sets;
 pub mod simplify;
 pub mod solvers;
+pub mod steps;
 
 /// Version of the crate, kept equal to `sympy_extras.__version__`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
