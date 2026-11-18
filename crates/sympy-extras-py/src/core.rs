@@ -2901,6 +2901,25 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "collect" => {
+            // op (collect, collect_dict, rcollect), e, Tuple(syms), exact (true, false or the symbol None)
+            use sympy_extras_core::simplify::radsimp as rs;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let exact = match a.get(3).map(|b| b.head()) {
+                Some(Head::BooleanTrue) => Some(true),
+                Some(Head::BooleanFalse) => Some(false),
+                _ => None,
+            };
+            match a[0].to_string().as_str() {
+                "collect" => rs::collect(&a[1], a[2].args(), None, exact).map_err(e)?,
+                "collect_dict" => {
+                    let d = rs::collect_dict(&a[1], a[2].args(), None, exact).map_err(e)?;
+                    tuple(d.into_iter().map(|(k, v)| tuple(vec![k, v])).collect())
+                }
+                "rcollect" => rs::rcollect(&a[1], a[2].args()).map_err(e)?,
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "rc_solutions" => {
             // Tuple(polys), Tuple(variables), real -> Tuple of points, a point a Tuple of Tuple(v, value)
             let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);

@@ -97,7 +97,7 @@ fn integer_of(e: &Basic) -> Option<Int> {
 }
 
 /// `as_coeff_Mul(rational)` as the Python core has it.
-fn as_coeff_mul(e: &Basic, rational: bool) -> PolyResult<(Basic, Basic)> {
+pub(crate) fn as_coeff_mul(e: &Basic, rational: bool) -> PolyResult<(Basic, Basic)> {
     if !rational {
         return Ok(crate::core::expr::as_coeff_mul(e));
     }

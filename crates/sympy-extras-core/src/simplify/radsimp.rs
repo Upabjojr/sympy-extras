@@ -5,6 +5,8 @@
 //! port tries the rational of its continued fraction and proves it with
 //! `equals` (the core has no `Float`).
 
+#![allow(clippy::mutable_key_type, clippy::needless_range_loop)]
+
 use crate::core::assumptions::Predicate;
 use crate::core::basic::{Basic, Function, Head};
 use crate::core::expr::{
@@ -603,4 +605,494 @@ pub fn radsimp(e: &Basic, symbolic: bool, max_terms: usize) -> PolyResult<Basic>
         }
     }
     add(&[coeff, unevaluated_mul(&[n, inverse(&d)?])?])
+}
+
+// -- collect
+
+/// A function applied to the collected coefficients.
+pub type Transform<'a> = &'a dyn Fn(&Basic) -> PolyResult<Basic>;
+
+type Deriv = Option<(Basic, Basic)>;
+/// `(expr, rational exponent, symbolic exponent, derivative)`.
+type ParsedTerm = (Basic, Basic, Option<Basic>, Deriv);
+
+fn plain_mul(args: Vec<Basic>) -> Basic {
+    crate::core::mul::raw_mul(args)
+}
+
+fn is_derivative(e: &Basic) -> bool {
+    matches!(e.head(), Head::Derivative)
+}
+
+/// The variables of a derivative, repeated by their counts.
+fn derivative_variables(d: &Basic) -> Vec<Basic> {
+    let mut result: Vec<Basic> = Vec::new();
+    for count in &d.args()[1..] {
+        let n: usize = count.args()[1]
+            .as_rational()
+            .and_then(|v| usize::try_from(&numer(v)).ok())
+            .unwrap_or(1);
+        result.extend(std::iter::repeat(count.args()[0].clone()).take(n));
+    }
+    result
+}
+
+fn parse_derivative(d: &Basic) -> PolyResult<(Basic, (Basic, Basic))> {
+    let variables: Vec<Basic> = derivative_variables(d);
+    let (mut e, sym) = (d.args()[0].clone(), variables[0].clone());
+    let mut order: usize = 1;
+    for s in &variables[1..] {
+        if *s == sym {
+            order += 1;
+        } else {
+            return Err(crate::error::not_ported("Improve MV Derivative support in collect"));
+        }
+    }
+    while is_derivative(&e) {
+        let inner: Vec<Basic> = derivative_variables(&e);
+        let s0: Basic = inner[0].clone();
+        if inner.iter().any(|s| *s != s0) {
+            return Err(crate::error::not_ported("Improve MV Derivative support in collect"));
+        }
+        if s0 == sym {
+            order += inner.len();
+            e = e.args()[0].clone();
+        } else {
+            break;
+        }
+    }
+    Ok((e, (sym, Basic::int(order as i64))))
+}
+
+fn parse_term(e: &Basic) -> PolyResult<ParsedTerm> {
+    use super::powsimp::as_coeff_mul;
+    use crate::functions::elementary::exponential::exp;
+    let mut rat_expo: Basic = Basic::one();
+    let mut sym_expo: Option<Basic> = None;
+    let mut sexpr: Basic = e.clone();
+    let mut deriv: Deriv = None;
+    if e.is_pow() {
+        let (base, ex) = (&e.args()[0], &e.args()[1]);
+        if is_derivative(base) {
+            let (s, d) = parse_derivative(base)?;
+            sexpr = s;
+            deriv = Some(d);
+        } else {
+            sexpr = base.clone();
+        }
+        if matches!(base.head(), Head::Exp1) {
+            if ex.is_rational_class() {
+                sexpr = Basic::e();
+                rat_expo = ex.clone();
+            } else if ex.is_mul() {
+                let (coeff, tail) = as_coeff_mul(ex, true)?;
+                sexpr = exp(&tail)?;
+                rat_expo = coeff;
+            }
+        } else if ex.is_number_class() {
+            rat_expo = ex.clone();
+        } else {
+            let (coeff, tail) = as_coeff_mul(ex, false)?;
+            if coeff.is_number_class() {
+                rat_expo = coeff;
+                sym_expo = Some(tail);
+            } else {
+                sym_expo = Some(ex.clone());
+            }
+        }
+    } else if e.is_function(Function::Exp) {
+        let arg: &Basic = &e.args()[0];
+        if arg.is_rational_class() {
+            sexpr = Basic::e();
+            rat_expo = arg.clone();
+        } else if arg.is_mul() {
+            let (coeff, tail) = as_coeff_mul(arg, true)?;
+            sexpr = exp(&tail)?;
+            rat_expo = coeff;
+        }
+    } else if is_derivative(e) {
+        let (s, d) = parse_derivative(e)?;
+        sexpr = s;
+        deriv = Some(d);
+    }
+    Ok((sexpr, rat_expo, sym_expo, deriv))
+}
+
+fn make_expression(terms: &[ParsedTerm]) -> PolyResult<Basic> {
+    let mut product: Vec<Basic> = Vec::new();
+    for (term, rat, sym, deriv) in terms {
+        let mut term: Basic = term.clone();
+        if let Some((var, order)) = deriv {
+            let Some(n) = order.as_rational().filter(|_| is_integer_class(order)).map(numer) else {
+                return Err(crate::error::PolyError::Type("an integer is expected".to_string()));
+            };
+            let n: usize = usize::try_from(&n).unwrap_or(0);
+            for _ in 0..n {
+                term = crate::core::function::derivative_node(&term, &[(var.clone(), 1)]);
+            }
+        }
+        match sym {
+            None => product.push(if is_one(rat) { term } else { pow(&term, rat)? }),
+            Some(s) => product.push(pow(&term, &mul(&[rat.clone(), s.clone()])?)?),
+        }
+    }
+    mul(&product)
+}
+
+fn matches_pattern(e: &Basic, pattern: &Basic) -> PolyResult<bool> {
+    Ok(crate::core::matching::match_pattern(e, pattern, &[], false)?.is_some())
+}
+
+type Parsed = (Vec<ParsedTerm>, Vec<ParsedTerm>, Option<Basic>, bool);
+
+fn parse_expression(terms: &[Option<ParsedTerm>], pattern: &Basic, exact: bool) -> PolyResult<Option<Parsed>> {
+    let pattern_args: Vec<Basic> = factors_of(pattern);
+    if terms.iter().filter(|t| t.is_some()).count() < pattern_args.len() {
+        return Ok(None);
+    }
+    let parsed_pattern: Vec<ParsedTerm> = pattern_args.iter().map(parse_term).collect::<PolyResult<_>>()?;
+    let mut pending: Vec<Option<ParsedTerm>> = terms.to_vec();
+    let mut elems: Vec<ParsedTerm> = Vec::new();
+    let mut common_expo: Option<Basic> = None;
+    let mut has_deriv: bool = false;
+    for (elem, e_rat, e_sym, e_ord) in &parsed_pattern {
+        if elem.is_number_class() && is_one(e_rat) && e_sym.is_none() {
+            continue;
+        }
+        let mut matched: bool = false;
+        for j in 0..pending.len() {
+            let Some(current) = pending[j].clone() else { continue };
+            let (term, t_rat, t_sym, t_ord) = &current;
+            if t_ord.is_some() {
+                has_deriv = true;
+            }
+            let symbols_match: bool = match (t_sym, e_sym) {
+                (None, None) => true,
+                (Some(a), Some(b)) => a == b || matches_pattern(a, b)?,
+                _ => false,
+            };
+            if matches_pattern(term, elem)? && symbols_match {
+                if !exact {
+                    let expo: Basic = mul(&[t_rat.clone(), inverse(e_rat)?])?;
+                    common_expo = match common_expo {
+                        None => Some(expo),
+                        Some(c) if c != expo => Some(Basic::one()),
+                        Some(c) => Some(c),
+                    };
+                } else if e_rat != t_rat || e_ord != t_ord {
+                    continue;
+                }
+                elems.push(current);
+                pending[j] = None;
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            return Ok(None);
+        }
+    }
+    Ok(Some((
+        pending.into_iter().flatten().collect(),
+        elems,
+        common_expo,
+        has_deriv,
+    )))
+}
+
+fn expand_power_base(e: &Basic) -> PolyResult<Basic> {
+    let hints = crate::core::function::Hints {
+        mul: false,
+        multinomial: false,
+        power_base: true,
+        power_exp: false,
+        log: false,
+        force: false,
+        complex: false,
+        trig: false,
+        func: false,
+    };
+    crate::core::function::expand_with(e, false, hints)
+}
+
+/// `has_free`: a pattern whose symbols are free in `e` and whose
+/// substitution changes `e`.
+fn has_free(e: &Basic, patterns: &[Basic]) -> PolyResult<bool> {
+    let free = e.free_symbols();
+    for pattern in patterns {
+        let symbols = pattern.free_symbols();
+        if !symbols.is_empty() && !symbols.iter().all(|s| free.contains(s)) {
+            continue;
+        }
+        let dummy: Basic = crate::core::symbol::Dummy::new("free", &[]).0;
+        if crate::core::subs::subs(e, pattern, &dummy)? != *e {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// The result of `collect`: an expression, or the coefficients by power.
+pub enum Collected {
+    Expr(Basic),
+    Dict(Vec<(Basic, Basic)>),
+}
+
+fn terms_of_sum(e: &Basic) -> Vec<Basic> {
+    if e.is_add() {
+        e.args().to_vec()
+    } else {
+        vec![e.clone()]
+    }
+}
+
+fn collected_expr(e: &Basic, syms: &[Basic], func: Option<Transform>, exact: Option<bool>) -> PolyResult<Basic> {
+    match collect_inner(e, syms, func, true, exact)? {
+        Collected::Expr(b) => Ok(b),
+        Collected::Dict(_) => Err(crate::error::PolyError::Type("an expression is expected".to_string())),
+    }
+}
+
+fn collect_inner(
+    e: &Basic,
+    syms: &[Basic],
+    func: Option<Transform>,
+    evaluate: bool,
+    exact: Option<bool>,
+) -> PolyResult<Collected> {
+    let simple = |x: &Basic| -> PolyResult<bool> {
+        Ok(x.is_symbol()
+            || crate::core::mul::neg(x)?.is_symbol()
+            || x.preorder().iter().any(|n| matches!(n.head(), Head::Wild(_))))
+    };
+    let mut nonsyms: Vec<Basic> = Vec::new();
+    for s in syms {
+        if !simple(s)? {
+            nonsyms.push(s.clone());
+        }
+    }
+    if !nonsyms.is_empty() {
+        let reps: Vec<(Basic, Basic)> = nonsyms
+            .iter()
+            .map(|s| (s.clone(), crate::core::symbol::Dummy::new("Dummy", &[]).0))
+            .collect();
+        let replaced: Vec<Basic> = syms
+            .iter()
+            .map(|s| {
+                reps.iter()
+                    .find(|(k, _)| k == s)
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_else(|| s.clone())
+            })
+            .collect();
+        let rv: Collected = collect_inner(
+            &crate::core::subs::subs_mapping(e, &reps)?,
+            &replaced,
+            func,
+            evaluate,
+            exact,
+        )?;
+        let urep: std::collections::HashMap<Basic, Basic> = reps.iter().map(|(k, v)| (v.clone(), k.clone())).collect();
+        let back = |b: &Basic| crate::core::function::xreplace_evaluated(b, &urep);
+        return Ok(match rv {
+            Collected::Expr(b) => Collected::Expr(back(&b)?),
+            Collected::Dict(d) => Collected::Dict(
+                d.iter()
+                    .map(|(k, v)| Ok((back(urep.get(k).unwrap_or(k))?, back(v)?)))
+                    .collect::<PolyResult<_>>()?,
+            ),
+        });
+    }
+    let mut syms: Vec<Basic> = syms.to_vec();
+    let mut e: Basic = e.clone();
+    if exact.is_none() {
+        let mut found: Vec<Basic> = Vec::new();
+        for i in terms_of_sum(&e) {
+            if is_non_expr(&i) || !has_free(&i, &syms)? || syms.contains(&i) {
+                continue;
+            }
+            if !i.is_mul() && !syms.contains(&i) {
+                if !found.contains(&i) {
+                    found.push(i);
+                }
+            } else {
+                let mut dependent: Vec<Basic> = Vec::new();
+                for f in factors_of(&i) {
+                    if has_free(&f, &syms)? {
+                        dependent.push(f);
+                    }
+                }
+                let g: Basic = plain_mul(dependent);
+                if !syms.contains(&g) && !found.contains(&g) {
+                    found.push(g);
+                }
+            }
+        }
+        let is_simple: bool = found.iter().all(|i| i.is_pow() && syms.contains(&i.args()[0]));
+        syms.extend(crate::core::sorting::ordered(found));
+        if !is_simple {
+            return collect_inner(&e, &syms, func, evaluate, Some(false));
+        }
+    }
+    if evaluate {
+        if e.is_add() {
+            let parts: Vec<Basic> = e
+                .args()
+                .iter()
+                .map(|a| collected_expr(a, &syms, func, exact))
+                .collect::<PolyResult<_>>()?;
+            e = add(&[add(&parts)?, Basic::zero()])?;
+        } else if e.is_mul() {
+            let parts: Vec<Basic> = e
+                .args()
+                .iter()
+                .map(|t| collected_expr(t, &syms, func, exact))
+                .collect::<PolyResult<_>>()?;
+            return Ok(Collected::Expr(mul(&parts)?));
+        } else if e.is_pow() {
+            return Ok(Collected::Expr(pow(
+                &collected_expr(&e.args()[0], &syms, func, exact)?,
+                &e.args()[1],
+            )?));
+        }
+    }
+    let syms: Vec<Basic> = syms.iter().map(expand_power_base).collect::<PolyResult<_>>()?;
+    let summa: Vec<Basic> = terms_of_sum(&e)
+        .iter()
+        .filter(|i| !is_non_expr(i))
+        .map(expand_power_base)
+        .collect::<PolyResult<_>>()?;
+    let mut collected: Vec<(Basic, Vec<Basic>)> = Vec::new();
+    let mut disliked: Basic = Basic::zero();
+    for product in summa {
+        let parts: Vec<Basic> = factors_of(&product);
+        let c: Vec<Basic> = parts
+            .iter()
+            .filter(|f| !is_false(f, Predicate::commutative))
+            .cloned()
+            .collect();
+        let nc: Vec<Basic> = parts
+            .iter()
+            .filter(|f| is_false(f, Predicate::commutative))
+            .cloned()
+            .collect();
+        let mut args: Vec<Basic> = crate::core::sorting::ordered(c);
+        args.extend(nc);
+        let mut terms: Vec<Option<ParsedTerm>> = args
+            .iter()
+            .map(|i| parse_term(i).map(Some))
+            .collect::<PolyResult<_>>()?;
+        let mut small_first: bool = true;
+        let mut placed: bool = false;
+        for symbol in &syms {
+            if is_derivative(symbol) && small_first {
+                terms.reverse();
+                small_first = !small_first;
+            }
+            let Some((rest_terms, elems, _, has_deriv)) = parse_expression(&terms, symbol, exact.unwrap_or(false))?
+            else {
+                continue;
+            };
+            if is_false(symbol, Predicate::commutative) {
+                return Err(crate::error::PolyError::Type(
+                    "Can not collect noncommutative symbol".to_string(),
+                ));
+            }
+            let index: Basic = if !has_deriv {
+                let mut margs: Vec<Basic> = Vec::new();
+                for elem in &elems {
+                    let expo: Basic = match &elem.2 {
+                        None => elem.1.clone(),
+                        Some(s) => mul(&[elem.1.clone(), s.clone()])?,
+                    };
+                    margs.push(pow(&elem.0, &expo)?);
+                }
+                mul(&margs)?
+            } else {
+                make_expression(&elems)?
+            };
+            let remaining: Basic = expand_power_base(&make_expression(&rest_terms)?)?;
+            let index: Basic = expand_power_base(&index)?;
+            match collected.iter().position(|(k, _)| *k == index) {
+                Some(p) => collected[p].1.push(remaining),
+                None => collected.push((index, vec![remaining])),
+            }
+            placed = true;
+            break;
+        }
+        if !placed {
+            disliked = add(&[disliked, product])?;
+        }
+    }
+    let mut result: Vec<(Basic, Basic)> = collected
+        .into_iter()
+        .map(|(k, v)| Ok((k, add(&v)?)))
+        .collect::<PolyResult<_>>()?;
+    if !(is_integer_class(&disliked) && is_rational_value(&disliked, 0)) {
+        match result.iter().position(|(k, _)| *k == Basic::one()) {
+            Some(p) => result[p].1 = disliked,
+            None => result.push((Basic::one(), disliked)),
+        }
+    }
+    if let Some(f) = func {
+        result = result
+            .into_iter()
+            .map(|(k, v)| Ok((k, f(&v)?)))
+            .collect::<PolyResult<_>>()?;
+    }
+    if evaluate {
+        let terms: Vec<Basic> = result
+            .iter()
+            .map(|(k, v)| mul(&[k.clone(), v.clone()]))
+            .collect::<PolyResult<_>>()?;
+        return Ok(Collected::Expr(add(&terms)?));
+    }
+    Ok(Collected::Dict(result))
+}
+
+fn is_non_expr(e: &Basic) -> bool {
+    matches!(e.head(), Head::Tuple) || crate::core::logic::is_boolean(e)
+}
+
+/// The terms of a sum grouped by the powers of `syms` (`collect`); the
+/// order term of the Python is absent (the core has no `Order`).
+pub fn collect(e: &Basic, syms: &[Basic], func: Option<Transform>, exact: Option<bool>) -> PolyResult<Basic> {
+    collected_expr(e, syms, func, exact)
+}
+
+/// SymPy's `collect(..., evaluate=False)`: the coefficients of the powers
+/// of `syms`, the key `1` for the rest (`collect_dict`).
+pub fn collect_dict(
+    e: &Basic,
+    syms: &[Basic],
+    func: Option<Transform>,
+    exact: Option<bool>,
+) -> PolyResult<Vec<(Basic, Basic)>> {
+    match collect_inner(e, syms, func, false, exact)? {
+        Collected::Dict(d) => Ok(d),
+        Collected::Expr(_) => Err(crate::error::PolyError::Type("a dictionary is expected".to_string())),
+    }
+}
+
+/// `collect` applied to every sum of the tree, bottom up (`rcollect`).
+pub fn rcollect(e: &Basic, vars: &[Basic]) -> PolyResult<Basic> {
+    if e.args().is_empty() || !vars.iter().any(|v| e.has(v)) {
+        return Ok(e.clone());
+    }
+    let args: Vec<Basic> = e
+        .args()
+        .iter()
+        .map(|a| {
+            if is_non_expr(a) {
+                Ok(a.clone())
+            } else {
+                rcollect(a, vars)
+            }
+        })
+        .collect::<PolyResult<_>>()?;
+    let rebuilt: Basic = crate::core::function::rebuild_evaluated(e, args)?;
+    if rebuilt.is_add() {
+        return collect(&rebuilt, vars, None, Some(false));
+    }
+    Ok(rebuilt)
 }
