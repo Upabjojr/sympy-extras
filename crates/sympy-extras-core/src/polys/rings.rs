@@ -704,7 +704,10 @@ mod tests {
             MonomialOrder::elimination(1, 3, MonomialOrder::Grevlex),
             MonomialOrder::Block(vec![(MonomialOrder::Grevlex, 1), (MonomialOrder::Grevlex, 2)])
         );
-        assert_eq!(MonomialOrder::elimination(0, 3, MonomialOrder::Grevlex), MonomialOrder::Grevlex);
+        assert_eq!(
+            MonomialOrder::elimination(0, 3, MonomialOrder::Grevlex),
+            MonomialOrder::Grevlex
+        );
         assert_eq!(MonomialOrder::elimination(3, 3, MonomialOrder::Lex), MonomialOrder::Lex);
         assert!(MonomialOrder::weight(vec![int(-1)], MonomialOrder::Lex).is_err());
     }
