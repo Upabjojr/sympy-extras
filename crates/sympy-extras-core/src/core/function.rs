@@ -253,8 +253,7 @@ pub fn replace_where(
     Ok(node)
 }
 
-/// The hints of an expansion (`expand`'s keywords; `func` is not
-/// ported).
+/// The hints of an expansion (`expand`'s keywords).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hints {
     pub mul: bool,
@@ -268,6 +267,8 @@ pub struct Hints {
     /// The trigonometric and hyperbolic functions expanded (SymPy's
     /// `trig`).
     pub trig: bool,
+    /// The special functions expanded by their rules (SymPy's `func`).
+    pub func: bool,
 }
 
 impl Hints {
@@ -281,6 +282,7 @@ impl Hints {
         force: false,
         complex: false,
         trig: false,
+        func: false,
     };
     const NONE: Hints = Hints {
         mul: false,
@@ -291,6 +293,7 @@ impl Hints {
         force: false,
         complex: false,
         trig: false,
+        func: false,
     };
 }
 
@@ -682,6 +685,14 @@ pub fn expand_with(e: &Basic, deep: bool, hints: Hints) -> PolyResult<Basic> {
             },
         )?;
         hints.complex = false;
+    }
+    if hints.func {
+        // after complex, before log, multinomial, mul, the power hints, trig
+        e = crate::functions::expand_func::expand_func(&e, deep)?;
+        hints.func = false;
+        if !(hints.mul || hints.multinomial || hints.power_exp || hints.log || hints.trig || hints.complex) {
+            return Ok(e);
+        }
     }
     if hints.trig {
         // SymPy's sorted hints: trig after log, multinomial, mul and the
