@@ -2475,6 +2475,28 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => return Err(wrong()),
             }
         }
+        "polynomial_abstraction" => {
+            use sympy_extras_core::assumptions::bounds as bd;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            if a.len() != 3 || !matches!(a[1].head(), Head::Tuple) {
+                return Err(pyo3::exceptions::PyTypeError::new_err("wrong arguments"));
+            }
+            let max: usize = a[2]
+                .as_rational()
+                .and_then(|v| usize::try_from(v.numerator()).ok())
+                .ok_or_else(|| pyo3::exceptions::PyTypeError::new_err("max_variables"))?;
+            match bd::polynomial_abstraction(&a[0], a[1].args(), max).map_err(e)? {
+                None => tuple(Vec::new()),
+                // the variables first: the bridge creates the Python dummies in
+                // the order it meets them, which keeps their relative order
+                Some(ab) => tuple(vec![
+                    tuple(ab.variables),
+                    ab.formula,
+                    tuple(ab.constraints),
+                    tuple(ab.requirements),
+                ]),
+            }
+        }
         "forall" | "exists" | "prenex" => {
             use sympy_extras_core::assumptions::quantifiers as qf;
             let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
