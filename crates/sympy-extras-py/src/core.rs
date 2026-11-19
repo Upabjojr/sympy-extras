@@ -3355,6 +3355,14 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "assume_ask" => {
+            // query, Tuple(assumptions), domain or NONE -> true / false / NONE
+            let domain: Option<&Basic> = if a[2].to_string() == "NONE" { None } else { Some(&a[2]) };
+            match sympy_extras_core::assumptions::ask::ask(&a[0], a[1].args(), domain).map_err(e)? {
+                Some(v) => sympy_extras_core::core::logic::boolean(v),
+                None => sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0,
+            }
+        }
         "isolation" => {
             // op: isolate(f, x, domain, depth) -> Tuple of roots or NONE; refined(root, steps);
             // approximation(root, prec) -> Rational; compare(u, v) -> sign or NONE; between(p, q)

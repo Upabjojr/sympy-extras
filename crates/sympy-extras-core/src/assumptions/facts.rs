@@ -226,7 +226,7 @@ fn is_expr(e: &Basic) -> bool {
 }
 
 /// The predicate of `Q` equivalent to an atom (`_predicate_of_atom`).
-fn predicate_of_atom(atom: &Basic) -> PolyResult<Option<Basic>> {
+pub(crate) fn predicate_of_atom(atom: &Basic) -> PolyResult<Option<Basic>> {
     if matches!(atom.head(), Head::AppliedPredicate) {
         return Ok(Some(atom.clone()));
     }
