@@ -3635,6 +3635,34 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     sympy_extras_core::solvers::elimination::implicitize(a[1].args(), a[2].args(), a[3].args())
                         .map_err(e)?,
                 ),
+                "fourier_coefficients" => {
+                    let n_: Option<Basic> = if a.len() > 4 && a[4].to_string() != "NONE" {
+                        Some(a[4].clone())
+                    } else {
+                        None
+                    };
+                    let c = sympy_extras_core::series::fouriercoefficients::fourier_coefficients(
+                        &a[1],
+                        &a[2],
+                        (&a[3].args()[0], &a[3].args()[1]),
+                        n_.as_ref(),
+                    )
+                    .map_err(e)?;
+                    tuple(vec![c.a0, c.an, c.bn, c.n, c.omega])
+                }
+                "fourier_partial_sum" => {
+                    let order: i64 = a[4]
+                        .to_string()
+                        .parse::<i64>()
+                        .map_err(|_| pyo3::exceptions::PyValueError::new_err("an order"))?;
+                    sympy_extras_core::series::fouriercoefficients::fourier_partial_sum(
+                        &a[1],
+                        &a[2],
+                        (&a[3].args()[0], &a[3].args()[1]),
+                        order,
+                    )
+                    .map_err(e)?
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),

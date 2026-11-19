@@ -1,6 +1,7 @@
-"""The Rust ports of ``matrices/calculus.py`` and ``vector/orthogonal.py``
-against the Python ones on the calls of their tests (the default
-simplifier only; read with the core's parser)."""
+"""The Rust ports of ``matrices/calculus.py``, ``vector/orthogonal.py``,
+``solvers/elimination.py`` and ``series/fouriercoefficients.py`` against
+the Python ones on the calls of their tests (the default simplifier only;
+read with the core's parser)."""
 from __future__ import annotations
 
 import ast
@@ -12,6 +13,7 @@ from sympy_extras.core import Eq, Integer, Symbol, Tuple
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.parsing import parse
 import sympy_extras.matrices.calculus as MC
+import sympy_extras.series.fouriercoefficients as FC
 import sympy_extras.solvers.elimination as EL
 from sympy_extras.matrices.dense import ExprMatrix
 from sympy_extras.vector.orthogonal import OrthogonalCoordinates
@@ -74,6 +76,11 @@ def python(name: str, args: list[object]) -> object:
         assert isinstance(rest[0], list)
         system = OrthogonalCoordinates(coordinates, rest[0])
         return getattr(system, method)(*rest[1:])
+    if hasattr(FC, name):
+        found = getattr(FC, name)(*args)
+        if isinstance(found, FC.FourierCoefficients):
+            return [found.a0, found.an, found.bn, found.n, found.omega]
+        return found
     return getattr(EL if hasattr(EL, name) else MC, name)(*args)
 
 
@@ -203,6 +210,16 @@ CASES: list[tuple[str, list[object]]] = [
     ('eliminate', [{'seq': ['-I*t + x']}, {'seq': ['t']}]),
     ('implicitize', [{'seq': ['t', 't**2']}, {'seq': ['t']}, {'seq': ['x']}]),
     ('implicitize', [{'seq': ['t', 't**2']}, {'seq': ['t']}, {'seq': ['t', 'y']}]),
+    ('fourier_coefficients', ['x', 'x', {'seq': ['-pi', 'pi']}, 'n']),
+    ('fourier_coefficients', ['x**2', 'x', {'seq': ['-pi', 'pi']}, 'n']),
+    ('fourier_partial_sum', ['x**2', 'x', {'seq': ['-pi', 'pi']}, {'int': 2}]),
+    ('fourier_coefficients', ['x**3 - x', 'x', {'seq': ['-1', '1']}, 'None']),
+    ('fourier_coefficients', ['x**2 + 1', 'x', {'seq': ['0', '3']}, 'None']),
+    ('fourier_coefficients', ['x*(pi - x)', 'x', {'seq': ['0', 'pi']}, 'None']),
+    ('fourier_coefficients', ['x', 'x', {'seq': ['-pi', 'pi']}, 'None']),
+    ('fourier_coefficients', ['x', 'x', {'seq': [{'int': 1}, {'int': 0}]}, 'None']),
+    ('fourier_coefficients', ['x', 'x', {'seq': [{'int': 0}, {'int': 1}]}, 'm']),
+    ('fourier_coefficients', ['sin(x**2)', 'x', {'seq': [{'int': 0}, {'int': 1}]}, 'None']),
 ]
 
 

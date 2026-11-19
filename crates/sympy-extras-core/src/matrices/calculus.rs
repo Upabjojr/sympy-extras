@@ -2,7 +2,7 @@
 //! the (bordered) Hessian, the Wronskian, and the classification of a
 //! critical point by the inertia of the Hessian.
 
-#![allow(clippy::mutable_key_type)]
+#![allow(clippy::mutable_key_type, clippy::needless_range_loop)]
 
 use std::collections::HashMap;
 
