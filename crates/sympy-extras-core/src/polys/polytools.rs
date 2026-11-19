@@ -3051,10 +3051,24 @@ fn symbolic_factor_list(expr: &Basic, gens: &[Basic], method: FactorMethod) -> P
                 continue;
             }
             Err(PolyError::Polys(PolysErrorKind::CoercionFailed, message)) => {
-                if !gens.is_empty() || method != FactorMethod::Factor {
+                if method != FactorMethod::Factor {
                     return Err(polys_error(PolysErrorKind::CoercionFailed, message));
                 }
-                return Err(crate::error::not_ported("the factorisation over ZZ_I, QQ_I or RR"));
+                // Gaussian coefficients: SymPy's factorisation over ZZ_I and
+                // QQ_I through QQ<I> (the real and infinite domains wait)
+                match gaussian_factor_list(&base) {
+                    Ok((c, gaussian)) => (
+                        c,
+                        gaussian
+                            .into_iter()
+                            .map(|(g, k)| (FactorBase::Expr(g), Basic::int(k as i64)))
+                            .collect(),
+                    ),
+                    Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => {
+                        return Err(crate::error::not_ported("the factorisation over RR or EX"));
+                    }
+                    Err(e) => return Err(e),
+                }
             }
             Err(e) => return Err(e),
             Ok(p) => {
@@ -3366,4 +3380,147 @@ fn gaussian_expr_of(f: &GaussianTerms, gens: &[Basic]) -> PolyResult<Basic> {
         parts.push(core_mul(&factors)?);
     }
     core_add(&parts)
+}
+
+// -- the factorisation over ZZ_I and QQ_I
+
+fn zz_i_of(c: &GaussianRational) -> PolyResult<GaussianInteger> {
+    use crate::polys::domains::domain::ConvertFrom;
+    ZZ_I.convert(c, &QQ_I)
+}
+
+fn qq_i_of(c: &GaussianInteger) -> PolyResult<GaussianRational> {
+    use crate::polys::domains::domain::ConvertFrom;
+    QQ_I.convert(c, &ZZ_I)
+}
+
+/// The factorisation of a polynomial with Gaussian coefficients over
+/// `ZZ_I` (or `QQ_I`): over `QQ<I>` by Trager's algorithm, the contents of
+/// the factors made Gaussian integers as SymPy does; several generators
+/// through [`super::gaussianfactor`] (`_gaussian_factor_list`).
+#[allow(clippy::type_complexity)]
+pub fn gaussian_factor_list(base: &Basic) -> PolyResult<(Basic, Vec<(Basic, usize)>)> {
+    let (gens, reps) = joint_rings_gaussian(std::slice::from_ref(base), true)?;
+    if gens.is_empty() {
+        return Err(polys_error(PolysErrorKind::CoercionFailed, "no generator".to_string()));
+    }
+    let rep: &GaussianTerms = &reps[0];
+    let integral: bool = rep.values().all(|c| denom(&c.x) == Int::ONE && denom(&c.y) == Int::ONE);
+    if gens.len() > 1 {
+        let ring = PolyRing::new(QQ_I, internal_names(gens.len(), 0), MonomialOrder::Lex)?;
+        let (coefficient, multivariate) =
+            super::gaussianfactor::gaussian_factor_list(&ring.from_dict(rep.clone()), integral)?;
+        let mut factors: Vec<(Basic, usize)> = Vec::new();
+        for (g, k) in multivariate {
+            factors.push((gaussian_expr_of(&g.terms, &gens)?, k));
+        }
+        return Ok((QQ_I.to_expr(&coefficient)?, factors));
+    }
+    let degree: u32 = rep.keys().map(|m| m[0]).max().unwrap_or(0);
+    let mut dense: Vec<GaussianRational> = (0..=degree)
+        .map(|i| rep.get(&vec![degree - i]).cloned().unwrap_or_else(|| QQ_I.zero()))
+        .collect();
+    // dup_terms_gcd
+    let mut j: usize = 0;
+    while dense.last().is_some_and(|c| c.is_zero()) {
+        dense.pop();
+        j += 1;
+    }
+    // dup_primitive (the content over ZZ_I, 1 over the field QQ_I)
+    let mut cont: GaussianRational = QQ_I.one();
+    if integral {
+        let mut content: GaussianInteger = ZZ_I.zero();
+        for c in &dense {
+            content = ZZ_I.gcd(&content, &zz_i_of(c)?);
+            if content == ZZ_I.one() {
+                break;
+            }
+        }
+        cont = qq_i_of(&content)?;
+        dense = dense.iter().map(|c| QQ_I.exquo(c, &cont)).collect::<PolyResult<_>>()?;
+    }
+    // dup_qq_i_factor: the factorisation over QQ<I>
+    let k1 = super::domains::algebraicfield::AlgebraicField::new(
+        vec![Rat::ONE, Rat::ZERO, Rat::ONE],
+        Basic::imaginary_unit(),
+    )?;
+    let ext: Vec<_> = dense
+        .iter()
+        .map(|c| k1.from_expr(&QQ_I.to_expr(c)?))
+        .collect::<PolyResult<_>>()?;
+    let (lc, ext_factors) = super::factortools::dup_ext_factor(&ext, &k1)?;
+    let mut coeff: GaussianRational = QQ_I.from_expr(&k1.to_expr(&lc)?)?;
+    let mut found: Vec<(Vec<GaussianRational>, usize)> = Vec::new();
+    for (fac, k) in ext_factors {
+        let cs: Vec<GaussianRational> = fac
+            .iter()
+            .map(|c| QQ_I.from_expr(&k1.to_expr(c)?))
+            .collect::<PolyResult<_>>()?;
+        found.push((cs, k));
+    }
+    if integral {
+        // dup_zz_i_factor: the denominators and the contents of the factors
+        // over ZZ_I moved into the coefficient
+        let mut new_found: Vec<(Vec<GaussianRational>, usize)> = Vec::new();
+        for (fac, k) in found {
+            let mut fac_denom: GaussianInteger = ZZ_I.one();
+            for c in &fac {
+                fac_denom = ZZ_I.lcm(&fac_denom, &ZZ_I.denom_of(c));
+            }
+            let d: GaussianRational = qq_i_of(&fac_denom)?;
+            let numerators: Vec<GaussianInteger> = fac
+                .iter()
+                .map(|c| zz_i_of(&QQ_I.mul(c, &d)))
+                .collect::<PolyResult<_>>()?;
+            let mut content: GaussianInteger = ZZ_I.zero();
+            for nc in &numerators {
+                content = ZZ_I.gcd(&content, nc);
+                if content == ZZ_I.one() {
+                    break;
+                }
+            }
+            let primitive: Vec<GaussianRational> = numerators
+                .iter()
+                .map(|nc| qq_i_of(&ZZ_I.exquo(nc, &content)?))
+                .collect::<PolyResult<_>>()?;
+            let content_q: GaussianRational = qq_i_of(&content)?;
+            coeff = QQ_I.exquo(
+                &QQ_I.mul(&coeff, &QQ_I.pow(&content_q, k as u64)),
+                &QQ_I.pow(&d, k as u64),
+            )?;
+            new_found.push((primitive, k));
+        }
+        found = new_found;
+    }
+    if j > 0 {
+        found.insert(0, (vec![QQ_I.one(), QQ_I.zero()], j));
+    }
+    // _sort_factors (multiple): by length, multiplicity, coefficients (the
+    // imaginary parts first)
+    found.sort_by(|a, b| {
+        let key = |item: &(Vec<GaussianRational>, usize)| -> (usize, usize, Vec<(Rat, Rat)>) {
+            (
+                item.0.len(),
+                item.1,
+                item.0.iter().map(|c| (c.y.clone(), c.x.clone())).collect(),
+            )
+        };
+        key(a).cmp(&key(b))
+    });
+    let x: &Basic = &gens[0];
+    let mut factors: Vec<(Basic, usize)> = Vec::new();
+    for (fac, k) in found {
+        let n: usize = fac.len() - 1;
+        let mut terms: Vec<Basic> = Vec::new();
+        for (i, c) in fac.iter().enumerate() {
+            if !c.is_zero() {
+                terms.push(core_mul(&[
+                    QQ_I.to_expr(c)?,
+                    core_pow(x, &Basic::int((n - i) as i64))?,
+                ])?);
+            }
+        }
+        factors.push((core_add(&terms)?, k));
+    }
+    Ok((QQ_I.to_expr(&QQ_I.mul(&coeff, &cont))?, factors))
 }
