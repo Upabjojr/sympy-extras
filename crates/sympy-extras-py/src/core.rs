@@ -3372,6 +3372,38 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             )
             .map_err(e)?
         }
+        "linalg" => {
+            // op, matrices as Tuple(rows, cols, Tuple(entries)); results the same
+            use sympy_extras_core::matrices::dense::ExprMatrix;
+            use sympy_extras_core::matrices::linalg as la;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let m = |b: &Basic| ExprMatrix::from_tuple(b).map_err(e);
+            let list = |v: Vec<ExprMatrix>| tuple(v.iter().map(|x| x.as_tuple()).collect());
+            match a[0].to_string().as_str() {
+                "normal" => la::normal(&a[1]).map_err(e)?,
+                "det" => la::det(&m(&a[1])?).map_err(e)?,
+                "charpoly_coefficients" => tuple(la::charpoly_coefficients(&m(&a[1])?).map_err(e)?),
+                "charpoly" => la::charpoly(&m(&a[1])?, &a[2]).map_err(e)?,
+                "adjugate" => la::adjugate(&m(&a[1])?).map_err(e)?.as_tuple(),
+                "inverse" => la::inverse(&m(&a[1])?).map_err(e)?.as_tuple(),
+                "rank" => Basic::int(la::rank(&m(&a[1])?).map_err(e)? as i64),
+                "rref" => {
+                    let (r, p) = la::rref(&m(&a[1])?).map_err(e)?;
+                    tuple(vec![
+                        r.as_tuple(),
+                        tuple(p.iter().map(|k| Basic::int(*k as i64)).collect()),
+                    ])
+                }
+                "nullspace" => list(la::nullspace(&m(&a[1])?).map_err(e)?),
+                "linear_solve" => match la::linear_solve(&m(&a[1])?, &m(&a[2])?).map_err(e)? {
+                    Some(s) => tuple(vec![s.particular.as_tuple(), list(s.nullspace)]),
+                    None => none(),
+                },
+                "pseudoinverse" => la::pseudoinverse(&m(&a[1])?).map_err(e)?.as_tuple(),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "dirichlet" => {
             match sympy_extras_core::integrals::dirichlet::dirichlet_integral(&a[0], &a[1], &a[2], &a[3], a[4].args())
                 .map_err(e)?
