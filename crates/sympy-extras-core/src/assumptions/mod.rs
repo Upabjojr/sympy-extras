@@ -13,3 +13,4 @@ pub mod refine;
 pub mod resolve;
 pub mod sat;
 pub mod satask;
+pub mod solve;

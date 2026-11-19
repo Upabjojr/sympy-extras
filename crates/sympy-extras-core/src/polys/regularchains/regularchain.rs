@@ -317,6 +317,54 @@ impl RegularChain {
         self.symbols.len() - self.chain.height
     }
 
+    /// The saturated ideal `(T) : h^oo`, `h` the product of the initials
+    /// (`saturated_ideal`).
+    pub fn saturated_ideal(&self) -> PolyResult<crate::polys::ideals::Ideal<crate::polys::domains::RationalField>> {
+        use crate::polys::ideals::{Ideal, IdealOrPoly, PolyLike};
+        let polys: Vec<Basic> = self.polys()?;
+        let gens: Vec<Basic> = if polys.is_empty() {
+            vec![Basic::zero()]
+        } else {
+            polys.clone()
+        };
+        let ideal = Ideal::new(&gens, &self.symbols, crate::polys::domains::QQ, MonomialOrder::Grevlex)?;
+        if polys.is_empty() {
+            return Ok(ideal);
+        }
+        let product: Basic = crate::core::mul::mul(&self.initials()?)?;
+        ideal.saturate(&IdealOrPoly::Poly(PolyLike::Expr(&product)))
+    }
+
+    /// The generator of the saturated ideal in `v` alone (`_univariate`).
+    pub fn univariate(&self, v: &Basic) -> PolyResult<Basic> {
+        let rep: Vec<Rat> = self.saturated_ideal()?.univariate(v)?;
+        let d: usize = rep.len().saturating_sub(1);
+        let mut terms: Vec<Basic> = Vec::new();
+        for (k, c) in rep.iter().enumerate() {
+            terms.push(crate::core::mul::mul(&[
+                Basic::from_rational(c.clone()),
+                crate::core::power::pow(v, &Basic::int((d - k) as i64))?,
+            ])?);
+        }
+        crate::core::add::add(&terms)
+    }
+
+    /// The points of a chain without free variables, exactly
+    /// (`solutions`): see `solutions::exact_solutions`.
+    pub fn solutions(&self, real: bool) -> PolyResult<Vec<super::solutions::Point>> {
+        if self.dimension() > 0 {
+            return Err(value_error(format!(
+                "the chain has the free variables {:?}: its solutions are not isolated",
+                self.free_variables()
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<String>>()
+            )));
+        }
+        let fallback = |v: &Basic| self.univariate(v);
+        super::solutions::exact_solutions(&self.polys()?, &self.main_variables(), real, Some(&fallback))
+    }
+
     /// The product of the degrees in the main variables.
     pub fn degree(&self) -> i64 {
         self.chain

@@ -105,6 +105,12 @@ fn integer_of(b: &Basic) -> Option<Int> {
 
 /// `A`, `b` with the equations `A x = b`, `None` when the system is not of
 /// this kind (`_linear_system`).
+/// `_linear_system`: the matrix and the right side of linear equations
+/// with integer coefficients, `None` otherwise.
+pub fn linear_system_pub(equations: &[Basic], symbols: &[Basic]) -> PolyResult<Option<(IntMatrix, IntVector)>> {
+    linear_system(equations, symbols)
+}
+
 fn linear_system(equations: &[Basic], symbols: &[Basic]) -> PolyResult<Option<(IntMatrix, IntVector)>> {
     if symbols.is_empty() {
         return Err(value_error("no unknown to solve for".to_string()));

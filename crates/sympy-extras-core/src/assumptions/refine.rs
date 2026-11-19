@@ -234,6 +234,16 @@ impl Refiner {
         Ok(found)
     }
 
+    /// A dummy carrying the properties of `f` which follow from the facts
+    /// (`dummy_for`).
+    pub(crate) fn dummy_for(&self, f: &Basic) -> PolyResult<Option<Basic>> {
+        let props: Properties = self.properties(f)?;
+        if props.is_empty() {
+            return Ok(None);
+        }
+        Ok(self.dummy(f, &props))
+    }
+
     fn dummy(&self, f: &Basic, props: &Properties) -> Option<Basic> {
         if let Some((_, d)) = self.dummies.borrow().iter().find(|(g, _)| g == f) {
             return Some(d.clone());

@@ -3355,6 +3355,23 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "assume_solve" => {
+            // Tuple(items), Tuple(symbols) | NONE, Tuple(assumptions), domain | NONE, cases
+            let symbols: Option<&[Basic]> = if a[1].to_string() == "NONE" {
+                None
+            } else {
+                Some(a[1].args())
+            };
+            let domain: Option<&Basic> = if a[3].to_string() == "NONE" { None } else { Some(&a[3]) };
+            sympy_extras_core::assumptions::solve::solve(
+                a[0].args(),
+                symbols,
+                a[2].args(),
+                domain,
+                a[4].to_string() == "True",
+            )
+            .map_err(e)?
+        }
         "exponential" => {
             // route, f, x, Tuple(assumptions) -> F or NONE
             use sympy_extras_core::integrals::exponential as ex;

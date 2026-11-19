@@ -904,12 +904,12 @@ fn linear_pair(equations: &[Basic], p: &Basic, q: &Basic) -> PolyResult<Option<(
     for i in 0..rows.len() {
         let (a1, b1, c1) = rows[i].clone();
         for (a2_, b2_, c2_) in &rows[i + 1..] {
-            let determinant: Basic = cancel(&s2(&m2(&a1, &b2_)?, &m2(&a2_, &b1)?)?)?;
+            let determinant: Basic = cancel(&s2(&m2(&a1, b2_)?, &m2(a2_, &b1)?)?)?;
             if determinant == int(0) {
                 continue;
             }
-            let pv: Basic = cancel(&d2(&s2(&m2(&b1, &c2_)?, &m2(&b2_, &c1)?)?, &determinant)?)?;
-            let qv: Basic = cancel(&d2(&s2(&m2(&a2_, &c1)?, &m2(&a1, &c2_)?)?, &determinant)?)?;
+            let pv: Basic = cancel(&d2(&s2(&m2(&b1, c2_)?, &m2(b2_, &c1)?)?, &determinant)?)?;
+            let qv: Basic = cancel(&d2(&s2(&m2(a2_, &c1)?, &m2(&a1, c2_)?)?, &determinant)?)?;
             for (a, b, c) in &rows {
                 if cancel(&a2(&a2(&m2(a, &pv)?, &m2(b, &qv)?)?, c)?)? != int(0) {
                     return Ok(None);
