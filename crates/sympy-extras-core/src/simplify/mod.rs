@@ -2,6 +2,7 @@
 
 pub mod fu;
 pub mod gammasimp;
+pub mod normalform;
 pub mod powsimp;
 pub mod radsimp;
 pub mod ratsimp;

@@ -85,6 +85,7 @@ degrees and indices are `usize` (the characteristic of a domain is an `Int`), da
 | `polys/numberfields/recognize.py` | done | |
 | `polys/zerodim.py` | done | the pivot of `univariate_in_ideal` is the largest monomial (the dependence does not depend on it); over the `QQ` rings of the bindings |
 | `polys/algebraicfactor.py` | done | `AlgebraicPolynomialRing` its own `Domain` (no order, monic gcd, recursive multivariate gcd); `PolyRing` over an `AlgebraicField` in the bindings (`RingKind::Algebraic`) |
+| `simplify/normalform.py` | `normal_form` (`simplify/normalform.rs`) | A normal form for radicals, `I`, trigonometric and hyperbolic functions and exponentials of rational multiples: the algebraic relations as divisors, a quotient of polynomials reduced modulo them, the smaller of the forms with the cosines or the sines first |
 | `simplify/signsimp.py` | done | `signsimp`, `sub_pre`, `sub_post`; `replace_where` (`replace` with a predicate) and `xreplace_evaluated` in `core/function.rs` |
 | `simplify/ratsimp.py` | done | `ratsimp` (cancel, lex division of the numerator by the denominator, the remainder cancelled); the SymPy fallback (`ZZ_I`, `RR`, `EX`) `NotImplemented` |
 | `polys/partfrac.py` | done | `apart` by undetermined coefficients; `full` (`RootSum`), non-commutative and multivariate decompositions `NotImplemented` as in the Python |

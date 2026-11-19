@@ -49,7 +49,7 @@ pub(crate) fn integer_exponent(e: &Basic) -> Option<Int> {
     }
 }
 
-fn collect_kernels(e: &Basic, found: &mut Vec<Basic>) {
+pub(crate) fn collect_kernels(e: &Basic, found: &mut Vec<Basic>) {
     if e.is_rational_class() {
         return;
     }
@@ -83,59 +83,11 @@ pub(crate) trait Lift {
 
     /// `e` as a fraction `(n, d)` over the domain (`fraction`).
     #[allow(clippy::type_complexity)]
-    fn fraction(&self, e: &Basic) -> PolyResult<(<Self::K as Domain>::Elem, <Self::K as Domain>::Elem)> {
-        let k: &Self::K = self.domain();
-        if let Some(r) = e.as_rational() {
-            return Ok((k.from_integer(&numer(r)), k.from_integer(&denom(r))));
-        }
-        if e.is_add() {
-            let (mut n, mut d) = (k.zero(), k.one());
-            for a in e.args() {
-                let (p, q) = self.fraction(a)?;
-                if q == d {
-                    n = k.add(&n, &p);
-                } else if k.is_one(&q) {
-                    n = k.add(&n, &k.mul(&p, &d));
-                } else if k.is_one(&d) {
-                    n = k.add(&k.mul(&n, &q), &p);
-                    d = q;
-                } else {
-                    let common = k.gcd(&d, &q);
-                    if k.is_one(&common) {
-                        n = k.add(&k.mul(&n, &q), &k.mul(&p, &d));
-                        d = k.mul(&d, &q);
-                    } else {
-                        let cofactor = k.exquo(&q, &common)?;
-                        n = k.add(&k.mul(&n, &cofactor), &k.mul(&p, &k.exquo(&d, &common)?));
-                        d = k.mul(&d, &cofactor);
-                    }
-                }
-            }
-            return Ok((n, d));
-        }
-        if e.is_mul() {
-            let (mut n, mut d) = (k.one(), k.one());
-            for a in e.args() {
-                let (p, q) = self.fraction(a)?;
-                n = k.mul(&n, &p);
-                d = k.mul(&d, &q);
-            }
-            return Ok((n, d));
-        }
-        if let Some(exponent) = integer_exponent(e) {
-            let (mut p, mut q) = self.fraction(&e.args()[0])?;
-            let mut kk: Int = exponent;
-            if kk < Int::from(0) {
-                if k.is_zero(&p) {
-                    return Err(zero_division(&format!("division by zero in {}", e)));
-                }
-                std::mem::swap(&mut p, &mut q);
-                kk = -kk;
-            }
-            let kk: u64 = u64::try_from(&kk).map_err(|_| value_error(format!("the exponent of {} is too large", e)))?;
-            return Ok((k.pow(&p, kk), k.pow(&q, kk)));
-        }
-        Ok((self.atom(e)?, k.one()))
+    fn fraction(&self, e: &Basic) -> PolyResult<(<Self::K as Domain>::Elem, <Self::K as Domain>::Elem)>
+    where
+        Self: Sized,
+    {
+        fraction_default(self, e)
     }
 
     /// `n/d` as an expression in lowest terms (`ratio`).
@@ -146,6 +98,67 @@ pub(crate) trait Lift {
         }
         crate::core::mul::div(&self.expr(&p)?, &self.expr(&q)?)
     }
+}
+
+/// The default `fraction` of a lift, recursing through `lift.fraction`
+/// (an override, as `_QuotientLift.fraction`, sees the subterms).
+#[allow(clippy::type_complexity)]
+pub(crate) fn fraction_default<L: Lift>(
+    lift: &L,
+    e: &Basic,
+) -> PolyResult<(<L::K as Domain>::Elem, <L::K as Domain>::Elem)> {
+    let k: &L::K = lift.domain();
+    if let Some(r) = e.as_rational() {
+        return Ok((k.from_integer(&numer(r)), k.from_integer(&denom(r))));
+    }
+    if e.is_add() {
+        let (mut n, mut d) = (k.zero(), k.one());
+        for a in e.args() {
+            let (p, q) = lift.fraction(a)?;
+            if q == d {
+                n = k.add(&n, &p);
+            } else if k.is_one(&q) {
+                n = k.add(&n, &k.mul(&p, &d));
+            } else if k.is_one(&d) {
+                n = k.add(&k.mul(&n, &q), &p);
+                d = q;
+            } else {
+                let common = k.gcd(&d, &q);
+                if k.is_one(&common) {
+                    n = k.add(&k.mul(&n, &q), &k.mul(&p, &d));
+                    d = k.mul(&d, &q);
+                } else {
+                    let cofactor = k.exquo(&q, &common)?;
+                    n = k.add(&k.mul(&n, &cofactor), &k.mul(&p, &k.exquo(&d, &common)?));
+                    d = k.mul(&d, &cofactor);
+                }
+            }
+        }
+        return Ok((n, d));
+    }
+    if e.is_mul() {
+        let (mut n, mut d) = (k.one(), k.one());
+        for a in e.args() {
+            let (p, q) = lift.fraction(a)?;
+            n = k.mul(&n, &p);
+            d = k.mul(&d, &q);
+        }
+        return Ok((n, d));
+    }
+    if let Some(exponent) = integer_exponent(e) {
+        let (mut p, mut q) = lift.fraction(&e.args()[0])?;
+        let mut kk: Int = exponent;
+        if kk < Int::from(0) {
+            if k.is_zero(&p) {
+                return Err(zero_division(&format!("division by zero in {}", e)));
+            }
+            std::mem::swap(&mut p, &mut q);
+            kk = -kk;
+        }
+        let kk: u64 = u64::try_from(&kk).map_err(|_| value_error(format!("the exponent of {} is too large", e)))?;
+        return Ok((k.pow(&p, kk), k.pow(&q, kk)));
+    }
+    Ok((lift.atom(e)?, k.one()))
 }
 
 pub(crate) struct IntegerLift;
@@ -178,7 +191,7 @@ pub(crate) type ZPoly = PolyElement<IntegerRing>;
 pub(crate) struct PolynomialLift {
     pub(crate) ring: SparsePolynomialRing<IntegerRing>,
     pub(crate) kernels: Vec<Basic>,
-    index: HashMap<Basic, ZPoly>,
+    pub(crate) index: HashMap<Basic, ZPoly>,
     pub(crate) exact: bool,
 }
 
