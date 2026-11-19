@@ -2,3 +2,4 @@
 
 pub mod classical;
 pub mod metric;
+pub mod tensors;

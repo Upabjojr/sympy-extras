@@ -3794,6 +3794,67 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         }
                     }
                 }
+                "tensor" => {
+                    // tensor(method, g, coordinates, components, positions, args...); another tensor as Tuple(positions, components);
+                    // tensor(constructor, g, coordinates) for metric_tensor, riemann_tensor, ricci_tensor, einstein_tensor
+                    use std::sync::Arc;
+                    use sympy_extras_core::diffgeom::metric::Metric;
+                    use sympy_extras_core::diffgeom::tensors::{self as tn, Tensor};
+                    use sympy_extras_core::matrices::dense::ExprMatrix;
+                    let metric = Arc::new(
+                        Metric::new(&ExprMatrix::from_tuple(&a[2]).map_err(e)?, a[3].args(), None).map_err(e)?,
+                    );
+                    let encode = |t: Tensor| tuple(vec![sym(&t.positions), tuple(t.components)]);
+                    let method = a[1].to_string();
+                    let built = match method.as_str() {
+                        "metric_tensor" => Some(tn::metric_tensor(&metric)),
+                        "riemann_tensor" => Some(tn::riemann_tensor(&metric)),
+                        "ricci_tensor" => Some(tn::ricci_tensor(&metric)),
+                        "einstein_tensor" => Some(tn::einstein_tensor(&metric)),
+                        _ => None,
+                    };
+                    if let Some(t) = built {
+                        encode(t.map_err(e)?)
+                    } else {
+                        let t = Tensor::new(&metric, a[4].args().to_vec(), &a[5].to_string()).map_err(e)?;
+                        let idx = |b: &Basic| {
+                            b.to_string()
+                                .parse::<usize>()
+                                .map_err(|_| pyo3::exceptions::PyValueError::new_err("an index"))
+                        };
+                        let other =
+                            |b: &Basic| Tensor::new(&metric, b.args()[1].args().to_vec(), &b.args()[0].to_string());
+                        match method.as_str() {
+                            "new" => encode(t),
+                            "getitem" => t
+                                .get(&a[6].args().iter().map(idx).collect::<PyResult<Vec<usize>>>()?)
+                                .map_err(e)?,
+                            "is_zero" => sym(if t.is_zero().map_err(e)? { "True" } else { "False" }),
+                            "add" => encode(t.add(&other(&a[6]).map_err(e)?).map_err(e)?),
+                            "sub" => encode(t.sub(&other(&a[6]).map_err(e)?).map_err(e)?),
+                            "mul" => encode(t.mul(&other(&a[6]).map_err(e)?).map_err(e)?),
+                            "neg" => encode(t.neg().map_err(e)?),
+                            "scale" => encode(t.scale(&a[6]).map_err(e)?),
+                            "transpose" => encode(t.transpose(idx(&a[6])?, idx(&a[7])?).map_err(e)?),
+                            "symmetrize" => encode(t.symmetrize(idx(&a[6])?, idx(&a[7])?).map_err(e)?),
+                            "antisymmetrize" => encode(t.antisymmetrize(idx(&a[6])?, idx(&a[7])?).map_err(e)?),
+                            "raise_index" => encode(t.raise_index(idx(&a[6])?).map_err(e)?),
+                            "lower_index" => encode(t.lower_index(idx(&a[6])?).map_err(e)?),
+                            "with_positions" => encode(t.with_positions(&a[6].to_string()).map_err(e)?),
+                            "contract" => encode(t.contract(idx(&a[6])?, idx(&a[7])?).map_err(e)?),
+                            "trace" => t.trace().map_err(e)?,
+                            "scalar" => t.scalar().map_err(e)?,
+                            "covariant_derivative" => encode(t.covariant_derivative().map_err(e)?),
+                            "divergence" => encode(t.divergence(if a.len() > 6 { idx(&a[6])? } else { 0 }).map_err(e)?),
+                            other => {
+                                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                    "unknown method {}",
+                                    other
+                                )))
+                            }
+                        }
+                    }
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
