@@ -2,7 +2,8 @@
 ``matrices/statespace.py`` against the Python ones: Kronecker products,
 Sylvester and Lyapunov equations, commutants; controllability,
 observability, transfer functions, pole placement, realisations and
-Kalman decompositions; and of solvers/stability.py (Routh-Hurwitz),
+Kalman decompositions; and of solvers/stability.py (Routh-Hurwitz) and
+solvers/rootclassification.py (discrimination sequences),
 on the matrices of the matrices tests (entries
 read with the core's parser)."""
 from __future__ import annotations
@@ -16,6 +17,7 @@ from sympy_extras.core.basic import Basic
 from sympy_extras.core.parsing import parse
 import sympy_extras.matrices.equations as EQ
 import sympy_extras.matrices.statespace as SS
+import sympy_extras.solvers.rootclassification as RC
 import sympy_extras.solvers.stability as SB
 from sympy_extras.matrices.dense import ExprMatrix
 
@@ -71,6 +73,7 @@ def argument(a: object) -> object:
 EQUATIONS = {'kronecker_product', 'vec', 'unvec', 'adjoint', 'linear_matrix_equation', 'sylvester_solve', 'lyapunov_solve',
              'discrete_lyapunov_solve', 'commuting_matrices'}
 STABILITY = {'hurwitz_matrix', 'hurwitz_determinants', 'routh_array', 'stability_conditions', 'is_stable'}
+CLASSIFICATION = {'discrimination_sequence', 'signature_from_signs', 'real_root_classification'}
 
 CASES: list[tuple[str, list[object]]] = [
     ('adjoint', [[2, 2, ['18/13', '5/26 + 6*I/13', '5/26 - 6*I/13', '3/4']]]),
@@ -221,6 +224,48 @@ CASES: list[tuple[str, list[object]]] = [
     ('stability_conditions', ['a*s**2 + b*s + s**4 + 2*s**3 + 1', 's', 'False', 'False']),
     ('stability_conditions', ['5', 's', 'False', 'True']),
     ('stability_conditions', ['a*s**2 + b + s', 's', 'False', 'False']),
+    ('discrimination_sequence', ['2*x**3 + 4*x', 'x']),
+    ('discrimination_sequence', ['-x**6 - 3*x**5 - 6*x**4 - 9*x**3 - 9*x**2 - 6*x - 2', 'x']),
+    ('discrimination_sequence', ['2*x**4 - 2*x**2 - 4*x + 4', 'x']),
+    ('discrimination_sequence', ['x**3 + x**2', 'x']),
+    ('discrimination_sequence', ['-x**4 + 2*x**2 - 1', 'x']),
+    ('discrimination_sequence', ['-x**4 - 2*x**3 - 4*x**2 - 2*x - 3', 'x']),
+    ('discrimination_sequence', ['x**7 + 2*x**6 - 7*x**5 - 14*x**4 + 16*x**3 + 32*x**2 - 12*x - 24', 'x']),
+    ('discrimination_sequence', ['2*x**7 - 6*x**5 - 12*x**4 + 6*x**3 + 24*x**2 - 2*x - 12', 'x']),
+    ('discrimination_sequence', ['-x**4 - 4*x**3 - 7*x**2 - 6*x - 2', 'x']),
+    ('discrimination_sequence', ['2*x**4 + 4*x**3 - 2*x**2 - 8*x - 4', 'x']),
+    ('discrimination_sequence', ['p*x + q + x**3', 'x']),
+    ('discrimination_sequence', ['-x**4 + 4*x**2 - 4', 'x']),
+    ('discrimination_sequence', ['2*x**6 + 6*x**4 - 18*x**2 - 54', 'x']),
+    ('discrimination_sequence', ['-x**8 + 2*x**7 + x**6 - 4*x**5 + 3*x**4 - 2*x**3 - x**2 + 4*x - 2', 'x']),
+    ('real_root_classification', ['-x**2', 'x', {'int': 6}]),
+    ('real_root_classification', ['-x**4 - 3*x**3 - 6*x**2 - 7*x - 3', 'x', {'int': 6}]),
+    ('real_root_classification', ['2*x**4 - 8', 'x', {'int': 6}]),
+    ('real_root_classification', ['2*x**4 - 4*x**2 + 2', 'x', {'int': 6}]),
+    ('real_root_classification', ['-x**4 + 4*x**3 - 4*x**2', 'x', {'int': 6}]),
+    ('real_root_classification', ['0', 'x', {'int': 6}]),
+    ('real_root_classification', ['2*x**8 + 2*x**7 - 6*x**6 - 8*x**5 - 2*x**4 + 6*x**3 + 6*x**2', 'x', {'int': 6}]),
+    ('real_root_classification', ['2*x**4 - 4*x**3 - 2*x**2 + 4*x', 'x', {'int': 6}]),
+    ('real_root_classification', ['-x**4 + 4*x**2 - 4', 'x', {'int': 6}]),
+    ('real_root_classification', ['x**5 + x**3 - 2*x', 'x', {'int': 6}]),
+    ('real_root_classification', ['2*x**8 - 8*x**6 - 4*x**5 + 10*x**4 + 12*x**3 - 12*x**2', 'x', {'int': 6}]),
+    ('real_root_classification', ['-x**5 - 3*x**4 + 7*x**2 + 9*x + 6', 'x', {'int': 6}]),
+    ('real_root_classification', ['-x**8 - 4*x**7 - 6*x**6 - 4*x**5 - x**4', 'x', {'int': 6}]),
+    ('real_root_classification', ['b*x + c + x**2', 'x', {'int': 6}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}, {'int': 1}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}, {'int': 1}, {'int': -1}, {'int': -1}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': -1}, {'int': -1}, {'int': -1}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}, {'int': 1}, {'int': -1}, {'int': -1}, {'int': 0}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}, {'int': -1}, {'int': 0}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}, {'int': 1}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': -1}, {'int': 1}, {'int': 1}, {'int': 1}, {'int': -1}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': -1}, {'int': -1}, {'int': -1}, {'int': -1}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}, {'int': 1}, {'int': -1}, {'int': -1}, {'int': 0}, {'int': 0}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': -1}, {'int': -1}, {'int': 0}, {'int': 0}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}, {'int': -1}]}]),
+    ('signature_from_signs', [{'seq': [{'int': 1}, {'int': -1}, {'int': -1}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
 ]
 
 
@@ -228,7 +273,7 @@ CASES: list[tuple[str, list[object]]] = [
 def test_statespace(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    module = EQ if name in EQUATIONS else (SB if name in STABILITY else SS)
+    module = EQ if name in EQUATIONS else (SB if name in STABILITY else (RC if name in CLASSIFICATION else SS))
     got = outcome(lambda: rc.logic_call('matfunctions', [Symbol(name)] + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(getattr(module, name)(*args))), (name, raw)

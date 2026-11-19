@@ -3658,6 +3658,35 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         sb::stability_conditions(&subject, x.as_ref(), discrete, simplify).map_err(e)?
                     }
                 }
+                "discrimination_sequence" => tuple(
+                    sympy_extras_core::solvers::rootclassification::discrimination_sequence(&a[1], &a[2]).map_err(e)?,
+                ),
+                "signature_from_signs" => {
+                    let signs: Vec<i64> = a[1]
+                        .args()
+                        .iter()
+                        .map(|s| s.to_string().parse::<i64>().unwrap_or(0))
+                        .collect();
+                    Basic::int(sympy_extras_core::solvers::rootclassification::signature_from_signs(
+                        &signs,
+                    ))
+                }
+                "real_root_classification" => {
+                    let max_degree: usize = if a.len() > 3 {
+                        a[3].to_string().parse::<usize>().unwrap_or(6)
+                    } else {
+                        6
+                    };
+                    tuple(
+                        sympy_extras_core::solvers::rootclassification::real_root_classification(
+                            &a[1], &a[2], max_degree,
+                        )
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|(f, k)| tuple(vec![f, k.map(Basic::int).unwrap_or_else(|| sym("NONE"))]))
+                        .collect(),
+                    )
+                }
                 "singular_values" => tuple(sympy_extras_core::matrices::svd::singular_values(&m(&a[1])?).map_err(e)?),
                 "svd" => {
                     let (u, s_, v) = sympy_extras_core::matrices::svd::svd(&m(&a[1])?).map_err(e)?;
