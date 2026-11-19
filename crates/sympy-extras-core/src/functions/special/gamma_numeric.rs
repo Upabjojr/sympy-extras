@@ -312,6 +312,19 @@ pub fn hurwitz_zeta(s: &Complex, a: &Complex, prec: usize) -> Option<Complex> {
 /// elsewhere (mpmath's other formulas are not ported).
 pub fn polylog_series(s: &Complex, z: &Complex, prec: usize) -> Option<Complex> {
     let size: f64 = modulus(z);
+    let (sr, si) = parts(s);
+    if si == Real::ZERO && sr == real_int(&Int::from(1), prec + 40) {
+        // polylog(1, z) = -log(1 - z) on the whole plane, as in mpmath
+        let wp: usize = prec + 40;
+        let (zr, zi) = parts(z);
+        let real: bool = zi == Real::ZERO;
+        let w: Complex = &c_int(1, wp) - &complex(zr.with_precision(wp).value(), zi.with_precision(wp).value());
+        let (wr, wi) = parts(&w);
+        if wr == Real::ZERO && wi == Real::ZERO {
+            return None;
+        }
+        return Some(finish(&(-&w.ln()), prec, real && wr > Real::ZERO));
+    }
     if size >= 0.75 {
         return None;
     }

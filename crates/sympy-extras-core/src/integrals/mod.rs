@@ -4,6 +4,7 @@ pub mod conditions;
 pub mod curves;
 pub mod dirichlet;
 pub mod exponential;
+pub mod heurisch;
 pub mod mellin;
 pub mod radicals;
 pub mod risch;

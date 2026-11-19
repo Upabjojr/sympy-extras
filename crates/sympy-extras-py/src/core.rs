@@ -5949,6 +5949,18 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, solutions, count])
         }
+        "heurisch" => {
+            // ("antiderivative", f, x, hints, degree_offset, retries) | ("cases", f, x): the antiderivative or NONE
+            use sympy_extras_core::integrals::heurisch as hr;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let int_of = |b: &Basic| b.as_rational().and_then(|v| i64::try_from(v.numerator()).ok()).unwrap_or(0);
+            let found = if a[0].to_string() == "cases" {
+                hr::heurisch_cases(&a[1], &a[2]).map_err(e)?
+            } else {
+                hr::heurisch_antiderivative(&a[1], &a[2], a[3].args(), int_of(&a[4]), int_of(&a[5])).map_err(e)?
+            };
+            found.unwrap_or_else(none)
+        }
         "gammasimp" | "combsimp" => {
             use sympy_extras_core::simplify::gammasimp as gs;
             if name == "gammasimp" {
