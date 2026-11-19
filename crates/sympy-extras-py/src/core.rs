@@ -5949,6 +5949,28 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, solutions, count])
         }
+        "guess" => {
+            // (kind, Tuple(terms), max_order | NONE, max_degree | NONE, margin): the polynomials, highest degree first
+            use sympy_extras_core::concrete::guess as gs;
+            use sympy_extras_core::numbers::{Int, Rat};
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let terms: Vec<Rat> = a[1].args().iter().map(|t| t.as_rational().cloned().ok_or_else(|| pyo3::exceptions::PyValueError::new_err("a rational term"))).collect::<PyResult<_>>()?;
+            let size = |b: &Basic| -> Option<usize> { b.as_rational().and_then(|v| usize::try_from(v.numerator()).ok()) };
+            let (max_order, max_degree) = (size(&a[2]), size(&a[3]));
+            let margin: usize = size(&a[4]).unwrap_or(gs::MARGIN);
+            let polynomial = |p: &Vec<Int>| tuple(p.iter().map(|c| Basic::from_rational(Rat::from(c.clone()))).collect());
+            let polynomials = |ps: &Vec<Vec<Int>>| tuple(ps.iter().map(polynomial).collect());
+            match a[0].to_string().as_str() {
+                "recurrence" => gs::guess_recurrence(&terms, max_order, max_degree, margin).map_err(e)?.map(|g| polynomials(&g.coefficients)).unwrap_or_else(none),
+                "differential" => gs::guess_differential_equation(&terms, max_order, max_degree, margin)
+                    .map_err(e)?
+                    .map(|g| tuple(vec![polynomials(&g.coefficients), polynomial(&g.inhomogeneous)]))
+                    .unwrap_or_else(none),
+                "algebraic" => gs::guess_algebraic_equation(&terms, max_order, max_degree, margin).map_err(e)?.map(|g| polynomials(&g.coefficients)).unwrap_or_else(none),
+                _ => gs::guess_closed_form(&terms, max_order, max_degree, margin).map_err(e)?.unwrap_or_else(none),
+            }
+        }
         "elliptic" => {
             // ("integral", f, x, a, b, facts) -> Tuple(value, condition) | NONE
             // ("real_roots", P, x, facts) -> Tuple(roots) | NONE; ("radicand", f, x) -> Tuple(R, P, e) | NONE
