@@ -653,6 +653,9 @@ pub fn is_number(e: &Basic) -> bool {
         // _is_number_node: a number (its variable is bound)
         return true;
     }
+    if matches!(e.head(), Head::TranscendentalRoot) {
+        return true;
+    }
     if matches!(e.head(), Head::IndexedRoot | Head::RootSum) {
         // _is_number_node: no free symbols (the variable is bound)
         return e.free_symbols().is_empty();
@@ -1292,6 +1295,7 @@ fn eval_facts(e: &Basic) -> FactList {
         }
         Head::Tuple | Head::Limit => FactList::new(),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
+        Head::TranscendentalRoot => crate::solvers::isolation::root_facts(e),
         Head::ComplexRootOf(_) => crate::polys::complexrootof::root_facts(e),
         // a boolean is not an expression: no facts
         Head::AccumBounds => super::accumbounds::bounds_facts(e),

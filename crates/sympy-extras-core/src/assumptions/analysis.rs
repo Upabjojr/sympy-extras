@@ -321,7 +321,7 @@ pub fn pieces(domain: &Basic) -> Option<Vec<Basic>> {
 /// The value of a constant at `digits` digits as an exact rational
 /// (`_rational(e.evalf(digits))`): the value rounded to the binary
 /// precision of the digits, as the Python evaluation gives it.
-fn evalf_rational(e: &Basic, digits: usize) -> Option<Rat> {
+pub(crate) fn evalf_rational(e: &Basic, digits: usize) -> Option<Rat> {
     let prec: usize = crate::numeric::dps_to_prec(digits);
     let v = crate::core::evalf::numeric_value(e, prec + 64)?;
     let (re, im) = crate::core::evalf::parts(&v);
@@ -332,7 +332,7 @@ fn evalf_rational(e: &Basic, digits: usize) -> Option<Rat> {
 }
 
 /// `r` rounded to `prec` bits, to the nearest (ties to even).
-fn round_nearest(r: &Rat, prec: usize) -> Rat {
+pub(crate) fn round_nearest(r: &Rat, prec: usize) -> Rat {
     let down: Rat = super::ivarith::round(r, prec, super::ivarith::Rnd::Floor);
     let up: Rat = super::ivarith::round(r, prec, super::ivarith::Rnd::Ceil);
     if down == up {

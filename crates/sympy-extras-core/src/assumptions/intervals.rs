@@ -30,10 +30,41 @@ fn hull(lo: &Basic, hi: &Basic, p: usize) -> Option<Iv> {
     Some(Iv::new(a.a, b.b))
 }
 
+thread_local! {
+    /// The working precision of the interval arithmetic (mpmath's global
+    /// `iv.prec`, raised temporarily by the root isolation).
+    static IV_PREC: std::cell::Cell<usize> = const { std::cell::Cell::new(PREC) };
+}
+
+/// The working precision of the interval arithmetic.
+pub fn iv_prec() -> usize {
+    IV_PREC.with(|p| p.get())
+}
+
+/// The precision raised to at least `bits` while the guard lives
+/// (`_precision` of the root isolation).
+pub struct PrecisionGuard {
+    previous: usize,
+}
+
+impl PrecisionGuard {
+    pub fn raise_to(bits: usize) -> PrecisionGuard {
+        let previous: usize = iv_prec();
+        IV_PREC.with(|p| p.set(bits.max(previous)));
+        PrecisionGuard { previous }
+    }
+}
+
+impl Drop for PrecisionGuard {
+    fn drop(&mut self) {
+        IV_PREC.with(|p| p.set(self.previous));
+    }
+}
+
 /// An enclosure of the values of `expr` on the box, or `None`
-/// (`evaluate`).
+/// (`evaluate`), at the working precision.
 pub fn evaluate(expr: &Basic, b: &[(Basic, (Basic, Basic))]) -> Option<Iv> {
-    evaluate_at(expr, b, PREC)
+    evaluate_at(expr, b, iv_prec())
 }
 
 /// [`evaluate`] at `p` bits (mpmath's `iv.prec`).

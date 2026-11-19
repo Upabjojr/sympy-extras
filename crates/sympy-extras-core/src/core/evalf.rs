@@ -226,6 +226,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
     match e.head() {
         Head::Rational { value, .. } => real(real_rat(value, wp)),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_value(e, wp),
+        Head::TranscendentalRoot => crate::solvers::isolation::numeric_value(e, wp),
         Head::RootSum => crate::polys::rootoftools::numeric_value(e, wp),
         Head::ComplexRootOf(_) => crate::polys::complexrootof::root_value(e, prec),
         Head::Pi => real(Real::pi(wp)),

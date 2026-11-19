@@ -30,6 +30,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::RootSum => crate::polys::rootoftools::evaluated(&args),
         Head::Order => crate::core::order::evaluated(&args),
         Head::Limit => crate::core::limits::evaluated(&args),
+        Head::TranscendentalRoot => crate::solvers::isolation::evaluated(&args),
         Head::Subs => {
             // Subs._evaluated: the variables are symbols (_as_symbol)
             if let Some(v) = args[1].args().iter().find(|v| !v.is_symbol()) {

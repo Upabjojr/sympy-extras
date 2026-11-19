@@ -193,6 +193,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "ImageSet" => Basic::new(Head::ImageSet, args()?),
         "Order" => Basic::new(Head::Order, args()?),
         "Limit" => Basic::new(Head::Limit, args()?),
+        "TranscendentalRoot" => Basic::new(Head::TranscendentalRoot, args()?),
         "RootSum" => {
             // RootSum(f, Lambda(var, body), t): the Lambda flattened
             let fun = ob.getattr("fun")?;
@@ -524,6 +525,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             py.import("sympy_extras.polys.rootoftools")?
                 .getattr("RootSum")?
                 .call1((to_python(py, f)?, lambda, to_python(py, t)?))?
+        }
+        Head::TranscendentalRoot => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.solvers.isolation")?
+                .getattr("TranscendentalRoot")?
+                .call1(PyTuple::new(py, items)?)?
         }
         Head::Limit => {
             let (expr, z, z0, dir) = sympy_extras_core::core::limits::parts(e);
@@ -3344,6 +3351,32 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 },
                 "linear" => tr::linear_solution(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
                 "solveset" => sympy_extras_core::solvers::solveset::solveset(&a[1], &a[2], &a[3]).map_err(e)?,
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
+        "isolation" => {
+            // op: isolate(f, x, domain, depth) -> Tuple of roots or NONE; refined(root, steps);
+            // approximation(root, prec) -> Rational; compare(u, v) -> sign or NONE; between(p, q)
+            use sympy_extras_core::solvers::isolation as iso;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let small = |b: &Basic| -> PyResult<usize> {
+                b.to_string()
+                    .parse::<usize>()
+                    .map_err(|_| pyo3::exceptions::PyValueError::new_err("a small integer"))
+            };
+            match a[0].to_string().as_str() {
+                "isolate" => iso::isolate_real_roots(&a[1], &a[2], &a[3], small(&a[4])?)
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "refined" => iso::refined(&a[1], small(&a[2])?).map_err(e)?,
+                "approximation" => Basic::from_rational(iso::approximation(&a[1], small(&a[2])?).map_err(e)?),
+                "compare" => match iso::compare_points(&a[1], &a[2]).map_err(e)? {
+                    Some(s) => Basic::int(s as i64),
+                    None => none(),
+                },
+                "between" => iso::point_between(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }

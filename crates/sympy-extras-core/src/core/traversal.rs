@@ -16,7 +16,7 @@ pub fn bound_symbols(e: &Basic) -> Vec<Basic> {
             let i: usize = if matches!(e.head(), Head::Subs) { 1 } else { 0 };
             e.args()[i].args().to_vec()
         }
-        Head::IndexedRoot => vec![e.args()[1].clone()],
+        Head::IndexedRoot | Head::TranscendentalRoot => vec![e.args()[1].clone()],
         Head::RootSum => {
             let (_, var, _, t) = crate::polys::rootoftools::parts(e);
             if var == t {

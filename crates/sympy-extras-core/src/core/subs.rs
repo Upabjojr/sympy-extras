@@ -72,6 +72,10 @@ fn subs_node_rec(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Basic> {
             return Ok(r);
         }
     }
+    if matches!(e.head(), Head::TranscendentalRoot) {
+        // the variable is bound: a substitution leaves the root alone
+        return Ok(if e == old { new.clone() } else { e.clone() });
+    }
     if matches!(e.head(), Head::IndexedRoot) {
         // the variable is bound: a substitution of it leaves the root alone
         let (f, t, k) = crate::polys::cad::indexedroot::parts(e);
