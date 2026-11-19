@@ -3355,6 +3355,15 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "assume_refine" | "assume_resolve" => {
+            // expr, Tuple(assumptions), domain or NONE
+            let domain: Option<&Basic> = if a[2].to_string() == "NONE" { None } else { Some(&a[2]) };
+            if name == "assume_refine" {
+                sympy_extras_core::assumptions::refine::refine(&a[0], a[1].args(), domain).map_err(e)?
+            } else {
+                sympy_extras_core::assumptions::resolve::resolve(&a[0], domain, a[1].args(), None).map_err(e)?
+            }
+        }
         "assume_ask" => {
             // query, Tuple(assumptions), domain or NONE -> true / false / NONE
             let domain: Option<&Basic> = if a[2].to_string() == "NONE" { None } else { Some(&a[2]) };

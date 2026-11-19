@@ -7,8 +7,7 @@
 //!
 //! Not ported yet (they raise "not ported" where the Python goes on): the
 //! zero test of the structure theorem (`simplify/structure.py`), the
-//! sample points under assumptions (`integrals/conditions.py`) and the
-//! resolution of quantifiers (`assumptions/resolve.py`). The time limits
+//! sample points under assumptions (`integrals/conditions.py`). The time limits
 //! of the Python (`attempt` with seconds) are not ported.
 
 #![allow(clippy::mutable_key_type)]
@@ -496,7 +495,7 @@ fn combine(formula: &Basic, values: &[Truth]) -> Truth {
 pub fn ask(query: &Basic, assumptions: &[Basic], domain: Option<&Basic>) -> PolyResult<Truth> {
     let mut q: Basic = query.clone();
     if q.preorder().iter().any(crate::assumptions::quantifiers::is_quantifier) {
-        return Err(not_ported("assumptions/resolve (quantified queries)"));
+        q = crate::assumptions::resolve::resolve(&q, domain, assumptions, None)?;
     }
     q = normalize(&q)?;
     let syms: Vec<Basic> = q.free_symbols().into_iter().collect();
