@@ -3847,6 +3847,45 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         .collect(),
                     )
                 }
+                "echelon_steps" | "rref_steps" | "inverse_steps" | "solve_steps" | "determinant_steps"
+                | "format_steps" => {
+                    use sympy_extras_core::matrices::steps as sp;
+                    let encode = |found: &[sp::Step]| -> PyResult<Basic> {
+                        Ok(tuple(
+                            found
+                                .iter()
+                                .map(|s| Ok(tuple(vec![sym(&s.operation.repr().map_err(e)?), s.matrix.as_tuple()])))
+                                .collect::<PyResult<_>>()?,
+                        ))
+                    };
+                    match a[0].to_string().as_str() {
+                        "echelon_steps" => encode(&sp::echelon_steps(&m(&a[1])?).map_err(e)?)?,
+                        "rref_steps" => encode(&sp::rref_steps(&m(&a[1])?).map_err(e)?)?,
+                        "inverse_steps" => encode(&sp::inverse_steps(&m(&a[1])?).map_err(e)?)?,
+                        "solve_steps" => encode(&sp::solve_steps(&m(&a[1])?, &m(&a[2])?).map_err(e)?)?,
+                        "determinant_steps" => {
+                            let d = sp::determinant_steps(&m(&a[1])?).map_err(e)?;
+                            tuple(vec![
+                                encode(&d.steps)?,
+                                n(d.exchanges),
+                                tuple(d.diagonal.clone()),
+                                d.value.clone(),
+                            ])
+                        }
+                        _ => {
+                            // format_steps(M, steps) with the steps of rref_steps(M) recomputed: the operations cannot cross
+                            let matrix = m(&a[1])?;
+                            let which = a[2].to_string();
+                            let found = match which.as_str() {
+                                "echelon" => sp::echelon_steps(&matrix),
+                                "inverse" => sp::inverse_steps(&matrix),
+                                _ => sp::rref_steps(&matrix),
+                            }
+                            .map_err(e)?;
+                            sym(&sp::format_steps(&matrix, &found).map_err(e)?)
+                        }
+                    }
+                }
                 "singular_values" => tuple(sympy_extras_core::matrices::svd::singular_values(&m(&a[1])?).map_err(e)?),
                 "svd" => {
                     let (u, s_, v) = sympy_extras_core::matrices::svd::svd(&m(&a[1])?).map_err(e)?;

@@ -9,4 +9,5 @@ pub mod functions;
 pub mod linalg;
 pub mod pencils;
 pub mod statespace;
+pub mod steps;
 pub mod svd;

@@ -1,7 +1,9 @@
-"""The Rust ports of ``matrices/functions.py`` and ``matrices/svd.py``
-and ``matrices/pencils.py`` against the Python ones: spectral components, functions, exponentials and
-powers of matrices, singular values and decompositions, on the matrices
-of the matrices and solvers tests (entries read with the core's parser)."""
+"""The Rust ports of ``matrices/functions.py``, ``matrices/svd.py``,
+``matrices/pencils.py`` and ``matrices/steps.py`` against the Python ones:
+spectral components, functions, exponentials and powers of matrices,
+singular values and decompositions, generalised eigenvalues, elimination
+steps, on the matrices of the matrices and solvers tests (entries read
+with the core's parser)."""
 from __future__ import annotations
 
 from typing import Callable
@@ -15,6 +17,7 @@ import sympy_extras.matrices.decompositions as DC
 import sympy_extras.matrices.eigen as EG
 import sympy_extras.matrices.functions as FN
 import sympy_extras.matrices.pencils as PN
+import sympy_extras.matrices.steps as ST
 import sympy_extras.matrices.svd as SV
 from sympy_extras.matrices.dense import ExprMatrix
 
@@ -46,6 +49,10 @@ def encoded(v: object) -> Basic:
         return Tuple(v.factor, v.symbol, Integer(v.multiplicity), encoded(v.chains))
     if isinstance(v, DC.LUDecomposition):
         return Tuple(encoded(v.L), encoded(v.U), encoded(v.permutation), Integer(v.rank))
+    if isinstance(v, ST.Step):
+        return Tuple(Symbol(str(v.operation)), encoded(v.matrix))
+    if isinstance(v, ST.DeterminantSteps):
+        return Tuple(encoded(v.steps), Integer(v.exchanges), Tuple(*v.diagonal), v.value)
     if isinstance(v, FN.MatrixComponents):
         return Tuple(v.factor, v.symbol, encoded(v.components))
     if isinstance(v, dict):
@@ -144,6 +151,49 @@ CASES: list[tuple[str, list[object]]] = [
     ('pencil_polynomial', [[2, 2, ['1/2', '0', '2', '2']], [2, 2, ['0', '1', '1', '0']], 'x']),
     ('pencil_polynomial', [[2, 2, ['1/2', '2', '-1', '-1']], [2, 2, ['1', '-1', '2', '0']], 'x']),
     ('pencil_polynomial', [[3, 3, ['0', '-1', '1/2', '2', '0', '0', '2', '1', '2']], [3, 3, ['-1', '-1', '2', '-1', '0', '1/2', '0', '-1', '-1']], 'x']),
+    ('determinant_steps', [[4, 4, ['-1', '0', '-1', '2', '-1', '1', '-1', '1/2', '-1', '1/2', '2', '2', '0', '0', '1/2', '0']]]),
+    ('determinant_steps', [[4, 4, ['-1', '0', 'a', '3', '1', '3', '2', '0', '2', 'a', '1', '-1', 'b', 'a', '-1', 'a']]]),
+    ('determinant_steps', [[4, 4, ['2', '3', '1', '2', '0', '0', '1/2', '1', '1', '1', '1', '0', '1/2', '2', '3', '2']]]),
+    ('determinant_steps', [[4, 4, ['1', '1/2', '3', '-1', '2', '1/2', '-1', '-1', '2', '3', '2', '-1', '1/2', '-1', '0', '0']]]),
+    ('determinant_steps', [[2, 2, ['2', '0', '1', '1']]]),
+    ('determinant_steps', [[1, 1, ['2']]]),
+    ('determinant_steps', [[3, 3, ['2', '4', '-2', '4', '9', '-3', '-2', '-3', '7']]]),
+    ('determinant_steps', [[2, 2, ['sqrt(2)', '2', '1', 'sqrt(2)']]]),
+    ('determinant_steps', [[2, 2, ['b', '0', '0', '0']]]),
+    ('determinant_steps', [[3, 3, ['-1', '3', '0', '0', '1', '0', '1/2', '0', '0']]]),
+    ('echelon_steps', [[4, 3, ['2', '3', '1/2', '1', '0', '1', '1', '0', '3', '1', '3', '3']]]),
+    ('echelon_steps', [[2, 2, ['0', '0', '0', '2']]]),
+    ('echelon_steps', [[1, 3, ['0', '0', '-1']]]),
+    ('echelon_steps', [[3, 4, ['2', 'a + 1', '2', '-1', '1/2', '3', 'a', 'a + 1', 'a', '0', '2', '2']]]),
+    ('echelon_steps', [[3, 1, ['3', '3', '0']]]),
+    ('echelon_steps', [[1, 4, ['-1', '0', '2', '0']]]),
+    ('echelon_steps', [[1, 3, ['0', '-1', '-1']]]),
+    ('echelon_steps', [[1, 2, ['0', '3']]]),
+    ('echelon_steps', [[3, 3, ['2', '4', '-2', '4', '9', '-3', '-2', '-3', '7']]]),
+    ('echelon_steps', [[4, 3, ['0', '0', '-1', '2', '0', '1/2', '0', '1/2', '0', '0', '3', '0']]]),
+    ('inverse_steps', [[2, 2, ['2', '3', '1', '2']]]),
+    ('inverse_steps', [[1, 1, ['-1']]]),
+    ('inverse_steps', [[1, 1, ['b']]]),
+    ('inverse_steps', [[1, 1, ['0']]]),
+    ('inverse_steps', [[4, 4, ['1', 'a', '-1', '1', '2', 'b', '3', 'a + 1', '0', '3', '3', 'a', '1', '0', '0', '1/2']]]),
+    ('inverse_steps', [[2, 2, ['0', '0', '0', '0']]]),
+    ('inverse_steps', [[2, 2, ['0', '1/2', '3', '2']]]),
+    ('inverse_steps', [[3, 3, ['0', '3', '2', '1/2', '1/2', '-1', '0', '-1', 'a + 1']]]),
+    ('inverse_steps', [[4, 4, ['2', '2', '1', '-1', '2', '0', '0', '1/2', '0', '3', '3', 'a', 'a', 'b', 'a + 1', '1']]]),
+    ('inverse_steps', [[4, 4, ['-1', '-1', '3', '1/2', '0', '0', '2', '0', '1', '0', '0', '0', '-1', '0', '0', '0']]]),
+    ('rref_steps', [[3, 3, ['0', '2', '0', '1/2', '0', '0', '1', '-1', 'a + 1']]]),
+    ('rref_steps', [[2, 4, ['-1', '0', '2', 'a', 'a', 'b', '1/2', '0']]]),
+    ('rref_steps', [[3, 3, ['0', '1/2', '1/2', '2', '1/2', '-1', '1/2', '2', '2']]]),
+    ('rref_steps', [[4, 2, ['0', '0', '1', '0', 'a', '1/2', '1/2', 'a + 1']]]),
+    ('rref_steps', [[2, 1, ['3', 'a']]]),
+    ('rref_steps', [[4, 1, ['-1', '0', '-1', '1/2']]]),
+    ('rref_steps', [[2, 2, ['0', '-1', '3', '2']]]),
+    ('rref_steps', [[2, 2, ['sin(a)', '1', '1', '1']]]),
+    ('rref_steps', [[3, 4, ['0', '2', 'a + 1', '1', '2', '0', '2', '1', 'a', '2', '0', '2']]]),
+    ('rref_steps', [[1, 1, ['b']]]),
+    ('solve_steps', [[3, 3, ['1', '1', '1', '0', '2', '5', '2', '5', '-1']], [3, 1, ['6', '-4', '27']]]),
+    ('solve_steps', [[2, 2, ['1', '1', '1', '1']], [2, 1, ['1', '2']]]),
+    ('solve_steps', [[3, 3, ['1', '1', '1', '0', '2', '5', '2', '5', '-1']], [2, 1, ['1', '2']]]),
 ]
 
 
@@ -151,7 +201,8 @@ CASES: list[tuple[str, list[object]]] = [
 def test_matrix_functions(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    module = SV if name in ('svd', 'singular_values') else (PN if 'generalized' in name or name == 'pencil_polynomial' else FN)
+    module = SV if name in ('svd', 'singular_values') else (PN if 'generalized' in name or name == 'pencil_polynomial' else
+                                                            (ST if name.endswith('_steps') else FN))
     got = outcome(lambda: rc.logic_call('matfunctions', [Symbol(name)] + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(getattr(module, name)(*args))), (name, raw)
