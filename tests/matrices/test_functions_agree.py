@@ -1,5 +1,5 @@
 """The Rust ports of ``matrices/functions.py`` and ``matrices/svd.py``
-against the Python ones: spectral components, functions, exponentials and
+and ``matrices/pencils.py`` against the Python ones: spectral components, functions, exponentials and
 powers of matrices, singular values and decompositions, on the matrices
 of the matrices and solvers tests (entries read with the core's parser)."""
 from __future__ import annotations
@@ -14,6 +14,7 @@ from sympy_extras.core.parsing import parse
 import sympy_extras.matrices.decompositions as DC
 import sympy_extras.matrices.eigen as EG
 import sympy_extras.matrices.functions as FN
+import sympy_extras.matrices.pencils as PN
 import sympy_extras.matrices.svd as SV
 from sympy_extras.matrices.dense import ExprMatrix
 
@@ -111,6 +112,38 @@ CASES: list[tuple[str, list[object]]] = [
     ('svd', [[2, 1, ['-2', '1']]]),
     ('svd', [[3, 1, ['-2', '0', '1']]]),
     ('svd', [[1, 3, ['-2', '0', '0']]]),
+    ('generalized_eigenspaces', [[2, 2, ['0', '1/2', '1', '2']], [2, 2, ['0', '-1', '2', '1/2']], 'x']),
+    ('generalized_eigenspaces', [[2, 2, ['1/2', '1/2', '-1', '1']], [2, 2, ['1/2', '0', '1', '0']], 'x']),
+    ('generalized_eigenspaces', [[1, 1, ['1/2']], [1, 1, ['1']], 'x']),
+    ('generalized_eigenspaces', [[3, 3, ['0', '-1', '0', '0', '2', '2', 'a + 1', 'a', '1/2']], [3, 3, ['1', '0', '0', '0', '-1', '1/2', '-1', '2', '0']], 'x']),
+    ('generalized_eigenspaces', [[3, 3, ['0', '0', '1/2', '-1', '0', 'a', '0', '0', '1']], [3, 3, ['1/2', '0', '-1', '0', '1/2', '0', '1', '1/2', '1']], 'x']),
+    ('generalized_eigenspaces', [[2, 2, ['-1', '0', '1', '1']], [2, 2, ['1', '0', '0', '1/2']], 'x']),
+    ('generalized_eigenspaces', [[1, 1, ['0']], [1, 1, ['0']], 'x']),
+    ('generalized_eigenspaces', [[3, 3, ['1/2', '0', '2', '-1', '-1', '0', '1/2', '0', '1']], [3, 3, ['1', '2', '0', '1', '-1', '1', '2', '1', '0']], 'x']),
+    ('generalized_eigenvalues', [[1, 1, ['0']], [1, 1, ['1/2']]]),
+    ('generalized_eigenvalues', [[2, 2, ['0', '2', '1/2', '-1']], [2, 2, ['2', '0', '2', '2']]]),
+    ('generalized_eigenvalues', [[2, 2, ['1', '0', '0', '0']], [2, 2, ['1', '0', '0', '0']]]),
+    ('generalized_eigenvalues', [[2, 2, ['-1', '1/2', '1/2', '0']], [2, 2, ['1', '1', '-1', '0']]]),
+    ('generalized_eigenvalues', [[3, 3, ['1', '0', '0', '0', '1', '0', '0', '0', '1']], [3, 3, ['0', '0', '0', '0', '0', '0', '0', '0', '0']]]),
+    ('generalized_eigenvalues', [[1, 1, ['2']], [1, 1, ['2']]]),
+    ('generalized_eigenvalues', [[2, 2, ['2*k', '-k', '-k', 'k']], [2, 2, ['m', '0', '0', 'm']]]),
+    ('generalized_eigenvalues', [[2, 2, ['1', '0', '0', '1']], [2, 2, ['1', '0', '0', '0']]]),
+    ('generalized_eigenvectors', [[2, 2, ['0', '2', '1/2', '-1']], [2, 2, ['2', '0', '2', '2']]]),
+    ('generalized_eigenvectors', [[2, 2, ['-1', '1/2', '1/2', '0']], [2, 2, ['1', '1', '-1', '0']]]),
+    ('generalized_eigenvectors', [[2, 2, ['1', '-1', '1/2', '0']], [2, 2, ['-1', '1', '0', '-1']]]),
+    ('generalized_eigenvectors', [[1, 1, ['1/2']], [1, 1, ['-1']]]),
+    ('generalized_eigenvectors', [[1, 1, ['0']], [1, 1, ['1/2']]]),
+    ('generalized_eigenvectors', [[1, 1, ['1/2']], [1, 1, ['1']]]),
+    ('generalized_eigenvectors', [[2, 2, ['1', '1', '2', '0']], [2, 2, ['2', '1', '-1', '-1']]]),
+    ('generalized_eigenvectors', [[1, 1, ['2']], [1, 1, ['2']]]),
+    ('pencil_polynomial', [[2, 2, ['1', '-1', '1', '0']], [2, 2, ['1/2', '1', '0', '1']], 'x']),
+    ('pencil_polynomial', [[2, 2, ['1/2', '0', '0', '1']], [2, 2, ['0', '0', '1/2', '0']], 'x']),
+    ('pencil_polynomial', [[2, 2, ['0', '0', '0', '0']], [2, 2, ['1/2', '-1', '2', '0']], 'x']),
+    ('pencil_polynomial', [[2, 2, ['-1', '0', '2', '1/2']], [2, 2, ['0', '1', '2', '2']], 'x']),
+    ('pencil_polynomial', [[2, 2, ['1/2', '1/2', '-1', '1']], [2, 2, ['1/2', '0', '1', '0']], 'x']),
+    ('pencil_polynomial', [[2, 2, ['1/2', '0', '2', '2']], [2, 2, ['0', '1', '1', '0']], 'x']),
+    ('pencil_polynomial', [[2, 2, ['1/2', '2', '-1', '-1']], [2, 2, ['1', '-1', '2', '0']], 'x']),
+    ('pencil_polynomial', [[3, 3, ['0', '-1', '1/2', '2', '0', '0', '2', '1', '2']], [3, 3, ['-1', '-1', '2', '-1', '0', '1/2', '0', '-1', '-1']], 'x']),
 ]
 
 
@@ -118,7 +151,7 @@ CASES: list[tuple[str, list[object]]] = [
 def test_matrix_functions(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    module = SV if name in ('svd', 'singular_values') else FN
+    module = SV if name in ('svd', 'singular_values') else (PN if 'generalized' in name or name == 'pencil_polynomial' else FN)
     got = outcome(lambda: rc.logic_call('matfunctions', [Symbol(name)] + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(getattr(module, name)(*args))), (name, raw)
