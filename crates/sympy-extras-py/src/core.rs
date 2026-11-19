@@ -3355,6 +3355,20 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "radicals" => {
+            // quadratic(f, x, Tuple(assumptions), euler) | euler(f, x, Tuple(assumptions)) -> F or NONE
+            use sympy_extras_core::integrals::radicals as rd;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let found = match a[0].to_string().as_str() {
+                "quadratic" => {
+                    rd::quadratic_radical_antiderivative(&a[1], &a[2], a[3].args(), a[4].to_string() == "True")
+                        .map_err(e)?
+                }
+                "euler" => rd::euler_substitution_antiderivative(&a[1], &a[2], a[3].args()).map_err(e)?,
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            };
+            found.unwrap_or_else(none)
+        }
         "tables" => {
             // entry(i) -> Tuple(pattern, lower, upper, value, condition); size;
             // integral(f, x, a, b, Tuple(assumptions)) -> Tuple(value, condition) or NONE
