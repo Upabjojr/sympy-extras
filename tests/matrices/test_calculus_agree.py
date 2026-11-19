@@ -3,14 +3,16 @@ against the Python ones on the calls of their tests (the default
 simplifier only; read with the core's parser)."""
 from __future__ import annotations
 
+import ast
 from typing import Callable
 
 import pytest
 
-from sympy_extras.core import Integer, Symbol, Tuple
+from sympy_extras.core import Eq, Integer, Symbol, Tuple
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.parsing import parse
 import sympy_extras.matrices.calculus as MC
+import sympy_extras.solvers.elimination as EL
 from sympy_extras.matrices.dense import ExprMatrix
 from sympy_extras.vector.orthogonal import OrthogonalCoordinates
 
@@ -46,7 +48,12 @@ def encoded(v: object) -> Basic:
 
 def argument(a: object) -> object:
     if isinstance(a, str):
-        return None if a == 'None' else parse(a)
+        if a == 'None':
+            return None
+        node = ast.parse(a, mode='eval').body
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'Eq':
+            return Eq(parse(ast.unparse(node.args[0])), parse(ast.unparse(node.args[1])))
+        return parse(a)
     assert isinstance(a, dict)
     if 'int' in a:
         return a['int']
@@ -67,7 +74,7 @@ def python(name: str, args: list[object]) -> object:
         assert isinstance(rest[0], list)
         system = OrthogonalCoordinates(coordinates, rest[0])
         return getattr(system, method)(*rest[1:])
-    return getattr(MC, name)(*args)
+    return getattr(EL if hasattr(EL, name) else MC, name)(*args)
 
 
 CASES: list[tuple[str, list[object]]] = [
@@ -145,6 +152,57 @@ CASES: list[tuple[str, list[object]]] = [
     ('orthogonal.from_transformation', [{'seq': ['u', 'v']}, {'seq': ['u + v', 'v']}]),
     ('orthogonal.curl', [{'seq': ['u', 'v']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)']}, {'seq': [{'int': 1}, {'int': 0}]}]),
     ('orthogonal.divergence', [{'seq': ['u', 'v']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)']}, {'seq': [{'int': 1}, {'int': 0}, {'int': 0}]}]),
+    ('implicitize', [{'seq': ['t', 't**2', 't**3']}, {'seq': ['t']}, {'seq': ['x', 'y', 'z']}]),
+    ('implicitize', [{'seq': ['t**2', 't**3']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['(1 - t**2)/(t**2 + 1)', '2*t/(t**2 + 1)']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['cos(t)', 'sin(t)']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['3*t/(t**3 + 1)', '3*t**2/(t**3 + 1)']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['cos(t)/(sin(t)**2 + 1)', 'sin(t)*cos(t)/(sin(t)**2 + 1)']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['cos(t)', 'sin(2*t)']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['cos(t)**3', 'sin(t)**3']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['s*t', 's*t**2', 's**2']}, {'seq': ['s', 't']}, {'seq': ['x', 'y', 'z']}]),
+    ('implicitize', [{'seq': ['sin(s)*cos(t)', 'sin(s)*sin(t)', 'cos(s)']}, {'seq': ['s', 't']}, {'seq': ['x', 'y', 'z']}]),
+    ('implicitize', [{'seq': ['cos(t)*cosh(s)', 'sin(t)*cosh(s)', 'sinh(s)']}, {'seq': ['s', 't']}, {'seq': ['x', 'y', 'z']}]),
+    ('implicitize', [{'seq': ['(cos(s) + 2)*cos(t)', '(cos(s) + 2)*sin(t)', 'sin(s)']}, {'seq': ['s', 't']}, {'seq': ['x', 'y', 'z']}]),
+    ('implicitize', [{'seq': ['s*t', 's', 't']}, {'seq': ['s', 't']}, {'seq': ['x', 'y', 'z']}]),
+    ('implicitize', [{'seq': ['a*cos(t)', 'b*sin(t)']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['t + 1/t', 't - 1/t']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['sqrt(t)', 't**2 + 1']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['t**3 - t', 'a + t**2']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['tan(t)', '1/cos(t)']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['cos(t) + cos(2*t)', 'sin(t) - sin(2*t)']}, {'seq': ['t']}, {'seq': ['x', 'y']}]),
+    ('implicitize', [{'seq': ['t**2 - 1', 't*(t**2 - 1)', 't**4']}, {'seq': ['t']}, {'seq': ['x', 'y', 'z']}]),
+    ('eliminate', [{'seq': ['2*x**2 + x*y - x - y**2 + 2*y - 2', '-x**2 - x*y + x + y**2 + y + 1']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['2*x**2 - x*y - x + y**2 + 2', 'x**2 + 3*x + y**2 - 2*y - 2']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['x*y + 2*x + y**2 + 2', '-x**2 + 2*x*y + x + y**2 - y']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['2*x**2 + x*y - 2*x + 2*y**2 - 2*y', 'x**2 + 2*x*y - x - y**2 + 2*y - 1']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['3*x**2 - x*y + 2*y**2 + 1', '-x**2 + 2*x*y + 2*x + y + 2']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['2*x**2 + 2*x*y - 2*x + y', '2*x**2 + 2*x*y + 2*y - 1']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['-x**2 + x*y - 2*x + 2*y**2 - y + 2', '2*x**2 - 2*x*y + 2*y**2 - 2']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['x**2 - x*y + 2*y**2 - 2*y + 1', '2*x**2 - x*y + y**2 - 2*y']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['x**2 + x*y - x + 2*y**2 + y + 2', '-x**2 - 2*x*y + 2']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['x*y + 2*x + 2*y**2 + 2*y - 2', 'x*y + x + y**2 + y - 2']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['x**2 - x*y - x + y**2 + 2*y + 1', '-2*x**2 + x*y + 3*x - 2*y**2 - y + 2']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['x**2 + x + 2*y**2 - y - 1', 'x - 2*y**2 + 2*y + 1']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['Eq(P*V, R*T*n)', 'Eq(U, T*c*n)']}, {'seq': ['T']}]),
+    ('eliminate', [{'seq': ['x + y + z - 1', 'x - y + 2*z']}, {'seq': ['x', 'y']}]),
+    ('eliminate', [{'seq': ['x + y + z - 1', 'x - y + 2*z', 'x - 3']}, {'seq': ['x', 'y']}]),
+    ('eliminate', [{'seq': ['Eq(x, t*sin(a))', 'Eq(y, t**2)']}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': ['Eq(x, exp(t))', 'Eq(y, exp(2*t) + 1)']}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': ['Eq(x, log(t))', 'Eq(y, 2*log(t) + 1)']}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': ['Eq(2*x, exp(t) + exp(-t))', 'Eq(2*y, exp(t) - exp(-t))']}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': ['Eq(x, exp(t/2))', 'Eq(y, exp(t/3))']}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': []}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': ['0']}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': ['x - y']}, {'seq': ['z']}]),
+    ('eliminate', [{'seq': ['x', 'x - 1']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['x**2 - 1']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['1']}, {'seq': ['x']}]),
+    ('eliminate', [{'seq': ['Eq(x, 1)']}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': ['Eq(t*x, 1)', 'Eq(t*y, 1)']}, {'seq': ['t']}]),
+    ('eliminate', [{'seq': ['-I*t + x']}, {'seq': ['t']}]),
+    ('implicitize', [{'seq': ['t', 't**2']}, {'seq': ['t']}, {'seq': ['x']}]),
+    ('implicitize', [{'seq': ['t', 't**2']}, {'seq': ['t']}, {'seq': ['t', 'y']}]),
 ]
 
 

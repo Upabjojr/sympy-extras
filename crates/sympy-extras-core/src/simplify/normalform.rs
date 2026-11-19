@@ -70,7 +70,7 @@ fn insert(rule: &mut Vec<(Basic, Basic)>, k: Basic, v: Basic) {
     }
 }
 
-fn numer_denom(e: &Basic) -> PolyResult<(Basic, Basic)> {
+pub(crate) fn numer_denom(e: &Basic) -> PolyResult<(Basic, Basic)> {
     let mut found: Vec<Basic> = Vec::new();
     collect_kernels(e, &mut found);
     if found.is_empty() {
@@ -85,18 +85,18 @@ fn numer_denom(e: &Basic) -> PolyResult<(Basic, Basic)> {
 }
 
 /// The placeholders of the algebraic quantities (`_Abstraction`).
-struct Abstraction {
+pub(crate) struct Abstraction {
     roots: Vec<((Basic, i64), (Basic, Basic))>,
     root_order: Vec<Basic>,
     cosines: Vec<((bool, Basic), Basic)>,
     sines: Vec<((bool, Basic), Basic)>,
-    relations: Vec<Basic>,
-    back: Vec<(Basic, Basic)>,
+    pub(crate) relations: Vec<Basic>,
+    pub(crate) back: Vec<(Basic, Basic)>,
     imaginary: bool,
 }
 
 impl Abstraction {
-    fn new() -> Abstraction {
+    pub(crate) fn new() -> Abstraction {
         Abstraction {
             roots: Vec::new(),
             root_order: Vec::new(),
@@ -146,7 +146,7 @@ impl Abstraction {
         Ok(e)
     }
 
-    fn abstract_(&mut self, e: &Basic) -> R {
+    pub(crate) fn abstract_(&mut self, e: &Basic) -> R {
         if e.is_rational_class() || e.is_symbol() {
             return Ok(e.clone());
         }
@@ -338,9 +338,11 @@ fn gcd(a: &Int, b: &Int) -> Int {
 }
 const ZZ_GCD: IntegerRing = crate::polys::domains::integerring::ZZ;
 
-fn exponentials(expression: &Basic, back: &mut Vec<(Basic, Basic)>) -> R {
+/// The exponentials of the expressions of one argument as powers of one
+/// placeholder each, grouped over all the expressions (`_exponentials`).
+pub(crate) fn exponentials_of(expressions: &[Basic], back: &mut Vec<(Basic, Basic)>) -> PolyResult<Vec<Basic>> {
     let mut groups: Vec<(Basic, Vec<(Basic, Rat)>)> = Vec::new();
-    for node in of_function(expression, &[Function::Exp]) {
+    for node in expressions.iter().flat_map(|e| of_function(e, &[Function::Exp])) {
         let (coefficient, rest) = crate::core::expr::as_coeff_mul(&node.args()[0]);
         if let Some(c) = coefficient.as_rational() {
             match groups.iter_mut().find(|(r, _)| *r == rest) {
@@ -367,7 +369,11 @@ fn exponentials(expression: &Basic, back: &mut Vec<(Basic, Basic)>) -> R {
             insert(&mut rule, node.clone(), pw(&placeholder, &integer(&numer(&power)))?);
         }
     }
-    xreplace(expression, &rule)
+    expressions.iter().map(|e| xreplace(e, &rule)).collect()
+}
+
+fn exponentials(expression: &Basic, back: &mut Vec<(Basic, Basic)>) -> R {
+    Ok(exponentials_of(std::slice::from_ref(expression), back)?.remove(0))
 }
 
 /// A polynomial lift reducing modulo the relations (`_QuotientLift`).

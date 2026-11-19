@@ -1,6 +1,7 @@
 //! Port of `sympy_extras.solvers`: the modules which need no expressions.
 
 pub mod bivariate;
+pub mod elimination;
 pub mod exponential_diophantine;
 pub mod inequalities;
 pub mod integers;
