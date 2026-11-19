@@ -3663,6 +3663,62 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     )
                     .map_err(e)?
                 }
+                "curve" => {
+                    // curve(method, components, parameter, args...)
+                    use sympy_extras_core::diffgeom::classical::Curve;
+                    let c = Curve::new(a[2].args(), &a[3]).map_err(e)?;
+                    match a[1].to_string().as_str() {
+                        "new" => tuple(c.components.clone()),
+                        "derivative" => {
+                            let order: usize = if a.len() > 4 {
+                                a[4].to_string().parse::<usize>().unwrap_or(1)
+                            } else {
+                                1
+                            };
+                            tuple(c.derivative(order).map_err(e)?)
+                        }
+                        "speed" => c.speed().map_err(e)?,
+                        "tangent" => tuple(c.tangent().map_err(e)?),
+                        "curvature" => c.curvature().map_err(e)?,
+                        "signed_curvature" => c.signed_curvature().map_err(e)?,
+                        "torsion" => c.torsion().map_err(e)?,
+                        "frenet_frame" => {
+                            let (t, n_, b) = c.frenet_frame().map_err(e)?;
+                            tuple(vec![tuple(t), tuple(n_), tuple(b)])
+                        }
+                        other => {
+                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                "unknown method {}",
+                                other
+                            )))
+                        }
+                    }
+                }
+                "surface" => {
+                    use sympy_extras_core::diffgeom::classical::Surface;
+                    let s_ = Surface::new(a[2].args(), &a[3], &a[4]).map_err(e)?;
+                    let three = |t: (Basic, Basic, Basic)| tuple(vec![t.0, t.1, t.2]);
+                    match a[1].to_string().as_str() {
+                        "new" => tuple(s_.components.clone()),
+                        "first_fundamental_form" => three(s_.first_fundamental_form().map_err(e)?),
+                        "metric_determinant" => s_.metric_determinant().map_err(e)?,
+                        "area_element" => s_.area_element().map_err(e)?,
+                        "normal" => tuple(s_.normal().map_err(e)?),
+                        "second_fundamental_form" => three(s_.second_fundamental_form().map_err(e)?),
+                        "gaussian_curvature" => s_.gaussian_curvature().map_err(e)?,
+                        "mean_curvature" => s_.mean_curvature().map_err(e)?,
+                        "principal_curvatures" => {
+                            let (p, q) = s_.principal_curvatures().map_err(e)?;
+                            tuple(vec![p, q])
+                        }
+                        other => {
+                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                "unknown method {}",
+                                other
+                            )))
+                        }
+                    }
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),

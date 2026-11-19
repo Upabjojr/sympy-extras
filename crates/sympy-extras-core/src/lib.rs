@@ -31,6 +31,7 @@ pub mod assumptions;
 pub mod calculus;
 pub mod concrete;
 pub mod core;
+pub mod diffgeom;
 pub mod error;
 pub mod functions;
 pub mod geometry;

@@ -1,7 +1,7 @@
 """The Rust ports of ``matrices/calculus.py``, ``vector/orthogonal.py``,
-``solvers/elimination.py`` and ``series/fouriercoefficients.py`` against
-the Python ones on the calls of their tests (the default simplifier only;
-read with the core's parser)."""
+``solvers/elimination.py``, ``series/fouriercoefficients.py`` and
+``diffgeom/classical.py`` against the Python ones on the calls of their
+tests (the default simplifier only; read with the core's parser)."""
 from __future__ import annotations
 
 import ast
@@ -12,6 +12,7 @@ import pytest
 from sympy_extras.core import Eq, Integer, Symbol, Tuple
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.parsing import parse
+import sympy_extras.diffgeom.classical as DG
 import sympy_extras.matrices.calculus as MC
 import sympy_extras.series.fouriercoefficients as FC
 import sympy_extras.solvers.elimination as EL
@@ -65,6 +66,17 @@ def argument(a: object) -> object:
 
 
 def python(name: str, args: list[object]) -> object:
+    if name.startswith(('curve.', 'surface.')):
+        kind, method = name.split('.', 1)
+        components = args[0]
+        assert isinstance(components, list)
+        if kind == 'curve':
+            assert isinstance(args[1], Symbol)
+            found = getattr(DG.Curve(components, args[1]), method)(*args[2:])
+        else:
+            assert isinstance(args[1], Symbol) and isinstance(args[2], Symbol)
+            found = getattr(DG.Surface(components, args[1], args[2]), method)(*args[3:])
+        return found
     if name.startswith('orthogonal.'):
         method = name.split('.', 1)[1]
         coordinates, rest = args[0], args[1:]
@@ -220,6 +232,66 @@ CASES: list[tuple[str, list[object]]] = [
     ('fourier_coefficients', ['x', 'x', {'seq': [{'int': 1}, {'int': 0}]}, 'None']),
     ('fourier_coefficients', ['x', 'x', {'seq': [{'int': 0}, {'int': 1}]}, 'm']),
     ('fourier_coefficients', ['sin(x**2)', 'x', {'seq': [{'int': 0}, {'int': 1}]}, 'None']),
+    ('curve.speed', [{'seq': ['a*cos(t)', 'a*sin(t)', 'b*t']}, 't']),
+    ('curve.curvature', [{'seq': ['a*cos(t)', 'a*sin(t)', 'b*t']}, 't']),
+    ('curve.torsion', [{'seq': ['a*cos(t)', 'a*sin(t)', 'b*t']}, 't']),
+    ('curve.frenet_frame', [{'seq': ['a*cos(t)', 'a*sin(t)', 'b*t']}, 't']),
+    ('curve.curvature', [{'seq': ['R*cos(t)', 'R*sin(t)']}, 't']),
+    ('curve.signed_curvature', [{'seq': ['R*cos(t)', 'R*sin(t)']}, 't']),
+    ('curve.torsion', [{'seq': ['R*cos(t)', 'R*sin(t)']}, 't']),
+    ('curve.signed_curvature', [{'seq': ['R*cos(t)', '-R*sin(t)']}, 't']),
+    ('curve.tangent', [{'seq': ['R*cos(t)', 'R*sin(t)']}, 't']),
+    ('curve.curvature', [{'seq': ['t', 't**2']}, 't']),
+    ('curve.curvature', [{'seq': ['t', 'cosh(t)']}, 't']),
+    ('curve.curvature', [{'seq': ['a*cos(t)', 'b*sin(t)']}, 't']),
+    ('curve.curvature', [{'seq': ['t', '2*t', '3*t']}, 't']),
+    ('curve.torsion', [{'seq': ['t', '2*t', '3*t']}, 't']),
+    ('curve.frenet_frame', [{'seq': ['t', '2*t', '3*t']}, 't']),
+    ('curve.signed_curvature', [{'seq': ['t', '2*t', '3*t']}, 't']),
+    ('curve.curvature', [{'seq': ['t', 't**2', 't**3']}, 't']),
+    ('curve.torsion', [{'seq': ['t', 't**2', 't**3']}, 't']),
+    ('curve.curvature', [{'seq': ['c*cos(t)', 'c*sin(t)', 't']}, 't']),
+    ('surface.first_fundamental_form', [{'seq': ['R*sin(u)*cos(v)', 'R*sin(u)*sin(v)', 'R*cos(u)']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['R*sin(u)*cos(v)', 'R*sin(u)*sin(v)', 'R*cos(u)']}, 'u', 'v']),
+    ('surface.mean_curvature', [{'seq': ['R*sin(u)*cos(v)', 'R*sin(u)*sin(v)', 'R*cos(u)']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['(R + r*cos(u))*cos(v)', '(R + r*cos(u))*sin(v)', 'r*sin(u)']}, 'u', 'v']),
+    ('surface.mean_curvature', [{'seq': ['cos(v)*cosh(u)', 'sin(v)*cosh(u)', 'u']}, 'u', 'v']),
+    ('surface.mean_curvature', [{'seq': ['u*cos(v)', 'u*sin(v)', 'v']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['cos(v)*cosh(u)', 'sin(v)*cosh(u)', 'u']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['u*cos(v)', 'u*sin(v)', 'v']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['cos(v)/cosh(u)', 'sin(v)/cosh(u)', 'u - sinh(u)/cosh(u)']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['cos(u)', 'sin(u)', 'v']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['v*cos(u)', 'v*sin(u)', 'v']}, 'u', 'v']),
+    ('surface.first_fundamental_form', [{'seq': ['(R + r*cos(u))*cos(v)', '(R + r*cos(u))*sin(v)', 'r*sin(u)']}, 'u', 'v']),
+    ('surface.first_fundamental_form', [{'seq': ['cos(v)*cosh(u)', 'sin(v)*cosh(u)', 'u']}, 'u', 'v']),
+    ('surface.first_fundamental_form', [{'seq': ['u*cos(v)', 'u*sin(v)', 'v']}, 'u', 'v']),
+    ('surface.first_fundamental_form', [{'seq': ['cos(v)/cosh(u)', 'sin(v)/cosh(u)', 'u - sinh(u)/cosh(u)']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['u', 'v', 'u*v']}, 'u', 'v']),
+    ('surface.first_fundamental_form', [{'seq': ['u', 'v', 'u*v']}, 'u', 'v']),
+    ('surface.second_fundamental_form', [{'seq': ['u', 'v', 'u*v']}, 'u', 'v']),
+    ('surface.normal', [{'seq': ['u', 'v', 'u*v']}, 'u', 'v']),
+    ('surface.principal_curvatures', [{'seq': ['u', 'v', 'u*v']}, 'u', 'v']),
+    ('surface.mean_curvature', [{'seq': ['u', 'v', 'u*v']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['u', 'v', 'u**2 - v**2']}, 'u', 'v']),
+    ('surface.first_fundamental_form', [{'seq': ['u', 'v', 'u**2 - v**2']}, 'u', 'v']),
+    ('surface.second_fundamental_form', [{'seq': ['u', 'v', 'u**2 - v**2']}, 'u', 'v']),
+    ('surface.normal', [{'seq': ['u', 'v', 'u**2 - v**2']}, 'u', 'v']),
+    ('surface.principal_curvatures', [{'seq': ['u', 'v', 'u**2 - v**2']}, 'u', 'v']),
+    ('surface.mean_curvature', [{'seq': ['u', 'v', 'u**2 - v**2']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['u', 'v', 'u**3 + u*v**2']}, 'u', 'v']),
+    ('surface.first_fundamental_form', [{'seq': ['u', 'v', 'u**3 + u*v**2']}, 'u', 'v']),
+    ('surface.second_fundamental_form', [{'seq': ['u', 'v', 'u**3 + u*v**2']}, 'u', 'v']),
+    ('surface.normal', [{'seq': ['u', 'v', 'u**3 + u*v**2']}, 'u', 'v']),
+    ('surface.principal_curvatures', [{'seq': ['u', 'v', 'u**3 + u*v**2']}, 'u', 'v']),
+    ('surface.mean_curvature', [{'seq': ['u', 'v', 'u**3 + u*v**2']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['u', 'v', 'v*exp(u)']}, 'u', 'v']),
+    ('surface.first_fundamental_form', [{'seq': ['u', 'v', 'v*exp(u)']}, 'u', 'v']),
+    ('surface.second_fundamental_form', [{'seq': ['u', 'v', 'v*exp(u)']}, 'u', 'v']),
+    ('surface.normal', [{'seq': ['u', 'v', 'v*exp(u)']}, 'u', 'v']),
+    ('surface.principal_curvatures', [{'seq': ['u', 'v', 'v*exp(u)']}, 'u', 'v']),
+    ('surface.mean_curvature', [{'seq': ['u', 'v', 'v*exp(u)']}, 'u', 'v']),
+    ('surface.area_element', [{'seq': ['u', 'v', 'u*v']}, 'u', 'v']),
+    ('surface.gaussian_curvature', [{'seq': ['u + v', 'u + v', 'u + v']}, 'u', 'v']),
 ]
 
 
@@ -227,7 +299,7 @@ CASES: list[tuple[str, list[object]]] = [
 def test_calculus(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    head: list[Basic] = [Symbol('orthogonal'), Symbol(name.split('.', 1)[1])] if name.startswith('orthogonal.') else [Symbol(name)]
+    head: list[Basic] = [Symbol(name.split('.', 1)[0]), Symbol(name.split('.', 1)[1])] if '.' in name else [Symbol(name)]
     got = outcome(lambda: rc.logic_call('calculus', head + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(python(name, args))), (name, raw)
