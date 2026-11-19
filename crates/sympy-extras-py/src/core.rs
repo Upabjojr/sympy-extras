@@ -3509,19 +3509,34 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         .map(|(v, k, vs)| tuple(vec![v, n(k), list(&vs)]))
                         .collect(),
                 ),
-                "kronecker_product" => sympy_extras_core::matrices::equations::kronecker_product(&m(&a[1])?, &m(&a[2])?).map_err(e)?.as_tuple(),
+                "kronecker_product" => {
+                    sympy_extras_core::matrices::equations::kronecker_product(&m(&a[1])?, &m(&a[2])?)
+                        .map_err(e)?
+                        .as_tuple()
+                }
                 "vec" => sympy_extras_core::matrices::equations::vec(&m(&a[1])?).as_tuple(),
                 "unvec" => {
-                    let size = |b: &Basic| b.to_string().parse::<usize>().map_err(|_| pyo3::exceptions::PyValueError::new_err("a size"));
-                    sympy_extras_core::matrices::equations::unvec(&m(&a[1])?, size(&a[2])?, size(&a[3])?).map_err(e)?.as_tuple()
+                    let size = |b: &Basic| {
+                        b.to_string()
+                            .parse::<usize>()
+                            .map_err(|_| pyo3::exceptions::PyValueError::new_err("a size"))
+                    };
+                    sympy_extras_core::matrices::equations::unvec(&m(&a[1])?, size(&a[2])?, size(&a[3])?)
+                        .map_err(e)?
+                        .as_tuple()
                 }
-                "adjoint" => sympy_extras_core::matrices::equations::adjoint(&m(&a[1])?).map_err(e)?.as_tuple(),
+                "adjoint" => sympy_extras_core::matrices::equations::adjoint(&m(&a[1])?)
+                    .map_err(e)?
+                    .as_tuple(),
                 "linear_matrix_equation" | "sylvester_solve" | "lyapunov_solve" | "discrete_lyapunov_solve" => {
                     use sympy_extras_core::matrices::equations as eq;
                     let found = match a[0].to_string().as_str() {
                         "linear_matrix_equation" => {
-                            let terms: Vec<(ExprMatrix, ExprMatrix)> =
-                                a[1].args().iter().map(|t| Ok((m(&t.args()[0])?, m(&t.args()[1])?))).collect::<PyResult<_>>()?;
+                            let terms: Vec<(ExprMatrix, ExprMatrix)> = a[1]
+                                .args()
+                                .iter()
+                                .map(|t| Ok((m(&t.args()[0])?, m(&t.args()[1])?)))
+                                .collect::<PyResult<_>>()?;
                             eq::linear_matrix_equation(&terms, &m(&a[2])?)
                         }
                         "sylvester_solve" => eq::sylvester_solve(&m(&a[1])?, &m(&a[2])?, &m(&a[3])?),
@@ -3534,23 +3549,58 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         None => sym("NONE"),
                     }
                 }
-                "commuting_matrices" => list(&sympy_extras_core::matrices::equations::commuting_matrices(&m(&a[1])?).map_err(e)?),
-                "controllability_matrix" => sympy_extras_core::matrices::statespace::controllability_matrix(&m(&a[1])?, &m(&a[2])?).map_err(e)?.as_tuple(),
-                "observability_matrix" => sympy_extras_core::matrices::statespace::observability_matrix(&m(&a[1])?, &m(&a[2])?).map_err(e)?.as_tuple(),
-                "is_controllable" => flag(sympy_extras_core::matrices::statespace::is_controllable(&m(&a[1])?, &m(&a[2])?).map_err(e)?),
-                "is_observable" => flag(sympy_extras_core::matrices::statespace::is_observable(&m(&a[1])?, &m(&a[2])?).map_err(e)?),
+                "commuting_matrices" => {
+                    list(&sympy_extras_core::matrices::equations::commuting_matrices(&m(&a[1])?).map_err(e)?)
+                }
+                "controllability_matrix" => {
+                    sympy_extras_core::matrices::statespace::controllability_matrix(&m(&a[1])?, &m(&a[2])?)
+                        .map_err(e)?
+                        .as_tuple()
+                }
+                "observability_matrix" => {
+                    sympy_extras_core::matrices::statespace::observability_matrix(&m(&a[1])?, &m(&a[2])?)
+                        .map_err(e)?
+                        .as_tuple()
+                }
+                "is_controllable" => {
+                    flag(sympy_extras_core::matrices::statespace::is_controllable(&m(&a[1])?, &m(&a[2])?).map_err(e)?)
+                }
+                "is_observable" => {
+                    flag(sympy_extras_core::matrices::statespace::is_observable(&m(&a[1])?, &m(&a[2])?).map_err(e)?)
+                }
                 "transfer_function" => {
-                    let d: Option<ExprMatrix> = if a.len() > 5 && a[5].to_string() != "NONE" { Some(m(&a[5])?) } else { None };
-                    sympy_extras_core::matrices::statespace::transfer_function(&m(&a[1])?, &m(&a[2])?, &m(&a[3])?, &a[4], d.as_ref()).map_err(e)?.as_tuple()
+                    let d: Option<ExprMatrix> = if a.len() > 5 && a[5].to_string() != "NONE" {
+                        Some(m(&a[5])?)
+                    } else {
+                        None
+                    };
+                    sympy_extras_core::matrices::statespace::transfer_function(
+                        &m(&a[1])?,
+                        &m(&a[2])?,
+                        &m(&a[3])?,
+                        &a[4],
+                        d.as_ref(),
+                    )
+                    .map_err(e)?
+                    .as_tuple()
                 }
                 "pole_placement" => {
                     use sympy_extras_core::matrices::statespace::Target;
                     let target = if matches!(a[3].head(), Head::Tuple) {
                         Target::Poles(a[3].args().to_vec())
                     } else {
-                        Target::Polynomial(a[3].clone(), if a.len() > 4 && a[4].to_string() != "NONE" { Some(a[4].clone()) } else { None })
+                        Target::Polynomial(
+                            a[3].clone(),
+                            if a.len() > 4 && a[4].to_string() != "NONE" {
+                                Some(a[4].clone())
+                            } else {
+                                None
+                            },
+                        )
                     };
-                    sympy_extras_core::matrices::statespace::pole_placement(&m(&a[1])?, &m(&a[2])?, &target).map_err(e)?.as_tuple()
+                    sympy_extras_core::matrices::statespace::pole_placement(&m(&a[1])?, &m(&a[2])?, &target)
+                        .map_err(e)?
+                        .as_tuple()
                 }
                 "realization" => {
                     let (p, q, r, d) = sympy_extras_core::matrices::statespace::realization(&a[1], &a[2]).map_err(e)?;
@@ -3567,8 +3617,30 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     tuple(vec![t.as_tuple(), p.as_tuple(), q.as_tuple(), n(r)])
                 }
                 "minimal_realization" => {
-                    let (p, q, r) = sympy_extras_core::matrices::statespace::minimal_realization(&m(&a[1])?, &m(&a[2])?, &m(&a[3])?).map_err(e)?;
+                    let (p, q, r) = sympy_extras_core::matrices::statespace::minimal_realization(
+                        &m(&a[1])?,
+                        &m(&a[2])?,
+                        &m(&a[3])?,
+                    )
+                    .map_err(e)?;
                     tuple(vec![p.as_tuple(), q.as_tuple(), r.as_tuple()])
+                }
+                "hurwitz_matrix" => sympy_extras_core::solvers::stability::hurwitz_matrix(&a[1], &a[2]).map_err(e)?.as_tuple(),
+                "hurwitz_determinants" => tuple(sympy_extras_core::solvers::stability::hurwitz_determinants(&a[1], &a[2]).map_err(e)?),
+                "routh_array" => tuple(
+                    sympy_extras_core::solvers::stability::routh_array(&a[1], &a[2]).map_err(e)?.into_iter().map(tuple).collect(),
+                ),
+                "stability_conditions" | "is_stable" => {
+                    use sympy_extras_core::solvers::stability as sb;
+                    let subject = if matches!(a[1].head(), Head::Tuple) { sb::Subject::Matrix(m(&a[1])?) } else { sb::Subject::Polynomial(a[1].clone()) };
+                    let x: Option<Basic> = if a.len() > 2 && a[2].to_string() != "NONE" { Some(a[2].clone()) } else { None };
+                    let discrete: bool = a.len() > 3 && a[3].to_string() == "True";
+                    if a[0].to_string() == "is_stable" {
+                        flag(sb::is_stable(&subject, x.as_ref(), discrete).map_err(e)?)
+                    } else {
+                        let simplify: bool = !(a.len() > 4 && a[4].to_string() == "False");
+                        sb::stability_conditions(&subject, x.as_ref(), discrete, simplify).map_err(e)?
+                    }
                 }
                 "singular_values" => tuple(sympy_extras_core::matrices::svd::singular_values(&m(&a[1])?).map_err(e)?),
                 "svd" => {
