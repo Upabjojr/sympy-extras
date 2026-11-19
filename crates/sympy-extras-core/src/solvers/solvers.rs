@@ -178,7 +178,7 @@ fn zeroes_denominator(denominator: &Basic, x: &Basic, v: &Basic) -> PolyResult<b
 
 // -- polynomials
 
-fn coefficients(e: &Basic, v: &Basic) -> PolyResult<Option<Vec<(i64, Basic)>>> {
+pub(crate) fn coefficients(e: &Basic, v: &Basic) -> PolyResult<Option<Vec<(i64, Basic)>>> {
     let ex: Basic = expand(e)?;
     let terms: Vec<Basic> = if ex.is_add() { ex.args().to_vec() } else { vec![ex] };
     let mut gathered: Vec<(i64, Vec<Basic>)> = Vec::new();
@@ -223,7 +223,7 @@ fn distinct(values: Vec<Basic>) -> Vec<Basic> {
     result
 }
 
-fn polynomial_roots(e: &Basic, x: &Basic, degree: usize) -> O {
+pub(crate) fn polynomial_roots(e: &Basic, x: &Basic, degree: usize) -> O {
     let found = match crate::polys::polyroots::roots(e, std::slice::from_ref(x), true, true, None) {
         Ok(f) => Some(f),
         Err(err) if crate::polys::rootoftools::is_failure(&err) => None,

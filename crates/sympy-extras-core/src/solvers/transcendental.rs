@@ -908,11 +908,7 @@ fn real_condition(e: &Basic, k: &Basic) -> R {
     if crate::core::printing::could_extract_minus_sign(e) {
         (base, power) = crate::core::expr::as_base_exp(&neg(e)?)?;
     }
-    if power
-        .as_rational()
-        .is_some_and(|r| denom(r) == Int::from(2u8))
-        && !base.has(&Basic::imaginary_unit())
-    {
+    if power.as_rational().is_some_and(|r| denom(r) == Int::from(2u8)) && !base.has(&Basic::imaginary_unit()) {
         return crate::core::relational::ge(&base, &Basic::zero());
     }
     crate::sets::sets::contains(&crate::sets::sets::reals(), e)
@@ -1058,9 +1054,11 @@ fn solve_real(formula: &Basic, x: &Basic, ctx: &Context) -> PolyResult<Option<Ba
             if let Some(linear) = linear_solution(formula, x)? {
                 return Ok(Some(linear));
             }
-            return Err(crate::error::not_ported(
-                "solveset of a relation polynomial in x with symbolic coefficients",
-            ));
+            return Ok(Some(super::solveset::solveset(
+                formula,
+                x,
+                &crate::sets::sets::reals(),
+            )?));
         }
         if matches!(formula.head(), Head::And | Head::Or) {
             let mut parts: Vec<Basic> = Vec::new();
