@@ -65,7 +65,7 @@ fn sorted_by_key(mut v: Vec<Basic>) -> Vec<Basic> {
 
 /// The coefficients of a polynomial in `x`, the leading one first
 /// (`_coefficients`).
-fn coefficients(e: &Basic, x: &Basic) -> PolyResult<Vec<Basic>> {
+pub(crate) fn coefficients(e: &Basic, x: &Basic) -> PolyResult<Vec<Basic>> {
     let expanded: Basic = expand(e)?;
     let mut found: Vec<(usize, Vec<Basic>)> = Vec::new();
     for term in terms_of(&expanded) {
@@ -285,7 +285,7 @@ impl Field for GaussianEntries {
     }
 }
 
-fn fresh_symbol(m: &ExprMatrix) -> Basic {
+pub(crate) fn fresh_symbol(m: &ExprMatrix) -> Basic {
     let mut used: Vec<String> = Vec::new();
     for e in &m.entries {
         for s in e.free_symbols() {
@@ -302,10 +302,10 @@ fn fresh_symbol(m: &ExprMatrix) -> Basic {
     crate::core::symbol::Symbol::new(&name, &[]).0
 }
 
-type Ext<F> = QuotientField<<F as Field>::D>;
-type ExtElem<F> = Vec<<<F as Field>::D as Domain>::Elem>;
+pub(crate) type Ext<F> = QuotientField<<F as Field>::D>;
+pub(crate) type ExtElem<F> = Vec<<<F as Field>::D as Domain>::Elem>;
 
-fn field_nullspace<K: Domain + Clone>(matrix: &DomainMatrix<K>) -> PolyResult<Vec<Vec<K::Elem>>> {
+pub(crate) fn field_nullspace<K: Domain + Clone>(matrix: &DomainMatrix<K>) -> PolyResult<Vec<Vec<K::Elem>>> {
     let f: &K = &matrix.domain;
     let (reduced, pivots) = matrix.rref()?;
     let mut basis: Vec<Vec<K::Elem>> = Vec::new();
@@ -323,7 +323,7 @@ fn field_nullspace<K: Domain + Clone>(matrix: &DomainMatrix<K>) -> PolyResult<Ve
     Ok(basis)
 }
 
-fn extension<F: Field>(field: &F, factor: &Basic, unknown: &Basic) -> PolyResult<Ext<F>> {
+pub(crate) fn extension<F: Field>(field: &F, factor: &Basic, unknown: &Basic) -> PolyResult<Ext<F>> {
     let k: &F::D = field.domain();
     let cs: Vec<_> = coefficients(factor, unknown)?
         .iter()
@@ -333,7 +333,7 @@ fn extension<F: Field>(field: &F, factor: &Basic, unknown: &Basic) -> PolyResult
     QuotientField::new(k.clone(), cs.iter().map(|c| k.mul(c, &leading)).collect())
 }
 
-fn shifted<F: Field>(field: &F, f: &Ext<F>, m: &ExprMatrix) -> PolyResult<DomainMatrix<Ext<F>>> {
+pub(crate) fn shifted<F: Field>(field: &F, f: &Ext<F>, m: &ExprMatrix) -> PolyResult<DomainMatrix<Ext<F>>> {
     let mut rows = Vec::new();
     for i in 0..m.rows {
         let mut row = Vec::new();
@@ -346,7 +346,7 @@ fn shifted<F: Field>(field: &F, f: &Ext<F>, m: &ExprMatrix) -> PolyResult<Domain
     DomainMatrix::new(rows, f.clone(), Some(m.cols))
 }
 
-fn column<F: Field>(field: &F, vector: &[ExtElem<F>], x: &Basic) -> PolyResult<ExprMatrix> {
+pub(crate) fn column<F: Field>(field: &F, vector: &[ExtElem<F>], x: &Basic) -> PolyResult<ExprMatrix> {
     let mut entries: Vec<Basic> = Vec::new();
     for element in vector {
         let degree: i64 = element.len() as i64 - 1;
@@ -477,7 +477,7 @@ fn jordan_chains_with<F: Field>(
     Ok(result)
 }
 
-fn characteristic_factors(m: &ExprMatrix, unknown: &Basic) -> PolyResult<(Vec<Basic>, Vec<(Basic, usize)>)> {
+pub(crate) fn characteristic_factors(m: &ExprMatrix, unknown: &Basic) -> PolyResult<(Vec<Basic>, Vec<(Basic, usize)>)> {
     square(m)?;
     let kernels: Vec<Basic> = kernels_of(&[m]);
     if !kernels.iter().all(|k| k.is_symbol() || is_radical(k)) {

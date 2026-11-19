@@ -3372,7 +3372,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             )
             .map_err(e)?
         }
-        "eigen" | "decompositions" => {
+        "eigen" | "decompositions" | "matfunctions" => {
             // op, matrices as Tuple(rows, cols, Tuple(entries)); booleans as the symbols True/False
             use sympy_extras_core::matrices::decompositions as dc;
             use sympy_extras_core::matrices::dense::ExprMatrix;
@@ -3459,6 +3459,30 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "is_positive_definite" => flag(dc::is_positive_definite(&m(&a[1])?).map_err(e)?),
                 "is_positive_semidefinite" => flag(dc::is_positive_semidefinite(&m(&a[1])?).map_err(e)?),
                 "leading_principal_minors" => tuple(dc::leading_principal_minors(&m(&a[1])?).map_err(e)?),
+                "matrix_components" => tuple(
+                    sympy_extras_core::matrices::functions::matrix_components(&m(&a[1])?, &a[2])
+                        .map_err(e)?
+                        .iter()
+                        .map(|g| tuple(vec![g.factor.clone(), g.symbol.clone(), list(&g.components)]))
+                        .collect(),
+                ),
+                "matrix_function" => sympy_extras_core::matrices::functions::matrix_function(&m(&a[1])?, &a[2], &a[3])
+                    .map_err(e)?
+                    .as_tuple(),
+                "matrix_exp" => {
+                    let t: Basic = if a.len() > 2 { a[2].clone() } else { Basic::int(1) };
+                    sympy_extras_core::matrices::functions::matrix_exp(&m(&a[1])?, &t)
+                        .map_err(e)?
+                        .as_tuple()
+                }
+                "matrix_power" => sympy_extras_core::matrices::functions::matrix_power(&m(&a[1])?, &a[2])
+                    .map_err(e)?
+                    .as_tuple(),
+                "singular_values" => tuple(sympy_extras_core::matrices::svd::singular_values(&m(&a[1])?).map_err(e)?),
+                "svd" => {
+                    let (u, s_, v) = sympy_extras_core::matrices::svd::svd(&m(&a[1])?).map_err(e)?;
+                    tuple(vec![u.as_tuple(), s_.as_tuple(), v.as_tuple()])
+                }
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
