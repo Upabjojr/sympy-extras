@@ -2,3 +2,4 @@
 
 pub mod gosper;
 pub mod pisigma;
+pub mod ztransform;

@@ -3,7 +3,8 @@
 differences, Newton and Hermite interpolation, cubic splines, least
 squares; value ranges, minima and maxima, parametric optima; and of
 geometry/quadrics.py (conics and quadrics) and of
-series/approximants.py (Pade approximants, series reversion), on the
+series/approximants.py (Pade approximants, series reversion) and
+concrete/ztransform.py (Z-transforms), on the
 cases of their tests (read with the core's parser)."""
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import sympy_extras.calculus.interpolation as IP
 import sympy_extras.calculus.optimization as OP
 import sympy_extras.geometry.quadrics as QD
 import sympy_extras.series.approximants as AP
+import sympy_extras.concrete.ztransform as ZT
 from sympy_extras.matrices.dense import ExprMatrix
 
 from ..conftest import load
@@ -299,6 +301,46 @@ CASES: list[tuple[str, list[object]]] = [
     ('taylor_coefficients', ['exp(x)', 'x', {'int': 4}, {'int': 0}]),
     ('taylor_coefficients', ['x*exp(x)', 'x', {'int': 8}, {'int': 0}]),
     ('taylor_coefficients', ['1/x', 'x', {'int': 3}, {'int': 2}]),
+    ('inverse_z_transform', ['(z**3 + 2*z**2 + 2*z)/(z**3 - z**2 + 4*z - 4)', 'z', 'n']),
+    ('inverse_z_transform', ['z/(z**4 + 1)', 'z', 'n']),
+    ('inverse_z_transform', ['z/(z - 3)**2', 'z', 'n']),
+    ('inverse_z_transform', ['8/(z**3 - 2*z**2)', 'z', 'n']),
+    ('inverse_z_transform', ['z*(-a*b + z)/(a*b + z**2 - z*(a + b))', 'z', 'n']),
+    ('inverse_z_transform', ['exp(1/z)', 'z', 'n']),
+    ('inverse_z_transform', ['z*(z + 1)/(z - 1)**3', 'z', 'n']),
+    ('inverse_z_transform', ['(z**2 + 1)/(z**2*(z - 3))', 'z', 'n']),
+    ('inverse_z_transform', ['z/((-a + z)**2*(z - 1))', 'z', 'n']),
+    ('inverse_z_transform', ['z**(-2)', 'z', 'n']),
+    ('inverse_z_transform', ['5', 'z', 'n']),
+    ('inverse_z_transform', ['z**2/(-a + z**2)', 'z', 'n']),
+    ('inverse_z_transform', ['z**4/((z - 1/3)*(z**2 + 1)*(z**2 + z + 1))', 'z', 'n']),
+    ('inverse_z_transform', ['2 + z**(-3)', 'z', 'n']),
+    ('inverse_z_transform', ['z/(z - 2)**3', 'z', 'n']),
+    ('inverse_z_transform', ['z**2/(z**2 + 4)', 'z', 'n']),
+    ('inverse_z_transform', ['(z + 2)/(z**2 + 2*z + 5)', 'z', 'n']),
+    ('inverse_z_transform', ['(z**3 + z)/(z**2 - 2)**2', 'z', 'n']),
+    ('inverse_z_transform', ['(z**3 + 4*z**2 + z)/(z**4 - 4*z**3 + 6*z**2 - 4*z + 1)', 'z', 'n']),
+    ('inverse_z_transform', ['0', 'z', 'n']),
+    ('z_transform', ['Heaviside(n)', 'n', 'z']),
+    ('z_transform', ['sin(n)**2', 'n', 'z']),
+    ('z_transform', ['Heaviside(-a + n)', 'n', 'z']),
+    ('z_transform', ['Heaviside(n, 1)', 'n', 'z']),
+    ('z_transform', ['cos(pi*n/3)', 'n', 'z']),
+    ('z_transform', ['n/(n + 2)', 'n', 'z']),
+    ('z_transform', ['a**n*n/factorial(n)', 'n', 'z']),
+    ('z_transform', ['2**n - n', 'n', 'z']),
+    ('z_transform', ['2**n*Heaviside(n - 3, 1)', 'n', 'z']),
+    ('z_transform', ['a**n/factorial(n)', 'n', 'z']),
+    ('z_transform', ['exp(a*n + 1)', 'n', 'z']),
+    ('z_transform', ['n', 'n', 'z']),
+    ('z_transform', ['Heaviside(2*n - 3)', 'n', 'z']),
+    ('z_transform', ['n**3', 'n', 'z']),
+    ('z_transform', ['(n + 1)/2**n', 'n', 'z']),
+    ('z_transform', ['1', 'n', 'z']),
+    ('z_transform', ['1/n', 'n', 'z']),
+    ('z_transform', ['Heaviside(n - 2, 1)', 'n', 'z']),
+    ('z_transform', ['-5*a**n + b**n*(n + 1)**2 + cos(pi*n/3)', 'n', 'z']),
+    ('z_transform', ['1/((n + 1)*factorial(n))', 'n', 'z']),
 ]
 
 
@@ -306,7 +348,7 @@ CASES: list[tuple[str, list[object]]] = [
 def test_calculus(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    module = IP if hasattr(IP, name) else (QD if hasattr(QD, name) else (AP if hasattr(AP, name) else OP))
+    module = IP if hasattr(IP, name) else (QD if hasattr(QD, name) else (AP if hasattr(AP, name) else (ZT if hasattr(ZT, name) else OP)))
     got = outcome(lambda: rc.logic_call('calculus', [Symbol(name)] + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(getattr(module, name)(*args))), (name, raw)

@@ -4,6 +4,8 @@
 //! the fundamental matrix, absorption and hitting probabilities, mean
 //! hitting and return times, the limiting matrix.
 
+#![allow(clippy::needless_range_loop)]
+
 use crate::core::basic::Basic;
 use crate::error::{value_error, PolyError, PolyResult};
 use crate::matrices::dense::ExprMatrix;

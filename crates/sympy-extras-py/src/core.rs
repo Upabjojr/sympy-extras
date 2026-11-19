@@ -3572,6 +3572,12 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         }
                     }
                 }
+                "z_transform" => {
+                    sympy_extras_core::concrete::ztransform::z_transform(&a[1], &a[2], &a[3]).map_err(e)?
+                }
+                "inverse_z_transform" => {
+                    sympy_extras_core::concrete::ztransform::inverse_z_transform(&a[1], &a[2], &a[3]).map_err(e)?
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
