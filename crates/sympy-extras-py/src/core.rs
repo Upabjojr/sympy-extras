@@ -3372,6 +3372,96 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             )
             .map_err(e)?
         }
+        "eigen" | "decompositions" => {
+            // op, matrices as Tuple(rows, cols, Tuple(entries)); booleans as the symbols True/False
+            use sympy_extras_core::matrices::decompositions as dc;
+            use sympy_extras_core::matrices::dense::ExprMatrix;
+            use sympy_extras_core::matrices::eigen as eg;
+            let sym = |n: &str| sympy_extras_core::core::symbol::Symbol::new(n, &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let flag = |b: bool| sym(if b { "True" } else { "False" });
+            let n = |k: usize| Basic::int(k as i64);
+            let m = |b: &Basic| ExprMatrix::from_tuple(b).map_err(e);
+            let list = |v: &[ExprMatrix]| tuple(v.iter().map(|x| x.as_tuple()).collect());
+            let pair = |p: (ExprMatrix, ExprMatrix)| tuple(vec![p.0.as_tuple(), p.1.as_tuple()]);
+            match a[0].to_string().as_str() {
+                "eigenspaces" => tuple(
+                    eg::eigenspaces(&m(&a[1])?, &a[2])
+                        .map_err(e)?
+                        .iter()
+                        .map(|s| {
+                            tuple(vec![
+                                s.factor.clone(),
+                                s.symbol.clone(),
+                                n(s.multiplicity),
+                                list(&s.basis),
+                            ])
+                        })
+                        .collect(),
+                ),
+                "jordan_chains" => tuple(
+                    eg::jordan_chains(&m(&a[1])?, &a[2])
+                        .map_err(e)?
+                        .iter()
+                        .map(|g| {
+                            tuple(vec![
+                                g.factor.clone(),
+                                g.symbol.clone(),
+                                n(g.multiplicity),
+                                tuple(g.chains.iter().map(|c| list(c)).collect()),
+                            ])
+                        })
+                        .collect(),
+                ),
+                "jordan_form" => pair(eg::jordan_form(&m(&a[1])?).map_err(e)?),
+                "eigenvalues" => tuple(
+                    eg::eigenvalues(&m(&a[1])?)
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|(v, k)| tuple(vec![v, n(k)]))
+                        .collect(),
+                ),
+                "eigenvectors" => tuple(
+                    eg::eigenvectors(&m(&a[1])?)
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|(v, k, vs)| tuple(vec![v, n(k), list(&vs)]))
+                        .collect(),
+                ),
+                "is_diagonalizable" => flag(eg::is_diagonalizable(&m(&a[1])?).map_err(e)?),
+                "diagonalize" => match eg::diagonalize(&m(&a[1])?).map_err(e)? {
+                    Some(p) => pair(p),
+                    None => sym("NONE"),
+                },
+                "lu" => {
+                    let d = dc::lu(&m(&a[1])?).map_err(e)?;
+                    tuple(vec![
+                        d.l.as_tuple(),
+                        d.u.as_tuple(),
+                        tuple(d.permutation.iter().map(|k| n(*k)).collect()),
+                        n(d.rank),
+                    ])
+                }
+                "is_hermitian" => flag(dc::is_hermitian(&m(&a[1])?).map_err(e)?),
+                "ldl" => pair(dc::ldl(&m(&a[1])?).map_err(e)?),
+                "cholesky" => dc::cholesky(&m(&a[1])?).map_err(e)?.as_tuple(),
+                "gram_schmidt" => {
+                    let vs: Vec<ExprMatrix> = a[1].args().iter().map(m).collect::<PyResult<_>>()?;
+                    list(&dc::gram_schmidt(&vs, a.len() > 2 && a[2].to_string() == "True").map_err(e)?)
+                }
+                "qr" => pair(dc::qr(&m(&a[1])?).map_err(e)?),
+                "rank_factorization" => pair(dc::rank_factorization(&m(&a[1])?).map_err(e)?),
+                "congruence_diagonalize" => pair(dc::congruence_diagonalize(&m(&a[1])?).map_err(e)?),
+                "inertia" => {
+                    let (p, q, z) = dc::inertia(&m(&a[1])?).map_err(e)?;
+                    tuple(vec![n(p), n(q), n(z)])
+                }
+                "is_positive_definite" => flag(dc::is_positive_definite(&m(&a[1])?).map_err(e)?),
+                "is_positive_semidefinite" => flag(dc::is_positive_semidefinite(&m(&a[1])?).map_err(e)?),
+                "leading_principal_minors" => tuple(dc::leading_principal_minors(&m(&a[1])?).map_err(e)?),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "linalg" => {
             // op, matrices as Tuple(rows, cols, Tuple(entries)); results the same
             use sympy_extras_core::matrices::dense::ExprMatrix;

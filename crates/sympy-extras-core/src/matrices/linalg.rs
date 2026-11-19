@@ -41,7 +41,7 @@ fn pw(a: &Basic, b: &Basic) -> R {
     crate::core::power::pow(a, b)
 }
 
-fn integer_exponent(e: &Basic) -> Option<Int> {
+pub(crate) fn integer_exponent(e: &Basic) -> Option<Int> {
     if e.is_pow() && e.args()[1].is_integer_value() {
         Some(numer(e.args()[1].as_rational().expect("an integer")))
     } else {
@@ -69,7 +69,7 @@ fn collect_kernels(e: &Basic, found: &mut Vec<Basic>) {
 }
 
 /// The lifting of expressions to a domain (`_Lift`).
-trait Lift {
+pub(crate) trait Lift {
     type K: Domain + Clone;
     fn domain(&self) -> &Self::K;
     fn exact(&self) -> bool;
@@ -148,7 +148,7 @@ trait Lift {
     }
 }
 
-struct IntegerLift;
+pub(crate) struct IntegerLift;
 
 impl Lift for IntegerLift {
     type K = IntegerRing;
@@ -173,17 +173,17 @@ impl Lift for IntegerLift {
     }
 }
 
-type ZPoly = PolyElement<IntegerRing>;
+pub(crate) type ZPoly = PolyElement<IntegerRing>;
 
-struct PolynomialLift {
-    ring: SparsePolynomialRing<IntegerRing>,
-    kernels: Vec<Basic>,
+pub(crate) struct PolynomialLift {
+    pub(crate) ring: SparsePolynomialRing<IntegerRing>,
+    pub(crate) kernels: Vec<Basic>,
     index: HashMap<Basic, ZPoly>,
-    exact: bool,
+    pub(crate) exact: bool,
 }
 
 impl PolynomialLift {
-    fn new(kernels: &[Basic]) -> PolynomialLift {
+    pub(crate) fn new(kernels: &[Basic]) -> PolynomialLift {
         let names: Vec<String> = (0..kernels.len()).map(|i| format!("_k{}", i)).collect();
         let ring: SparsePolynomialRing<IntegerRing> = SparsePolynomialRing::sympy(ZZ, names);
         let gens: Vec<ZPoly> = ring.ring.gens();
@@ -235,7 +235,7 @@ impl Lift for PolynomialLift {
     }
 }
 
-fn kernels(matrices: &[&ExprMatrix]) -> Vec<Basic> {
+pub(crate) fn kernels(matrices: &[&ExprMatrix]) -> Vec<Basic> {
     let mut found: Vec<Basic> = Vec::new();
     for m in matrices {
         for e in &m.entries {
@@ -307,7 +307,7 @@ fn certify<L: Lift>(lift: &L, pivots: &[<L::K as Domain>::Elem]) -> PolyResult<(
     Ok(())
 }
 
-fn square(m: &ExprMatrix) -> PolyResult<usize> {
+pub(crate) fn square(m: &ExprMatrix) -> PolyResult<usize> {
     if m.rows != m.cols {
         return Err(value_error(format!("a {} x {} matrix is not square", m.rows, m.cols)));
     }
@@ -483,7 +483,7 @@ fn radicand(e: &Basic) -> Option<Rat> {
     None
 }
 
-fn is_radical(e: &Basic) -> bool {
+pub(crate) fn is_radical(e: &Basic) -> bool {
     matches!(e.head(), Head::ImaginaryUnit) || radicand(e).is_some()
 }
 
@@ -503,15 +503,15 @@ fn squarefree(r: &Rat) -> (Rat, Vec<Int>) {
     (outside, primes)
 }
 
-type Ground = SparseFractionField<IntegerRing>;
-type Radical = MultiquadraticElement<SparseFracElement<IntegerRing>>;
+pub(crate) type Ground = SparseFractionField<IntegerRing>;
+pub(crate) type Radical = MultiquadraticElement<SparseFracElement<IntegerRing>>;
 
 /// The lifting to `QQ(parameters)(I, sqrt(p), ...)` (`_ComplexLift`).
-struct ComplexLift {
-    lift: PolynomialLift,
-    ground: Ground,
-    field: MultiquadraticField<Ground>,
-    position: Vec<(i64, usize)>,
+pub(crate) struct ComplexLift {
+    pub(crate) lift: PolynomialLift,
+    pub(crate) ground: Ground,
+    pub(crate) field: MultiquadraticField<Ground>,
+    pub(crate) position: Vec<(i64, usize)>,
 }
 
 impl ComplexLift {
@@ -552,7 +552,7 @@ impl ComplexLift {
             .1
     }
 
-    fn element(&self, e: &Basic) -> PolyResult<Radical> {
+    pub(crate) fn element(&self, e: &Basic) -> PolyResult<Radical> {
         let f = &self.field;
         if matches!(e.head(), Head::ImaginaryUnit) {
             return Ok(f.generator(self.index(-1)));
@@ -598,7 +598,7 @@ impl ComplexLift {
         )))
     }
 
-    fn expr(&self, a: &Radical) -> R {
+    pub(crate) fn expr(&self, a: &Radical) -> R {
         let mut terms: Vec<Basic> = Vec::new();
         for (mask, c) in a {
             let coefficient: Basic = self.lift.ratio(&c.numer, &c.denom)?;
@@ -668,7 +668,7 @@ impl ComplexLift {
     }
 }
 
-fn complex_lift(kernels: &[Basic]) -> PolyResult<Option<ComplexLift>> {
+pub(crate) fn complex_lift(kernels: &[Basic]) -> PolyResult<Option<ComplexLift>> {
     let radicals: Vec<Basic> = kernels.iter().filter(|k| is_radical(k)).cloned().collect();
     if radicals.is_empty() {
         return Ok(None);
