@@ -147,3 +147,16 @@ def test_dir() -> None:
     for e, cdir in [(x, Integer(1)), (x**2, Integer(-1)), (-x + x**2, Integer(1)), (I*x, Integer(1)),
                     (x**3 - x, I)]:
         agree(lambda: e.dir(x, cdir), lambda: call('dir', e, x, cdir))
+
+
+LSERIES: list[Basic] = [cos(x), exp(x), sin(x)/x, 1/(1 - x), x + x**3, exp(x)*sin(x), log(1 + x), sqrt(1 + x),
+                        Integer(3), x, x**2 + 1, atan(x), 1/x + 1, (1 + x)**I]
+
+
+@pytest.mark.parametrize('i', range(len(LSERIES)))
+def test_lseries(i: int) -> None:
+    from itertools import islice
+    e = LSERIES[i]
+    for x0, d in [(0, '+'), (1, '+'), (0, '-')]:
+        agree(lambda: tuple(islice(e.lseries(x, x0, d), 5)),
+              lambda: tuple(call('lseries', e, x, Integer(x0), Symbol(d), Integer(5)).args))

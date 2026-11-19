@@ -620,7 +620,20 @@ pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, c
             }
             Err(not_ported("the leading term of a Subs"))
         }
-        Head::Derivative => Err(not_ported("the leading term of a Derivative (lseries)")),
+        Head::Derivative => {
+            // the derivative of the first term of the series with a
+            // nonzero derivative
+            let counts: Vec<(Basic, u64)> = crate::core::function::derivative_counts(e);
+            let mut terms = LSeries::new(&e.args()[0], Some(x), &Basic::zero(), "+", None, &Basic::zero())?;
+            let mut d: Basic = Basic::zero();
+            while let Some(term) = terms.next_term()? {
+                d = crate::core::function::diff(&term, &counts)?;
+                if !is_zero_number(&d) {
+                    break;
+                }
+            }
+            Ok(d)
+        }
         _ if e.is_atom() => Ok(e.clone()),
         _ => Err(not_ported(&format!("the leading term of {}", e.class_name()))),
     }
@@ -859,8 +872,227 @@ fn log_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) ->
     Ok(res)
 }
 
-fn branch_jump(_z: &Basic, _t: &Basic) -> R {
-    Err(not_ported("the branch jump of log (lseries)"))
+/// `-2*I*pi*Heaviside(-im(c), 0)` for the first non-real term `c*t**e`
+/// among the first five of the series of `z` (the jump of `log` across
+/// its branch cut), 0 when they are real (`_branch_jump`).
+fn branch_jump(z: &Basic, t: &Basic) -> R {
+    let mut terms = LSeries::new(z, Some(t), &Basic::zero(), "+", None, &Basic::zero())?;
+    let mut term: Basic = Basic::zero();
+    let mut i: usize = 0;
+    let mut index: usize = 0;
+    while let Some(next) = terms.next_term()? {
+        i = index;
+        term = next;
+        if !yes(&term, Predicate::real) || i == 5 {
+            break;
+        }
+        index += 1;
+    }
+    if i < 5 {
+        let (coeff, _) = crate::solvers::solvers::as_coeff_exponent(&term, t)?;
+        let h: Basic = crate::functions::special::delta_functions::heaviside(
+            &mul(&[
+                Basic::negative_one(),
+                crate::functions::elementary::complexes::im(&coeff)?,
+            ])?,
+            Some(&Basic::zero()),
+        )?;
+        return mul(&[int(-2), Basic::imaginary_unit(), Basic::pi(), h]);
+    }
+    Ok(Basic::zero())
+}
+
+// -- lseries
+
+/// The terms of `_eval_lseries`: the series of increasing orders, the
+/// new terms of each.
+struct EvalLSeries {
+    e: Basic,
+    x: Basic,
+    logx: Option<Basic>,
+    cdir: Basic,
+    k: i64,
+    last: Option<Basic>,
+    done: bool,
+}
+
+impl EvalLSeries {
+    fn next_term(&mut self) -> PolyResult<Option<Basic>> {
+        if self.done {
+            return Ok(None);
+        }
+        let logx: Option<&Basic> = self.logx.as_ref();
+        let Some(e) = self.last.clone() else {
+            let mut series: Basic = eval_nseries(&self.e, &self.x, self.k, logx, &self.cdir)?;
+            while is_order(&series) {
+                self.k += 1;
+                series = eval_nseries(&self.e, &self.x, self.k, logx, &self.cdir)?;
+            }
+            let first: Basic = remove_o(&series)?;
+            if is_zero_number(&first) {
+                self.done = true;
+            }
+            self.last = Some(first.clone());
+            return Ok(Some(first));
+        };
+        loop {
+            self.k += 1;
+            let series: Basic = remove_o(&eval_nseries(&self.e, &self.x, self.k, logx, &self.cdir)?)?;
+            if e != series {
+                self.last = Some(series.clone());
+                return Ok(Some(sub(&series, &e)?));
+            }
+            if cancel(&sub(&series, &self.e)?)? == Basic::zero() {
+                self.done = true;
+                return Ok(None);
+            }
+        }
+    }
+}
+
+/// The terms of the series one by one (`lseries`): the point moved to
+/// zero from the right as `series` does, the sums of `_eval_lseries`
+/// split by increasing order (`_yield_lseries`).
+pub struct LSeries {
+    inner: Option<EvalLSeries>,
+    x: Basic,
+    /// the substitutions moving the terms back, the innermost last
+    back: Vec<Vec<(Basic, Basic)>>,
+    pending: std::collections::VecDeque<Basic>,
+    /// the expression itself, free of `x`, yielded once
+    constant: Option<Basic>,
+}
+
+impl LSeries {
+    pub fn new(
+        e: &Basic,
+        x: Option<&Basic>,
+        x0: &Basic,
+        dir: &str,
+        logx: Option<&Basic>,
+        cdir: &Basic,
+    ) -> PolyResult<LSeries> {
+        let x: Basic = match x {
+            Some(v) => v.clone(),
+            None => {
+                let syms = e.free_symbols();
+                if syms.len() > 1 {
+                    return Err(value_error("x must be given for multivariate functions.".to_string()));
+                }
+                match syms.into_iter().next() {
+                    Some(s) => s,
+                    None => {
+                        return Ok(LSeries {
+                            inner: None,
+                            x: e.clone(),
+                            back: vec![],
+                            pending: Default::default(),
+                            constant: Some(e.clone()),
+                        })
+                    }
+                }
+            }
+        };
+        if !e.free_symbols().contains(&x) {
+            return Ok(LSeries {
+                inner: None,
+                x,
+                back: vec![],
+                pending: Default::default(),
+                constant: Some(e.clone()),
+            });
+        }
+        let (_, cdir) = direction(x0, dir, cdir)?;
+        let mut e: Basic = e.clone();
+        let mut back: Vec<Vec<(Basic, Basic)>> = Vec::new();
+        let mut logx: Option<Basic> = logx.cloned();
+        let mut cdir: Basic = cdir;
+        if !is_zero_number(x0) && yes(x0, Predicate::infinite) {
+            e = subs(&e, &x, &div(&cdir, &x)?)?;
+            back.push(vec![(x.clone(), div(&cdir, &x)?)]);
+            logx = None;
+            cdir = Basic::one();
+        } else if !is_zero_number(x0) || cdir != Basic::one() {
+            e = crate::core::subs::subs_mapping(
+                &e,
+                &[(x.clone(), add(&[x0.clone(), mul(&[cdir.clone(), x.clone()])?])?)],
+            )?;
+            back.push(vec![(x.clone(), sub(&div(&x, &cdir)?, &div(x0, &cdir)?)?)]);
+            cdir = Basic::one();
+        }
+        let mut var: Basic = x.clone();
+        if is(&x, Predicate::positive).is_none() && is(&x, Predicate::negative).is_none() {
+            let xpos: Basic = positive_dummy("x");
+            e = subs(&e, &x, &xpos)?;
+            back.push(vec![(xpos.clone(), x.clone())]);
+            var = xpos;
+        }
+        let inner = EvalLSeries {
+            e: remove_o(&e)?,
+            x: var.clone(),
+            logx,
+            cdir,
+            k: 0,
+            last: None,
+            done: false,
+        };
+        Ok(LSeries {
+            inner: Some(inner),
+            x: var,
+            back,
+            pending: Default::default(),
+            constant: None,
+        })
+    }
+
+    fn moved_back(&self, term: Basic) -> R {
+        let mut t: Basic = term;
+        for step in self.back.iter().rev() {
+            t = crate::core::subs::subs_mapping(&t, step)?;
+        }
+        Ok(t)
+    }
+
+    /// The next term, `None` at the end.
+    pub fn next_term(&mut self) -> PolyResult<Option<Basic>> {
+        if let Some(c) = self.constant.take() {
+            return Ok(Some(c));
+        }
+        if let Some(t) = self.pending.pop_front() {
+            return Ok(Some(self.moved_back(t)?));
+        }
+        let Some(inner) = self.inner.as_mut() else {
+            return Ok(None);
+        };
+        let Some(si) = inner.next_term()? else {
+            self.inner = None;
+            return Ok(None);
+        };
+        if !si.is_add() {
+            return Ok(Some(self.moved_back(si)?));
+        }
+        // _yield_lseries: the terms of the sum by increasing order
+        let x: Basic = self.x.clone();
+        let mut yielded: Basic = Basic::zero();
+        let mut o: Basic = mul(&[order(&si, &[(x.clone(), Basic::zero())])?, x.clone()])?;
+        let mut ndid: usize = 0;
+        let ndo: usize = si.args().len();
+        loop {
+            let d: Basic = remove_o(&add(&[sub(&si, &yielded)?, o.clone()])?)?;
+            o = mul(&[o, x.clone()])?;
+            if is_zero_number(&d) || is_order(&d) {
+                continue;
+            }
+            ndid += if d.is_add() { d.args().len() } else { 1 };
+            self.pending.push_back(d.clone());
+            if ndid == ndo {
+                break;
+            }
+            yielded = add(&[yielded, d])?;
+        }
+        let first: Basic = self.pending.pop_front().expect("a term");
+        Ok(Some(self.moved_back(first)?))
+    }
 }
 
 /// The direction from which `e` approaches its value at `x = 0` along

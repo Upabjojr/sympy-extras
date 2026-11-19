@@ -3096,6 +3096,19 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "mul" => sympy_extras_core::core::mul::mul(a[1].args()).map_err(e)?,
                 "pow" => sympy_extras_core::core::power::pow(&a[1], &a[2]).map_err(e)?,
                 "dir" => sr::dir(&a[1], &a[2], &a[3]).map_err(e)?,
+                "lseries" => {
+                    // lseries(e, x, x0, Symbol(dir), count): the first count terms
+                    let mut it = sr::LSeries::new(&a[1], Some(&a[2]), &a[3], &a[4].to_string(), None, &Basic::zero())
+                        .map_err(e)?;
+                    let mut out: Vec<Basic> = Vec::new();
+                    for _ in 0..small(&a[5])? {
+                        match it.next_term().map_err(e)? {
+                            Some(t) => out.push(t),
+                            None => break,
+                        }
+                    }
+                    tuple(out)
+                }
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
