@@ -3372,6 +3372,49 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             )
             .map_err(e)?
         }
+        "mellin" => {
+            // transform(f, x, s) -> Tuple(F, lower, upper, condition) | NONE;
+            // decompose(f, x, cutoff|NONE) -> Tuple(constant, alpha, log_power, one_minus, Tuple(Tuple(name, beta, gamma, constant)...)) | NONE
+            use sympy_extras_core::integrals::mellin as ml;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            match a[0].to_string().as_str() {
+                "transform" => match ml::mellin_transform(&a[1], &a[2], &a[3]).map_err(e)? {
+                    Some(t) => tuple(vec![t.transform, t.strip.0, t.strip.1, t.condition]),
+                    None => none(),
+                },
+                "decompose" => {
+                    let cutoff: Option<String> = if a[3].to_string() == "NONE" {
+                        None
+                    } else {
+                        Some(a[3].to_string())
+                    };
+                    match ml::decompose_integrand(&a[1], &a[2], cutoff.as_deref()).map_err(e)? {
+                        Some(p) => tuple(vec![
+                            p.constant,
+                            p.alpha,
+                            Basic::int(p.log_power),
+                            Basic::int(p.one_minus_power),
+                            tuple(
+                                p.matches
+                                    .iter()
+                                    .map(|m| {
+                                        tuple(vec![
+                                            sympy_extras_core::core::symbol::Symbol::new(&m.kernel.name, &[]).0,
+                                            m.beta.clone(),
+                                            m.gamma.clone(),
+                                            m.constant.clone(),
+                                        ])
+                                    })
+                                    .collect(),
+                            ),
+                        ]),
+                        None => none(),
+                    }
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "trigonometric" => sympy_extras_core::integrals::trigonometric::trigonometric_antiderivative(&a[0], &a[1])
             .map_err(e)?
             .unwrap_or_else(|| sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0),
