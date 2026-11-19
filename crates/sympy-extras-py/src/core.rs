@@ -3578,6 +3578,56 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "inverse_z_transform" => {
                     sympy_extras_core::concrete::ztransform::inverse_z_transform(&a[1], &a[2], &a[3]).map_err(e)?
                 }
+                "jacobian" => sympy_extras_core::matrices::calculus::jacobian(a[1].args(), a[2].args())
+                    .map_err(e)?
+                    .as_tuple(),
+                "gradient" => sympy_extras_core::matrices::calculus::gradient(&a[1], a[2].args())
+                    .map_err(e)?
+                    .as_tuple(),
+                "hessian" => {
+                    let constraints: Vec<Basic> = if a.len() > 3 { a[3].args().to_vec() } else { Vec::new() };
+                    sympy_extras_core::matrices::calculus::hessian(&a[1], a[2].args(), &constraints)
+                        .map_err(e)?
+                        .as_tuple()
+                }
+                "wronskian" => sympy_extras_core::matrices::calculus::wronskian(a[1].args(), &a[2]).map_err(e)?,
+                "classify_critical_point" => match sympy_extras_core::matrices::calculus::classify_critical_point(
+                    &a[1],
+                    a[2].args(),
+                    a[3].args(),
+                )
+                .map_err(e)?
+                {
+                    Some(kind) => sym(kind),
+                    None => sym("NONE"),
+                },
+                "orthogonal" => {
+                    // orthogonal(method, coordinates, scale_factors, args...) or orthogonal("from_transformation", coordinates, cartesian)
+                    use sympy_extras_core::vector::orthogonal::OrthogonalCoordinates;
+                    let method = a[1].to_string();
+                    if method == "from_transformation" {
+                        let c =
+                            OrthogonalCoordinates::from_transformation(a[2].args(), a[3].args(), None).map_err(e)?;
+                        tuple(vec![tuple(c.coordinates), tuple(c.scale_factors)])
+                    } else {
+                        let c = OrthogonalCoordinates::new(a[2].args(), a[3].args(), None).map_err(e)?;
+                        match method.as_str() {
+                            "new" => tuple(vec![tuple(c.coordinates.clone()), tuple(c.scale_factors.clone())]),
+                            "volume_element" => c.volume_element().map_err(e)?,
+                            "gradient" => tuple(c.gradient(&a[4]).map_err(e)?),
+                            "divergence" => c.divergence(a[4].args()).map_err(e)?,
+                            "curl" => tuple(c.curl(a[4].args()).map_err(e)?),
+                            "laplacian" => c.laplacian(&a[4]).map_err(e)?,
+                            "vector_laplacian" => tuple(c.vector_laplacian(a[4].args()).map_err(e)?),
+                            other => {
+                                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                    "unknown method {}",
+                                    other
+                                )))
+                            }
+                        }
+                    }
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),

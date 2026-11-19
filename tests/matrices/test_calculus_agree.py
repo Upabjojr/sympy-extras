@@ -1,0 +1,158 @@
+"""The Rust ports of ``matrices/calculus.py`` and ``vector/orthogonal.py``
+against the Python ones on the calls of their tests (the default
+simplifier only; read with the core's parser)."""
+from __future__ import annotations
+
+from typing import Callable
+
+import pytest
+
+from sympy_extras.core import Integer, Symbol, Tuple
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.parsing import parse
+import sympy_extras.matrices.calculus as MC
+from sympy_extras.matrices.dense import ExprMatrix
+from sympy_extras.vector.orthogonal import OrthogonalCoordinates
+
+from ..conftest import load
+
+rc = load("sympy_extras_rs.core")
+
+
+def outcome(f: Callable[[], object]) -> str:
+    try:
+        r = f()
+    except NotImplementedError as e:
+        return 'SKIP' if 'not ported' in str(e) else 'NotImplementedError'
+    except Exception as e:
+        return type(e).__name__
+    return str(r)
+
+
+def encoded(v: object) -> Basic:
+    if v is None:
+        return Symbol('NONE')
+    if isinstance(v, str):
+        return Symbol(v)
+    if isinstance(v, ExprMatrix):
+        return Tuple(Integer(v.rows), Integer(v.cols), Tuple(*v.entries))
+    if isinstance(v, (list, tuple)):
+        return Tuple(*[encoded(x) for x in v])
+    if isinstance(v, int):
+        return Integer(v)
+    assert isinstance(v, Basic)
+    return v
+
+
+def argument(a: object) -> object:
+    if isinstance(a, str):
+        return None if a == 'None' else parse(a)
+    assert isinstance(a, dict)
+    if 'int' in a:
+        return a['int']
+    items = a['seq']
+    assert isinstance(items, list)
+    return [argument(x) for x in items]
+
+
+def python(name: str, args: list[object]) -> object:
+    if name.startswith('orthogonal.'):
+        method = name.split('.', 1)[1]
+        coordinates, rest = args[0], args[1:]
+        assert isinstance(coordinates, list)
+        if method == 'from_transformation':
+            assert isinstance(rest[0], list)
+            c = OrthogonalCoordinates.from_transformation(coordinates, rest[0])
+            return [list(c.coordinates), list(c.scale_factors)]
+        assert isinstance(rest[0], list)
+        system = OrthogonalCoordinates(coordinates, rest[0])
+        return getattr(system, method)(*rest[1:])
+    return getattr(MC, name)(*args)
+
+
+CASES: list[tuple[str, list[object]]] = [
+    ('jacobian', [{'seq': ['x**2*sin(y) + z', 'exp(x*y)/(z**2 + 1)', 'z*log(x + y)']}, {'seq': ['x', 'y', 'z']}]),
+    ('jacobian', [{'seq': ['x', 'y']}, {'seq': ['x', 'y', 'z']}]),
+    ('hessian', ['x**2*sin(y) + z', {'seq': ['x', 'y', 'z']}, {'seq': []}]),
+    ('gradient', ['x**2*sin(y) + z', {'seq': ['x', 'y', 'z']}]),
+    ('hessian', ['exp(x*y)/(z**2 + 1)', {'seq': ['x', 'y', 'z']}, {'seq': []}]),
+    ('gradient', ['exp(x*y)/(z**2 + 1)', {'seq': ['x', 'y', 'z']}]),
+    ('hessian', ['z*log(x + y)', {'seq': ['x', 'y', 'z']}, {'seq': []}]),
+    ('gradient', ['z*log(x + y)', {'seq': ['x', 'y', 'z']}]),
+    ('hessian', ['x**2 + y**2 + z**2', {'seq': ['x', 'y', 'z']}, {'seq': ['x + y + z - 1', 'x*y - z']}]),
+    ('wronskian', [{'seq': ['cos(x)', 'sin(x)']}, 'x']),
+    ('wronskian', [{'seq': ['exp(x)', 'exp(2*x)']}, 'x']),
+    ('wronskian', [{'seq': ['1', 'x', 'x**2', 'x**3']}, 'x']),
+    ('wronskian', [{'seq': ['sin(x)**2', 'cos(x)**2', '1']}, 'x']),
+    ('wronskian', [{'seq': []}, 'x']),
+    ('wronskian', [{'seq': ['sqrt(x)']}, 'x']),
+    ('wronskian', [{'seq': ['x', 'exp(x)', 'x*exp(x)']}, 'x']),
+    ('classify_critical_point', ['x**2 + y**2', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['-x**2 - x*y - y**2', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['x*y', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['x**4 + y**4', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['x**2 + y**3', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['x**3 - 3*x*y + y**3', {'seq': ['x', 'y']}, {'seq': [{'int': 1}, {'int': 1}]}]),
+    ('classify_critical_point', ['x**3 - 3*x*y + y**3', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['x**2 - y**2 + z**2', {'seq': ['x', 'y', 'z']}, {'seq': [{'int': 0}, {'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['(x - 1/2)**2 + (y + 3)**2', {'seq': ['x', 'y']}, {'seq': ['1/2', {'int': -3}]}]),
+    ('classify_critical_point', ['cos(x) + cos(y)', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['x*exp(-x**2 - y**2)', {'seq': ['x', 'y']}, {'seq': ['-sqrt(2)/2', {'int': 0}]}]),
+    ('classify_critical_point', ['x*exp(-x**2 - y**2)', {'seq': ['x', 'y']}, {'seq': ['sqrt(2)/2', {'int': 0}]}]),
+    ('classify_critical_point', ['sqrt(2)*x**2 - y**2', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['p*x**2 + y**2', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['x**2 + y', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('classify_critical_point', ['x**2', {'seq': ['x', 'y']}, {'seq': [{'int': 0}]}]),
+    ('classify_critical_point', ['x**2*z + y**2', {'seq': ['x', 'y']}, {'seq': [{'int': 0}, {'int': 0}]}]),
+    ('hessian', ['x*y', {'seq': ['x', 'y']}, {'seq': []}]),
+    ('orthogonal.gradient', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, 'f(r, theta, phi)']),
+    ('orthogonal.laplacian', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, 'f(r, theta, phi)']),
+    ('orthogonal.divergence', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, {'seq': ['Fr(r, theta, phi)', 'Ft(r, theta, phi)', 'Fp(r, theta, phi)']}]),
+    ('orthogonal.curl', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, {'seq': ['Fr(r, theta, phi)', 'Ft(r, theta, phi)', 'Fp(r, theta, phi)']}]),
+    ('orthogonal.laplacian', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, 'g(rho, phi, z)']),
+    ('orthogonal.volume_element', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}]),
+    ('orthogonal.volume_element', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}]),
+    ('orthogonal.laplacian', [{'seq': ['x', 'y', 'z']}, {'seq': ['1', '1', '1']}, 'x**2*y + z**3']),
+    ('orthogonal.from_transformation', [{'seq': ['u', 'v', 'z']}, {'seq': ['u**2/2 - v**2/2', 'u*v', 'z']}]),
+    ('orthogonal.gradient', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, 'phi*r + r**2*sin(theta) + theta*exp(phi)']),
+    ('orthogonal.curl', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, {'seq': ['phi + 2*r*sin(theta)', '(r**2*cos(theta) + exp(phi))/r', '(r + theta*exp(phi))/(r*sin(theta))']}]),
+    ('orthogonal.curl', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, {'seq': ['r*theta', 'phi*sin(theta) + r**2', 'phi**2*r + theta']}]),
+    ('orthogonal.divergence', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, {'seq': ['(phi**2*r*cos(theta) + theta*cos(theta))/(r*sin(theta))', '(-2*phi**2*r - theta)/r', '(phi*sin(theta) + 3*r**2 - r)/r']}]),
+    ('orthogonal.laplacian', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, 'phi*r + r**2*sin(theta) + theta*exp(phi)']),
+    ('orthogonal.divergence', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, {'seq': ['phi + 2*r*sin(theta)', '(r**2*cos(theta) + exp(phi))/r', '(r + theta*exp(phi))/(r*sin(theta))']}]),
+    ('orthogonal.divergence', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, {'seq': ['r*theta', 'phi*sin(theta) + r**2', 'phi**2*r + theta']}]),
+    ('orthogonal.gradient', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, 'phi*exp(z) + rho**2*sin(phi) + rho*z']),
+    ('orthogonal.curl', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, {'seq': ['2*rho*sin(phi) + z', '(rho**2*cos(phi) + exp(z))/rho', 'phi*exp(z) + rho']}]),
+    ('orthogonal.curl', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, {'seq': ['phi*rho', 'rho**2 + z*sin(phi)', 'phi + rho*z**2']}]),
+    ('orthogonal.divergence', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, {'seq': ['(-rho*sin(phi) + 1)/rho', '-z**2', '(3*rho**2 - rho + z*sin(phi))/rho']}]),
+    ('orthogonal.laplacian', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, 'phi*exp(z) + rho**2*sin(phi) + rho*z']),
+    ('orthogonal.divergence', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, {'seq': ['2*rho*sin(phi) + z', '(rho**2*cos(phi) + exp(z))/rho', 'phi*exp(z) + rho']}]),
+    ('orthogonal.divergence', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, {'seq': ['phi*rho', 'rho**2 + z*sin(phi)', 'phi + rho*z**2']}]),
+    ('orthogonal.gradient', [{'seq': ['u', 'v', 'z']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)', '1']}, 'u**2*sin(v) + u*z + v*exp(z)']),
+    ('orthogonal.curl', [{'seq': ['u', 'v', 'z']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)', '1']}, {'seq': ['(2*u*sin(v) + z)/sqrt(u**2 + v**2)', '(u**2*cos(v) + exp(z))/sqrt(u**2 + v**2)', 'u + v*exp(z)']}]),
+    ('orthogonal.curl', [{'seq': ['u', 'v', 'z']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)', '1']}, {'seq': ['u*v', 'u**2 + z*sin(v)', 'u*z**2 + v']}]),
+    ('orthogonal.divergence', [{'seq': ['u', 'v', 'z']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)', '1']}, {'seq': ['(-sqrt(u**2 + v**2)*sin(v) + 1)/sqrt(u**2 + v**2)', '-z**2/sqrt(u**2 + v**2)', '(2*u**3 + u*z*sin(v))/(u**2*sqrt(u**2 + v**2) + v**2*sqrt(u**2 + v**2))']}]),
+    ('orthogonal.laplacian', [{'seq': ['u', 'v', 'z']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)', '1']}, 'u**2*sin(v) + u*z + v*exp(z)']),
+    ('orthogonal.divergence', [{'seq': ['u', 'v', 'z']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)', '1']}, {'seq': ['(2*u*sin(v) + z)/sqrt(u**2 + v**2)', '(u**2*cos(v) + exp(z))/sqrt(u**2 + v**2)', 'u + v*exp(z)']}]),
+    ('orthogonal.divergence', [{'seq': ['u', 'v', 'z']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)', '1']}, {'seq': ['u*v', 'u**2 + z*sin(v)', 'u*z**2 + v']}]),
+    ('orthogonal.laplacian', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, 'r**3*sin(phi)*sin(theta)**3*cos(phi)**2 + r*cos(theta)']),
+    ('orthogonal.gradient', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, 'r**3*sin(phi)*sin(theta)**3*cos(phi)**2 + r*cos(theta)']),
+    ('orthogonal.curl', [{'seq': ['rho', 'phi', 'z']}, {'seq': ['1', 'rho', '1']}, {'seq': [{'int': 0}, 'rho', {'int': 0}]}]),
+    ('orthogonal.vector_laplacian', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['1', 'r', 'r*sin(theta)']}, {'seq': ['r', {'int': 0}, {'int': 0}]}]),
+    ('orthogonal.from_transformation', [{'seq': ['r', 'theta', 'phi']}, {'seq': ['r*sin(theta)*cos(phi)', 'r*sin(phi)*sin(theta)', 'r*cos(theta)']}]),
+    ('orthogonal.from_transformation', [{'seq': ['u', 'v']}, {'seq': ['u**2/2 - v**2/2', 'u*v']}]),
+    ('orthogonal.laplacian', [{'seq': ['u', 'v']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)']}, 'u**3 - 3*u*v**2']),
+    ('orthogonal.from_transformation', [{'seq': ['u', 'v']}, {'seq': ['u + v', 'v']}]),
+    ('orthogonal.curl', [{'seq': ['u', 'v']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)']}, {'seq': [{'int': 1}, {'int': 0}]}]),
+    ('orthogonal.divergence', [{'seq': ['u', 'v']}, {'seq': ['sqrt(u**2 + v**2)', 'sqrt(u**2 + v**2)']}, {'seq': [{'int': 1}, {'int': 0}, {'int': 0}]}]),
+]
+
+
+@pytest.mark.parametrize('i', range(len(CASES)))
+def test_calculus(i: int) -> None:
+    name, raw = CASES[i]
+    args = [argument(a) for a in raw]
+    head: list[Basic] = [Symbol('orthogonal'), Symbol(name.split('.', 1)[1])] if name.startswith('orthogonal.') else [Symbol(name)]
+    got = outcome(lambda: rc.logic_call('calculus', head + [encoded(a) for a in args]))
+    if got != 'SKIP':
+        assert got == outcome(lambda: encoded(python(name, args))), (name, raw)
