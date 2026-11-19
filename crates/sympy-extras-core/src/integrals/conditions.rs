@@ -2,9 +2,8 @@
 //! a condition on the parameters (`ConditionalValue`), the conditions
 //! decided against the assumptions, and the numerical comparisons of the
 //! integrators: the sample points of the region of the assumptions
-//! (`sample_values`), `numerically_equal` and `numerical_verdict`. The
-//! second opinion of the structure theorem (`_provably_different`) is not
-//! ported yet ("not ported"); the time limits are not ported.
+//! (`sample_values`), `numerically_equal` and `numerical_verdict`, with the
+//! structure theorem as a second opinion.
 
 #![allow(clippy::mutable_key_type)]
 
@@ -18,7 +17,7 @@ use crate::core::expr::is;
 use crate::core::function::xreplace_evaluated;
 use crate::core::logic::{and_, boolean, or_};
 use crate::core::relational as rl;
-use crate::error::{not_ported, PolyError, PolyResult};
+use crate::error::{PolyError, PolyResult};
 use crate::numbers::{Int, Rat};
 use crate::random::PyRandom;
 
@@ -653,13 +652,27 @@ pub fn numerically_equal(a: &Basic, b: &Basic, assumptions: &[Basic], samples: u
     if samples_verdict(a, b, assumptions, &boolean(true), samples, false)? != Some(true) {
         return Ok(false);
     }
+    Ok(!provably_different(a, b, assumptions)?)
+}
+
+/// Whether the structure theorem proves `a - b` not identically zero
+/// (`_provably_different`).
+fn provably_different(a: &Basic, b: &Basic, assumptions: &[Basic]) -> PolyResult<bool> {
+    use crate::simplify::structure::{is_not_elementary, Tower};
     let difference: Basic = sub(a, b)?;
     if difference == int(0) || crate::core::function::count_ops(&difference)? > 120 {
-        return Ok(true);
+        return Ok(false);
     }
-    Err(not_ported(
-        "the second opinion of simplify/structure (_provably_different)",
-    ))
+    let decided = crate::timeout::attempt_within(Some(1.0), || {
+        let mut tower: Tower = Tower::new(assumptions);
+        let value = match tower.element(&difference) {
+            Ok(v) => v,
+            Err(e) if is_not_elementary(&e) || matches!(e, PolyError::ZeroDivision(_)) => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        Ok(!tower.vanishes(&value)? && tower.certifies(&value)?)
+    })?;
+    Ok(decided == Some(true))
 }
 
 /// The verdict of a numerical comparison (`numerical_verdict`): `False`

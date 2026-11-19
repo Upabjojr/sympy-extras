@@ -9,4 +9,5 @@ pub mod signsimp;
 #[allow(clippy::module_inception)]
 pub mod simplify;
 pub mod sqrtdenest;
+pub mod structure;
 pub mod trigsimp;

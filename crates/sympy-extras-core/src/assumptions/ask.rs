@@ -5,9 +5,7 @@
 //! arithmetic (`assumptions/analysis.rs`) and to polynomial bounds of the
 //! functions (`assumptions/bounds.rs`).
 //!
-//! Not ported yet (they raise "not ported" where the Python goes on): the
-//! zero test of the structure theorem (`simplify/structure.py`). The time limits
-//! of the Python (`attempt` with seconds) are not ported.
+//! The time limits of the Python are those of `crate::timeout`.
 
 #![allow(clippy::mutable_key_type)]
 
@@ -20,7 +18,7 @@ use crate::core::assumptions::Predicate;
 use crate::core::basic::{Basic, Function, Head, RelOp};
 use crate::core::expr::is;
 use crate::core::logic::{and_, not_, or_};
-use crate::error::{not_ported, PolyError, PolyResult};
+use crate::error::{PolyError, PolyResult};
 
 /// `True`, `False` or `None`.
 pub type Truth = Option<bool>;
@@ -198,6 +196,9 @@ pub fn evaluate_atom(atom: &Basic, facts: &Facts) -> PolyResult<Truth> {
     Ok(value)
 }
 
+/// The budget of the structure theorem inside `ask` (`_STRUCTURE_SECONDS`).
+const STRUCTURE_SECONDS: f64 = 6.0;
+
 thread_local! {
     /// The depth of the structure theorem inside `ask` (`_structure_depth`).
     static STRUCTURE_DEPTH: Cell<usize> = const { Cell::new(0) };
@@ -218,7 +219,47 @@ fn structure_ask(atom: &Basic, facts: &Facts) -> PolyResult<Truth> {
     if !difference.free_symbols().is_empty() && clearly_not_zero(&difference, facts)? {
         return Ok(None);
     }
-    Err(not_ported("the zero test of simplify/structure (ElementaryTower)"))
+    let conjuncts: Vec<Basic> = facts.conjuncts.clone();
+    STRUCTURE_DEPTH.with(|d| d.set(d.get() + 1));
+    let zero = crate::timeout::attempt_within(Some(STRUCTURE_SECONDS), || structure_zero(&difference, &conjuncts));
+    STRUCTURE_DEPTH.with(|d| d.set(d.get() - 1));
+    let Some(zero) = zero?.flatten() else { return Ok(None) };
+    let op: Option<RelOp> = rel_op(atom);
+    match op {
+        Some(RelOp::Eq) => return Ok(Some(zero)),
+        Some(RelOp::Ne) => return Ok(Some(!zero)),
+        _ => {}
+    }
+    if !zero {
+        return Ok(None);
+    }
+    if matches!(op, Some(RelOp::Gt | RelOp::Lt)) {
+        return Ok(Some(false));
+    }
+    Ok(if realness(&atom.args()[0], facts)? == Some(true) {
+        Some(true)
+    } else {
+        None
+    })
+}
+
+/// The structure theorem's verdict on the region of the conjuncts
+/// (`_structure_zero`).
+fn structure_zero(difference: &Basic, conjuncts: &[Basic]) -> PolyResult<Option<bool>> {
+    use crate::simplify::structure::{is_not_elementary, Tower};
+    let mut tower: Tower = Tower::new(conjuncts);
+    let value = match tower.element(difference) {
+        Ok(v) => v,
+        Err(e) if is_not_elementary(&e) || matches!(e, PolyError::ZeroDivision(_)) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    if tower.vanishes(&value)? {
+        return Ok(Some(true));
+    }
+    if difference.free_symbols().is_empty() && tower.certifies(&value)? {
+        return Ok(Some(false));
+    }
+    Ok(None)
 }
 
 fn clearly_not_zero(difference: &Basic, facts: &Facts) -> PolyResult<bool> {

@@ -1098,20 +1098,78 @@ pub fn simplify(
         refined
     };
     if is_expr(&best) {
-        return proved_simplification(&best);
+        return proved_simplification(&best, &refiner.facts);
     }
     Ok(best)
 }
 
-/// `_proved_simplification`: the structure theorem, not ported yet.
-fn proved_simplification(expr: &Basic) -> R {
+/// What the transformations of the simplifiers give when told to
+/// disregard the signs (`_forced`).
+fn forced(expr: &Basic) -> PolyResult<Vec<Basic>> {
+    use crate::simplify::simplify as sm;
+    let (positive, back) = sm::posify(expr)?;
+    let simplified: Basic = sm::simplify(&positive, &sm::Options::default())?;
+    Ok(vec![
+        crate::simplify::powsimp::powsimp(
+            expr,
+            false,
+            crate::simplify::powsimp::Combine::All,
+            true,
+            &crate::core::function::count_ops,
+        )?,
+        crate::simplify::powsimp::powdenest(expr, true, false)?,
+        sm::logcombine(expr, true)?,
+        crate::core::function::expand_log(expr, true, true, false)?,
+        xreplace_evaluated(&simplified, &back)?,
+    ])
+}
+
+/// `expr` or a smaller expression proved equal to it on the region of the
+/// facts by the structure theorem (`_proved_simplification`).
+fn proved_simplification(expr: &Basic, facts: &Facts) -> R {
     if !(crate::assumptions::ask::has_function(expr)
         || crate::assumptions::ask::has_fractional_power(expr)
         || expr.has(&Basic::pi()))
     {
         return Ok(expr.clone());
     }
-    Err(crate::error::not_ported(
-        "the proofs of simplify/structure (ElementaryTower)",
-    ))
+    let conjuncts: Vec<Basic> = facts.conjuncts.clone();
+    let found = crate::timeout::attempt_within(Some(5.0), || proved_on(expr, &conjuncts))?;
+    Ok(found.unwrap_or_else(|| expr.clone()))
+}
+
+fn proved_on(expr: &Basic, conjuncts: &[Basic]) -> R {
+    use crate::simplify::structure::{is_not_elementary, Tower};
+    let caught = |e: &PolyError| is_not_elementary(e) || matches!(e, PolyError::ZeroDivision(_));
+    let mut tower: Tower = Tower::new(conjuncts);
+    let value = match tower.element(expr) {
+        Ok(v) => v,
+        Err(e) if caught(&e) => return Ok(expr.clone()),
+        Err(e) => return Err(e),
+    };
+    if tower.vanishes(&value)? {
+        return Ok(int(0));
+    }
+    let mut best: Basic = expr.clone();
+    let canonical: Basic = tower.to_expr(&value)?;
+    if size(&canonical)? < size(&best)? {
+        best = canonical;
+    }
+    for candidate in forced(expr)? {
+        if size(&candidate)? >= size(&best)? || candidate == *expr {
+            continue;
+        }
+        let element = match tower.element(&candidate) {
+            Ok(v) => v,
+            Err(e) if caught(&e) => continue,
+            Err(e) => return Err(e),
+        };
+        match tower.sub(&element, &value).and_then(|d| tower.vanishes(&d)) {
+            Ok(true) => best = candidate,
+            Ok(false) => {}
+            Err(e) if caught(&e) => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(best)
 }

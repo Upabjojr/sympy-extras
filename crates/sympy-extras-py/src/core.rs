@@ -3355,6 +3355,21 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "structure" => {
+            // op, expression(s), Tuple(assumptions): canonical(e, A); is_zero(e, A); equal(a, b, A)
+            use sympy_extras_core::simplify::structure as sr;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let truth = |v: Option<bool>| match v {
+                Some(b) => sympy_extras_core::core::logic::boolean(b),
+                None => none(),
+            };
+            match a[0].to_string().as_str() {
+                "canonical" => sr::canonical_form(&a[1], a[2].args()).map_err(e)?,
+                "is_zero" => truth(sr::is_zero(&a[1], a[2].args()).map_err(e)?),
+                "equal" => truth(sr::equal(&a[1], &a[2], a[3].args()).map_err(e)?),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "conditions" => {
             // op, ...: sample_values(Tuple(symbols), Tuple(assumptions), Symbol(seed));
             // verdict(a, b, Tuple(assumptions), condition, samples); equal(a, b, Tuple(assumptions), samples);

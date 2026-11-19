@@ -321,6 +321,13 @@ impl PyRandom {
         }
     }
 
+    /// `random()`: a float in `[0, 1)` from two outputs (53 bits).
+    pub fn random(&mut self) -> f64 {
+        let a: u64 = (self.next_u32() >> 5) as u64;
+        let b: u64 = (self.next_u32() >> 6) as u64;
+        (a as f64 * 67108864.0 + b as f64) * (1.0 / 9007199254740992.0)
+    }
+
     /// `randint(a, b)`, both included.
     pub fn randint(&mut self, a: i64, b: i64) -> i64 {
         a + self.randbelow((b - a + 1) as u64) as i64

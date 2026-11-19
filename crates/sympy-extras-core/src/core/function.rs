@@ -510,6 +510,114 @@ pub(crate) fn unpolarify(e: &Basic) -> PolyResult<Basic> {
     }
 }
 
+fn is_log_quotient(x: &Basic) -> bool {
+    if !x.is_mul() {
+        return false;
+    }
+    let Ok((n, d)) = super::expr::as_numer_denom(x) else {
+        return false;
+    };
+    [n, d].iter().all(|j| {
+        super::expr::factors_of(j)
+            .iter()
+            .any(|i| i.is_function(super::basic::Function::Log) && i.args()[0].is_rational_class())
+    })
+}
+
+fn count_logs(e: &Basic) -> usize {
+    e.preorder()
+        .iter()
+        .filter(|n| n.is_function(super::basic::Function::Log))
+        .count()
+}
+
+// PORTED FROM SYMPY: sympy/core/function.py:expand_log (_handleMul)
+fn handle_log_quotient(x: &Basic, deep: bool, force: bool) -> PolyResult<Basic> {
+    use crate::functions::elementary::exponential::log;
+    let (n, d) = crate::simplify::radsimp::fraction(x)?;
+    let integer_logs = |e: &Basic| -> Vec<Basic> {
+        let mut found: Vec<Basic> = Vec::new();
+        for node in e.preorder() {
+            if node.is_function(super::basic::Function::Log)
+                && node.args()[0].is_integer_value()
+                && !found.contains(&node)
+            {
+                found.push(node);
+            }
+        }
+        found
+    };
+    let (ns, ds) = (integer_logs(&n), integer_logs(&d));
+    let mut x: Basic = x.clone();
+    if ns.len() == 1 && ds.len() == 1 {
+        let (nl, dl) = (&ns[0], &ds[0]);
+        let (na, da) = (nl.args()[0].as_rational().cloned(), dl.args()[0].as_rational().cloned());
+        if let (Some(na), Some(da)) = (na, da) {
+            let m: i64 = crate::simplify::powsimp::multiplicity(&da, &na)?;
+            if m != 0 {
+                let (nai, dai) = (crate::numbers::numer(&na), crate::numbers::numer(&da));
+                let quotient: crate::numbers::Int = &nai / &dai.pow(m as usize);
+                let r: Basic = super::add::add(&[
+                    Basic::int(m),
+                    super::mul::mul(&[
+                        log(&Basic::from_rational(crate::numbers::Rat::from(quotient)))?,
+                        super::power::pow(dl, &Basic::int(-1))?,
+                    ])?,
+                ])?;
+                x = super::subs::subs(&x, nl, &super::mul::mul(&[dl.clone(), r])?)?;
+            }
+        }
+    }
+    let x1: Basic = expand_mul(&expand_log(&x, deep, force, true)?, true)?;
+    Ok(if count_logs(&x1) <= count_logs(&x) { x1 } else { x })
+}
+
+fn expand_logs(e: &Basic, deep: bool, force: bool, factor: bool) -> PolyResult<Basic> {
+    let mut e: Basic = e.clone();
+    if deep && !e.args().is_empty() && !matches!(e.head(), Head::Derivative) {
+        let mut args: Vec<Basic> = Vec::new();
+        for a in e.args() {
+            let is_expr: bool = !(super::logic::is_boolean(a)
+                || crate::sets::sets::is_set(a)
+                || matches!(a.head(), Head::Tuple | Head::ExprCondPair));
+            args.push(if is_expr {
+                expand_logs(a, deep, force, factor)?
+            } else {
+                a.clone()
+            });
+        }
+        if args
+            .iter()
+            .zip(e.args())
+            .any(|(new, old)| !new.ptr_eq(old) && new != old)
+        {
+            e = rebuild_evaluated(&e, args)?;
+        }
+    }
+    if e.is_function(super::basic::Function::Log) {
+        return expand_log_node(&e, force, factor);
+    }
+    Ok(e)
+}
+
+/// SymPy's `expand_log` (`expand_log`): the logarithms of products and
+/// powers split where valid, perfect powers taken out of integer
+/// arguments with `factor`, a quotient of logarithms of integers
+/// simplified first; repeated until nothing changes.
+pub fn expand_log(expr: &Basic, deep: bool, force: bool, factor: bool) -> PolyResult<Basic> {
+    let mut e: Basic = expr.clone();
+    if !factor {
+        e = replace_where(&e, &is_log_quotient, &|x: &Basic| handle_log_quotient(x, deep, force))?;
+    }
+    loop {
+        let was: Basic = e.clone();
+        e = expand_logs(&e, deep, force, factor)?;
+        if e == was {
+            return Ok(e);
+        }
+    }
+}
+
 /// The logarithm split by the hint `log` (`_expand_log_node`; `factor`
 /// is that of `expand_log`).
 pub fn expand_log_node(node: &Basic, force: bool, factor: bool) -> PolyResult<Basic> {
