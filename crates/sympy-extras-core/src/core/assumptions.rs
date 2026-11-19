@@ -1290,7 +1290,7 @@ fn eval_facts(e: &Basic) -> FactList {
             }
             facts
         }
-        Head::Tuple => FactList::new(),
+        Head::Tuple | Head::Limit => FactList::new(),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
         Head::ComplexRootOf(_) => crate::polys::complexrootof::root_facts(e),
         // a boolean is not an expression: no facts

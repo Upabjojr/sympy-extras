@@ -153,90 +153,10 @@ pub fn ceiling_int(e: &Basic) -> PolyResult<i64> {
 
 // -- the limit at a point, for continuous expressions
 
-/// Whether `e` is continuous at `x = point` from the right, so that its
-/// limit there is its value: built from symbols, numbers, sums,
-/// products, the functions continuous everywhere, logarithms and
-/// non-integer powers of a base positive at the point (or zero with a
-/// positive exponent), powers with an exponent in `x` of a base positive
-/// at the point.
-fn continuous_at(e: &Basic, x: &Basic, point: &Basic) -> PolyResult<bool> {
-    if !e.has(x) {
-        return Ok(true);
-    }
-    let value_positive = |b: &Basic| -> PolyResult<bool> { Ok(yes(&subs(b, x, point)?, Predicate::positive)) };
-    match e.head() {
-        Head::Symbol(_) | Head::Dummy(..) => Ok(true),
-        Head::Add | Head::Mul => {
-            for a in e.args() {
-                if !continuous_at(a, x, point)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-        Head::Pow => {
-            let (b, ex) = (&e.args()[0], &e.args()[1]);
-            if !continuous_at(b, x, point)? || !continuous_at(ex, x, point)? {
-                return Ok(false);
-            }
-            if ex.has(x) {
-                return value_positive(b);
-            }
-            if ex.is_integer_value() {
-                return Ok(true);
-            }
-            let base_value: Basic = subs(b, x, point)?;
-            Ok(yes(&base_value, Predicate::positive) || (is_zero_number(&base_value) && yes(ex, Predicate::positive)))
-        }
-        Head::Function(Function::Log) => Ok(continuous_at(&e.args()[0], x, point)? && value_positive(&e.args()[0])?),
-        Head::Function(f) => {
-            let everywhere: bool = matches!(
-                f,
-                Function::Exp
-                    | Function::Sin
-                    | Function::Cos
-                    | Function::Tan
-                    | Function::Sinh
-                    | Function::Cosh
-                    | Function::Tanh
-                    | Function::Abs
-            );
-            if !everywhere {
-                return Ok(false);
-            }
-            for a in e.args() {
-                if !continuous_at(a, x, point)? {
-                    return Ok(false);
-                }
-            }
-            Ok(true)
-        }
-        _ => Ok(false),
-    }
-}
-
-/// `limit(e, x, point)` (from the right) for the expressions continuous
-/// there whose value is a finite expression; `NotImplemented` (not
-/// ported: `core/limits.py`) otherwise.
+/// `limit(e, x, point)` from the right (`Expr.limit`): the
+/// unevaluated `Limit` when it is not found.
 pub fn limit_lite(e: &Basic, x: &Basic, point: &Basic) -> R {
-    if !e.has(x) {
-        return Ok(e.clone());
-    }
-    let finite_point: bool = is(point, Predicate::finite) == Some(true) && !point.has(x);
-    if !finite_point || !continuous_at(e, x, point)? {
-        return Err(not_ported(&format!("the limit of {} at {} = {}", e, x, point)));
-    }
-    let value: Basic = subs(e, x, point)?;
-    let bad = |n: &Basic| {
-        matches!(
-            n.head(),
-            Head::NaN | Head::ComplexInfinity | Head::Infinity | Head::NegativeInfinity
-        )
-    };
-    if value.preorder().iter().any(bad) {
-        return Err(not_ported(&format!("the limit of {} at {} = {}", e, x, point)));
-    }
-    Ok(value)
+    crate::core::limits::limit(e, x, point, "+")
 }
 
 // -- leading terms

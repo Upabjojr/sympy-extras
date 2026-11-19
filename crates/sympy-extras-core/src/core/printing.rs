@@ -423,6 +423,7 @@ impl StrPrinter {
             }
             Head::RootSum => crate::polys::rootoftools::print(e, &|a: &Basic| self.doprint(a)),
             Head::Order => crate::core::order::print(e, &|a: &Basic| self.doprint(a)),
+            Head::Limit => crate::core::limits::print(e, &|a: &Basic| self.doprint(a)),
             Head::Subs => {
                 let (expr, variables, point) = (&e.args()[0], e.args()[1].args(), e.args()[2].args());
                 if variables.len() == 1 {

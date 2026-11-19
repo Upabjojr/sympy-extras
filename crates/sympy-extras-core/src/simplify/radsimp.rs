@@ -936,12 +936,14 @@ fn collect_inner(
     }
     if evaluate {
         if e.is_add() {
+            let o: Option<Basic> = crate::core::order::get_o(&e)?;
             let parts: Vec<Basic> = e
                 .args()
                 .iter()
+                .filter(|a| o.as_ref() != Some(*a))
                 .map(|a| collected_expr(a, &syms, func, exact))
                 .collect::<PolyResult<_>>()?;
-            e = add(&[add(&parts)?, Basic::zero()])?;
+            e = add(&[add(&parts)?, o.unwrap_or_else(Basic::zero)])?;
         } else if e.is_mul() {
             let parts: Vec<Basic> = e
                 .args()
@@ -957,6 +959,16 @@ fn collect_inner(
         }
     }
     let syms: Vec<Basic> = syms.iter().map(expand_power_base).collect::<PolyResult<_>>()?;
+    // distribute_order_term: the order term free of the symbols added to
+    // every coefficient
+    let mut order_term: Option<Basic> = crate::core::order::get_o(&e)?;
+    if let Some(o) = &order_term {
+        if syms.iter().any(|sy| o.has(sy)) {
+            order_term = None;
+        } else {
+            e = crate::core::order::remove_o(&e)?;
+        }
+    }
     let summa: Vec<Basic> = terms_of_sum(&e)
         .iter()
         .filter(|i| !is_non_expr(i))
@@ -1034,6 +1046,12 @@ fn collect_inner(
             None => result.push((Basic::one(), disliked)),
         }
     }
+    if let Some(o) = &order_term {
+        result = result
+            .into_iter()
+            .map(|(k, v)| Ok((k, add(&[v, o.clone()])?)))
+            .collect::<PolyResult<_>>()?;
+    }
     if let Some(f) = func {
         result = result
             .into_iter()
@@ -1054,8 +1072,8 @@ fn is_non_expr(e: &Basic) -> bool {
     matches!(e.head(), Head::Tuple) || crate::core::logic::is_boolean(e)
 }
 
-/// The terms of a sum grouped by the powers of `syms` (`collect`); the
-/// order term of the Python is absent (the core has no `Order`).
+/// The terms of a sum grouped by the powers of `syms` (`collect`, the
+/// order term distributed).
 pub fn collect(e: &Basic, syms: &[Basic], func: Option<Transform>, exact: Option<bool>) -> PolyResult<Basic> {
     collected_expr(e, syms, func, exact)
 }

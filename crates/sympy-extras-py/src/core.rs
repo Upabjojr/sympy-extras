@@ -192,6 +192,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "ComplexesClass" => Basic::atom(Head::Complexes),
         "ImageSet" => Basic::new(Head::ImageSet, args()?),
         "Order" => Basic::new(Head::Order, args()?),
+        "Limit" => Basic::new(Head::Limit, args()?),
         "RootSum" => {
             // RootSum(f, Lambda(var, body), t): the Lambda flattened
             let fun = ob.getattr("fun")?;
@@ -523,6 +524,15 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             py.import("sympy_extras.polys.rootoftools")?
                 .getattr("RootSum")?
                 .call1((to_python(py, f)?, lambda, to_python(py, t)?))?
+        }
+        Head::Limit => {
+            let (expr, z, z0, dir) = sympy_extras_core::core::limits::parts(e);
+            py.import("sympy_extras.core.limits")?.getattr("Limit")?.call1((
+                to_python(py, &expr)?,
+                to_python(py, &z)?,
+                to_python(py, &z0)?,
+                dir,
+            ))?
         }
         Head::Order => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
@@ -3096,6 +3106,10 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "mul" => sympy_extras_core::core::mul::mul(a[1].args()).map_err(e)?,
                 "pow" => sympy_extras_core::core::power::pow(&a[1], &a[2]).map_err(e)?,
                 "dir" => sr::dir(&a[1], &a[2], &a[3]).map_err(e)?,
+                "limit" => sympy_extras_core::core::limits::limit(&a[1], &a[2], &a[3], &a[4].to_string()).map_err(e)?,
+                "gruntz" => {
+                    sympy_extras_core::core::limits::gruntz(&a[1], &a[2], &a[3], &a[4].to_string()).map_err(e)?
+                }
                 "lseries" => {
                     // lseries(e, x, x0, Symbol(dir), count): the first count terms
                     let mut it = sr::LSeries::new(&a[1], Some(&a[2]), &a[3], &a[4].to_string(), None, &Basic::zero())

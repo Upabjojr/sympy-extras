@@ -475,7 +475,11 @@ fn limit_is_nonzero(ratio: &Basic, s: &Basic, point: &Basic) -> PolyResult<Optio
 }
 
 fn limit_fallback(ratio: &Basic, s: &Basic, point: &Basic) -> PolyResult<Option<bool>> {
-    let value: Basic = crate::core::series::limit_lite(ratio, s, point)?;
+    // Limit(ratio, s, point).doit() != 0, None when it is not found
+    let value: Basic = crate::core::limits::doit(&crate::core::limits::limit_node(ratio, s, point, "+")?, true)?;
+    if matches!(value.head(), Head::Limit) {
+        return Ok(None);
+    }
     Ok(Some(!is_zero_number(&value)))
 }
 

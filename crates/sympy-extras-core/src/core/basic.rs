@@ -131,6 +131,9 @@ pub enum Head {
     /// `O(expr, (x, point), ...)`: the arguments `(expr, Tuple(x, point),
     /// ...)` (`core/order.rs`).
     Order,
+    /// `Limit(e, z, z0, dir)`: the arguments `(e, z, z0, Symbol(dir))`
+    /// (`core/limits.rs`).
+    Limit,
 }
 
 /// The relations of `core.relational`.
@@ -925,6 +928,7 @@ impl Head {
             Head::IndexedRoot => "IndexedRoot",
             Head::RootSum => "RootSum",
             Head::Order => "Order",
+            Head::Limit => "Limit",
             Head::BooleanTrue => "BooleanTrue",
             Head::BooleanFalse => "BooleanFalse",
             Head::And => "And",
@@ -1021,6 +1025,7 @@ impl Head {
                 | Head::IndexedRoot
                 | Head::RootSum
                 | Head::Order
+                | Head::Limit
                 | Head::And
                 | Head::Or
                 | Head::Not
@@ -1373,6 +1378,7 @@ impl Basic {
             // a number: the variable of the polynomial is bound
             Head::ComplexRootOf(_) => BTreeSet::new(),
             Head::ImageSet => crate::sets::fancysets::image_set_free_symbols(self),
+            Head::Limit => crate::core::limits::free_symbols(self),
             Head::RootSum => crate::polys::rootoftools::free_symbols(self),
             Head::Subs => {
                 // the variables are bound

@@ -29,6 +29,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         }
         Head::RootSum => crate::polys::rootoftools::evaluated(&args),
         Head::Order => crate::core::order::evaluated(&args),
+        Head::Limit => crate::core::limits::evaluated(&args),
         Head::Subs => {
             // Subs._evaluated: the variables are symbols (_as_symbol)
             if let Some(v) = args[1].args().iter().find(|v| !v.is_symbol()) {
@@ -1068,6 +1069,9 @@ pub fn doit(e: &Basic) -> PolyResult<Basic> {
     if matches!(e.head(), Head::RootSum) {
         // RootSum.doit: with the roots, its arguments left alone
         return crate::polys::rootoftools::doit(e);
+    }
+    if matches!(e.head(), Head::Limit) {
+        return crate::core::limits::doit(e, true);
     }
     let mut args: Vec<Basic> = Vec::new();
     for a in e.args() {

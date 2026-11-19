@@ -317,10 +317,8 @@ pub fn leading_term(e: &Basic, f: Function, x: &Basic, logx: Option<&Basic>, cdi
             let a: Basic = as_leading_term(arg, std::slice::from_ref(x), logx, cdir)?;
             let mut a0: Basic = subs(&a, x, &Basic::zero())?;
             if matches!(a0.head(), Head::NaN) {
-                if yes(cdir, Predicate::negative) {
-                    return Err(crate::error::not_ported("the limit from the left"));
-                }
-                a0 = limit_lite(&a, x, &Basic::zero())?;
+                let d: &str = if yes(cdir, Predicate::negative) { "-" } else { "+" };
+                a0 = crate::core::limits::limit(&a, x, &Basic::zero(), d)?;
             }
             if yes(&a0, Predicate::zero) {
                 return Ok(if f == Function::Sinh { a } else { Basic::one() });
@@ -387,10 +385,12 @@ fn trig_leading_term(
         return at_multiple(k, &l);
     }
     if matches!(x0.head(), Head::ComplexInfinity) {
-        if yes(&crate::functions::elementary::complexes::re(cdir)?, Predicate::negative) {
-            return Err(crate::error::not_ported("the limit from the left"));
-        }
-        x0 = limit_lite(arg, x, &Basic::zero())?;
+        let d: &str = if yes(&crate::functions::elementary::complexes::re(cdir)?, Predicate::negative) {
+            "-"
+        } else {
+            "+"
+        };
+        x0 = crate::core::limits::limit(arg, x, &Basic::zero(), d)?;
     }
     if matches!(x0.head(), Head::Infinity | Head::NegativeInfinity) {
         let (lo, hi) = if matches!(f, Function::Sin | Function::Cos) {
