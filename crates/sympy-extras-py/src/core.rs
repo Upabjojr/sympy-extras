@@ -3107,6 +3107,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "pow" => sympy_extras_core::core::power::pow(&a[1], &a[2]).map_err(e)?,
                 "dir" => sr::dir(&a[1], &a[2], &a[3]).map_err(e)?,
                 "limit" => sympy_extras_core::core::limits::limit(&a[1], &a[2], &a[3], &a[4].to_string()).map_err(e)?,
+                "residue" => sympy_extras_core::series::residues::residue(&a[1], &a[2], &a[3]).map_err(e)?,
                 "gruntz" => {
                     sympy_extras_core::core::limits::gruntz(&a[1], &a[2], &a[3], &a[4].to_string()).map_err(e)?
                 }
@@ -3123,6 +3124,37 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     }
                     tuple(out)
                 }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
+        "gosper" => {
+            // op: term(f, n), sum(f, n), sum(f, Tuple(k, a, b)), normal(f, g, n) -> Tuple(Z*A, B, C)
+            // in n, hypersimp(f, k), ratio(f, k); None is the symbol NONE
+            use sympy_extras_core::concrete::gosper as gs;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "term" => gs::gosper_term(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                "sum" => {
+                    if matches!(a[2].head(), Head::Tuple) {
+                        let t = a[2].args();
+                        gs::gosper_sum(&a[1], &t[0], Some((&t[1], &t[2])))
+                            .map_err(e)?
+                            .unwrap_or_else(none)
+                    } else {
+                        gs::gosper_sum(&a[1], &a[2], None).map_err(e)?.unwrap_or_else(none)
+                    }
+                }
+                "normal" => {
+                    let (za, b, c) = gs::gosper_normal(&a[1], &a[2], &a[3]).map_err(e)?;
+                    tuple(vec![
+                        za.as_expr(&a[3]).map_err(e)?,
+                        b.as_expr(&a[3]).map_err(e)?,
+                        c.as_expr(&a[3]).map_err(e)?,
+                    ])
+                }
+                "hypersimp" => gs::hypersimp(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                "ratio" => gs::consecutive_ratio(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
