@@ -3719,6 +3719,81 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         }
                     }
                 }
+                "metric" => {
+                    // metric(method, g, coordinates, args...); metric("from_line_element", ds2, coordinates, differentials)
+                    use sympy_extras_core::diffgeom::metric::Metric;
+                    use sympy_extras_core::matrices::dense::ExprMatrix;
+                    let method = a[1].to_string();
+                    let idx = |b: &Basic| {
+                        b.to_string()
+                            .parse::<usize>()
+                            .map_err(|_| pyo3::exceptions::PyValueError::new_err("an index"))
+                    };
+                    if method == "from_line_element" {
+                        Metric::from_line_element(&a[2], a[3].args(), a[4].args(), None)
+                            .map_err(e)?
+                            .g
+                            .as_tuple()
+                    } else {
+                        let g = ExprMatrix::from_tuple(&a[2]).map_err(e)?;
+                        let mt = Metric::new(&g, a[3].args(), None).map_err(e)?;
+                        let n = |k: usize| Basic::int(k as i64);
+                        match method.as_str() {
+                            "new" => mt.g.as_tuple(),
+                            "inverse" => mt.inverse().map_err(e)?.as_tuple(),
+                            "determinant" => mt.determinant().map_err(e)?,
+                            "lower" => tuple(mt.lower(a[4].args()).map_err(e)?),
+                            "raise_index" => tuple(mt.raise_index(a[4].args()).map_err(e)?),
+                            "christoffel" => mt.christoffel(idx(&a[4])?, idx(&a[5])?, idx(&a[6])?).map_err(e)?,
+                            "christoffel_first_kind" => mt
+                                .christoffel_first_kind(idx(&a[4])?, idx(&a[5])?, idx(&a[6])?)
+                                .map_err(e)?,
+                            "christoffel_symbols" => tuple(
+                                mt.christoffel_symbols()
+                                    .map_err(e)?
+                                    .into_iter()
+                                    .map(|((i, j, k), v)| tuple(vec![tuple(vec![n(i), n(j), n(k)]), v]))
+                                    .collect(),
+                            ),
+                            "riemann" => mt
+                                .riemann(idx(&a[4])?, idx(&a[5])?, idx(&a[6])?, idx(&a[7])?)
+                                .map_err(e)?,
+                            "riemann_lower" => mt
+                                .riemann_lower(idx(&a[4])?, idx(&a[5])?, idx(&a[6])?, idx(&a[7])?)
+                                .map_err(e)?,
+                            "riemann_components" => tuple(
+                                mt.riemann_components()
+                                    .map_err(e)?
+                                    .into_iter()
+                                    .map(|((i, j, k, l), v)| tuple(vec![tuple(vec![n(i), n(j), n(k), n(l)]), v]))
+                                    .collect(),
+                            ),
+                            "ricci" => mt.ricci().map_err(e)?.as_tuple(),
+                            "ricci_scalar" => mt.ricci_scalar().map_err(e)?,
+                            "einstein" => mt.einstein().map_err(e)?.as_tuple(),
+                            "kretschmann" => mt.kretschmann().map_err(e)?,
+                            "weyl" => mt.weyl(idx(&a[4])?, idx(&a[5])?, idx(&a[6])?, idx(&a[7])?).map_err(e)?,
+                            "is_flat" => sym(if mt.is_flat().map_err(e)? { "True" } else { "False" }),
+                            "geodesic_equations" => tuple(mt.geodesic_equations(&a[4]).map_err(e)?),
+                            "covariant_derivative" => mt.covariant_derivative(a[4].args()).map_err(e)?.as_tuple(),
+                            "divergence" => mt.divergence(a[4].args()).map_err(e)?,
+                            "gradient" => tuple(mt.gradient(&a[4]).map_err(e)?),
+                            "laplacian" => mt.laplacian(&a[4]).map_err(e)?,
+                            "killing_equations" => mt.killing_equations(a[4].args()).map_err(e)?.as_tuple(),
+                            "is_killing" => sym(if mt.is_killing(a[4].args()).map_err(e)? {
+                                "True"
+                            } else {
+                                "False"
+                            }),
+                            other => {
+                                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                    "unknown method {}",
+                                    other
+                                )))
+                            }
+                        }
+                    }
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),

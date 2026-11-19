@@ -1,7 +1,8 @@
-"""The Rust ports of ``matrices/calculus.py``, ``vector/orthogonal.py``,
-``solvers/elimination.py``, ``series/fouriercoefficients.py`` and
-``diffgeom/classical.py`` against the Python ones on the calls of their
-tests (the default simplifier only; read with the core's parser)."""
+"""The Rust ports of matrices/calculus.py, vector/orthogonal.py,
+solvers/elimination.py, series/fouriercoefficients.py,
+diffgeom/classical.py and diffgeom/metric.py against the Python
+ones on the calls of their tests (the default simplifier only; read with
+the core's parser)."""
 from __future__ import annotations
 
 import ast
@@ -11,8 +12,10 @@ import pytest
 
 from sympy_extras.core import Eq, Integer, Symbol, Tuple
 from sympy_extras.core.basic import Basic
+from sympy_extras.core.expr import Expr
 from sympy_extras.core.parsing import parse
 import sympy_extras.diffgeom.classical as DG
+from sympy_extras.diffgeom.metric import Metric
 import sympy_extras.matrices.calculus as MC
 import sympy_extras.series.fouriercoefficients as FC
 import sympy_extras.solvers.elimination as EL
@@ -41,6 +44,10 @@ def encoded(v: object) -> Basic:
         return Symbol(v)
     if isinstance(v, ExprMatrix):
         return Tuple(Integer(v.rows), Integer(v.cols), Tuple(*v.entries))
+    if isinstance(v, bool):
+        return Symbol(str(v))
+    if isinstance(v, dict):
+        return Tuple(*[Tuple(encoded(k), encoded(x)) for k, x in v.items()])
     if isinstance(v, (list, tuple)):
         return Tuple(*[encoded(x) for x in v])
     if isinstance(v, int):
@@ -57,6 +64,10 @@ def argument(a: object) -> object:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == 'Eq':
             return Eq(parse(ast.unparse(node.args[0])), parse(ast.unparse(node.args[1])))
         return parse(a)
+    if isinstance(a, list):
+        rows, cols, entries = a
+        assert isinstance(rows, int) and isinstance(cols, int) and isinstance(entries, list)
+        return ExprMatrix(rows, cols, [parse(str(e)) for e in entries])
     assert isinstance(a, dict)
     if 'int' in a:
         return a['int']
@@ -66,6 +77,13 @@ def argument(a: object) -> object:
 
 
 def python(name: str, args: list[object]) -> object:
+    if name.startswith('metric.'):
+        method = name.split('.', 1)[1]
+        if method == 'from_line_element':
+            assert isinstance(args[0], Expr) and isinstance(args[1], list) and isinstance(args[2], list)
+            return Metric.from_line_element(args[0], args[1], args[2]).g
+        assert isinstance(args[0], ExprMatrix) and isinstance(args[1], list)
+        return getattr(Metric(args[0], args[1]), method)(*args[2:])
     if name.startswith(('curve.', 'surface.')):
         kind, method = name.split('.', 1)
         components = args[0]
@@ -292,6 +310,86 @@ CASES: list[tuple[str, list[object]]] = [
     ('surface.mean_curvature', [{'seq': ['u', 'v', 'v*exp(u)']}, 'u', 'v']),
     ('surface.area_element', [{'seq': ['u', 'v', 'u*v']}, 'u', 'v']),
     ('surface.gaussian_curvature', [{'seq': ['u + v', 'u + v', 'u + v']}, 'u', 'v']),
+    ('metric.christoffel', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'int': 1}, {'int': 0}, {'int': 0}]),
+    ('metric.christoffel', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 2}, {'int': 1}, {'int': 0}]),
+    ('metric.christoffel', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 1}, {'int': 1}, {'int': 2}]),
+    ('metric.christoffel', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 2}, {'int': 0}, {'int': 0}]),
+    ('metric.christoffel', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 1}, {'int': 1}, {'int': 1}]),
+    ('metric.christoffel', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 0}, {'int': 2}, {'int': 0}]),
+    ('metric.christoffel', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 2}, {'int': 0}, {'int': 1}]),
+    ('metric.christoffel', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 1}, {'int': 2}, {'int': 2}]),
+    ('metric.christoffel_first_kind', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, {'int': 0}, {'int': 1}, {'int': 1}]),
+    ('metric.christoffel_symbols', [[2, 2, ['a**2', '0', '0', 'a**2*sin(theta)**2']], {'seq': ['theta', 'phi']}]),
+    ('metric.covariant_derivative', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, {'seq': [{'int': 1}, {'int': 0}, {'int': 0}]}]),
+    ('metric.determinant', [[2, 2, ['a**2', '0', '0', 'a**2*sin(theta)**2']], {'seq': ['theta', 'phi']}]),
+    ('metric.divergence', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, {'seq': ['r', {'int': 0}, {'int': 0}]}]),
+    ('metric.einstein', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.einstein', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}]),
+    ('metric.einstein', [[4, 4, ['-1', '0', '0', '0', '0', 'a(t)**2/(-k*r**2 + 1)', '0', '0', '0', '0', 'r**2*a(t)**2', '0', '0', '0', '0', 'r**2*a(t)**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.einstein', [[2, 2, ['a**2', '0', '0', 'a**2*sin(theta)**2']], {'seq': ['theta', 'phi']}]),
+    ('metric.from_line_element', ['2*a*dphi*dt + dphi**2*r**2 + dr**2 - dt**2', {'seq': ['t', 'r', 'phi']}, {'seq': ['dt', 'dr', 'dphi']}]),
+    ('metric.from_line_element', ['dr + dt**2', {'seq': ['t', 'r']}, {'seq': ['dt', 'dr']}]),
+    ('metric.geodesic_equations', [[2, 2, ['1', '0', '0', 'r**2']], {'seq': ['r', 'phi']}, 's']),
+    ('metric.gradient', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, 'r**2/2']),
+    ('metric.is_flat', [[2, 2, ['1', '0', '0', 'r**2']], {'seq': ['r', 'phi']}]),
+    ('metric.is_flat', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.is_flat', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}]),
+    ('metric.is_flat', [[2, 2, ['-x**2', '0', '0', '1']], {'seq': ['t', 'x']}]),
+    ('metric.is_flat', [[2, 2, ['1', '0', '0', 'sin(theta)**2']], {'seq': ['theta', 'phi']}]),
+    ('metric.is_killing', [[4, 4, ['2*m*r/(a**2*cos(theta)**2 + r**2) - 1', '0', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '(a**2*cos(theta)**2 + r**2)/(a**2 - 2*m*r + r**2)', '0', '0', '0', '0', 'a**2*cos(theta)**2 + r**2', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '0', '(2*a**2*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2) + a**2 + r**2)*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'seq': [{'int': 1}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
+    ('metric.is_killing', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'seq': [{'int': 0}, {'int': 0}, 'sin(phi)', 'cos(phi)*cos(theta)/sin(theta)']}]),
+    ('metric.is_killing', [[4, 4, ['2*m*r/(a**2*cos(theta)**2 + r**2) - 1', '0', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '(a**2*cos(theta)**2 + r**2)/(a**2 - 2*m*r + r**2)', '0', '0', '0', '0', 'a**2*cos(theta)**2 + r**2', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '0', '(2*a**2*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2) + a**2 + r**2)*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'seq': [{'int': 0}, {'int': 0}, {'int': 0}, {'int': 1}]}]),
+    ('metric.is_killing', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'seq': [{'int': 0}, {'int': 1}, {'int': 0}, {'int': 0}]}]),
+    ('metric.is_killing', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'seq': [{'int': 1}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
+    ('metric.is_killing', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'seq': [{'int': 0}, {'int': 0}, {'int': 0}, {'int': 1}]}]),
+    ('metric.is_killing', [[4, 4, ['2*m*r/(a**2*cos(theta)**2 + r**2) - 1', '0', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '(a**2*cos(theta)**2 + r**2)/(a**2 - 2*m*r + r**2)', '0', '0', '0', '0', 'a**2*cos(theta)**2 + r**2', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '0', '(2*a**2*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2) + a**2 + r**2)*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'seq': [{'int': 0}, {'int': 0}, {'int': 1}, {'int': 0}]}]),
+    ('metric.kretschmann', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.kretschmann', [[4, 4, ['2*m*r/(a**2*cos(theta)**2 + r**2) - 1', '0', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '(a**2*cos(theta)**2 + r**2)/(a**2 - 2*m*r + r**2)', '0', '0', '0', '0', 'a**2*cos(theta)**2 + r**2', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '0', '(2*a**2*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2) + a**2 + r**2)*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.laplacian', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, 'r**2']),
+    ('metric.laplacian', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, 'r*cos(theta)']),
+    ('metric.laplacian', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, '1/r']),
+    ('metric.lower', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, {'seq': [{'int': 0}, {'int': 1}, {'int': 0}]}]),
+    ('metric.raise_index', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}, {'seq': [{'int': 0}, 'r**2', {'int': 0}]}]),
+    ('metric.ricci', [[4, 4, ['H**2*r**2 - 1', '0', '0', '0', '0', '1/(-H**2*r**2 + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.ricci', [[3, 3, ['-r**2 - 1', '0', '0', '0', '1/(r**2 + 1)', '0', '0', '0', 'r**2']], {'seq': ['t', 'r', 'phi']}]),
+    ('metric.ricci', [[4, 4, ['-1', '0', '0', '0', '0', 'a(t)**2/(-k*r**2 + 1)', '0', '0', '0', '0', 'r**2*a(t)**2', '0', '0', '0', '0', 'r**2*a(t)**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.ricci', [[2, 2, ['exp(2*x)', '0', '0', 'y**2*exp(2*x)']], {'seq': ['x', 'y']}]),
+    ('metric.ricci', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}]),
+    ('metric.ricci', [[4, 4, ['2*m*r/(a**2*cos(theta)**2 + r**2) - 1', '0', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '(a**2*cos(theta)**2 + r**2)/(a**2 - 2*m*r + r**2)', '0', '0', '0', '0', 'a**2*cos(theta)**2 + r**2', '0', '-2*a*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2)', '0', '0', '(2*a**2*m*r*sin(theta)**2/(a**2*cos(theta)**2 + r**2) + a**2 + r**2)*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.ricci', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.ricci', [[2, 2, ['x**2 + 1', 'x*y', 'x*y', 'y**2 + 1']], {'seq': ['x', 'y']}]),
+    ('metric.ricci_scalar', [[2, 2, ['a**2', '0', '0', 'a**2*sin(theta)**2']], {'seq': ['theta', 'phi']}]),
+    ('metric.ricci_scalar', [[4, 4, ['2*m/r - 1', '0', '0', '0', '0', '1/(-2*m/r + 1)', '0', '0', '0', '0', 'r**2', '0', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.ricci_scalar', [[3, 3, ['1', '0', '0', '0', 'r**2', '0', '0', '0', 'r**2*sin(theta)**2']], {'seq': ['r', 'theta', 'phi']}]),
+    ('metric.ricci_scalar', [[2, 2, ['-x**2', '0', '0', '1']], {'seq': ['t', 'x']}]),
+    ('metric.ricci_scalar', [[2, 2, ['1', '0', '0', 'sinh(r)**2']], {'seq': ['r', 'phi']}]),
+    ('metric.ricci_scalar', [[3, 3, ['1', '0', '0', '0', 'sin(chi)**2', '0', '0', '0', 'sin(chi)**2*sin(theta)**2']], {'seq': ['chi', 'theta', 'phi']}]),
+    ('metric.ricci_scalar', [[4, 4, ['-1', '0', '0', '0', '0', 'a(t)**2/(-k*r**2 + 1)', '0', '0', '0', '0', 'r**2*a(t)**2', '0', '0', '0', '0', 'r**2*a(t)**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}]),
+    ('metric.ricci_scalar', [[2, 2, ['y**(-2)', '0', '0', 'y**(-2)']], {'seq': ['x', 'y']}]),
+    ('metric.riemann', [[3, 3, ['-r**2 - 1', '0', '0', '0', '1/(r**2 + 1)', '0', '0', '0', 'r**2']], {'seq': ['t', 'r', 'phi']}, {'int': 2}, {'int': 1}, {'int': 0}, {'int': 0}]),
+    ('metric.riemann', [[3, 3, ['-r**2 - 1', '0', '0', '0', '1/(r**2 + 1)', '0', '0', '0', 'r**2']], {'seq': ['t', 'r', 'phi']}, {'int': 1}, {'int': 2}, {'int': 0}, {'int': 0}]),
+    ('metric.riemann', [[3, 3, ['-r**2 - 1', '0', '0', '0', '1/(r**2 + 1)', '0', '0', '0', 'r**2']], {'seq': ['t', 'r', 'phi']}, {'int': 2}, {'int': 2}, {'int': 0}, {'int': 2}]),
+    ('metric.riemann', [[3, 3, ['-r**2 - 1', '0', '0', '0', '1/(r**2 + 1)', '0', '0', '0', 'r**2']], {'seq': ['t', 'r', 'phi']}, {'int': 1}, {'int': 1}, {'int': 1}, {'int': 0}]),
+    ('metric.riemann', [[3, 3, ['-r**2 - 1', '0', '0', '0', '1/(r**2 + 1)', '0', '0', '0', 'r**2']], {'seq': ['t', 'r', 'phi']}, {'int': 1}, {'int': 1}, {'int': 0}, {'int': 0}]),
+    ('metric.riemann', [[3, 3, ['-r**2 - 1', '0', '0', '0', '1/(r**2 + 1)', '0', '0', '0', 'r**2']], {'seq': ['t', 'r', 'phi']}, {'int': 1}, {'int': 1}, {'int': 0}, {'int': 2}]),
+    ('metric.riemann', [[2, 2, ['x**2 + 1', 'x*y', 'x*y', 'y**2 + 1']], {'seq': ['x', 'y']}, {'int': 0}, {'int': 0}, {'int': 0}, {'int': 0}]),
+    ('metric.riemann', [[3, 3, ['-r**2 - 1', '0', '0', '0', '1/(r**2 + 1)', '0', '0', '0', 'r**2']], {'seq': ['t', 'r', 'phi']}, {'int': 0}, {'int': 0}, {'int': 0}, {'int': 0}]),
+    ('metric.riemann_lower', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 1}, {'int': 1}, {'int': 0}, {'int': 2}]),
+    ('metric.riemann_lower', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 1}, {'int': 1}, {'int': 2}, {'int': 1}]),
+    ('metric.riemann_lower', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 1}, {'int': 1}, {'int': 1}, {'int': 0}]),
+    ('metric.riemann_lower', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 0}, {'int': 2}, {'int': 0}, {'int': 2}]),
+    ('metric.riemann_lower', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 1}, {'int': 1}, {'int': 1}, {'int': 2}]),
+    ('metric.riemann_lower', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 0}, {'int': 1}, {'int': 0}, {'int': 2}]),
+    ('metric.riemann_lower', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 2}, {'int': 2}, {'int': 0}, {'int': 0}]),
+    ('metric.riemann_lower', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 2}, {'int': 2}, {'int': 0}, {'int': 1}]),
+    ('metric.weyl', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 2}, {'int': 1}, {'int': 1}, {'int': 2}]),
+    ('metric.weyl', [[4, 4, ['-1', '0', '0', '0', '0', 'a(t)**2/(-k*r**2 + 1)', '0', '0', '0', '0', 'r**2*a(t)**2', '0', '0', '0', '0', 'r**2*a(t)**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'int': 0}, {'int': 0}, {'int': 0}, {'int': 3}]),
+    ('metric.weyl', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 0}, {'int': 0}, {'int': 0}, {'int': 1}]),
+    ('metric.weyl', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 0}, {'int': 1}, {'int': 0}, {'int': 2}]),
+    ('metric.weyl', [[4, 4, ['-1', '0', '0', '0', '0', 'a(t)**2/(-k*r**2 + 1)', '0', '0', '0', '0', 'r**2*a(t)**2', '0', '0', '0', '0', 'r**2*a(t)**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'int': 0}, {'int': 1}, {'int': 0}, {'int': 3}]),
+    ('metric.weyl', [[3, 3, ['x**2 + 1', 'x*y', '0', 'x*y', '2', 'y', '0', 'y', 'z**2 + 1']], {'seq': ['x', 'y', 'z']}, {'int': 0}, {'int': 0}, {'int': 1}, {'int': 0}]),
+    ('metric.weyl', [[4, 4, ['-1', '0', '0', '0', '0', 'a(t)**2/(-k*r**2 + 1)', '0', '0', '0', '0', 'r**2*a(t)**2', '0', '0', '0', '0', 'r**2*a(t)**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'int': 2}, {'int': 1}, {'int': 0}, {'int': 1}]),
+    ('metric.weyl', [[4, 4, ['-1', '0', '0', '0', '0', 'a(t)**2/(-k*r**2 + 1)', '0', '0', '0', '0', 'r**2*a(t)**2', '0', '0', '0', '0', 'r**2*a(t)**2*sin(theta)**2']], {'seq': ['t', 'r', 'theta', 'phi']}, {'int': 2}, {'int': 1}, {'int': 0}, {'int': 3}]),
 ]
 
 
