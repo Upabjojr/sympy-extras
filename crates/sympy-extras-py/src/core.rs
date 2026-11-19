@@ -3158,6 +3158,24 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "intervals" => {
+            // op: evaluate(expr, Tuple(Tuple(symbol, lo, hi), ...)) -> Tuple(a, b) (exact, oo) or NONE
+            use sympy_extras_core::assumptions::intervals as iv;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let bx: iv::Box = a[2]
+                .args()
+                .iter()
+                .map(|t| (t.args()[0].clone(), (t.args()[1].clone(), t.args()[2].clone())))
+                .collect();
+            match a[0].to_string().as_str() {
+                "evaluate" => match iv::evaluate(&a[1], &bx) {
+                    Some(v) => tuple(vec![iv::to_expr(&v.a), iv::to_expr(&v.b)]),
+                    None => none(),
+                },
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "is" => {
             // e, Symbol(predicate name) -> true, false or the empty Tuple for None (`e.is_<name>`)
             let Some(p) = sympy_extras_core::core::assumptions::Predicate::from_name(&a[1].to_string()) else {
