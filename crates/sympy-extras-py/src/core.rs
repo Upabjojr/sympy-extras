@@ -3372,6 +3372,14 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             )
             .map_err(e)?
         }
+        "dirichlet" => {
+            match sympy_extras_core::integrals::dirichlet::dirichlet_integral(&a[0], &a[1], &a[2], &a[3], a[4].args())
+                .map_err(e)?
+            {
+                Some(v) => Basic::new(Head::Tuple, vec![v.value, v.condition]),
+                None => sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0,
+            }
+        }
         "mellin" => {
             // transform(f, x, s) -> Tuple(F, lower, upper, condition) | NONE;
             // decompose(f, x, cutoff|NONE) -> Tuple(constant, alpha, log_power, one_minus, Tuple(Tuple(name, beta, gamma, constant)...)) | NONE
