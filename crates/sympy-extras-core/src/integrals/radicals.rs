@@ -52,7 +52,7 @@ fn log(a: &Basic) -> R {
 }
 
 /// The coefficients of a polynomial in `x` (`_coefficients`).
-fn coefficients(e: &Basic, x: &Basic) -> PolyResult<Option<Vec<(i64, Basic)>>> {
+pub(crate) fn coefficients(e: &Basic, x: &Basic) -> PolyResult<Option<Vec<(i64, Basic)>>> {
     if crate::core::expr::polynomial_like(
         e,
         std::slice::from_ref(x),

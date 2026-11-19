@@ -3372,6 +3372,9 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             )
             .map_err(e)?
         }
+        "trigonometric" => sympy_extras_core::integrals::trigonometric::trigonometric_antiderivative(&a[0], &a[1])
+            .map_err(e)?
+            .unwrap_or_else(|| sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0),
         "exponential" => {
             // route, f, x, Tuple(assumptions) -> F or NONE
             use sympy_extras_core::integrals::exponential as ex;

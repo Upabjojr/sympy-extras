@@ -6,3 +6,4 @@ pub mod exponential;
 pub mod radicals;
 pub mod risch;
 pub mod tables;
+pub mod trigonometric;
