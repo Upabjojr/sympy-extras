@@ -611,8 +611,17 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
     }
     let terms: Option<i64> = ap.iter().filter_map(nonpositive_integer).max().map(|m| -m + 1);
     let size: f64 = modulus(z);
+    let one_f_one: bool = ap.len() == 1 && bq.len() == 1;
+    if terms.is_none() && one_f_one && size >= 64.0 {
+        // mpmath's _hyp1f1: the asymptotic series for mag(z) >= 7, the
+        // convergent one when they do not converge (NoConvergence)
+        if let Some(v) = hyp1f1_asymptotic(&ap[0], &bq[0], z, prec) {
+            return Some(v);
+        }
+    }
     if terms.is_none() {
-        let fits: bool = (ap.len() <= bq.len() && size <= 40.0) || (ap.len() == bq.len() + 1 && size < 0.75);
+        let fits: bool =
+            (ap.len() <= bq.len() && (one_f_one || size <= 40.0)) || (ap.len() == bq.len() + 1 && size < 0.75);
         if !fits {
             return None;
         }
@@ -652,6 +661,72 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
         }
     }
     None
+}
+
+/// `2F0(a1, a2; ; x)` as the asymptotic series: summed while the terms
+/// decrease, `None` when they grow again before they are negligible.
+fn hyp2f0_asymptotic(a1: &Complex, a2: &Complex, x: &Complex, wp: usize, tolerance: usize) -> Option<Complex> {
+    let mut term: Complex = c_int(1, wp);
+    let mut total: Complex = term.clone();
+    let mut previous: f64 = f64::INFINITY;
+    let terminating: bool = nonpositive_integer(a1).is_some() || nonpositive_integer(a2).is_some();
+    for k in 0..100_000i64 {
+        let kk: Complex = c_int(k, wp);
+        term = &(&(&(&term * &(a1 + &kk)) * &(a2 + &kk)) * x) / &c_int(k + 1, wp);
+        let t: f64 = modulus(&term);
+        if t == 0.0 {
+            return Some(total);
+        }
+        let s: f64 = modulus(&total);
+        if !terminating && t > previous && (k as f64) > modulus(a1) + modulus(a2) + 2.0 {
+            return None;
+        }
+        total = &total + &term;
+        if s > 0.0 && t.log2() < s.log2() - tolerance as f64 {
+            return Some(total);
+        }
+        previous = t;
+    }
+    None
+}
+
+/// `1F1(a; b; z)` for `|z| >= 64` by the two asymptotic series of
+/// mpmath's `_hyp1f1` (DLMF 13.7.2):
+/// `e^{i pi a} z^{-a} G(b)/G(b-a) 2F0(a, 1+a-b; -1/z) + e^z z^{a-b} G(b)/G(a)
+/// 2F0(b-a, 1-a; 1/z)`, `e^{-i pi a}` below the real axis.
+fn hyp1f1_asymptotic(a: &Complex, b: &Complex, z: &Complex, prec: usize) -> Option<Complex> {
+    use crate::functions::special::gamma_numeric::gamma;
+    let magz: usize = modulus(z).log2().ceil() as usize;
+    let wp: usize = prec + 60 + magz;
+    let tolerance: usize = prec + magz + 10;
+    let (a, b, z) = (raise_to(a, wp), raise_to(b, wp), raise_to(z, wp));
+    let one: Complex = c_int(1, wp);
+    let pi: Real = Real::pi(wp);
+    let below: bool = parts(&z).1 < Real::ZERO;
+    let i_pi: Complex = complex(real_int(&Int::ZERO, wp), if below { -pi.clone() } else { pi.clone() });
+    let power = |w: &Complex, c: &Complex| -> Complex { (c * &w.ln()).exp() };
+    let rz: Complex = &one / &z;
+    let gamma_b: Complex = gamma(&b, wp)?;
+    let b_minus_a: Complex = &b - &a;
+    let first: Complex = if nonpositive_integer(&b_minus_a).is_some() {
+        c_int(0, wp)
+    } else {
+        let e: Complex = (&i_pi * &a).exp();
+        let neg_a: Complex = &c_int(0, wp) - &a;
+        let series: Complex = hyp2f0_asymptotic(&a, &(&(&one + &a) - &b), &(&c_int(0, wp) - &rz), wp, tolerance)?;
+        &(&(&e * &power(&z, &neg_a)) * &(&gamma_b / &gamma(&b_minus_a, wp)?)) * &series
+    };
+    let series: Complex = hyp2f0_asymptotic(&b_minus_a, &(&one - &a), &rz, wp, tolerance)?;
+    let second: Complex = &(&(&z.exp() * &power(&z, &(&a - &b))) * &(&gamma_b / &gamma(&a, wp)?)) * &series;
+    let total: Complex = &first + &second;
+    let real: bool = [&a, &b, &z].iter().all(|v| parts(v).1 == Real::ZERO);
+    let (re, im) = parts(&total);
+    let im: Real = if real {
+        real_int(&Int::ZERO, prec)
+    } else {
+        im.with_precision(prec).value()
+    };
+    Some(complex(re.with_precision(prec).value(), im))
 }
 
 /// The value of a `Hyper` node.

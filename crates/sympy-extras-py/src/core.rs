@@ -3355,6 +3355,29 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "exponential" => {
+            // route, f, x, Tuple(assumptions) -> F or NONE
+            use sympy_extras_core::integrals::exponential as ex;
+            let route: fn(&Basic, &Basic, &[Basic]) -> sympy_extras_core::error::PolyResult<Option<Basic>> =
+                match a[0].to_string().as_str() {
+                    "exponential_antiderivative" => ex::exponential_antiderivative,
+                    "power_exponential" => ex::power_exponential,
+                    "exponential_rational" => ex::exponential_rational,
+                    "nested_power_exponential" => ex::nested_power_exponential,
+                    "rational_exponential" => ex::rational_exponential,
+                    "composite_gaussian" => ex::composite_gaussian,
+                    "reciprocal_square_exponential" => ex::reciprocal_square_exponential,
+                    other => {
+                        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                            "unknown route {}",
+                            other
+                        )))
+                    }
+                };
+            route(&a[1], &a[2], a[3].args())
+                .map_err(e)?
+                .unwrap_or_else(|| sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0)
+        }
         "radicals" => {
             // quadratic(f, x, Tuple(assumptions), euler) | euler(f, x, Tuple(assumptions)) -> F or NONE
             use sympy_extras_core::integrals::radicals as rd;
