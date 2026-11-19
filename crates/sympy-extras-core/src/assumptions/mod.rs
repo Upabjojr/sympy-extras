@@ -1,5 +1,6 @@
 //! Ports of `sympy_extras.assumptions`.
 
+pub mod analysis;
 pub mod bounds;
 pub mod context;
 pub mod facts;

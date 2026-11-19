@@ -3163,6 +3163,17 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             use sympy_extras_core::assumptions::intervals as iv;
             let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
             let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let small_usize = |b: &Basic| -> PyResult<usize> {
+                b.to_string()
+                    .parse::<usize>()
+                    .map_err(|_| pyo3::exceptions::PyValueError::new_err("a small integer"))
+            };
+            let signs_tuple = |s: Option<iv::Signs>| -> Basic {
+                match s {
+                    Some(v) => Basic::new(Head::Tuple, v.into_iter().map(|k| Basic::int(k as i64)).collect()),
+                    None => sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0,
+                }
+            };
             let bx: iv::Box = a[2]
                 .args()
                 .iter()
@@ -3173,6 +3184,57 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     Some(v) => tuple(vec![iv::to_expr(&v.a), iv::to_expr(&v.b)]),
                     None => none(),
                 },
+                // signs_on_box(expr, box, max_boxes, weak), range_on_box(expr, box),
+                // monotone_range / corner_signs(expr, box, Tuple(Tuple(symbol, left_open, right_open))),
+                // corner_value(expr, box, Tuple(Tuple(symbol, value))), isolate_signs(f, Tuple(), x, piece,
+                // max_boxes), certified_sign(value, Tuple()), certified_compare(a, Tuple(), b)
+                "signs_on_box" => {
+                    let weak = matches!(a[4].head(), Head::BooleanTrue);
+                    signs_tuple(iv::signs_on_box(&a[1], &bx, small_usize(&a[3])?, weak).map_err(e)?)
+                }
+                "range_on_box" => iv::range_on_box(&a[1], &bx).map_err(e)?.unwrap_or_else(none),
+                "monotone_range" | "corner_signs" => {
+                    let openness: iv::Openness = a[3]
+                        .args()
+                        .iter()
+                        .map(|t| {
+                            (
+                                t.args()[0].clone(),
+                                (
+                                    matches!(t.args()[1].head(), Head::BooleanTrue),
+                                    matches!(t.args()[2].head(), Head::BooleanTrue),
+                                ),
+                            )
+                        })
+                        .collect();
+                    if a[0].to_string() == "monotone_range" {
+                        iv::monotone_range(&a[1], &bx, &openness, None, 40)
+                            .map_err(e)?
+                            .unwrap_or_else(none)
+                    } else {
+                        signs_tuple(iv::corner_signs(&a[1], &bx, &openness, None, 40).map_err(e)?)
+                    }
+                }
+                "corner_value" => {
+                    let corner: iv::Corner = a[3]
+                        .args()
+                        .iter()
+                        .map(|t| (t.args()[0].clone(), t.args()[1].clone()))
+                        .collect();
+                    let bref: Option<&iv::Box> = if bx.is_empty() { None } else { Some(&bx) };
+                    iv::corner_value(&a[1], &corner, bref).map_err(e)?.unwrap_or_else(none)
+                }
+                "isolate_signs" => signs_tuple(iv::isolate_signs(&a[1], &a[3], &a[4], small_usize(&a[5])?).map_err(e)?),
+                "certified_sign" => match sympy_extras_core::assumptions::analysis::certified_sign(&a[1]).map_err(e)? {
+                    Some(s) => Basic::int(s as i64),
+                    None => none(),
+                },
+                "certified_compare" => {
+                    match sympy_extras_core::assumptions::analysis::certified_compare(&a[1], &a[3]).map_err(e)? {
+                        Some(s) => Basic::int(s as i64),
+                        None => none(),
+                    }
+                }
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
