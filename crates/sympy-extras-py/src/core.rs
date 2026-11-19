@@ -3238,6 +3238,29 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "analysis" => {
+            // op: domain_of(x, Tuple(assumptions)), between(p, q), sorted(Tuple(values)),
+            // real_zeros_in(f, x, domain) -> Tuple(found, Tuple(zeros)); None is the symbol NONE
+            use sympy_extras_core::assumptions::analysis as an;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "domain_of" => {
+                    let facts = sympy_extras_core::assumptions::facts::Facts::new(a[2].args(), None, &[]).map_err(e)?;
+                    an::domain_of(&a[1], &facts).map_err(e)?.unwrap_or_else(none)
+                }
+                "between" => an::between(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                "sorted" => an::sorted_constants(a[1].args())
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "real_zeros_in" => {
+                    let (found, zeros) = an::real_zeros_in(&a[1], &a[2], &a[3]).map_err(e)?;
+                    tuple(vec![sympy_extras_core::core::logic::boolean(found), tuple(zeros)])
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "is" => {
             // e, Symbol(predicate name) -> true, false or the empty Tuple for None (`e.is_<name>`)
             let Some(p) = sympy_extras_core::core::assumptions::Predicate::from_name(&a[1].to_string()) else {
