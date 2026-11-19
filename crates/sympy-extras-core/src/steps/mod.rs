@@ -3,4 +3,5 @@
 pub mod core;
 pub mod derivatives;
 pub mod equations;
+pub mod inequalities;
 pub mod systems;

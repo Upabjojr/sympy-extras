@@ -5931,6 +5931,24 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, solutions, count])
         }
+        "inequality_steps" => {
+            // inequality, x, branch, depth (-1 for all), minor, max_depth (-1 for none):
+            // the formatted tree, the solutions (the symbol ? when not solved) and the number of steps
+            use sympy_extras_core::steps::core::{count_steps, format_steps, Step};
+            use sympy_extras_core::steps::inequalities::inequality_steps;
+            let flag = |b: &Basic| *b != Basic::zero();
+            let count_of = |b: &Basic| b.as_rational().and_then(|v| usize::try_from(v.numerator()).ok());
+            let step = inequality_steps(&a[0], &a[1], flag(&a[2]), count_of(&a[5])).map_err(e)?;
+            let text: String = format_steps(&step, count_of(&a[3]), flag(&a[4]), "  ");
+            let label = sympy_extras_core::core::Symbol::new(&text, &[]).0;
+            let solutions: Basic = if step.contains_dont_know() {
+                sympy_extras_core::core::Symbol::new("?", &[]).0
+            } else {
+                step.solutions().map_err(e)?
+            };
+            let count = Basic::integer((count_steps(&step) as i64).into());
+            Basic::new(Head::Tuple, vec![label, solutions, count])
+        }
         "gammasimp" | "combsimp" => {
             use sympy_extras_core::simplify::gammasimp as gs;
             if name == "gammasimp" {
