@@ -3953,6 +3953,33 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         }
                     }
                 }
+                "riccati_solutions"
+                | "care_solve"
+                | "lqr"
+                | "closed_loop_is_stable"
+                | "discrete_riccati_solutions"
+                | "dare_solve"
+                | "dlqr" => {
+                    use sympy_extras_core::matrices::riccati as rk;
+                    let (p1, p2, p3) = (m(&a[1])?, m(&a[2])?, m(&a[3])?);
+                    let optional = |o: Option<ExprMatrix>| o.map(|x| x.as_tuple()).unwrap_or_else(|| sym("NONE"));
+                    match a[0].to_string().as_str() {
+                        "closed_loop_is_stable" => flag(rk::closed_loop_is_stable(&p1, &p2, &p3).map_err(e)?),
+                        name => {
+                            let p4 = m(&a[4])?;
+                            match name {
+                                "riccati_solutions" => list(&rk::riccati_solutions(&p1, &p2, &p3, &p4).map_err(e)?),
+                                "care_solve" => optional(rk::care_solve(&p1, &p2, &p3, &p4).map_err(e)?),
+                                "lqr" => pair(rk::lqr(&p1, &p2, &p3, &p4).map_err(e)?),
+                                "discrete_riccati_solutions" => {
+                                    list(&rk::discrete_riccati_solutions(&p1, &p2, &p3, &p4).map_err(e)?)
+                                }
+                                "dare_solve" => optional(rk::dare_solve(&p1, &p2, &p3, &p4).map_err(e)?),
+                                _ => pair(rk::dlqr(&p1, &p2, &p3, &p4).map_err(e)?),
+                            }
+                        }
+                    }
+                }
                 "singular_values" => tuple(sympy_extras_core::matrices::svd::singular_values(&m(&a[1])?).map_err(e)?),
                 "svd" => {
                     let (u, s_, v) = sympy_extras_core::matrices::svd::svd(&m(&a[1])?).map_err(e)?;

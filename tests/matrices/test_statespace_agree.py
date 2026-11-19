@@ -3,7 +3,8 @@
 Sylvester and Lyapunov equations, commutants; controllability,
 observability, transfer functions, pole placement, realisations and
 Kalman decompositions; and of solvers/stability.py (Routh-Hurwitz) and
-solvers/rootclassification.py (discrimination sequences),
+solvers/rootclassification.py (discrimination sequences) and
+matrices/riccati.py (algebraic Riccati equations),
 on the matrices of the matrices tests (entries
 read with the core's parser)."""
 from __future__ import annotations
@@ -16,6 +17,7 @@ from sympy_extras.core import Integer, Symbol, Tuple
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.parsing import parse
 import sympy_extras.matrices.equations as EQ
+import sympy_extras.matrices.riccati as RK
 import sympy_extras.matrices.statespace as SS
 import sympy_extras.solvers.rootclassification as RC
 import sympy_extras.solvers.stability as SB
@@ -266,6 +268,52 @@ CASES: list[tuple[str, list[object]]] = [
     ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
     ('signature_from_signs', [{'seq': [{'int': 1}, {'int': 1}, {'int': -1}]}]),
     ('signature_from_signs', [{'seq': [{'int': 1}, {'int': -1}, {'int': -1}, {'int': 0}, {'int': 0}, {'int': 0}]}]),
+    ('care_solve', [[1, 1, ['-3']], [1, 1, ['1']], [1, 1, ['3']], [1, 1, ['3']]]),
+    ('care_solve', [[1, 1, ['-1']], [1, 1, ['1']], [1, 1, ['0']], [1, 1, ['1']]]),
+    ('care_solve', [[1, 1, ['3']], [1, 1, ['3']], [1, 1, ['1']], [1, 1, ['2']]]),
+    ('care_solve', [[2, 2, ['0', '1', '0', '0']], [3, 3, ['1', '0', '0', '0', '1', '0', '0', '0', '1']], [2, 2, ['1', '0', '0', '1']], [1, 1, ['1']]]),
+    ('care_solve', [[1, 1, ['-1']], [1, 1, ['2']], [1, 1, ['3']], [1, 1, ['3']]]),
+    ('care_solve', [[1, 1, ['-2']], [1, 1, ['1']], [1, 1, ['4']], [1, 1, ['3']]]),
+    ('care_solve', [[1, 1, ['-3']], [1, 1, ['2']], [1, 1, ['3']], [1, 1, ['2']]]),
+    ('care_solve', [[2, 2, ['1', '2', '1', '-2']], [2, 1, ['1', '1']], [2, 2, ['3', '0', '0', '3']], [1, 1, ['1/2']]]),
+    ('closed_loop_is_stable', [[2, 2, ['0', '1', '0', '0']], [2, 1, ['0', '1']], [1, 2, ['-1', '3']]]),
+    ('closed_loop_is_stable', [[2, 2, ['0', '1', '0', '0']], [2, 1, ['0', '1']], [1, 2, ['2', '3']]]),
+    ('closed_loop_is_stable', [[2, 2, ['0', '1', '0', '0']], [2, 1, ['0', '1']], [1, 2, ['1', '0']]]),
+    ('dare_solve', [[1, 1, ['-2']], [1, 1, ['1']], [1, 1, ['4']], [1, 1, ['3']]]),
+    ('dare_solve', [[1, 1, ['-2']], [1, 1, ['1']], [1, 1, ['1']], [1, 1, ['1']]]),
+    ('dare_solve', [[1, 1, ['0']], [1, 1, ['1']], [1, 1, ['1']], [1, 1, ['3']]]),
+    ('dare_solve', [[1, 1, ['1']], [1, 1, ['3']], [1, 1, ['2']], [1, 1, ['3']]]),
+    ('dare_solve', [[1, 1, ['3']], [1, 1, ['3']], [1, 1, ['2']], [1, 1, ['2']]]),
+    ('dare_solve', [[1, 1, ['-3']], [1, 1, ['1']], [1, 1, ['4']], [1, 1, ['1']]]),
+    ('dare_solve', [[1, 1, ['0']], [1, 1, ['2']], [1, 1, ['1']], [1, 1, ['1']]]),
+    ('dare_solve', [[1, 1, ['-2']], [1, 1, ['1']], [1, 1, ['2']], [1, 1, ['2']]]),
+    ('discrete_riccati_solutions', [[2, 2, ['1', '1', '2', '0']], [2, 1, ['0', '1']], [2, 2, ['1', '0', '0', '1']], [1, 1, ['1']]]),
+    ('discrete_riccati_solutions', [[2, 2, ['0', '-2', '1', '-2']], [2, 1, ['1', '0']], [2, 2, ['1', '0', '0', '1']], [1, 1, ['1']]]),
+    ('discrete_riccati_solutions', [[2, 2, ['1', '2', '0', '2']], [2, 1, ['-1', '-1']], [2, 2, ['1', '0', '0', '1']], [1, 1, ['1']]]),
+    ('discrete_riccati_solutions', [[2, 2, ['1', '-2', '2', '-2']], [2, 1, ['0', '-1']], [2, 2, ['1', '0', '0', '1']], [1, 1, ['1']]]),
+    ('dlqr', [[1, 1, ['3']], [1, 1, ['2']], [1, 1, ['3']], [1, 1, ['2']]]),
+    ('dlqr', [[1, 1, ['1']], [1, 1, ['3']], [1, 1, ['2']], [1, 1, ['3']]]),
+    ('dlqr', [[1, 1, ['2']], [1, 1, ['0']], [1, 1, ['1']], [1, 1, ['1']]]),
+    ('dlqr', [[2, 2, ['0', '-2', '1', '-2']], [2, 1, ['1', '0']], [2, 2, ['1', '0', '0', '1']], [1, 1, ['1']]]),
+    ('dlqr', [[1, 1, ['3']], [1, 1, ['2']], [1, 1, ['4']], [1, 1, ['2']]]),
+    ('dlqr', [[1, 1, ['1/2']], [1, 1, ['1']], [1, 1, ['0']], [1, 1, ['1']]]),
+    ('dlqr', [[1, 1, ['0']], [1, 1, ['2']], [1, 1, ['1']], [1, 1, ['1']]]),
+    ('dlqr', [[1, 1, ['-2']], [1, 1, ['1']], [1, 1, ['4']], [1, 1, ['3']]]),
+    ('lqr', [[2, 2, ['0', '2', '-1', '-2']], [2, 1, ['2', '-1']], [2, 2, ['2', '0', '0', '1']], [1, 1, ['1/2']]]),
+    ('lqr', [[2, 2, ['0', '1', '0', '0']], [2, 1, ['0', '1']], [2, 2, ['1', '0', '0', '1']], [1, 1, ['1']]]),
+    ('lqr', [[2, 2, ['1', '2', '0', '-1']], [2, 1, ['0', '1']], [2, 2, ['2', '1', '1', '2']], [1, 1, ['3']]]),
+    ('lqr', [[2, 2, ['1', '2', '1', '-2']], [2, 1, ['1', '1']], [2, 2, ['3', '0', '0', '3']], [1, 1, ['1/2']]]),
+    ('lqr', [[1, 1, ['1']], [1, 1, ['0']], [1, 1, ['1']], [1, 1, ['1']]]),
+    ('lqr', [[2, 2, ['-2', '-1', '0', '0']], [2, 1, ['-1', '1']], [2, 2, ['2', '1', '1', '2']], [1, 1, ['1']]]),
+    ('lqr', [[2, 2, ['0', '-2', '0', '0']], [2, 2, ['-1', '0', '1', '-1']], [2, 2, ['2', '1', '1', '3']], [2, 2, ['3', '0', '0', '3/2']]]),
+    ('riccati_solutions', [[1, 1, ['3']], [1, 1, ['3']], [1, 1, ['1']], [1, 1, ['2']]]),
+    ('riccati_solutions', [[2, 2, ['1', '2', '0', '-1']], [2, 1, ['0', '1']], [2, 2, ['2', '1', '1', '2']], [1, 1, ['3']]]),
+    ('riccati_solutions', [[1, 1, ['1']], [1, 1, ['2']], [1, 1, ['4']], [1, 1, ['1']]]),
+    ('riccati_solutions', [[2, 2, ['1', '2', '1', '-2']], [2, 1, ['1', '1']], [2, 2, ['3', '0', '0', '3']], [1, 1, ['1/2']]]),
+    ('riccati_solutions', [[1, 1, ['2']], [1, 1, ['3']], [1, 1, ['4']], [1, 1, ['2']]]),
+    ('riccati_solutions', [[2, 2, ['-2', '-1', '0', '0']], [2, 1, ['-1', '1']], [2, 2, ['2', '1', '1', '2']], [1, 1, ['1']]]),
+    ('riccati_solutions', [[1, 1, ['3']], [1, 1, ['1']], [1, 1, ['2']], [1, 1, ['2']]]),
+    ('riccati_solutions', [[2, 2, ['0', '-2', '0', '0']], [2, 2, ['-1', '0', '1', '-1']], [2, 2, ['2', '1', '1', '3']], [2, 2, ['3', '0', '0', '3/2']]]),
 ]
 
 
@@ -273,7 +321,7 @@ CASES: list[tuple[str, list[object]]] = [
 def test_statespace(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    module = EQ if name in EQUATIONS else (SB if name in STABILITY else (RC if name in CLASSIFICATION else SS))
+    module = EQ if name in EQUATIONS else (SB if name in STABILITY else (RC if name in CLASSIFICATION else (RK if hasattr(RK, name) else SS)))
     got = outcome(lambda: rc.logic_call('matfunctions', [Symbol(name)] + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(getattr(module, name)(*args))), (name, raw)

@@ -9,6 +9,7 @@ pub mod functions;
 pub mod linalg;
 pub mod markov;
 pub mod pencils;
+pub mod riccati;
 pub mod statespace;
 pub mod steps;
 pub mod svd;
