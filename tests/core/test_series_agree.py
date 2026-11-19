@@ -14,7 +14,9 @@ from sympy_extras.core import Integer, Rational, Symbol, Tuple, oo
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.order import Order, order
 from sympy_extras.core import pi
-from sympy_extras.functions import cos, cosh, cot, coth, csc, csch, exp, log, sec, sech, sin, sinh, sqrt, tan, tanh
+from sympy_extras.core import I
+from sympy_extras.functions import (acos, acosh, acot, acoth, acsc, acsch, asec, asech, asin, asinh, atan, atanh, cos,
+    cosh, cot, coth, csc, csch, exp, log, sec, sech, sin, sinh, sqrt, tan, tanh)
 
 from ..conftest import load
 
@@ -56,6 +58,14 @@ EXPRESSIONS: list[Basic] = [
     sec(pi/2 + x), csc(pi + x), sin(1/x), cos(1/x), tan(1/x), sin(x)**2 + cos(x)**2, exp(sin(x)), log(cos(x)),
     sinh(x)/x, cosh(x) - 1, tanh(2*x), coth(x) - 1/x, sech(x**2), csch(x)*x, sin(x)*sinh(x), cos(x + y),
     tan(x)**2, sin(sin(x)), cos(x)**Rational(1, 2), 1/(1 - cos(x)), sinh(1/x), tanh(1/x),
+    # the inverse functions: at zero, at the branch points, on the branch cuts from both sides
+    asin(x), acos(x), atan(x), acot(x), asec(x), acsc(x), asinh(x), acosh(x), atanh(x), acoth(x), asech(x), acsch(x),
+    asin(1 - x), asin(x - 1), acos(1 - x**2), acos(x - 1), atan(I + x), acot(I - x), asec(1 + x), acsc(-1 - x),
+    asinh(I + x), acosh(1 + x), acosh(x - 1), atanh(1 - x), acoth(1 + x), asech(1 - x), asech(x - 1), acsch(I + x),
+    asin(2 + I*x), asin(2 - I*x), acos(-2 + I*x), acos(-2 - I*x), atan(2*I + x), atan(2*I - x), acot(I/2 + x),
+    asec(Rational(1, 2) + I*x), acsc(Rational(-1, 2) - I*x), asinh(2*I + x), asinh(-2*I - x), acosh(-2 + I*x),
+    acosh(Rational(1, 2) - I*x), atanh(2 + I*x), atanh(-2 - I*x), acoth(Rational(1, 2) + I*x), asech(2 + I*x),
+    acsch(I/2 + x), atan(1/x), acot(1/x), asin(x)/x, atan(x)**2, asinh(sin(x)), acos(cos(x) - x**3),
 ]
 
 

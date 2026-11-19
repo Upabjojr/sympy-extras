@@ -50,7 +50,7 @@ fn subs(e: &Basic, old: &Basic, new: &Basic) -> R {
     crate::core::subs::subs(e, old, new)
 }
 fn expand(e: &Basic) -> R {
-    crate::core::function::expand_default(e)
+    crate::core::function::expand_method(e)
 }
 fn exp(e: &Basic) -> R {
     crate::functions::elementary::exponential::exp(e)
@@ -599,6 +599,9 @@ pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, c
         Head::Function(Function::Exp) => exp_leading_term(e, x, logx, cdir),
         Head::Function(Function::Log) => log_leading_term(e, x, logx, cdir),
         Head::Function(f) if super::series_trig::is_trig(*f) => super::series_trig::leading_term(e, *f, x, logx, cdir),
+        Head::Function(f) if super::series_inverse::is_inverse(*f) => {
+            super::series_inverse::leading_term(e, *f, x, logx, cdir)
+        }
         Head::Function(_) => {
             let name: String = class_name(e);
             if OWN_LEADING_TERM.contains(&name.as_str()) {
@@ -919,6 +922,9 @@ pub fn eval_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &B
         Head::Function(Function::Exp) => exp_nseries(e, x, n, logx, cdir),
         Head::Function(Function::Log) => log_nseries(e, x, n, logx, cdir),
         Head::Function(f) if super::series_trig::is_trig(*f) => super::series_trig::nseries(e, *f, x, n, logx, cdir),
+        Head::Function(f) if super::series_inverse::is_inverse(*f) => {
+            super::series_inverse::nseries_of(e, *f, x, n, logx, cdir)
+        }
         Head::Function(_) => {
             let name: String = class_name(e);
             if OWN_NSERIES.contains(&name.as_str()) {
@@ -1125,6 +1131,7 @@ pub fn taylor_term(f: &Basic, n: i64, a: &Basic, previous: Option<&Basic>) -> R 
             ])
         }
         Head::Function(g) if super::series_trig::is_trig(*g) => super::series_trig::taylor_term(*g, n, a),
+        Head::Function(g) if super::series_inverse::is_inverse(*g) => super::series_inverse::taylor_term(*g, n, a),
         Head::Function(_) if OWN_NSERIES.contains(&class_name(f).as_str()) => {
             Err(not_ported(&format!("the Taylor terms of {}", f.class_name())))
         }

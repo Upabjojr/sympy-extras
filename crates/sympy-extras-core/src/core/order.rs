@@ -264,7 +264,7 @@ fn order_inner(expr: &Basic, given: &[(Basic, Basic)], explicit: bool) -> R {
         if variables.len() > 1 {
             // SymPy expands (x*(x + y)).as_leading_term(x, y) is x*y, the
             // wrong order term
-            expr = crate::core::function::expand_default(&expr)?;
+            expr = crate::core::function::expand_method(&expr)?;
         }
         let pts: Vec<(Basic, Basic)> = args.iter().cloned().zip(ps.iter().cloned()).collect();
         let mut old_expr: Option<Basic> = None;
