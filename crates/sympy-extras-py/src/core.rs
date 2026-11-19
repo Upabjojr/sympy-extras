@@ -5820,6 +5820,25 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, step.result().map_err(e)?, count])
         }
+        "equation_steps" => {
+            // lhs, rhs, x, domain (0 Complexes, 1 Reals), branch, depth (-1 for all), minor, max_depth (-1 for none):
+            // the formatted tree, the solutions (the symbol ? when not solved) and the number of steps
+            use sympy_extras_core::steps::core::{count_steps, format_steps, Step};
+            use sympy_extras_core::steps::equations::{solve_steps, Domain};
+            let flag = |b: &Basic| *b != Basic::zero();
+            let count_of = |b: &Basic| b.as_rational().and_then(|v| usize::try_from(v.numerator()).ok());
+            let domain = if flag(&a[3]) { Domain::Reals } else { Domain::Complexes };
+            let step = solve_steps(&a[0], &a[1], &a[2], domain, flag(&a[4]), count_of(&a[7]));
+            let text: String = format_steps(&step, count_of(&a[5]), flag(&a[6]), "  ");
+            let label = sympy_extras_core::core::Symbol::new(&text, &[]).0;
+            let solutions: Basic = if step.contains_dont_know() {
+                sympy_extras_core::core::Symbol::new("?", &[]).0
+            } else {
+                step.solutions().map_err(e)?
+            };
+            let count = Basic::integer((count_steps(&step) as i64).into());
+            Basic::new(Head::Tuple, vec![label, solutions, count])
+        }
         "gammasimp" | "combsimp" => {
             use sympy_extras_core::simplify::gammasimp as gs;
             if name == "gammasimp" {
