@@ -12,5 +12,6 @@ pub mod simplex;
 #[allow(clippy::module_inception)]
 pub mod solvers;
 pub mod solveset;
+pub mod stability;
 pub mod thue_equation;
 pub mod transcendental;

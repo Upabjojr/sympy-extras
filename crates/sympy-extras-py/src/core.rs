@@ -3625,15 +3625,31 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     .map_err(e)?;
                     tuple(vec![p.as_tuple(), q.as_tuple(), r.as_tuple()])
                 }
-                "hurwitz_matrix" => sympy_extras_core::solvers::stability::hurwitz_matrix(&a[1], &a[2]).map_err(e)?.as_tuple(),
-                "hurwitz_determinants" => tuple(sympy_extras_core::solvers::stability::hurwitz_determinants(&a[1], &a[2]).map_err(e)?),
+                "hurwitz_matrix" => sympy_extras_core::solvers::stability::hurwitz_matrix(&a[1], &a[2])
+                    .map_err(e)?
+                    .as_tuple(),
+                "hurwitz_determinants" => {
+                    tuple(sympy_extras_core::solvers::stability::hurwitz_determinants(&a[1], &a[2]).map_err(e)?)
+                }
                 "routh_array" => tuple(
-                    sympy_extras_core::solvers::stability::routh_array(&a[1], &a[2]).map_err(e)?.into_iter().map(tuple).collect(),
+                    sympy_extras_core::solvers::stability::routh_array(&a[1], &a[2])
+                        .map_err(e)?
+                        .into_iter()
+                        .map(tuple)
+                        .collect(),
                 ),
                 "stability_conditions" | "is_stable" => {
                     use sympy_extras_core::solvers::stability as sb;
-                    let subject = if matches!(a[1].head(), Head::Tuple) { sb::Subject::Matrix(m(&a[1])?) } else { sb::Subject::Polynomial(a[1].clone()) };
-                    let x: Option<Basic> = if a.len() > 2 && a[2].to_string() != "NONE" { Some(a[2].clone()) } else { None };
+                    let subject = if matches!(a[1].head(), Head::Tuple) {
+                        sb::Subject::Matrix(m(&a[1])?)
+                    } else {
+                        sb::Subject::Polynomial(a[1].clone())
+                    };
+                    let x: Option<Basic> = if a.len() > 2 && a[2].to_string() != "NONE" {
+                        Some(a[2].clone())
+                    } else {
+                        None
+                    };
                     let discrete: bool = a.len() > 3 && a[3].to_string() == "True";
                     if a[0].to_string() == "is_stable" {
                         flag(sb::is_stable(&subject, x.as_ref(), discrete).map_err(e)?)

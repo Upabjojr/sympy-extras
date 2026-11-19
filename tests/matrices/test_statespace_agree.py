@@ -2,7 +2,8 @@
 ``matrices/statespace.py`` against the Python ones: Kronecker products,
 Sylvester and Lyapunov equations, commutants; controllability,
 observability, transfer functions, pole placement, realisations and
-Kalman decompositions, on the matrices of the matrices tests (entries
+Kalman decompositions; and of solvers/stability.py (Routh-Hurwitz),
+on the matrices of the matrices tests (entries
 read with the core's parser)."""
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ from sympy_extras.core.basic import Basic
 from sympy_extras.core.parsing import parse
 import sympy_extras.matrices.equations as EQ
 import sympy_extras.matrices.statespace as SS
+import sympy_extras.solvers.stability as SB
 from sympy_extras.matrices.dense import ExprMatrix
 
 from ..conftest import load
@@ -68,6 +70,7 @@ def argument(a: object) -> object:
 
 EQUATIONS = {'kronecker_product', 'vec', 'unvec', 'adjoint', 'linear_matrix_equation', 'sylvester_solve', 'lyapunov_solve',
              'discrete_lyapunov_solve', 'commuting_matrices'}
+STABILITY = {'hurwitz_matrix', 'hurwitz_determinants', 'routh_array', 'stability_conditions', 'is_stable'}
 
 CASES: list[tuple[str, list[object]]] = [
     ('adjoint', [[2, 2, ['18/13', '5/26 + 6*I/13', '5/26 - 6*I/13', '3/4']]]),
@@ -180,6 +183,44 @@ CASES: list[tuple[str, list[object]]] = [
     ('vec', [[2, 4, ['9', '-8', '-5/4', '3', '-5/4', '3/2', '1/8', '-1']]]),
     ('vec', [[2, 4, ['-13', '26', '-13', '0', '-31/2', '-13/2', '7', '0']]]),
     ('vec', [[2, 4, ['1', '11/4', '-7/4', '-9/4', '11/2', '17', '-23/2', '-21/2']]]),
+    ('hurwitz_determinants', ['a*s**2 + b*s + c + s**3', 's']),
+    ('hurwitz_matrix', ['a*s + b + s**2', 's']),
+    ('is_stable', ['3*s**5 + 5*s**4 + 9*s**3 + 8*s**2 + 3*s + 8', 's', 'False']),
+    ('is_stable', ['-4*s**4 - 9*s**3 - 9*s**2 - 6*s - 4', 's', 'False']),
+    ('is_stable', ['-2*s**2 - 8*s - 6', 's', 'False']),
+    ('is_stable', ['-s**3 - 11*s**2/3 - 2*s/3 - 8', 's', 'False']),
+    ('is_stable', [[2, 2, ['0', '1', '-k', '-1']], 'None', 'False']),
+    ('is_stable', ['z**4 - 7*z**3/4 + 11*z**2/8 - z/2 + 1/16', 'z', 'True']),
+    ('is_stable', ['z + 1/2', 'z', 'True']),
+    ('is_stable', ['s**2 + 7*s/3 + 2/3', 's', 'False']),
+    ('is_stable', ['7*s**5 + 4*s**4 + 7*s**3 + 7*s**2 + 5*s + 6', 's', 'False']),
+    ('is_stable', ['-3*s**5 - 5*s**4 - 8*s**3 - 7*s**2 - s - 1', 's', 'False']),
+    ('is_stable', ['4*s**4 + 9*s**3 + 9*s**2 + 6*s + 4', 's', 'False']),
+    ('is_stable', ['z**2 + 2*z + 1', 'z', 'True']),
+    ('routh_array', ['s**4 + 7*s**3 + 65*s**2/4 + 14*s + 15/4', 's']),
+    ('routh_array', ['5*s**2 + 8*s + 7', 's']),
+    ('routh_array', ['s**4 + 27*s**3/2 + 109*s**2/2 + 60*s + 18', 's']),
+    ('routh_array', ['s**5 + 31*s**4/3 + 301*s**3/9 + 43*s**2 + 530*s/9 + 200/3', 's']),
+    ('routh_array', ['s + 2', 's']),
+    ('routh_array', ['s**2 + 4*s + 3', 's']),
+    ('routh_array', ['s**5 + 19*s**4/2 + 35*s**3 + 125*s**2/2 + 54*s + 18', 's']),
+    ('routh_array', ['s**3 + s**2 + 14*s/9 + 8/3', 's']),
+    ('routh_array', ['3*s**5 + 5*s**4 + 9*s**3 + 8*s**2 + 3*s + 8', 's']),
+    ('routh_array', ['s**6 + 35*s**5/3 + 47*s**4 + 257*s**3/3 + 112*s**2 + 428*s/3 + 80', 's']),
+    ('routh_array', ['s**3 + 10*s**2 + 27*s + 18', 's']),
+    ('routh_array', ['s**2 + 7*s/3 + 2/3', 's']),
+    ('stability_conditions', ['a*s**2 + b*s + s**4 + 2*s**3 + 1', 's', 'False', 'True']),
+    ('stability_conditions', ['a*s + b + s**2', 's', 'False', 'True']),
+    ('stability_conditions', ['b/2 + s**2 + s*(a**2 - 1)', 's', 'False', 'False']),
+    ('stability_conditions', ['a*z + b + z**2', 'z', 'True', 'True']),
+    ('stability_conditions', ['s**2 + 1', 's', 'False', 'True']),
+    ('stability_conditions', ['a*s**2 + b*s + s**3 + 1', 's', 'False', 'False']),
+    ('stability_conditions', ['a*z + b + z**3', 'z', 'True', 'True']),
+    ('stability_conditions', ['a*s**2 + b*s + s**3 + 1', 's', 'False', 'True']),
+    ('stability_conditions', ['a*s**2 + b + s', 's', 'False', 'True']),
+    ('stability_conditions', ['a*s**2 + b*s + s**4 + 2*s**3 + 1', 's', 'False', 'False']),
+    ('stability_conditions', ['5', 's', 'False', 'True']),
+    ('stability_conditions', ['a*s**2 + b + s', 's', 'False', 'False']),
 ]
 
 
@@ -187,7 +228,7 @@ CASES: list[tuple[str, list[object]]] = [
 def test_statespace(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    module = EQ if name in EQUATIONS else SS
+    module = EQ if name in EQUATIONS else (SB if name in STABILITY else SS)
     got = outcome(lambda: rc.logic_call('matfunctions', [Symbol(name)] + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(getattr(module, name)(*args))), (name, raw)

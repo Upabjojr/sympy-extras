@@ -65,7 +65,7 @@ fn sorted_by_key(mut v: Vec<Basic>) -> Vec<Basic> {
 
 /// The coefficients of a polynomial in `x`, the leading one first
 /// (`_coefficients`).
-pub(crate) fn coefficients(e: &Basic, x: &Basic) -> PolyResult<Vec<Basic>> {
+pub fn coefficients(e: &Basic, x: &Basic) -> PolyResult<Vec<Basic>> {
     let expanded: Basic = expand(e)?;
     let mut found: Vec<(usize, Vec<Basic>)> = Vec::new();
     for term in terms_of(&expanded) {
@@ -283,6 +283,11 @@ impl Field for GaussianEntries {
             Some((_, i)) => self.lift.field.conjugate(a, *i),
         }
     }
+}
+
+/// A symbol `_lambda`, `_lambda0`, ... not among those of the entries.
+pub fn fresh_symbol_pub(m: &ExprMatrix) -> Basic {
+    fresh_symbol(m)
 }
 
 pub(crate) fn fresh_symbol(m: &ExprMatrix) -> Basic {
