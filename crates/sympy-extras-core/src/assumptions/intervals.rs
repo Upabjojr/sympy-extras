@@ -514,7 +514,10 @@ pub fn corner_value(expr: &Basic, corner: &Corner, b: Option<&Box>) -> PolyResul
         }
         let forth: std::collections::HashMap<Basic, Basic> = signed.iter().cloned().collect();
         let current: Basic = crate::core::function::xreplace_evaluated(&value, &forth)?;
-        let Some(found) = crate::timeout::attempt(|| crate::core::limits::limit(&current, v, &c, direction))? else {
+        let Some(found) = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+            crate::core::limits::limit(&current, v, &c, direction)
+        })?
+        else {
             return Ok(None);
         };
         let back: std::collections::HashMap<Basic, Basic> =

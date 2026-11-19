@@ -279,7 +279,9 @@ fn without_real_solution(formula: &Basic, gens: &[Basic]) -> PolyResult<bool> {
     if gens.len() < 2 {
         return Ok(false);
     }
-    let decided = crate::timeout::attempt(|| crate::polys::hermite::decide_zero_dimensional(formula, gens, 64))?;
+    let decided = crate::timeout::attempt_within(Some(2.0), || {
+        crate::polys::hermite::decide_zero_dimensional(formula, gens, 64)
+    })?;
     Ok(decided == Some(Some(false)))
 }
 

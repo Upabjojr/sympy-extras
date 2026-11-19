@@ -34,6 +34,10 @@ pub enum PolyError {
     /// One of the exceptions of `polys.polyerrors` (`PolynomialError`,
     /// `GeneratorsNeeded`, `CoercionFailed`, ...).
     Polys(PolysErrorKind, String),
+    /// `_timeout.TimeLimitExceeded`: a time limit of [`crate::timeout`]
+    /// expired (a `BaseException` in Python: only the `attempt` whose limit
+    /// it is catches it).
+    TimeLimit(String),
 }
 
 /// The classes of `polys.polyerrors` which the ported code raises.
@@ -89,6 +93,7 @@ impl fmt::Display for PolyError {
             PolyError::Index(message) => write!(f, "{}", message),
             PolyError::Pole(message) => write!(f, "{}", message),
             PolyError::NotImplemented(message) => write!(f, "{}", message),
+            PolyError::TimeLimit(message) => write!(f, "{}", message),
         }
     }
 }

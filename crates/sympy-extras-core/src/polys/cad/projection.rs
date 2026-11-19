@@ -189,6 +189,7 @@ fn poly_of(terms: &Terms, f: &Poly) -> PolyResult<Poly> {
 /// The principal subresultant coefficients of `f` and `g` in their first
 /// generator, the constant ones left out (`_psc`).
 fn psc(f: &Poly, g: &Poly) -> PolyResult<Vec<Poly>> {
+    crate::timeout::check()?;
     let rest: &[Basic] = &f.gens[1..];
     let names: Vec<String> = (0..rest.len()).map(|i| format!("_r{}", i)).collect();
     let ring: SparsePolynomialRing<super::super::domains::IntegerRing> = SparsePolynomialRing::sympy(ZZ, names);

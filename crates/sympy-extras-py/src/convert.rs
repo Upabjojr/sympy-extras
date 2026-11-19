@@ -28,6 +28,15 @@ pub fn err(e: PolyError) -> PyErr {
         PolyError::Type(message) => pyo3::exceptions::PyTypeError::new_err(message),
         PolyError::Recursion(message) => pyo3::exceptions::PyRecursionError::new_err(message),
         PolyError::Index(message) => pyo3::exceptions::PyIndexError::new_err(message),
+        PolyError::TimeLimit(message) => Python::with_gil(|py| {
+            match py
+                .import("sympy_extras._timeout")
+                .and_then(|m| m.getattr("TimeLimitExceeded"))
+            {
+                Ok(class) => PyErr::from_type(class.downcast_into::<pyo3::types::PyType>().expect("a class"), message),
+                Err(e) => e,
+            }
+        }),
         PolyError::Pole(message) => Python::with_gil(|py| {
             match py
                 .import("sympy_extras.core.coreerrors")

@@ -165,7 +165,9 @@ fn resolved_sum(node: &Basic, digits: usize) -> Result<Basic, Undecided> {
     let exact: (Basic, Basic) = if is_zero_real(&values.1) && is_true(node, Predicate::extended_real) {
         (node.clone(), Basic::zero())
     } else {
-        match crate::timeout::attempt(|| crate::functions::elementary::complexes::as_real_imag(node, true, None)) {
+        match crate::timeout::attempt_within(Some(2.0), || {
+            crate::functions::elementary::complexes::as_real_imag(node, true, None)
+        }) {
             Ok(Some(Some(split))) => split,
             _ => return Err(Undecided),
         }

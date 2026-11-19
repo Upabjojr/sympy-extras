@@ -250,6 +250,7 @@ impl Lifting {
     /// `NotWellOriented` when a factor of McCallum's projection vanishes
     /// identically over a cell of positive dimension.
     pub fn stack(&self, parent: &Arc<CadCell>) -> PolyResult<Vec<Arc<CadCell>>> {
+        crate::timeout::check()?;
         if let Some(found) = self.stacks.borrow().get(&parent.index) {
             return Ok(found.clone());
         }

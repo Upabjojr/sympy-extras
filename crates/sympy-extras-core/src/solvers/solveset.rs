@@ -105,7 +105,10 @@ fn numeric(e: &Basic) -> PolyResult<Option<(f64, f64)>> {
     if !settings.numerical_checks {
         return Ok(None);
     }
-    Ok(crate::timeout::attempt(|| Ok(crate::numeric::reliable_complex(e, settings.precision, &[])))?.flatten())
+    Ok(crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        Ok(crate::numeric::reliable_complex(e, settings.precision, &[]))
+    })?
+    .flatten())
 }
 
 fn modulus(z: (f64, f64)) -> f64 {
@@ -403,7 +406,10 @@ fn without_periodic(f: &Basic, x: &Basic) -> bool {
 }
 
 fn candidates_real(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
-    let found: Option<Vec<Basic>> = crate::timeout::attempt(|| super::solvers::solve_equation(f, x))?.flatten();
+    let found: Option<Vec<Basic>> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        super::solvers::solve_equation(f, x)
+    })?
+    .flatten();
     let Some(found) = found else { return Ok(None) };
     let tolerance: f64 = 10f64.powi(-((crate::settings::settings().precision / 2) as i32));
     let mut kept: Vec<Basic> = Vec::new();
@@ -481,7 +487,7 @@ fn solve_real(relation: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
         return parametric_real(&f, x, op);
     }
     let solver = |formula: &Basic, v: &Basic| formula_solver(formula, v);
-    let found: Option<Basic> = crate::timeout::attempt(|| {
+    let found: Option<Basic> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
         super::transcendental::solve_transcendental(relation, x, Some(&solver), None, true)
     })?
     .flatten();
@@ -592,7 +598,10 @@ fn periodic(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
             vec![crate::polys::polytools::cancel(&div(&sub(&target, &b)?, &a)?, &[])?]
         } else {
             let found: Option<Vec<Basic>> =
-                crate::timeout::attempt(|| super::solvers::solve_equation(&sub(&u, &target)?, x))?.flatten();
+                crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+                    super::solvers::solve_equation(&sub(&u, &target)?, x)
+                })?
+                .flatten();
             let Some(found) = found else { return Ok(None) };
             found
         };
@@ -667,7 +676,10 @@ fn solve_complex(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
             }
             let mut found: Option<Vec<Basic>> = polynomial_roots(&numerator, x, degree as usize)?;
             if found.is_none() {
-                found = crate::timeout::attempt(|| solve_equation(&numerator, x))?.flatten();
+                found = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+                    solve_equation(&numerator, x)
+                })?
+                .flatten();
             }
             let Some(found) = found else { return Ok(None) };
             let found: Vec<Basic> = expanded_numbers(&found)?;
@@ -688,7 +700,8 @@ fn solve_complex(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
         return Ok(Some(p));
     }
     if algebraic(f, x) {
-        let candidates: Option<Vec<Basic>> = crate::timeout::attempt(|| solve_equation(f, x))?.flatten();
+        let candidates: Option<Vec<Basic>> =
+            crate::timeout::attempt_within(crate::settings::settings().timeout, || solve_equation(f, x))?.flatten();
         let Some(candidates) = candidates else { return Ok(None) };
         let mut kept: Vec<Basic> = Vec::new();
         for v in candidates {

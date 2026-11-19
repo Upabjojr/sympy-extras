@@ -411,7 +411,8 @@ fn roots_of(coefficients: &[Rat], v: &Basic, prec: usize) -> PolyResult<Vec<Root
             re: rat_real(&s, prec),
             im: real(0.0, prec),
         });
-        let form: Option<Basic> = crate::timeout::attempt(|| crate::polys::roots::radical_form(&node))?.flatten();
+        let form: Option<Basic> =
+            crate::timeout::attempt_within(Some(5.0), || crate::polys::roots::radical_form(&node))?.flatten();
         let exact: Basic = match form {
             Some(f) => f,
             None => real_roots_indexed(&node)?,
@@ -565,9 +566,9 @@ pub fn exact_solutions(
                 ])?;
                 let approximate: C = numeric[1].div(&numeric[0]).neg();
                 if !has_root_objects(&value) {
-                    if let Some(simpler) =
-                        crate::timeout::attempt(|| crate::simplify::radsimp::radsimp(&value, true, 4))?
-                    {
+                    if let Some(simpler) = crate::timeout::attempt_within(Some(5.0), || {
+                        crate::simplify::radsimp::radsimp(&value, true, 4)
+                    })? {
                         value = simpler;
                     }
                 } else {

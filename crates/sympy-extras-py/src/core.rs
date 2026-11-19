@@ -3355,6 +3355,49 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "conditions" => {
+            // op, ...: sample_values(Tuple(symbols), Tuple(assumptions), Symbol(seed));
+            // verdict(a, b, Tuple(assumptions), condition, samples); equal(a, b, Tuple(assumptions), samples);
+            // decide(condition, Tuple(assumptions)); canonical(c); real_form(c, Tuple); positive(e, Tuple)
+            use sympy_extras_core::integrals::conditions as cd;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let truth = |v: Option<bool>| match v {
+                Some(b) => sympy_extras_core::core::logic::boolean(b),
+                None => none(),
+            };
+            let small = |b: &Basic| -> PyResult<usize> {
+                b.to_string()
+                    .parse::<usize>()
+                    .map_err(|_| pyo3::exceptions::PyValueError::new_err("a small integer"))
+            };
+            match a[0].to_string().as_str() {
+                "sample_values" => {
+                    let seed: String = match a[3].head() {
+                        Head::Symbol(d) => d.name.clone(),
+                        _ => a[3].to_string(),
+                    };
+                    let mut rng = sympy_extras_core::random::PyRandom::from_string(&seed);
+                    match cd::sample_values(a[1].args(), a[2].args(), &mut rng).map_err(e)? {
+                        Some(v) => Basic::new(
+                            Head::Tuple,
+                            v.into_iter()
+                                .map(|(s, x)| Basic::new(Head::Tuple, vec![s, x]))
+                                .collect(),
+                        ),
+                        None => none(),
+                    }
+                }
+                "verdict" => truth(cd::numerical_verdict(&a[1], &a[2], a[3].args(), &a[4], small(&a[5])?).map_err(e)?),
+                "equal" => truth(Some(
+                    cd::numerically_equal(&a[1], &a[2], a[3].args(), small(&a[4])?).map_err(e)?,
+                )),
+                "decide" => cd::decide(&a[1], a[2].args()).map_err(e)?.unwrap_or_else(none),
+                "canonical" => cd::canonical(&a[1]).map_err(e)?,
+                "real_form" => cd::real_form(&a[1], a[2].args()).map_err(e)?,
+                "positive" => truth(Some(cd::positive(&a[1], a[2].args()).map_err(e)?)),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "sat" => {
             // op, formula, Tuple(assumptions), domain|NONE [, Tuple(variables), count]
             use sympy_extras_core::assumptions::sat as st;

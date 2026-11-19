@@ -158,7 +158,8 @@ pub fn zero_truth(value: &Basic) -> PolyResult<Option<bool>> {
         }
         return Ok(numeric_truth(value));
     }
-    let cancelled: Option<Basic> = crate::timeout::attempt(|| cancel(value))?;
+    let cancelled: Option<Basic> =
+        crate::timeout::attempt_within(crate::settings::settings().timeout, || cancel(value))?;
     if cancelled.is_some_and(|c| c == Basic::zero()) {
         return Ok(Some(true));
     }
@@ -236,7 +237,9 @@ pub(crate) fn polynomial_roots(e: &Basic, x: &Basic, degree: usize) -> O {
         }
         let free = e.free_symbols();
         if free.iter().all(|c| is_true(c, Predicate::rational)) && free.iter().all(|s| s == x) {
-            let listed = crate::timeout::attempt(|| crate::polys::complexrootof::all_roots(e, Some(x), true))?;
+            let listed = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+                crate::polys::complexrootof::all_roots(e, Some(x), true)
+            })?;
             if let Some(listed) = listed {
                 if listed.len() == degree {
                     return Ok(Some(distinct(listed)));
@@ -624,7 +627,7 @@ fn unrad(numerator: &Basic, x: &Basic, depth: usize) -> O {
         eliminated = square_eliminated(&polynomial, &t, &base_numerator, &base_denominator)?;
     }
     if eliminated.is_none() {
-        eliminated = crate::timeout::attempt(|| {
+        eliminated = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
             crate::polys::polytools::resultant_expr(
                 &expand(&polynomial)?,
                 &expand(&defining)?,
@@ -660,7 +663,9 @@ fn checked_by_roots(
     candidates: Vec<Basic>,
     eliminated: &Basic,
 ) -> PolyResult<Vec<Basic>> {
-    let Some(proxies) = crate::timeout::attempt(|| crate::polys::complexrootof::all_roots(eliminated, Some(x), false))?
+    let Some(proxies) = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        crate::polys::complexrootof::all_roots(eliminated, Some(x), false)
+    })?
     else {
         return Ok(candidates);
     };
@@ -721,7 +726,7 @@ fn tsolve(numerator: &Basic, x: &Basic, depth: usize) -> O {
     }
     if lhs.is_add() {
         let difference: Basic = sub(&lhs, &rhs)?;
-        let factored: Option<Basic> = crate::timeout::attempt(|| {
+        let factored: Option<Basic> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
             crate::polys::polytools::factor(
                 &crate::simplify::powsimp::powdenest(&difference, false, false)?,
                 &[],
@@ -856,7 +861,7 @@ fn principal_root(r: &Basic, n: usize) -> R {
 // -- the solver
 
 fn simplified(v: &Basic) -> R {
-    let found = crate::timeout::attempt(|| {
+    let found = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
         crate::simplify::simplify::simplify(v, &crate::simplify::simplify::Options::default())
     })?;
     Ok(found.unwrap_or_else(|| v.clone()))
@@ -1163,7 +1168,7 @@ fn groebner(equations: &[Basic], unknowns: &[Basic]) -> PolyResult<Option<Vec<Ba
     }) {
         return Ok(None);
     }
-    crate::timeout::attempt(|| {
+    crate::timeout::attempt_within(crate::settings::settings().timeout, || {
         let ideal = Ideal::new(equations, unknowns, QQ, MonomialOrder::Lex)?;
         let graded = ideal.groebner_basis(Some(&MonomialOrder::Grevlex))?;
         if graded.iter().any(|g| g.LM().iter().all(|e| *e == 0)) {

@@ -239,6 +239,7 @@ pub fn dup_invert<K: Domain>(f: &[K::Elem], g: &[K::Elem], k: &K) -> PolyResult<
 ///
 /// the division being exact in the domain.
 pub fn dup_resultant<K: Domain>(f: &[K::Elem], g: &[K::Elem], k: &K) -> K::Elem {
+    crate::timeout::check_infallible();
     if f.is_empty() || g.is_empty() {
         return k.zero();
     }
@@ -292,6 +293,7 @@ pub fn dup_inner_subresultants<K: Domain>(f: &[K::Elem], g: &[K::Elem], k: &K) -
     let mut big_s: Vec<K::Elem> = vec![k.one(), c.clone()];
     c = k.neg(&c);
     while !h.is_empty() {
+        crate::timeout::check_infallible();
         let degree: isize = dup_degree(&h);
         big_r.push(h.clone());
         f = std::mem::replace(&mut g, h);
@@ -314,6 +316,7 @@ pub fn dup_inner_subresultants<K: Domain>(f: &[K::Elem], g: &[K::Elem], k: &K) -
 /// The resultant by the subresultant PRS (no gcd computations), the
 /// Sylvester determinant of `f` and `g` in this order.
 pub fn dup_prs_resultant<K: Domain>(f: &[K::Elem], g: &[K::Elem], k: &K) -> K::Elem {
+    crate::timeout::check_infallible();
     if f.is_empty() || g.is_empty() {
         return k.zero();
     }

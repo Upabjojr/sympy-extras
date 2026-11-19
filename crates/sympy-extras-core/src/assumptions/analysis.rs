@@ -57,8 +57,9 @@ fn is_algebraic_constant(e: &Basic) -> bool {
 /// Whether the algebraic number `e` is zero: its minimal polynomial is
 /// `x`.
 fn vanishes(e: &Basic) -> PolyResult<bool> {
-    let coefficients: Option<Vec<Int>> =
-        crate::timeout::attempt(|| crate::polys::numberfields::minpoly::minimal_polynomial_coeffs(e))?;
+    let coefficients: Option<Vec<Int>> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        crate::polys::numberfields::minpoly::minimal_polynomial_coeffs(e)
+    })?;
     Ok(coefficients == Some(vec![Int::ONE, Int::ZERO]))
 }
 
@@ -239,7 +240,9 @@ pub fn domain_of(x: &Basic, facts: &super::facts::Facts) -> PolyResult<Option<Ba
 }
 
 fn cad_solution_set(atom: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
-    crate::timeout::attempt(|| crate::polys::cad::qe::solution_set(atom, x, &[], None, true))
+    crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        crate::polys::cad::qe::solution_set(atom, x, &[], None, true)
+    })
 }
 
 fn intersect_pieces(a: &Basic, b: &Basic) -> PolyResult<Option<Basic>> {
@@ -454,7 +457,7 @@ fn signs_of(v: &[i32]) -> Signs {
 }
 
 fn attempt_opt<T>(f: impl FnOnce() -> PolyResult<Option<T>>) -> PolyResult<Option<T>> {
-    Ok(crate::timeout::attempt(f)?.flatten())
+    Ok(crate::timeout::attempt_within(crate::settings::settings().timeout, f)?.flatten())
 }
 
 fn signs_within(f: &Basic, x: &Basic, domain: &Basic, allowed: &[i32]) -> PolyResult<bool> {
@@ -946,7 +949,8 @@ pub fn sign_on(f: &Basic, x: &Basic, domain: &Basic, depth: usize) -> PolyResult
     if !f.has(x) {
         return Ok(certified_sign(f)?.map(|s| signs_of(&[s])));
     }
-    let continuous: Option<bool> = crate::timeout::attempt(|| continuous_on(f, x, domain))?;
+    let continuous: Option<bool> =
+        crate::timeout::attempt_within(crate::settings::settings().timeout, || continuous_on(f, x, domain))?;
     if continuous != Some(true) {
         return Ok(None);
     }
@@ -979,7 +983,7 @@ fn signs_from_bounds(f: &Basic, x: &Basic, ps: &[Basic]) -> PolyResult<Option<Si
     let mut signs: Signs = Signs::new();
     for piece in ps {
         let (start, end, _, _) = interval_parts(piece);
-        let bounds: Option<Basic> = crate::timeout::attempt(|| {
+        let bounds: Option<Basic> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
             crate::core::subs::subs(f, x, &crate::core::accumbounds::accum_bounds(&start, &end)?)
         })?;
         let Some(bounds) = bounds else { return Ok(None) };
@@ -1051,7 +1055,9 @@ fn signs_from_zeros(f: &Basic, x: &Basic, ps: &[Basic], zeros: &[Basic]) -> Poly
 
 /// The limit of `f` at a point, `None` when not found (`_endpoint_value`).
 pub fn endpoint_value(f: &Basic, x: &Basic, point: &Basic, direction: &str) -> PolyResult<Option<Basic>> {
-    let value: Option<Basic> = crate::timeout::attempt(|| crate::core::limits::limit(f, x, point, direction))?;
+    let value: Option<Basic> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        crate::core::limits::limit(f, x, point, direction)
+    })?;
     Ok(value.filter(|v| plain_symbols(v).is_empty()))
 }
 

@@ -279,7 +279,7 @@ fn pure_factors(p: &Polynomial) -> PolyResult<Vec<(Polynomial, usize)>> {
 }
 
 fn simplified(e: &Basic) -> R {
-    let found = crate::timeout::attempt(|| {
+    let found = crate::timeout::attempt_within(crate::settings::settings().timeout.map(|t| t / 10.0), || {
         crate::simplify::simplify::simplify(e, &crate::simplify::simplify::Options::default())
     })?;
     Ok(found.unwrap_or_else(|| e.clone()))

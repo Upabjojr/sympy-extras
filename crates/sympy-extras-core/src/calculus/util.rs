@@ -87,7 +87,7 @@ fn same(a: &Basic, b: &Basic) -> PolyResult<bool> {
         return Ok(true);
     }
     let difference: Basic = crate::core::add::sub(a, b)?;
-    let simplified = crate::timeout::attempt(|| {
+    let simplified = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
         crate::simplify::simplify::simplify(&difference, &crate::simplify::simplify::Options::default())
     })?;
     Ok(simplified.is_some_and(|d| d == Basic::zero()))

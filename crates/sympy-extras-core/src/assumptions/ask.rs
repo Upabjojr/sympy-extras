@@ -6,8 +6,7 @@
 //! functions (`assumptions/bounds.rs`).
 //!
 //! Not ported yet (they raise "not ported" where the Python goes on): the
-//! zero test of the structure theorem (`simplify/structure.py`), the
-//! sample points under assumptions (`integrals/conditions.py`). The time limits
+//! zero test of the structure theorem (`simplify/structure.py`). The time limits
 //! of the Python (`attempt` with seconds) are not ported.
 
 #![allow(clippy::mutable_key_type)]
@@ -224,10 +223,7 @@ fn structure_ask(atom: &Basic, facts: &Facts) -> PolyResult<Truth> {
 
 fn clearly_not_zero(difference: &Basic, facts: &Facts) -> PolyResult<bool> {
     let syms: Vec<Basic> = sorted_symbols(symbols(difference));
-    if !facts.conjuncts.is_empty() {
-        return Err(not_ported("integrals/conditions sample_values"));
-    }
-    let values: Vec<(Basic, Basic)> = syms
+    let mut values: Vec<(Basic, Basic)> = syms
         .iter()
         .enumerate()
         .map(|(i, s)| {
@@ -238,6 +234,13 @@ fn clearly_not_zero(difference: &Basic, facts: &Facts) -> PolyResult<bool> {
             (s.clone(), Basic::from_rational(r))
         })
         .collect();
+    if !facts.conjuncts.is_empty() {
+        let mut rng = crate::random::PyRandom::from_string(&difference.to_string());
+        match crate::integrals::conditions::sample_values(&syms, &facts.conjuncts, &mut rng)? {
+            Some(v) => values = v,
+            None => return Ok(false),
+        }
+    }
     Ok(crate::numeric::reliable_complex(difference, 20, &values).is_some_and(|(a, b)| a.hypot(b) > 1e-12))
 }
 
@@ -404,7 +407,8 @@ fn bounded_cad_ask(formula: &Basic, facts: &Facts) -> PolyResult<Truth> {
         return Ok(None);
     }
     let bounded: Basic = normalize(&abstraction.formula)?;
-    Ok(crate::timeout::attempt(|| cad_ask(&bounded, &extended))?.flatten())
+    let limit: Option<f64> = crate::settings::settings().timeout.map(|t| t.min(5.0));
+    Ok(crate::timeout::attempt_within(limit, || cad_ask(&bounded, &extended))?.flatten())
 }
 
 /// The three-valued evaluation of a normalized formula (`_evaluate`).

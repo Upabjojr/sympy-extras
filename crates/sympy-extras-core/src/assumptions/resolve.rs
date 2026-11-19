@@ -166,8 +166,9 @@ fn real_relaxation(formula: &Basic, prefix: &Prefix, assumptions: &[Basic]) -> P
         return Ok(None);
     }
     let reals: Basic = crate::sets::sets::reals();
-    let over_reals: Option<Basic> = match crate::timeout::attempt(|| resolve(formula, Some(&reals), assumptions, None))
-    {
+    let over_reals: Option<Basic> = match crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        resolve(formula, Some(&reals), assumptions, None)
+    }) {
         Ok(v) => v,
         Err(PolyError::NotImplemented(_) | PolyError::Value(_) | PolyError::Type(_)) => return Ok(None),
         Err(e) => return Err(e),

@@ -482,9 +482,11 @@ fn solve_for(eq: &Basic, s: &Basic) -> PolyResult<Vec<Basic>> {
             return crate::polys::polyroots::roots_quadratic(&poly);
         }
     }
-    Ok(crate::timeout::attempt(|| super::solvers::solve_equation(eq, s))?
-        .flatten()
-        .unwrap_or_default())
+    Ok(crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        super::solvers::solve_equation(eq, s)
+    })?
+    .flatten()
+    .unwrap_or_default())
 }
 
 fn leading_derivatives_of(jets: &JetSpace, eqs: &[Basic]) -> PolyResult<Vec<(Basic, Basic)>> {

@@ -1163,7 +1163,10 @@ fn lambert(formula: &Basic, x: &Basic, ctx: &Context) -> PolyResult<Option<Basic
     if !has_exp_log {
         return Ok(None);
     }
-    let found: Option<Vec<Basic>> = crate::timeout::attempt(|| super::solvers::solve_equation(&e, x))?.flatten();
+    let found: Option<Vec<Basic>> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        super::solvers::solve_equation(&e, x)
+    })?
+    .flatten();
     let Some(found) = found.filter(|f| !f.is_empty()) else {
         return Ok(None);
     };
