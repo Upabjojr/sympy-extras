@@ -3243,6 +3243,12 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             // real_zeros_in(f, x, domain) -> Tuple(found, Tuple(zeros)); None is the symbol NONE
             use sympy_extras_core::assumptions::analysis as an;
             let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let signs_out = |s: Option<sympy_extras_core::assumptions::intervals::Signs>| -> Basic {
+                match s {
+                    Some(v) => Basic::new(Head::Tuple, v.into_iter().map(|k| Basic::int(k as i64)).collect()),
+                    None => sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0,
+                }
+            };
             let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
             match a[0].to_string().as_str() {
                 "domain_of" => {
@@ -3257,6 +3263,49 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "real_zeros_in" => {
                     let (found, zeros) = an::real_zeros_in(&a[1], &a[2], &a[3]).map_err(e)?;
                     tuple(vec![sympy_extras_core::core::logic::boolean(found), tuple(zeros)])
+                }
+                // sign_on(f, x, domain), continuous(f, x, domain), finite_zeros(f, x, domain),
+                // decide(atom, Tuple(assumptions)), box_of(Tuple(symbols), Tuple(assumptions)) ->
+                // Tuple(Tuple(Tuple(s, lo, hi)...), Tuple(Tuple(s, lo_open, hi_open)...)),
+                // signs_multivariate(f, Tuple(symbols), Tuple(assumptions))
+                "sign_on" => signs_out(an::sign_on(&a[1], &a[2], &a[3], 1).map_err(e)?),
+                "continuous" => {
+                    sympy_extras_core::core::logic::boolean(an::continuous_on(&a[1], &a[2], &a[3]).map_err(e)?)
+                }
+                "finite_zeros" => an::finite_zeros(&a[1], &a[2], &a[3])
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "decide" => {
+                    let facts = sympy_extras_core::assumptions::facts::Facts::new(a[2].args(), None, &[]).map_err(e)?;
+                    match an::decide_relational(&a[1], &facts).map_err(e)? {
+                        Some(v) => sympy_extras_core::core::logic::boolean(v),
+                        None => none(),
+                    }
+                }
+                "box_of" => {
+                    let facts = sympy_extras_core::assumptions::facts::Facts::new(a[2].args(), None, &[]).map_err(e)?;
+                    match an::box_of(a[1].args(), &facts).map_err(e)? {
+                        Some((bx, op)) => tuple(vec![
+                            tuple(bx.into_iter().map(|(s, (l, h))| tuple(vec![s, l, h])).collect()),
+                            tuple(
+                                op.into_iter()
+                                    .map(|(s, (l, h))| {
+                                        tuple(vec![
+                                            s,
+                                            sympy_extras_core::core::logic::boolean(l),
+                                            sympy_extras_core::core::logic::boolean(h),
+                                        ])
+                                    })
+                                    .collect(),
+                            ),
+                        ]),
+                        None => none(),
+                    }
+                }
+                "signs_multivariate" => {
+                    let facts = sympy_extras_core::assumptions::facts::Facts::new(a[3].args(), None, &[]).map_err(e)?;
+                    signs_out(an::signs_multivariate(&a[1], a[2].args(), &facts).map_err(e)?)
                 }
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
