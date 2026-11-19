@@ -3355,6 +3355,37 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "tables" => {
+            // entry(i) -> Tuple(pattern, lower, upper, value, condition); size;
+            // integral(f, x, a, b, Tuple(assumptions)) -> Tuple(value, condition) or NONE
+            use sympy_extras_core::integrals::tables as tb;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "size" => Basic::int(tb::table().len() as i64),
+                "entry" => {
+                    let i: usize = a[1]
+                        .to_string()
+                        .parse()
+                        .map_err(|_| pyo3::exceptions::PyValueError::new_err("an index"))?;
+                    let t = &tb::table()[i];
+                    Basic::new(
+                        Head::Tuple,
+                        vec![
+                            t.pattern.clone(),
+                            t.lower.clone(),
+                            t.upper.clone(),
+                            t.value.clone(),
+                            t.condition.clone(),
+                        ],
+                    )
+                }
+                "integral" => match tb::table_integral(&a[1], &a[2], &a[3], &a[4], a[5].args()).map_err(e)? {
+                    Some(v) => Basic::new(Head::Tuple, vec![v.value, v.condition]),
+                    None => none(),
+                },
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "structure" => {
             // op, expression(s), Tuple(assumptions): canonical(e, A); is_zero(e, A); equal(a, b, A)
             use sympy_extras_core::simplify::structure as sr;
