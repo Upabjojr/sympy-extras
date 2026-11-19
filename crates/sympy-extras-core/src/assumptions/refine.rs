@@ -796,3 +796,322 @@ pub fn refine(expr: &Basic, assumptions: &[Basic], domain: Option<&Basic>) -> R 
     }
     refiner.refine_expr(expr)
 }
+
+// ---------------------------------------------------------------------
+// the simplification under assumptions
+
+// PORTED FROM SYMPY: sympy/polys/matrices/linsolve.py:_lin_eq2dict
+/// The constant term and the coefficients of the symbols of a linear
+/// expression, without expanding it; `None` when it is not linear
+/// (`_lin_eq2dict`, `_NonlinearError`).
+pub(crate) fn lin_eq2dict(a: &Basic, symset: &[Basic]) -> PolyResult<Option<(Basic, Vec<(Basic, Basic)>)>> {
+    use crate::core::mul::mul;
+    if a.is_symbol() && symset.contains(a) {
+        return Ok(Some((int(0), vec![(a.clone(), int(1))])));
+    }
+    if a.is_add() {
+        let mut terms: Vec<(Basic, Vec<Basic>)> = Vec::new();
+        let mut coeffs: Vec<Basic> = Vec::new();
+        for ai in a.args() {
+            let Some((ci, ti)) = lin_eq2dict(ai, symset)? else {
+                return Ok(None);
+            };
+            coeffs.push(ci);
+            for (m, c) in ti {
+                match terms.iter_mut().find(|(s, _)| *s == m) {
+                    Some((_, v)) => v.push(c),
+                    None => terms.push((m, vec![c])),
+                }
+            }
+        }
+        let mut out: Vec<(Basic, Basic)> = Vec::new();
+        for (s, cs) in terms {
+            out.push((s, crate::core::add::add(&cs)?));
+        }
+        return Ok(Some((crate::core::add::add(&coeffs)?, out)));
+    }
+    if a.is_mul() {
+        let mut terms: Option<Vec<(Basic, Basic)>> = None;
+        let mut terms_coeff: Basic = int(1);
+        let mut factors: Vec<Basic> = Vec::new();
+        for ai in a.args() {
+            let Some((ci, ti)) = lin_eq2dict(ai, symset)? else {
+                return Ok(None);
+            };
+            if ti.is_empty() {
+                factors.push(ci);
+            } else if terms.is_none() {
+                terms = Some(ti);
+                terms_coeff = ci;
+            } else {
+                return Ok(None);
+            }
+        }
+        let coeff: Basic = mul(&factors)?;
+        let Some(terms) = terms else {
+            return Ok(Some((coeff, vec![])));
+        };
+        let mut out: Vec<(Basic, Basic)> = Vec::new();
+        for (s, c) in terms {
+            out.push((s, mul(&[coeff.clone(), c])?));
+        }
+        return Ok(Some((mul(&[coeff, terms_coeff])?, out)));
+    }
+    if !a.free_symbols().iter().any(|s| symset.contains(s)) {
+        return Ok(Some((a.clone(), vec![])));
+    }
+    Ok(None)
+}
+
+/// The coefficients of the symbols, then the constant term
+/// (`_linear_coeffs`); `None` when not linear.
+fn linear_coeffs(e: &Basic, syms: &[Basic]) -> PolyResult<Option<Vec<Basic>>> {
+    let Some((c, d)) = lin_eq2dict(e, syms)? else {
+        return Ok(None);
+    };
+    let mut out: Vec<Basic> = syms
+        .iter()
+        .map(|s| {
+            d.iter()
+                .find(|(t, _)| t == s)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_else(|| int(0))
+        })
+        .collect();
+    out.push(c);
+    Ok(Some(out))
+}
+
+/// The size of a formula (`_measure`).
+pub(crate) fn measure(b: &Basic) -> PolyResult<i64> {
+    crate::core::function::count_ops(b)
+}
+
+fn is_relational(b: &Basic) -> bool {
+    matches!(b.head(), Head::Relational(_))
+}
+
+// PORTED FROM SYMPY: sympy/core/relational.py:Relational._eval_simplify
+/// SymPy's `simplify` of a relation (`simplify_relational`): the sides
+/// simplified, decided when the difference is a comparable number, the
+/// canonical form solved for its only symbol or with coprime
+/// coefficients; kept when shorter than `ratio` times the relation.
+pub fn simplify_relational(r0: &Basic, ratio: f64, inverse: bool, doit: bool) -> R {
+    use crate::core::add::add;
+    use crate::core::mul::mul;
+    use crate::core::power::pow;
+    let zero: Basic = int(0);
+    let minus = |e: &Basic| mul(&[int(-1), e.clone()]);
+    let inv = |e: &Basic| pow(e, &int(-1));
+    let built = |rel: &Basic, l: Basic, r: Basic| rebuild_evaluated(rel, vec![l, r]);
+    let options = crate::simplify::simplify::Options {
+        ratio,
+        inverse,
+        doit,
+        ..Default::default()
+    };
+    let lhs: Basic = crate::simplify::simplify::simplify(&r0.args()[0], &options)?;
+    let rhs: Basic = crate::simplify::simplify::simplify(&r0.args()[1], &options)?;
+    let mut r: Basic = built(r0, lhs, rhs)?;
+    if is_relational(&r) {
+        let dif: Basic = add(&[r.args()[0].clone(), minus(&r.args()[1])?])?;
+        if crate::core::expr::is_comparable(&dif) {
+            // SymPy compares dif.n(2) with 0; the core has no floats: the
+            // sign of the reliable value decides the relation the same way
+            if let Some(value) = crate::numeric::reliable_value(&dif, 15, &[]) {
+                let (re, im) = crate::core::evalf::parts(&value);
+                let re: crate::numbers::Rat = crate::assumptions::ivarith::real_to_rat(&re);
+                let im: crate::numbers::Rat = crate::assumptions::ivarith::real_to_rat(&im);
+                if re != crate::numbers::Rat::ZERO || im != crate::numbers::Rat::ZERO {
+                    let s: i64 = if crate::numbers::rat_is_negative(&re) { -1 } else { 1 };
+                    r = built(&r, int(s), zero.clone())?;
+                }
+            }
+        } else if crate::core::expr::equals(&dif, &zero)? {
+            r = built(&r, zero.clone(), zero.clone())?;
+        }
+    }
+    if is_relational(&r) {
+        let rel: Basic = rl::canonical(&r)?;
+        r = rel.clone();
+        if is_relational(&rel) {
+            let free: Vec<Basic> = rel
+                .free_symbols()
+                .into_iter()
+                .filter(|s| is(s, Predicate::real) != Some(false))
+                .collect();
+            let dif: Basic = add(&[rel.args()[0].clone(), minus(&rel.args()[1])?])?;
+            if free.len() == 1 {
+                let x: &Basic = &free[0];
+                match linear_coeffs(&dif, std::slice::from_ref(x))? {
+                    Some(mb) => {
+                        let (m, b) = (&mb[0], &mb[1]);
+                        if is(m, Predicate::zero) == Some(false) {
+                            let solved: Basic = mul(&[int(-1), b.clone(), inv(m)?])?;
+                            r = if is(m, Predicate::negative) == Some(true) {
+                                built(&rel, solved, x.clone())?
+                            } else {
+                                built(&rel, x.clone(), solved)?
+                            };
+                        } else {
+                            r = built(&rel, b.clone(), zero.clone())?;
+                        }
+                    }
+                    None => {
+                        let attempt = || -> PolyResult<Basic> {
+                            let p = crate::polys::polytools::Poly::new(&dif, std::slice::from_ref(x))?;
+                            let mut c: Vec<Basic> = p.all_coeffs()?;
+                            let n: usize = c.len() - 1;
+                            let constant: Basic = c[n].clone();
+                            c[n] = zero.clone();
+                            let scale: Basic = crate::polys::polytools::gcd_list(&c, &[])?;
+                            let mut terms: Vec<Basic> = Vec::new();
+                            for (i, ci) in c.iter().enumerate() {
+                                let scaled: Basic = mul(&[ci.clone(), inv(&scale)?])?;
+                                terms.push(mul(&[scaled, pow(x, &int((n - i) as i64))?])?);
+                            }
+                            built(&rel, add(&terms)?, mul(&[int(-1), constant, inv(&scale)?])?)
+                        };
+                        match attempt() {
+                            Ok(v) => r = v,
+                            Err(PolyError::Polys(..)) => {}
+                            Err(e) => return Err(e),
+                        }
+                    }
+                }
+            } else if free.len() >= 2 {
+                let syms: Vec<Basic> = crate::core::sorting::ordered(free.clone())
+                    .into_iter()
+                    .filter(|s| s.is_symbol())
+                    .collect();
+                if let Some(mut coefficients) = linear_coeffs(&dif, &syms)? {
+                    let constant: Basic = coefficients.pop().expect("the constant");
+                    let scale: Basic = crate::polys::polytools::gcd_list(&coefficients, &[])?;
+                    if is(&scale, Predicate::zero) == Some(false) {
+                        let mut nzm: Vec<(Basic, Basic)> = Vec::new();
+                        for (mi, s) in coefficients.iter().zip(syms.iter()) {
+                            let scaled: Basic = mul(&[mi.clone(), inv(&scale)?])?;
+                            if scaled != zero {
+                                nzm.push((scaled, s.clone()));
+                            }
+                        }
+                        let products = |items: &[(Basic, Basic)]| -> PolyResult<Vec<Basic>> {
+                            items.iter().map(|(i, j)| mul(&[i.clone(), j.clone()])).collect()
+                        };
+                        if constant != zero {
+                            r = built(&rel, add(&products(&nzm)?)?, mul(&[int(-1), constant, inv(&scale)?])?)?;
+                        } else {
+                            let first: Basic = mul(&[nzm[0].0.clone(), nzm[0].1.clone()])?;
+                            r = built(&rel, first, mul(&[int(-1), add(&products(&nzm[1..])?)?])?)?;
+                        }
+                    } else {
+                        r = built(&rel, constant, zero.clone())?;
+                    }
+                }
+            }
+        }
+    }
+    if is_relational(&r) {
+        r = rl::canonical(&r)?;
+    }
+    if (measure(&r)? as f64) < ratio * measure(r0)? as f64 {
+        return Ok(r);
+    }
+    Ok(r0.clone())
+}
+
+fn simplify_boolean_under(
+    formula: &Basic,
+    refiner: &Refiner,
+    assumptions: &[Basic],
+    domain: Option<&Basic>,
+    ratio: f64,
+    inverse: bool,
+    doit: bool,
+) -> R {
+    let mut formula: Basic = formula.clone();
+    if formula
+        .preorder()
+        .iter()
+        .any(crate::assumptions::quantifiers::is_quantifier)
+    {
+        formula = crate::assumptions::resolve::resolve(&formula, domain, assumptions, None)?;
+    }
+    formula = refiner.refine_boolean(&formula)?;
+    if matches!(formula.head(), Head::BooleanTrue | Head::BooleanFalse) {
+        return Ok(formula);
+    }
+    if refiner.facts.is_polynomial(&formula)? && symbols(&formula).iter().all(|s| refiner.facts.real.contains(s)) {
+        match crate::assumptions::resolve::resolve(&formula, domain, assumptions, None) {
+            Ok(v) => return Ok(v),
+            Err(PolyError::Value(_)) => {}
+            Err(PolyError::NotImplemented(m)) if !m.starts_with("not ported") => {}
+            Err(e) => return Err(e),
+        }
+    }
+    let relation = |r: &Basic| simplify_relational(r, ratio, inverse, doit);
+    let simplified: Basic = refiner.through(&formula, &|e: &Basic| {
+        if is_relational(e) {
+            return relation(e);
+        }
+        if e.args().is_empty() {
+            return Ok(e.clone());
+        }
+        crate::logic::boolsimp::simplify_boolean(e, &relation, &measure, ratio, false)
+    })?;
+    refiner.refine_boolean(&simplified)
+}
+
+/// An expression simplified under assumptions (`simplify`; Mathematica's
+/// `Simplify[expr, assum]`), with SymPy's default `ratio` 1.7.
+pub fn simplify(
+    expr: &Basic,
+    assumptions: &[Basic],
+    domain: Option<&Basic>,
+    ratio: f64,
+    inverse: bool,
+    doit: bool,
+) -> R {
+    let syms: Vec<Basic> = expr.free_symbols().into_iter().collect();
+    let facts: Facts = facts_of(assumptions, domain, &syms)?;
+    let refiner: Refiner = Refiner::new(facts);
+    if is_boolean(expr) {
+        return simplify_boolean_under(expr, &refiner, assumptions, domain, ratio, inverse, doit);
+    }
+    let options = crate::simplify::simplify::Options {
+        ratio,
+        inverse,
+        doit,
+        ..Default::default()
+    };
+    let refined: Basic = refiner.refine_expr(expr)?;
+    let mut simplified: Basic = refiner.through(&refined, &|e: &Basic| {
+        if !is_expr(e) {
+            return Ok(e.clone());
+        }
+        crate::simplify::simplify::simplify(e, &options)
+    })?;
+    simplified = refiner.refine_expr(&simplified)?;
+    let best: Basic = if size(&simplified)? <= size(&refined)? {
+        simplified
+    } else {
+        refined
+    };
+    if is_expr(&best) {
+        return proved_simplification(&best);
+    }
+    Ok(best)
+}
+
+/// `_proved_simplification`: the structure theorem, not ported yet.
+fn proved_simplification(expr: &Basic) -> R {
+    if !(crate::assumptions::ask::has_function(expr)
+        || crate::assumptions::ask::has_fractional_power(expr)
+        || expr.has(&Basic::pi()))
+    {
+        return Ok(expr.clone());
+    }
+    Err(crate::error::not_ported(
+        "the proofs of simplify/structure (ElementaryTower)",
+    ))
+}

@@ -3355,6 +3355,12 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "simplify_boolean" => sympy_extras_core::logic::boolsimp::simplify_boolean_default(&a[0], 1.7).map_err(e)?,
+        "simplify_univariate" => sympy_extras_core::logic::boolsimp::simplify_univariate(&a[0], false).map_err(e)?,
+        "assume_simplify" => {
+            let domain: Option<&Basic> = if a[2].to_string() == "NONE" { None } else { Some(&a[2]) };
+            sympy_extras_core::assumptions::refine::simplify(&a[0], a[1].args(), domain, 1.7, false, true).map_err(e)?
+        }
         "assume_refine" | "assume_resolve" => {
             // expr, Tuple(assumptions), domain or NONE
             let domain: Option<&Basic> = if a[2].to_string() == "NONE" { None } else { Some(&a[2]) };
