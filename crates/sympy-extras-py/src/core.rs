@@ -3355,6 +3355,53 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "sat" => {
+            // op, formula, Tuple(assumptions), domain|NONE [, Tuple(variables), count]
+            use sympy_extras_core::assumptions::sat as st;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let domain: Option<&Basic> = if a[3].to_string() == "NONE" { None } else { Some(&a[3]) };
+            let pair = |k: &Basic, v: Basic| Basic::new(Head::Tuple, vec![k.clone(), v]);
+            let model = |m: st::Model| {
+                Basic::new(
+                    Head::Tuple,
+                    m.into_iter()
+                        .map(|(k, v)| {
+                            pair(
+                                &k,
+                                match v {
+                                    st::Value::Bool(b) => sympy_extras_core::core::logic::boolean(b),
+                                    st::Value::Expr(x) => x,
+                                },
+                            )
+                        })
+                        .collect(),
+                )
+            };
+            let witness = |w: st::Witness| Basic::new(Head::Tuple, w.into_iter().map(|(k, v)| pair(&k, v)).collect());
+            match a[0].to_string().as_str() {
+                "satisfiable" => match st::satisfiable(&a[1], a[2].args(), domain).map_err(e)? {
+                    st::Sat::Model(m) => model(m),
+                    st::Sat::Unsatisfiable => sympy_extras_core::core::logic::boolean(false),
+                    st::Sat::Unknown => none(),
+                },
+                "all_models" => match st::all_models(&a[1], a[2].args(), domain).map_err(e)? {
+                    Some(ms) => Basic::new(Head::Tuple, ms.into_iter().map(model).collect()),
+                    None => none(),
+                },
+                "tautology" => match st::tautology(&a[1], a[2].args(), domain).map_err(e)? {
+                    Some(v) => sympy_extras_core::core::logic::boolean(v),
+                    None => none(),
+                },
+                "find_instance" => {
+                    let count: usize = a[5].to_string().parse().unwrap_or(1);
+                    match st::find_instance(&a[1], a[4].args(), domain, a[2].args(), count).map_err(e)? {
+                        Some(ws) => Basic::new(Head::Tuple, ws.into_iter().map(witness).collect()),
+                        None => none(),
+                    }
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "simplify_boolean" => sympy_extras_core::logic::boolsimp::simplify_boolean_default(&a[0], 1.7).map_err(e)?,
         "simplify_univariate" => sympy_extras_core::logic::boolsimp::simplify_univariate(&a[0], false).map_err(e)?,
         "assume_simplify" => {

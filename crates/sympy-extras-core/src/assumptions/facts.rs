@@ -51,7 +51,7 @@ fn is_named_set(s: &Basic) -> bool {
     )
 }
 
-fn is_compound(f: &Basic) -> bool {
+pub(crate) fn is_compound(f: &Basic) -> bool {
     matches!(
         f.head(),
         Head::And | Head::Or | Head::Not | Head::Implies | Head::Equivalent | Head::Xor | Head::Ite
@@ -288,7 +288,7 @@ fn is_number(e: &Basic) -> bool {
 
 /// The predicates implied by a top level atom beyond its equivalent one
 /// (`_consequences`).
-fn consequences(atom: &Basic) -> PolyResult<Vec<Basic>> {
+pub(crate) fn consequences(atom: &Basic) -> PolyResult<Vec<Basic>> {
     let mut result: Vec<Basic> = Vec::new();
     let Some(mut op) = rel_op(atom) else { return Ok(result) };
     let (mut lhs, mut rhs) = (atom.args()[0].clone(), atom.args()[1].clone());

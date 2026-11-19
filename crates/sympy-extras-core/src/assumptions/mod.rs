@@ -11,4 +11,5 @@ pub mod ivarith;
 pub mod quantifiers;
 pub mod refine;
 pub mod resolve;
+pub mod sat;
 pub mod satask;
