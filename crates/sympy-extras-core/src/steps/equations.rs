@@ -1794,32 +1794,32 @@ type Rl = super::core::Rule<EquationProblem, EquationStep>;
 fn candidates(p: &EquationProblem) -> Vec<Rl> {
     let (lhs, rhs, x) = (&p.lhs, &p.rhs, &p.variable);
     if !lhs.has(x) && !rhs.has(x) {
-        return vec![trivial];
+        return crate::rules![trivial];
     }
     if lhs == x && !rhs.has(x) {
-        return vec![solved];
+        return crate::rules![solved];
     }
     let one: Basic = int(1);
     if denominator(lhs, x).map_or(true, |d| d != one) || denominator(rhs, x).map_or(true, |d| d != one) {
-        return vec![clear_denominators];
+        return crate::rules![clear_denominators];
     }
     if absolute_values(lhs, x) || absolute_values(rhs, x) {
         if !absolute_values(lhs, x) {
-            return vec![swap];
+            return crate::rules![swap];
         }
-        return vec![absolute_value, isolate_absolute, substitution];
+        return crate::rules![absolute_value, isolate_absolute, substitution];
     }
     if radicals(lhs, x) || radicals(rhs, x) {
         if !radicals(lhs, x) {
-            return vec![swap];
+            return crate::rules![swap];
         }
-        return vec![isolate_radical, square];
+        return crate::rules![isolate_radical, square];
     }
     if transcendental(lhs, x) || transcendental(rhs, x) {
         if !transcendental(lhs, x) {
-            return vec![swap];
+            return crate::rules![swap];
         }
-        return vec![
+        return crate::rules![
             take_logarithm,
             exponentiate,
             periodic,
@@ -1837,7 +1837,7 @@ fn candidates(p: &EquationProblem) -> Vec<Rl> {
             .as_rational()
             .is_some_and(|r| *r >= crate::numbers::Rat::from(crate::numbers::Int::from(2)));
         if big && polynomial(&lhs.args()[0], x).is_some_and(|c| c.len() == 2) {
-            return vec![root];
+            return crate::rules![root];
         }
     }
     let Ok(difference) = s2(lhs, rhs) else {
@@ -1848,27 +1848,27 @@ fn candidates(p: &EquationProblem) -> Vec<Rl> {
     };
     let degree: i64 = cs.len() as i64 - 1;
     if degree <= 0 {
-        return vec![trivial];
+        return crate::rules![trivial];
     }
     if degree == 1 {
-        return vec![rewrite, move_unknowns, move_constants, divide];
+        return crate::rules![rewrite, move_unknowns, move_constants, divide];
     }
     if *rhs != int(0) || expand(lhs).map_or(true, |e| e != *lhs) {
-        return vec![standard_form];
+        return crate::rules![standard_form];
     }
     if degree == 2 {
-        return vec![zero_product, quadratic_formula, complete_square];
+        return crate::rules![zero_product, quadratic_formula, complete_square];
     }
     let binomial_form: bool = cs[1..cs.len() - 1].iter().all(|c| *c == int(0));
-    let mut rules: Vec<Rl> = vec![zero_product];
+    let mut rules: Vec<Rl> = crate::rules![zero_product];
     if binomial_form {
-        rules.push(binomial);
+        rules.push(Box::new(binomial));
     }
-    rules.push(power_substitution);
+    rules.push(Box::new(power_substitution));
     if degree == 3 {
-        rules.push(cardano);
+        rules.push(Box::new(cardano));
     }
-    rules.push(real_roots);
+    rules.push(Box::new(real_roots));
     rules
 }
 

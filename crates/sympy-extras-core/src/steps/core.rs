@@ -82,7 +82,15 @@ pub struct Context {
 
 /// A rule: the problem, the context and the solver of its subproblems to
 /// its step, `None` when it does not apply.
-pub type Rule<P, S> = fn(&P, &Context, &mut StepSolver<P, S>) -> Option<S>;
+pub type Rule<P, S> = Box<dyn Fn(&P, &Context, &mut StepSolver<P, S>) -> Option<S>>;
+
+/// The candidate rules, from plain functions or closures (`rules![a, b]`).
+#[macro_export]
+macro_rules! rules {
+    ($($r:expr),* $(,)?) => {
+        vec![$(Box::new($r) as $crate::steps::core::Rule<_, _>),*]
+    };
+}
 
 /// Solves problems of type `P` into steps of type `S` (`StepSolver`).
 pub struct StepSolver<P, S> {
@@ -336,7 +344,7 @@ mod tests {
     }
 
     fn candidates(_: &u64) -> Vec<Rule<u64, Fib>> {
-        vec![shift, base, sum]
+        crate::rules![shift, base, sum]
     }
 
     fn solver(branch: bool, max_depth: Option<usize>) -> StepSolver<u64, Fib> {

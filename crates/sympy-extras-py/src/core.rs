@@ -3797,13 +3797,12 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "tensor" => {
                     // tensor(method, g, coordinates, components, positions, args...); another tensor as Tuple(positions, components);
                     // tensor(constructor, g, coordinates) for metric_tensor, riemann_tensor, ricci_tensor, einstein_tensor
-                    use std::sync::Arc;
+                    use std::rc::Rc;
                     use sympy_extras_core::diffgeom::metric::Metric;
                     use sympy_extras_core::diffgeom::tensors::{self as tn, Tensor};
                     use sympy_extras_core::matrices::dense::ExprMatrix;
-                    let metric = Arc::new(
-                        Metric::new(&ExprMatrix::from_tuple(&a[2]).map_err(e)?, a[3].args(), None).map_err(e)?,
-                    );
+                    let metric =
+                        Rc::new(Metric::new(&ExprMatrix::from_tuple(&a[2]).map_err(e)?, a[3].args(), None).map_err(e)?);
                     let encode = |t: Tensor| tuple(vec![sym(&t.positions), tuple(t.components)]);
                     let method = a[1].to_string();
                     let built = match method.as_str() {
@@ -5896,6 +5895,38 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 sympy_extras_core::core::Symbol::new("?", &[]).0
             } else {
                 step.solutions().map_err(e)?
+            };
+            let count = Basic::integer((count_steps(&step) as i64).into());
+            Basic::new(Head::Tuple, vec![label, solutions, count])
+        }
+        "system_steps" => {
+            // equations (pairs), variables, domain (0 Complexes, 1 Reals), branch, depth (-1 for all), minor, max_depth (-1 for none):
+            // the formatted tree, the solutions (a tuple of tuples, the symbol ? when not solved) and the number of steps
+            use sympy_extras_core::steps::core::{count_steps, format_steps, Step};
+            use sympy_extras_core::steps::equations::Domain;
+            use sympy_extras_core::steps::systems::system_steps;
+            let flag = |b: &Basic| *b != Basic::zero();
+            let count_of = |b: &Basic| b.as_rational().and_then(|v| usize::try_from(v.numerator()).ok());
+            let equations: Vec<(Basic, Basic)> = a[0]
+                .args()
+                .iter()
+                .map(|q| (q.args()[0].clone(), q.args()[1].clone()))
+                .collect();
+            let domain = if flag(&a[2]) { Domain::Reals } else { Domain::Complexes };
+            let step = system_steps(&equations, a[1].args(), domain, flag(&a[3]), count_of(&a[6])).map_err(e)?;
+            let text: String = format_steps(&step, count_of(&a[4]), flag(&a[5]), "  ");
+            let label = sympy_extras_core::core::Symbol::new(&text, &[]).0;
+            let solutions: Basic = if step.contains_dont_know() {
+                sympy_extras_core::core::Symbol::new("?", &[]).0
+            } else {
+                Basic::new(
+                    Head::Tuple,
+                    step.solutions()
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|v| Basic::new(Head::Tuple, v))
+                        .collect(),
+                )
             };
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, solutions, count])

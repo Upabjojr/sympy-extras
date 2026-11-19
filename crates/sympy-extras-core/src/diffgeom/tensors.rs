@@ -6,7 +6,7 @@
 
 #![allow(clippy::needless_range_loop)]
 
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::core::basic::Basic;
 use crate::error::{value_error, PolyError, PolyResult};
@@ -46,7 +46,7 @@ fn product(n: usize, rank: usize) -> Vec<Index> {
 /// A tensor on a metric (`Tensor`).
 #[derive(Debug, Clone)]
 pub struct Tensor {
-    pub metric: Arc<Metric>,
+    pub metric: Rc<Metric>,
     pub components: Vec<Basic>,
     pub positions: String,
     pub rank: usize,
@@ -54,14 +54,14 @@ pub struct Tensor {
 
 impl PartialEq for Tensor {
     fn eq(&self, other: &Tensor) -> bool {
-        Arc::ptr_eq(&self.metric, &other.metric)
+        Rc::ptr_eq(&self.metric, &other.metric)
             && self.positions == other.positions
             && self.components == other.components
     }
 }
 
 impl Tensor {
-    pub fn new(metric: &Arc<Metric>, components: Vec<Basic>, positions: &str) -> PolyResult<Tensor> {
+    pub fn new(metric: &Rc<Metric>, components: Vec<Basic>, positions: &str) -> PolyResult<Tensor> {
         if positions.chars().any(|p| p != 'u' && p != 'd') {
             return Err(value_error(format!(
                 "the positions of the indices are 'u' or 'd': '{}'",
@@ -144,7 +144,7 @@ impl Tensor {
     }
 
     fn same_kind(&self, other: &Tensor) -> PolyResult<()> {
-        if !Arc::ptr_eq(&self.metric, &other.metric) || other.positions != self.positions {
+        if !Rc::ptr_eq(&self.metric, &other.metric) || other.positions != self.positions {
             return Err(value_error(format!(
                 "tensors of different kinds: '{}' and '{}'",
                 self.positions, other.positions
@@ -192,7 +192,7 @@ impl Tensor {
 
     /// The tensor product (`__mul__`).
     pub fn mul(&self, other: &Tensor) -> PolyResult<Tensor> {
-        if !Arc::ptr_eq(&self.metric, &other.metric) {
+        if !Rc::ptr_eq(&self.metric, &other.metric) {
             return Err(value_error("tensors on different metrics".to_string()));
         }
         let mut components: Vec<Basic> = Vec::new();
@@ -405,11 +405,11 @@ impl Tensor {
     }
 }
 
-pub fn metric_tensor(metric: &Arc<Metric>) -> PolyResult<Tensor> {
+pub fn metric_tensor(metric: &Rc<Metric>) -> PolyResult<Tensor> {
     Tensor::new(metric, metric.g.entries.clone(), "dd")
 }
 
-pub fn riemann_tensor(metric: &Arc<Metric>) -> PolyResult<Tensor> {
+pub fn riemann_tensor(metric: &Rc<Metric>) -> PolyResult<Tensor> {
     let n: usize = metric.dimension;
     let mut components: Vec<Basic> = Vec::new();
     for index in product(n, 4) {
@@ -418,10 +418,10 @@ pub fn riemann_tensor(metric: &Arc<Metric>) -> PolyResult<Tensor> {
     Tensor::new(metric, components, "uddd")
 }
 
-pub fn ricci_tensor(metric: &Arc<Metric>) -> PolyResult<Tensor> {
+pub fn ricci_tensor(metric: &Rc<Metric>) -> PolyResult<Tensor> {
     Tensor::new(metric, metric.ricci()?.entries, "dd")
 }
 
-pub fn einstein_tensor(metric: &Arc<Metric>) -> PolyResult<Tensor> {
+pub fn einstein_tensor(metric: &Rc<Metric>) -> PolyResult<Tensor> {
     Tensor::new(metric, metric.einstein()?.entries, "dd")
 }

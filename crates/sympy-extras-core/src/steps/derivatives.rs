@@ -566,43 +566,43 @@ type R = Rule<DerivativeProblem, DerivativeStep>;
 fn candidates(p: &DerivativeProblem) -> Vec<R> {
     let (expression, x) = (&p.expression, &p.variable);
     if !expression.has(x) {
-        return vec![constant_rule];
+        return crate::rules![constant_rule];
     }
     if expression == x {
-        return vec![variable_rule];
+        return crate::rules![variable_rule];
     }
     if expression.is_add() {
-        return vec![sum_rule];
+        return crate::rules![sum_rule];
     }
     if expression.is_mul() {
         let constant: Option<Basic> = as_independent(expression, x, false).ok().map(|(c, _)| c);
         if constant.is_some_and(|c| c != Basic::one()) {
-            return vec![constant_multiple_rule];
+            return crate::rules![constant_multiple_rule];
         }
         let denominator: Option<Basic> = as_numer_denom(expression).ok().map(|(_, d)| d);
         if denominator.is_some_and(|d| d != Basic::one()) {
-            return vec![quotient_rule, quotient_as_product_rule];
+            return crate::rules![quotient_rule, quotient_as_product_rule];
         }
-        return vec![product_rule];
+        return crate::rules![product_rule];
     }
     if expression.is_pow() {
         let (base, exponent) = (&expression.args()[0], &expression.args()[1]);
         if base == x && !exponent.has(x) {
-            return vec![power_rule];
+            return crate::rules![power_rule];
         }
         if exponent == x && !base.has(x) {
-            return vec![exponential_rule];
+            return crate::rules![exponential_rule];
         }
         if base.has(x) && exponent.has(x) {
-            return vec![general_power_rule];
+            return crate::rules![general_power_rule];
         }
-        return vec![chain_rule];
+        return crate::rules![chain_rule];
     }
     if name_of(expression).is_some() && expression.args().len() == 1 {
         return if expression.args()[0] == *x {
-            vec![function_rule]
+            crate::rules![function_rule]
         } else {
-            vec![chain_rule]
+            crate::rules![chain_rule]
         };
     }
     Vec::new()
