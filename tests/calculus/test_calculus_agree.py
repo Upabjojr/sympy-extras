@@ -1,7 +1,8 @@
 """The Rust ports of ``calculus/interpolation.py`` and
 ``calculus/optimization.py`` against the Python ones: divided
 differences, Newton and Hermite interpolation, cubic splines, least
-squares; value ranges, minima and maxima, parametric optima, on the
+squares; value ranges, minima and maxima, parametric optima; and of
+geometry/quadrics.py (conics and quadrics), on the
 cases of their tests (read with the core's parser)."""
 from __future__ import annotations
 
@@ -17,6 +18,8 @@ from sympy_extras.core.basic import Basic
 from sympy_extras.core.parsing import parse
 import sympy_extras.calculus.interpolation as IP
 import sympy_extras.calculus.optimization as OP
+import sympy_extras.geometry.quadrics as QD
+from sympy_extras.matrices.dense import ExprMatrix
 
 from ..conftest import load
 
@@ -42,6 +45,13 @@ def encoded(v: object) -> Basic:
         return Symbol(str(v))
     if isinstance(v, str):
         return Symbol(v)
+    if isinstance(v, ExprMatrix):
+        return Tuple(Integer(v.rows), Integer(v.cols), Tuple(*v.entries))
+    if isinstance(v, QD.Conic):
+        return Tuple(Symbol(v.kind), encoded(v.center), encoded(v.semi_axes), encoded(v.eccentricity), encoded(v.parameter),
+                     encoded(v.canonical))
+    if isinstance(v, QD.Quadric):
+        return Tuple(Symbol(v.kind), encoded(v.center))
     if isinstance(v, OP.Optimum):
         return Tuple(v.value, Symbol(str(v.attained)), encoded(v.points))
     if isinstance(v, dict):
@@ -199,6 +209,39 @@ CASES: list[tuple[str, list[object]]] = [
     ('polynomial_fit', [{'seq': [{'seq': ['-5', '1']}, {'seq': ['-4', '-7/2']}, {'seq': ['0', '1']}, {'seq': ['1', '7']}, {'seq': ['2', '-7/3']}, {'seq': ['3', '0']}, {'seq': ['5', '-3']}]}, 'x', {'int': 2}]),
     ('value_range', ['x/(x**2 + 1)', 'True', 'None']),
     ('value_range', ['x**2', 'True', 'None']),
+    ('classify_conic', ['x**2 - 4*x*y - 3*x + 4*y**2 + 4*y', 'x', 'y']),
+    ('classify_conic', ['x + y - 1', 'x', 'y']),
+    ('classify_conic', ['4*x**2 + 8*x*y + 8*y - 5', 'x', 'y']),
+    ('classify_conic', ['-x**2/2 - 2*y**2/9 + 2', 'x', 'y']),
+    ('classify_conic', ['13*x**2/9 - 14*x*y/9 - x/9 + 10*y**2/9 + 13*y/9 - 11/36', 'x', 'y']),
+    ('classify_conic', ['-1 + y**2/b**2 + x**2/a**2', 'x', 'y']),
+    ('classify_conic', ['8*x**2 + 12*x*y + 4*x + 5*y**2 + 4*y + 2', 'x', 'y']),
+    ('classify_conic', ['4*x**2 + 4*x*y + y**2 - 1', 'x', 'y']),
+    ('classify_conic', ['2*x*y + 6*x - y**2 - 4*y - 3', 'x', 'y']),
+    ('classify_conic', ['x**2 - 2*x + 2', 'x', 'y']),
+    ('classify_conic', ['481*x**2/5625 + 128*x*y/1875 - 92*x/1125 + 41*y**2/625 - 98*y/375 - 164/225', 'x', 'y']),
+    ('classify_conic', ['-2*x**2 + 2*y**2 + 2', 'x', 'y']),
+    ('classify_conic', ['1', 'x', 'y']),
+    ('classify_conic', ['4*x**2 - 2*y', 'x', 'y']),
+    ('classify_conic', ['5*x**2 + 12*x*y + 10*x + 8*y**2 + 12*y + 6', 'x', 'y']),
+    ('classify_conic', ['8*x**2 + 4*x*y + 4*x + 5*y**2 + 4*y - 3', 'x', 'y']),
+    ('classify_quadric', ['-3*x**2 + 4*x*z + 4*x + 4*y**2 - 8*y*z - 8*y + 4*z**2 + 8*z + 5', 'x', 'y', 'z']),
+    ('classify_quadric', ['8*x**2 - 8*x*y - 12*x*z + 2*y**2 + 6*y*z + y + 5*z**2 + 1', 'x', 'y', 'z']),
+    ('classify_quadric', ['-x - y + z - 3', 'x', 'y', 'z']),
+    ('classify_quadric', ['x**2 + y**2 - 1', 'x', 'y', 'z']),
+    ('classify_quadric', ['x**2 + y**2 + 1', 'x', 'y', 'z']),
+    ('classify_quadric', ['-6', 'x', 'y', 'z']),
+    ('classify_quadric', ['x*y - z', 'x', 'y', 'z']),
+    ('classify_quadric', ['3 - 3*x**2', 'x', 'y', 'z']),
+    ('classify_quadric', ['-3*x**2 - 3', 'x', 'y', 'z']),
+    ('classify_quadric', ['-3*x**2 - 3*y**2 - 3*z**2', 'x', 'y', 'z']),
+    ('classify_quadric', ['-3*x**2 - 3*y**2/4 - z**2/3 + 3', 'x', 'y', 'z']),
+    ('classify_quadric', ['x**2 - 1', 'x', 'y', 'z']),
+    ('classify_quadric', ['-3*x**2 - 3*y**2 + 3*z', 'x', 'y', 'z']),
+    ('classify_quadric', ['8*x*z - 4*x + y**2 + 10*y*z - 2*y + z**2 - 6*z + 5', 'x', 'y', 'z']),
+    ('classify_quadric', ['x + y + z - 1', 'x', 'y', 'z']),
+    ('classify_quadric', ['8*x**2 + 8*x*y + 12*x*z + 12*x + 4*y**2 + 4*y*z + 4*y + 5*z**2 + 10*z + 5', 'x', 'y', 'z']),
+    ('quadric_matrices', ['x*y + 2*z', {'seq': ['x', 'y', 'z']}]),
 ]
 
 
@@ -206,7 +249,7 @@ CASES: list[tuple[str, list[object]]] = [
 def test_calculus(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    module = IP if hasattr(IP, name) else OP
+    module = IP if hasattr(IP, name) else (QD if hasattr(QD, name) else OP)
     got = outcome(lambda: rc.logic_call('calculus', [Symbol(name)] + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(getattr(module, name)(*args))), (name, raw)

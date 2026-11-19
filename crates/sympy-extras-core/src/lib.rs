@@ -33,6 +33,7 @@ pub mod concrete;
 pub mod core;
 pub mod error;
 pub mod functions;
+pub mod geometry;
 pub mod identification;
 pub mod integrals;
 pub mod logic;

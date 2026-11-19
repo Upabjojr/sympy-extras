@@ -3450,6 +3450,30 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         .map_err(|_| pyo3::exceptions::PyValueError::new_err("a degree"))?;
                     ip::polynomial_fit(&pairs(&a[1]), &a[2], degree).map_err(e)?
                 }
+                "quadric_matrices" => {
+                    let (am, mm) =
+                        sympy_extras_core::geometry::quadrics::quadric_matrices(&a[1], a[2].args()).map_err(e)?;
+                    tuple(vec![am.as_tuple(), mm.as_tuple()])
+                }
+                "classify_conic" | "classify_quadric" => {
+                    use sympy_extras_core::geometry::quadrics as qd;
+                    let opt = |v: Option<Basic>| v.unwrap_or_else(|| sym("NONE"));
+                    let center = |c: Option<Vec<Basic>>| c.map(tuple).unwrap_or_else(|| sym("NONE"));
+                    if a[0].to_string() == "classify_conic" {
+                        let c = qd::classify_conic(&a[1], &a[2], &a[3]).map_err(e)?;
+                        tuple(vec![
+                            sym(&c.kind),
+                            center(c.center),
+                            opt(c.semi_axes.map(|(p, q)| tuple(vec![p, q]))),
+                            opt(c.eccentricity),
+                            opt(c.parameter),
+                            opt(c.canonical.map(|(p, q, r)| tuple(vec![p, q, r]))),
+                        ])
+                    } else {
+                        let q = qd::classify_quadric(&a[1], &a[2], &a[3], &a[4]).map_err(e)?;
+                        tuple(vec![sym(&q.kind), center(q.center)])
+                    }
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
