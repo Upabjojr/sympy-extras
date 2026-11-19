@@ -153,7 +153,7 @@ fn floor_of(a: &Basic) -> PolyResult<Int> {
     floor_scaled(&real_algebraic(a)?, 0)
 }
 
-fn compare(a: &Basic, b: &Basic) -> PolyResult<i32> {
+pub(crate) fn compare(a: &Basic, b: &Basic) -> PolyResult<i32> {
     if let (Some(x), Some(y)) = (a.as_rational(), b.as_rational()) {
         return Ok(x.cmp(y) as i32);
     }

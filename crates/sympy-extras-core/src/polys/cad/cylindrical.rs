@@ -599,9 +599,22 @@ pub fn cylindrical_cases(
     method: Option<Method>,
     partial: bool,
 ) -> PolyResult<Vec<(Basic, Basic)>> {
+    cylindrical_cases_quantified(formula, parameters, unknowns, method, partial, &[])
+}
+
+/// [`cylindrical_cases`] with quantifiers over other variables of the
+/// formula (`cylindrical_cases(..., quantifiers=...)`).
+pub fn cylindrical_cases_quantified(
+    formula: &Basic,
+    parameters: &[Basic],
+    unknowns: &[Basic],
+    method: Option<Method>,
+    partial: bool,
+    quantifiers: &[(Quantifier, Basic)],
+) -> PolyResult<Vec<(Basic, Basic)>> {
     let mut all: Vec<Basic> = parameters.to_vec();
     all.extend(unknowns.iter().cloned());
-    let (free, d) = description_of(formula, &all, &[], method, partial)?;
+    let (free, d) = description_of(formula, &all, quantifiers, method, partial)?;
     if free != all {
         return Err(value_error(
             "the parameters and the unknowns are the symbols of the formula".to_string(),

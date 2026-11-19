@@ -3372,6 +3372,105 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             )
             .map_err(e)?
         }
+        "calculus" => {
+            // interpolation and optimization; points as Tuple(Tuple(x, y)...), booleans as the symbols True/False
+            use sympy_extras_core::calculus::interpolation as ip;
+            use sympy_extras_core::calculus::optimization as op;
+            let sym = |n: &str| sympy_extras_core::core::symbol::Symbol::new(n, &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let is_none = |b: &Basic| b.to_string() == "NONE";
+            let truth = |b: &Basic| -> Basic {
+                match b.to_string().as_str() {
+                    "True" if b.is_symbol() => sympy_extras_core::core::logic::boolean(true),
+                    "False" if b.is_symbol() => sympy_extras_core::core::logic::boolean(false),
+                    _ => b.clone(),
+                }
+            };
+            let pairs = |b: &Basic| -> Vec<(Basic, Basic)> {
+                b.args()
+                    .iter()
+                    .map(|p| (p.args()[0].clone(), p.args()[1].clone()))
+                    .collect()
+            };
+            let optional = |i: usize| -> Option<Vec<Basic>> {
+                if a.len() > i && !is_none(&a[i]) {
+                    Some(a[i].args().to_vec())
+                } else {
+                    None
+                }
+            };
+            let optimum = |o: op::Optimum| {
+                tuple(vec![
+                    o.value,
+                    sym(if o.attained { "True" } else { "False" }),
+                    tuple(
+                        o.points
+                            .into_iter()
+                            .map(|p| tuple(p.into_iter().map(|(k, v)| tuple(vec![k, v])).collect()))
+                            .collect(),
+                    ),
+                ])
+            };
+            match a[0].to_string().as_str() {
+                "divided_differences" => tuple(ip::divided_differences(&pairs(&a[1])).map_err(e)?),
+                "interpolating_polynomial" => ip::interpolating_polynomial(&pairs(&a[1]), &a[2]).map_err(e)?,
+                "hermite_interpolation" => {
+                    let data: Vec<(Basic, Vec<Basic>)> = a[1]
+                        .args()
+                        .iter()
+                        .map(|d| (d.args()[0].clone(), d.args()[1].args().to_vec()))
+                        .collect();
+                    ip::hermite_interpolation(&data, &a[2]).map_err(e)?
+                }
+                "cubic_spline" => {
+                    let slopes: Option<(Basic, Basic)> = if a.len() > 4 && !is_none(&a[4]) {
+                        Some((a[4].args()[0].clone(), a[4].args()[1].clone()))
+                    } else {
+                        None
+                    };
+                    let name: String = if a.len() > 3 {
+                        a[3].to_string()
+                    } else {
+                        "natural".to_string()
+                    };
+                    let boundary = match name.as_str() {
+                        "natural" => ip::Boundary::Natural,
+                        "clamped" => ip::Boundary::Clamped(slopes),
+                        "not-a-knot" => ip::Boundary::NotAKnot,
+                        "periodic" => ip::Boundary::Periodic,
+                        other => ip::Boundary::Unknown(other.to_string()),
+                    };
+                    ip::cubic_spline(&pairs(&a[1]), &a[2], &boundary).map_err(e)?
+                }
+                "least_squares" => ip::least_squares(&pairs(&a[1]), &a[2], a[3].args()).map_err(e)?,
+                "polynomial_fit" => {
+                    let degree: i64 = a[3]
+                        .to_string()
+                        .parse::<i64>()
+                        .map_err(|_| pyo3::exceptions::PyValueError::new_err("a degree"))?;
+                    ip::polynomial_fit(&pairs(&a[1]), &a[2], degree).map_err(e)?
+                }
+                "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
+                "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
+                "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
+                "minimize_parametric" | "maximize_parametric" => {
+                    let f = if a[0].to_string() == "minimize_parametric" {
+                        op::minimize_parametric
+                    } else {
+                        op::maximize_parametric
+                    };
+                    let parameters: Vec<Basic> = if a.len() > 4 { a[4].args().to_vec() } else { Vec::new() };
+                    tuple(
+                        f(&a[1], &truth(&a[2]), optional(3).as_deref(), &parameters)
+                            .map_err(e)?
+                            .into_iter()
+                            .map(|(c, v)| tuple(vec![c, v]))
+                            .collect(),
+                    )
+                }
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "eigen" | "decompositions" | "matfunctions" => {
             // op, matrices as Tuple(rows, cols, Tuple(entries)); booleans as the symbols True/False
             use sympy_extras_core::matrices::decompositions as dc;
