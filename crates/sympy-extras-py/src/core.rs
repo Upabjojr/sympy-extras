@@ -3261,6 +3261,42 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }
+        "transcendental" => {
+            // op: solve(formula, x, lambert) -> set or NONE; polynomialize(formula, x) -> Tuple(formula,
+            // variable, argument, Symbol(family), order, special) or NONE; linear(relation, x)
+            use sympy_extras_core::solvers::transcendental as tr;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "solve" => {
+                    let lambert = !matches!(a.get(3).map(|b| b.head()), Some(Head::BooleanFalse));
+                    tr::solve_transcendental(&a[1], &a[2], None, None, lambert)
+                        .map_err(e)?
+                        .unwrap_or_else(none)
+                }
+                "polynomialize" => match tr::polynomialize(&a[1], &a[2]).map_err(e)? {
+                    Some(r) => {
+                        let family = match r.family {
+                            tr::Family::Exp => "exp",
+                            tr::Family::Trig => "trig",
+                            tr::Family::Log => "log",
+                            tr::Family::Root => "root",
+                        };
+                        tuple(vec![
+                            r.formula.clone(),
+                            r.variable.clone(),
+                            r.argument.clone(),
+                            sympy_extras_core::core::symbol::Symbol::new(family, &[]).0,
+                            Basic::int(r.order),
+                            r.special.clone(),
+                        ])
+                    }
+                    None => none(),
+                },
+                "linear" => tr::linear_solution(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
+            }
+        }
         "is" => {
             // e, Symbol(predicate name) -> true, false or the empty Tuple for None (`e.is_<name>`)
             let Some(p) = sympy_extras_core::core::assumptions::Predicate::from_name(&a[1].to_string()) else {

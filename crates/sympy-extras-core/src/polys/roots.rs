@@ -116,3 +116,25 @@ fn identify(root: &Basic, candidates: &[Basic]) -> PolyResult<Option<Basic>> {
     }
     Ok(Some(distances[0].1.clone()))
 }
+
+/// The set with its root objects written in radicals when
+/// [`radical_form`] allows (`in_radicals`).
+#[allow(clippy::mutable_key_type)]
+pub fn in_radicals(result: &Basic) -> PolyResult<Basic> {
+    let mut found: Vec<Basic> = Vec::new();
+    for node in result.preorder() {
+        if polynomial_root(&node)?.is_some() && !found.contains(&node) {
+            found.push(node);
+        }
+    }
+    let mut replacements: std::collections::HashMap<Basic, Basic> = std::collections::HashMap::new();
+    for node in found {
+        if let Some(form) = radical_form(&node)? {
+            replacements.insert(node, form);
+        }
+    }
+    if replacements.is_empty() {
+        return Ok(result.clone());
+    }
+    crate::core::function::xreplace_evaluated(result, &replacements)
+}

@@ -10,3 +10,4 @@ pub mod simplex;
 #[allow(clippy::module_inception)]
 pub mod solvers;
 pub mod thue_equation;
+pub mod transcendental;
