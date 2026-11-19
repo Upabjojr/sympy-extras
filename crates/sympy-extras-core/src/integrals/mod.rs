@@ -3,6 +3,7 @@
 pub mod conditions;
 pub mod curves;
 pub mod dirichlet;
+pub mod elliptic;
 pub mod exponential;
 pub mod heurisch;
 pub mod mellin;

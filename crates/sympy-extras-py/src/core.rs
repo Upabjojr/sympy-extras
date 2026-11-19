@@ -5949,6 +5949,32 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, solutions, count])
         }
+        "elliptic" => {
+            // ("integral", f, x, a, b, facts) -> Tuple(value, condition) | NONE
+            // ("real_roots", P, x, facts) -> Tuple(roots) | NONE; ("radicand", f, x) -> Tuple(R, P, e) | NONE
+            // ("legendre", Q, m, s, lower, upper, facts) -> value | NONE
+            use sympy_extras_core::integrals::elliptic as el;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            match a[0].to_string().as_str() {
+                "integral" => match el::elliptic_integral(&a[1], &a[2], &a[3], &a[4], a[5].args()).map_err(e)? {
+                    Some(found) => tuple(vec![found.value, found.condition]),
+                    None => none(),
+                },
+                "real_roots" => match el::real_roots(&a[1], &a[2], a[3].args()).map_err(e)? {
+                    Some(found) => tuple(found),
+                    None => none(),
+                },
+                "radicand" => match el::radicand(&a[1], &a[2]).map_err(e)? {
+                    Some((r, p, x)) => tuple(vec![r, p, x]),
+                    None => none(),
+                },
+                _ => {
+                    let reduction = el::Reduction { q: a[1].clone(), m: a[2].clone(), s: a[3].clone(), lower: a[4].clone(), upper: a[5].clone() };
+                    el::legendre_reduction(&reduction, a[6].args()).map_err(e)?.unwrap_or_else(none)
+                }
+            }
+        }
         "heurisch" => {
             // ("antiderivative", f, x, hints, degree_offset, retries) | ("cases", f, x): the antiderivative or NONE
             use sympy_extras_core::integrals::heurisch as hr;
