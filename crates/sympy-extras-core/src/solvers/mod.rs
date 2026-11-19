@@ -2,6 +2,7 @@
 
 pub mod bivariate;
 pub mod exponential_diophantine;
+pub mod inequalities;
 pub mod integers;
 pub mod isolation;
 pub mod lie;

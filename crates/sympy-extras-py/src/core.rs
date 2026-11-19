@@ -3351,6 +3351,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 },
                 "linear" => tr::linear_solution(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
                 "solveset" => sympy_extras_core::solvers::solveset::solveset(&a[1], &a[2], &a[3]).map_err(e)?,
+                "inequality" => sympy_extras_core::solvers::inequalities::solve_inequality(&a[1], &a[2]).map_err(e)?,
                 other => return Err(pyo3::exceptions::PyValueError::new_err(format!("unknown op {}", other))),
             }
         }

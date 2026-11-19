@@ -583,6 +583,11 @@ fn power_continuous_on(f: &Basic, x: &Basic, domain: &Basic) -> PolyResult<bool>
 /// The solver of the relations polynomial in a kernel variable with
 /// constant coefficients (`_native_solver`).
 fn native_solver(formula: &Basic, v: &Basic) -> PolyResult<Option<Basic>> {
+    native_solver_pub(formula, v)
+}
+
+/// The solver of `_zero_set` (`_native_solver`), for the inequalities.
+pub fn native_solver_pub(formula: &Basic, v: &Basic) -> PolyResult<Option<Basic>> {
     if matches!(formula.head(), Head::Relational(_)) {
         if let Some(linear) = crate::solvers::transcendental::linear_solution(formula, v)? {
             return Ok(Some(linear));
