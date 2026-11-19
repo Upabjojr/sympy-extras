@@ -3512,6 +3512,66 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     }
                 }
                 "normal_form" => sympy_extras_core::simplify::normalform::normal_form(&a[1]).map_err(e)?,
+                "markov" => {
+                    // markov(method, P, args...): the chain built from P, the method applied
+                    use sympy_extras_core::matrices::dense::ExprMatrix;
+                    use sympy_extras_core::matrices::markov::{CommunicatingClass, MarkovChain};
+                    let chain = MarkovChain::new(&ExprMatrix::from_tuple(&a[2]).map_err(e)?).map_err(e)?;
+                    let n = |k: u64| Basic::int(k as i64);
+                    let flag = |b: bool| sym(if b { "True" } else { "False" });
+                    let class = |c: &CommunicatingClass| {
+                        tuple(vec![
+                            tuple(c.states.iter().map(|s| n(*s as u64)).collect()),
+                            flag(c.recurrent),
+                            n(c.period),
+                        ])
+                    };
+                    let states = |v: Vec<usize>| tuple(v.into_iter().map(|s| n(s as u64)).collect());
+                    let ints = |b: &Basic| -> Vec<i64> {
+                        b.args()
+                            .iter()
+                            .map(|t| t.to_string().parse::<i64>().unwrap_or(-1))
+                            .collect()
+                    };
+                    let int = |b: &Basic| b.to_string().parse::<i64>().unwrap_or(-1);
+                    match a[1].to_string().as_str() {
+                        "new" => chain.p.as_tuple(),
+                        "classes" => tuple(chain.classes().iter().map(class).collect()),
+                        "recurrent_classes" => tuple(chain.recurrent_classes().iter().map(class).collect()),
+                        "transient_states" => states(chain.transient_states()),
+                        "recurrent_states" => states(chain.recurrent_states()),
+                        "is_irreducible" => flag(chain.is_irreducible()),
+                        "is_absorbing" => flag(chain.is_absorbing()),
+                        "is_aperiodic" => flag(chain.is_aperiodic()),
+                        "is_ergodic" => flag(chain.is_ergodic()),
+                        "period" => n(chain.period().map_err(e)?),
+                        "stationary_distributions" => tuple(
+                            chain
+                                .stationary_distributions()
+                                .map_err(e)?
+                                .iter()
+                                .map(|m| m.as_tuple())
+                                .collect(),
+                        ),
+                        "stationary_distribution" => chain.stationary_distribution().map_err(e)?.as_tuple(),
+                        "fundamental_matrix" => chain.fundamental_matrix().map_err(e)?.as_tuple(),
+                        "expected_steps" => chain.expected_steps().map_err(e)?.as_tuple(),
+                        "absorption_probabilities" => chain.absorption_probabilities().map_err(e)?.as_tuple(),
+                        "hitting_probabilities" => chain.hitting_probabilities(&ints(&a[3])).map_err(e)?.as_tuple(),
+                        "mean_hitting_times" => chain.mean_hitting_times(&ints(&a[3])).map_err(e)?.as_tuple(),
+                        "mean_return_time" => chain.mean_return_time(int(&a[3])).map_err(e)?,
+                        "limiting_matrix" => chain.limiting_matrix().map_err(e)?.as_tuple(),
+                        "distribution_after" => {
+                            chain.distribution_after(a[3].args(), int(&a[4])).map_err(e)?.as_tuple()
+                        }
+                        other => {
+                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                "unknown method {}",
+                                other
+                            )))
+                        }
+                    }
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),

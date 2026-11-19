@@ -55,8 +55,7 @@ impl RowOperation {
                 } else if *factor == int(-1) {
                     format!("{} <- {} - {}", target, target, source)
                 } else {
-                    let negative_rational: bool =
-                        factor.as_rational().is_some_and(crate::numbers::rat_is_negative);
+                    let negative_rational: bool = factor.as_rational().is_some_and(crate::numbers::rat_is_negative);
                     let negative: bool = negative_rational || (!factor.is_add() && factor.to_string().starts_with('-'));
                     if negative {
                         format!(

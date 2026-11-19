@@ -7,6 +7,7 @@ pub mod eigen;
 pub mod equations;
 pub mod functions;
 pub mod linalg;
+pub mod markov;
 pub mod pencils;
 pub mod statespace;
 pub mod steps;
