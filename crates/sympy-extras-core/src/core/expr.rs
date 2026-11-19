@@ -176,6 +176,7 @@ pub fn as_base_exp(e: &Basic) -> Result<(Basic, Basic), crate::error::PolyError>
         }
         Head::ImaginaryUnit => Ok((Basic::negative_one(), Basic::half())),
         Head::Function(super::basic::Function::Exp) => Ok((Basic::e(), e.args()[0].clone())),
+        Head::Function(super::basic::Function::ExpPolar) => crate::functions::elementary::polar::exp_polar_base_exp(e),
         _ => Ok((e.clone(), Basic::one())),
     }
 }

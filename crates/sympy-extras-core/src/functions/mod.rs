@@ -48,6 +48,9 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         | Function::Asech
         | Function::Acsch) => elementary::inverse::inverse_fdiff(g, x),
         Function::Atan2 => elementary::argument::atan2_fdiff(e, argindex),
+        Function::ExpPolar | Function::PolarLift | Function::PeriodicArgument | Function::PrincipalBranch => {
+            special::hyper::default_fdiff(e, argindex)
+        }
         g @ (Function::DiracDelta | Function::Heaviside) => special::delta_functions::delta_fdiff(g, e),
         g @ (Function::Zeta
         | Function::DirichletEta
@@ -254,6 +257,13 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if f == Function::Atan2 {
         return elementary::argument::atan2(&args[0], &args[1]);
     }
+    match f {
+        Function::ExpPolar => return elementary::polar::exp_polar(&args[0]),
+        Function::PolarLift => return elementary::polar::polar_lift(&args[0]),
+        Function::PeriodicArgument => return elementary::polar::periodic_argument(&args[0], &args[1]),
+        Function::PrincipalBranch => return elementary::polar::principal_branch(&args[0], &args[1]),
+        _ => {}
+    }
     if matches!(f, Function::Max | Function::Min) {
         return elementary::miscellaneous::minmax(f, args);
     }
@@ -358,6 +368,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
         Function::Asech => elementary::inverse::asech(x),
         Function::Acsch => elementary::inverse::acsch(x),
         Function::Arg => elementary::argument::arg(x),
+        Function::ExpPolar | Function::PolarLift | Function::PeriodicArgument | Function::PrincipalBranch => {
+            unreachable!("the polar functions are applied above")
+        }
         g @ (Function::Floor | Function::Ceiling | Function::Frac) => elementary::integers::rounding(g, x),
         Function::Erf
         | Function::Erfc

@@ -1464,6 +1464,12 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         g @ (super::basic::Function::Max | super::basic::Function::Min) => {
             crate::functions::elementary::miscellaneous::minmax_facts(g, e.args())
         }
+        g @ (super::basic::Function::ExpPolar
+        | super::basic::Function::PolarLift
+        | super::basic::Function::PeriodicArgument
+        | super::basic::Function::PrincipalBranch) => {
+            crate::functions::elementary::polar::polar_facts(g, e.args()).unwrap_or_default()
+        }
         g @ (super::basic::Function::Arg | super::basic::Function::Atan2) => {
             crate::functions::elementary::argument::argument_facts(g, e.args())
         }

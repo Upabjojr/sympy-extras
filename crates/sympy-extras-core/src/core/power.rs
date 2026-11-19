@@ -746,6 +746,10 @@ pub fn pow(base: &Basic, exp: &Basic) -> PolyResult<Basic> {
             return Ok(own);
         }
     }
+    if base.is_function(super::basic::Function::ExpPolar) {
+        // ExpPolar._eval_power_node
+        return crate::functions::elementary::polar::exp_polar_power(base, exp);
+    }
     if base.is_function(super::basic::Function::Abs) {
         if let Some(own) = crate::functions::elementary::complexes::abs_power(base, exp)? {
             return Ok(own);

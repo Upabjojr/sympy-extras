@@ -497,17 +497,9 @@ fn expand_power_base_node(e: &Basic, force: bool) -> PolyResult<Option<Basic>> {
     Ok(Some(mul(&factors)?))
 }
 
-/// `unpolarify` on the core, which has no polar numbers: the tree
-/// evaluated again until it does not change.
+/// `unpolarify` (the polar numbers of `functions/elementary/polar.rs`).
 pub(crate) fn unpolarify(e: &Basic) -> PolyResult<Basic> {
-    let mut current: Basic = e.clone();
-    loop {
-        let next: Basic = doit(&current)?;
-        if next == current {
-            return Ok(current);
-        }
-        current = next;
-    }
+    crate::functions::elementary::polar::unpolarify(e, false)
 }
 
 fn is_log_quotient(x: &Basic) -> bool {
@@ -772,6 +764,18 @@ fn expand_pass(e: &Basic, deep: bool, hints: Hints) -> PolyResult<Basic> {
         let mut factors: Vec<Basic> = Vec::new();
         for t in e.args()[0].args() {
             factors.push(pow(&Basic::e(), t)?);
+        }
+        return mul(&factors);
+    }
+    if hints.power_exp
+        && e.is_function(Function::ExpPolar)
+        && e.args()[0].is_add()
+        && super::expr::is(&e.args()[0], Predicate::commutative) != Some(false)
+    {
+        // ExpBase._eval_expand_power_exp: exp_polar(a + b) is exp_polar(a)*exp_polar(b)
+        let mut factors: Vec<Basic> = Vec::new();
+        for t in e.args()[0].args() {
+            factors.push(crate::functions::elementary::polar::exp_polar(t)?);
         }
         return mul(&factors);
     }

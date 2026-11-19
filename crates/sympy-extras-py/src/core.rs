@@ -227,6 +227,10 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Csc" => Basic::new(Head::Function(Function::Csc), args()?),
         "Sinh" => Basic::new(Head::Function(Function::Sinh), args()?),
         "Arg" => Basic::new(Head::Function(Function::Arg), args()?),
+        "ExpPolar" => Basic::new(Head::Function(Function::ExpPolar), args()?),
+        "PolarLift" => Basic::new(Head::Function(Function::PolarLift), args()?),
+        "PeriodicArgument" => Basic::new(Head::Function(Function::PeriodicArgument), args()?),
+        "PrincipalBranch" => Basic::new(Head::Function(Function::PrincipalBranch), args()?),
         "Max" => Basic::new(Head::Function(Function::Max), args()?),
         "Floor" => Basic::new(Head::Function(Function::Floor), args()?),
         "DiracDelta" => Basic::new(Head::Function(Function::DiracDelta), args()?),
@@ -642,7 +646,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             let module: &str = match f {
-                Function::Exp | Function::Log | Function::LambertW => "exponential",
+                Function::Exp | Function::Log | Function::LambertW | Function::ExpPolar => "exponential",
                 Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
                     "trigonometric"
                 }
@@ -2562,6 +2566,24 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 _ => Some(false),
             };
             sympy_extras_core::functions::elementary::piecewise::piecewise_fold(&a[0], evaluate).map_err(e)?
+        }
+        "exp_polar" | "polar_lift" | "periodic_argument" | "principal_branch" | "unbranched_argument" | "unpolarify" | "polarify" => {
+            // the polar numbers; unpolarify(e, exponents_only), polarify(e, subs, lift) -> Tuple(e, Tuple(pairs back))
+            use sympy_extras_core::functions::elementary::polar as pl;
+            let flag = |b: &Basic| b.to_string() == "True";
+            match name {
+                "exp_polar" => pl::exp_polar(&a[0]).map_err(e)?,
+                "polar_lift" => pl::polar_lift(&a[0]).map_err(e)?,
+                "periodic_argument" => pl::periodic_argument(&a[0], &a[1]).map_err(e)?,
+                "principal_branch" => pl::principal_branch(&a[0], &a[1]).map_err(e)?,
+                "unbranched_argument" => pl::unbranched_argument(&a[0]).map_err(e)?,
+                "unpolarify" => pl::unpolarify(&a[0], a.len() > 1 && flag(&a[1])).map_err(e)?,
+                _ => {
+                    let (result, back) = pl::polarify(&a[0], a.len() < 2 || flag(&a[1]), a.len() > 2 && flag(&a[2])).map_err(e)?;
+                    let pairs: Vec<Basic> = back.into_iter().map(|(d, s)| Basic::new(Head::Tuple, vec![d, s])).collect();
+                    Basic::new(Head::Tuple, vec![result, Basic::new(Head::Tuple, pairs)])
+                }
+            }
         }
         "elliptic_k" | "elliptic_f" | "elliptic_e" | "elliptic_pi" => {
             use sympy_extras_core::core::basic::Function as F;

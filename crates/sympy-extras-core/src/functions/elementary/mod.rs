@@ -10,6 +10,7 @@ pub mod inverse;
 pub mod inverse_rewrites;
 pub mod miscellaneous;
 pub mod piecewise;
+pub mod polar;
 pub mod pow_rewrites;
 pub mod rewrites;
 pub mod trigonometric;

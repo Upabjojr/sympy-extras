@@ -465,6 +465,12 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::elementary::miscellaneous::minmax_value(*g, &values)
         }
+        Head::Function(
+            super::basic::Function::ExpPolar
+            | super::basic::Function::PolarLift
+            | super::basic::Function::PeriodicArgument
+            | super::basic::Function::PrincipalBranch,
+        ) => crate::functions::elementary::polar::polar_value(e, prec),
         Head::Function(f) => {
             let v: Complex = numeric_value(&e.args()[0], prec)?;
             let value: Complex = match f {
@@ -576,6 +582,10 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::Asech
                 | super::basic::Function::Acsch) => crate::functions::elementary::inverse::inverse_value(*g, &v, wp)?,
                 super::basic::Function::Arg
+                | super::basic::Function::ExpPolar
+                | super::basic::Function::PolarLift
+                | super::basic::Function::PeriodicArgument
+                | super::basic::Function::PrincipalBranch
                 | super::basic::Function::Atan2
                 | super::basic::Function::LambertW
                 | super::basic::Function::Max

@@ -195,6 +195,13 @@ pub fn log_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
         Head::Function(Function::Exp) if is_true(&arg.args()[0], extended_real) => {
             return Ok(Some(arg.args()[0].clone()))
         }
+        Head::Function(Function::ExpPolar) => {
+            // log.eval (exp_polar)
+            return Ok(Some(crate::functions::elementary::polar::unpolarify(
+                &arg.args()[0],
+                false,
+            )?));
+        }
         _ => {}
     }
     if matches!(arg.head(), Head::AccumBounds) {

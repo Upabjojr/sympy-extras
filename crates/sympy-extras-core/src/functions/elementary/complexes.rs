@@ -208,6 +208,10 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::HyperRepLog2
         | Function::HyperRepCosasin
         | Function::HyperRepSinasin
+        | Function::ExpPolar
+        | Function::PolarLift
+        | Function::PeriodicArgument
+        | Function::PrincipalBranch
         | Function::DiGamma
         | Function::TriGamma
         | Function::Zeta
@@ -640,6 +644,10 @@ fn function_real_imag(
         | Function::HyperRepLog2
         | Function::HyperRepCosasin
         | Function::HyperRepSinasin
+        | Function::ExpPolar
+        | Function::PolarLift
+        | Function::PeriodicArgument
+        | Function::PrincipalBranch
         | Function::BesselJ
         | Function::BesselY
         | Function::BesselI
@@ -957,6 +965,14 @@ fn free_symbols_outside_abs(e: &Basic, found: &mut BTreeSet<Basic>) {
 
 /// `Abs.eval`.
 pub fn abs_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
+    if arg.is_function(Function::ExpPolar) {
+        // exp_polar._eval_Abs
+        return Ok(Some(exp(&re(&arg.args()[0])?)?));
+    }
+    if arg.is_function(Function::PolarLift) {
+        // polar_lift._eval_Abs
+        return Ok(Some(abs_(&arg.args()[0])?));
+    }
     if arg.is_function(Function::Sign) && is_false(&arg.args()[0], zero) {
         return Ok(Some(Basic::one()));
     }
