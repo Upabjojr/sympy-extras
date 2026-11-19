@@ -8,6 +8,7 @@ pub mod equations;
 pub mod functions;
 pub mod linalg;
 pub mod markov;
+pub mod normalforms;
 pub mod pencils;
 pub mod riccati;
 pub mod statespace;

@@ -3980,6 +3980,41 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         }
                     }
                 }
+                "smith_normal_form"
+                | "hermite_normal_form"
+                | "popov_form"
+                | "polynomial_matrix_rank"
+                | "is_unimodular"
+                | "invariant_factors"
+                | "matrix_minimal_polynomial"
+                | "companion_matrix"
+                | "frobenius_form"
+                | "elementary_divisors"
+                | "is_similar" => {
+                    use sympy_extras_core::matrices::normalforms as nf;
+                    match a[0].to_string().as_str() {
+                        "smith_normal_form" => {
+                            let d = nf::smith_normal_form(&m(&a[1])?, &a[2]).map_err(e)?;
+                            tuple(vec![d.s.as_tuple(), d.u.as_tuple(), d.v.as_tuple()])
+                        }
+                        "hermite_normal_form" => pair(nf::hermite_normal_form(&m(&a[1])?, &a[2]).map_err(e)?),
+                        "popov_form" => pair(nf::popov_form(&m(&a[1])?, &a[2]).map_err(e)?),
+                        "polynomial_matrix_rank" => n(nf::polynomial_matrix_rank(&m(&a[1])?, &a[2]).map_err(e)?),
+                        "is_unimodular" => flag(nf::is_unimodular(&m(&a[1])?, &a[2]).map_err(e)?),
+                        "invariant_factors" => tuple(nf::invariant_factors(&m(&a[1])?, &a[2]).map_err(e)?),
+                        "matrix_minimal_polynomial" => nf::matrix_minimal_polynomial(&m(&a[1])?, &a[2]).map_err(e)?,
+                        "companion_matrix" => nf::companion_matrix(&a[1], &a[2]).map_err(e)?.as_tuple(),
+                        "frobenius_form" => pair(nf::frobenius_form(&m(&a[1])?).map_err(e)?),
+                        "elementary_divisors" => tuple(
+                            nf::elementary_divisors(&m(&a[1])?, &a[2])
+                                .map_err(e)?
+                                .into_iter()
+                                .map(|(f, k)| tuple(vec![f, n(k)]))
+                                .collect(),
+                        ),
+                        _ => flag(nf::is_similar(&m(&a[1])?, &m(&a[2])?).map_err(e)?),
+                    }
+                }
                 "singular_values" => tuple(sympy_extras_core::matrices::svd::singular_values(&m(&a[1])?).map_err(e)?),
                 "svd" => {
                     let (u, s_, v) = sympy_extras_core::matrices::svd::svd(&m(&a[1])?).map_err(e)?;
