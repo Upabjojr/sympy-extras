@@ -2,7 +2,8 @@
 ``calculus/optimization.py`` against the Python ones: divided
 differences, Newton and Hermite interpolation, cubic splines, least
 squares; value ranges, minima and maxima, parametric optima; and of
-geometry/quadrics.py (conics and quadrics), on the
+geometry/quadrics.py (conics and quadrics) and of
+series/approximants.py (Pade approximants, series reversion), on the
 cases of their tests (read with the core's parser)."""
 from __future__ import annotations
 
@@ -19,6 +20,7 @@ from sympy_extras.core.parsing import parse
 import sympy_extras.calculus.interpolation as IP
 import sympy_extras.calculus.optimization as OP
 import sympy_extras.geometry.quadrics as QD
+import sympy_extras.series.approximants as AP
 from sympy_extras.matrices.dense import ExprMatrix
 
 from ..conftest import load
@@ -242,6 +244,61 @@ CASES: list[tuple[str, list[object]]] = [
     ('classify_quadric', ['x + y + z - 1', 'x', 'y', 'z']),
     ('classify_quadric', ['8*x**2 + 8*x*y + 12*x*z + 12*x + 4*y**2 + 4*y*z + 4*y + 5*z**2 + 10*z + 5', 'x', 'y', 'z']),
     ('quadric_matrices', ['x*y + 2*z', {'seq': ['x', 'y', 'z']}]),
+    ('pade', ['sin(x)', 'x', {'int': 0}, {'int': 1}, '0', 'False']),
+    ('pade', ['1/(x**2 + x + 2)', 'x', {'int': 0}, {'int': 1}, '0', 'True']),
+    ('pade', ['exp(x)/(x + 1)', 'x', {'int': 2}, {'int': 1}, '0', 'True']),
+    ('pade', ['log(x)', 'x', {'int': 0}, {'int': 1}, '1', 'True']),
+    ('pade', ['1/(-I*x + 1)', 'x', {'int': 0}, {'int': 1}, {'int': 0}, 'False']),
+    ('pade', ['cos(x)', 'x', {'int': 3}, {'int': 2}, '1', 'False']),
+    ('pade', ['log(x + 1)', 'x', {'int': 1}, {'int': 1}, {'int': 0}, 'False']),
+    ('pade', ['tan(x)', 'x', {'int': 2}, {'int': 1}, '0', 'False']),
+    ('pade', ['log(x)', 'x', {'int': 1}, {'int': 1}, '1', 'False']),
+    ('pade', ['tan(x)', 'x', {'int': 2}, {'int': 1}, '0', 'True']),
+    ('pade', ['exp(x)', 'x', {'int': 1}, {'int': 1}, '0', 'True']),
+    ('pade', ['sin(x)', 'x', {'int': 3}, {'int': 2}, '0', 'False']),
+    ('pade_from_coefficients', [{'seq': ['0', '0', '0', '0', '0', '0']}, 'x', {'int': 0}, {'int': 3}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['-2', '-1', '-2', '-4', '-8']}, 'x', {'int': 1}, {'int': 1}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['1', '0', '2', '1', '1', '1', '1']}, 'x', {'int': 4}, {'int': 2}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['1', '0', '0']}, 'x', {'int': 1}, {'int': 1}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['1', '-2', '1', '3', '-7', '4']}, 'x', {'int': 0}, {'int': 3}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['-2', '2', '-4', '5', '-8', '10', '-16', '20']}, 'x', {'int': 3}, {'int': 2}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['0', '2', '3', '0', '0']}, 'x', {'int': 3}, {'int': 1}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['1', '-2', '5', '-9', '15', '-26', '46', '-81']}, 'x', {'int': 3}, {'int': 4}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['3', '2', '3', '0', '0', '0']}, 'x', {'int': 3}, {'int': 2}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['1', '0', '0', '0', '0', '0']}, 'x', {'int': 1}, {'int': 2}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['0', '-1', '2', '-7', '20', '-61', '182']}, 'x', {'int': 2}, {'int': 2}, 'False']),
+    ('pade_from_coefficients', [{'seq': ['1', '-2', '5', '-9', '15', '-26', '46', '-81']}, 'x', {'int': 2}, {'int': 3}, 'False']),
+    ('rational_interpolate', [{'seq': [{'seq': ['4', '-4']}, {'seq': ['-2', '1']}, {'seq': ['-4', '2']}, {'seq': ['3', '-2']}, {'seq': ['-1', '1']}]}, 'x', {'int': 4}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['4', '4']}]}, 'x', {'int': 0}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['2', '-1/2']}, {'seq': ['3', '-1']}]}, 'x', {'int': 1}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['4', '3/2']}, {'seq': ['5', '0']}]}, 'x', {'int': 1}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['3', '1/2']}, {'seq': ['0', '1/2']}]}, 'x', {'int': 0}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['-4', '-3']}, {'seq': ['3', '1']}, {'seq': ['-1', '-3']}]}, 'x', {'int': 1}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['0', '0']}, {'seq': ['-4', '2']}]}, 'x', {'int': 1}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['-3', '-1']}]}, 'x', {'int': 0}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['a', '1/a']}, {'seq': ['2*a', '1/(2*a)']}, {'seq': ['3*a', '1/(3*a)']}]}, 'x', {'int': 0}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['-4', '1/3']}, {'seq': ['-2', '-1/2']}]}, 'x', {'int': 1}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['3', '1']}, {'seq': ['-4', '4/3']}, {'seq': ['4', '-1/2']}]}, 'x', {'int': 1}]),
+    ('rational_interpolate', [{'seq': [{'seq': ['-5', '-1']}, {'seq': ['-4', '1']}, {'seq': ['-2', '-1']}]}, 'x', {'int': 1}]),
+    ('revert_coefficients', [{'seq': ['0', '1', '1', '1/2', '1/6', '1/24', '1/120', '1/720']}]),
+    ('series_reversion', ['x**2 + x', 'x', 'y', {'int': 7}, {'int': 0}]),
+    ('series_reversion', ['sin(x)', 'x', 'y', {'int': 1}, {'int': 0}]),
+    ('series_reversion', ['x*exp(x)', 'x', 'y', {'int': 7}, {'int': 0}]),
+    ('series_reversion', ['x**2 + log(x + 1)', 'x', 'y', {'int': 7}, {'int': 0}]),
+    ('series_reversion', ['2*x/(1 - x)', 'x', 'y', {'int': 7}, {'int': 0}]),
+    ('series_reversion', ['sin(x)', 'x', 'y', {'int': 7}, {'int': 0}]),
+    ('series_reversion', ['x**2', 'x', 'y', {'int': 4}, {'int': 0}]),
+    ('series_reversion', ['a*x + x**2', 'x', 'y', {'int': 4}, {'int': 0}]),
+    ('series_reversion', ['tan(x)', 'x', 'y', {'int': 7}, {'int': 0}]),
+    ('series_reversion', ['exp(x) - 1', 'x', 'y', {'int': 7}, {'int': 0}]),
+    ('series_reversion', ['x**2', 'x', 'y', {'int': 5}, {'int': 3}]),
+    ('taylor_coefficients', ['sqrt(x)', 'x', {'int': 3}, {'int': 0}]),
+    ('taylor_coefficients', ['exp(x)', 'x', {'int': 0}, {'int': 0}]),
+    ('taylor_coefficients', ['7', 'x', {'int': 2}, {'int': 0}]),
+    ('taylor_coefficients', ['x**2', 'x', {'int': 5}, {'int': 0}]),
+    ('taylor_coefficients', ['exp(x)', 'x', {'int': 4}, {'int': 0}]),
+    ('taylor_coefficients', ['x*exp(x)', 'x', {'int': 8}, {'int': 0}]),
+    ('taylor_coefficients', ['1/x', 'x', {'int': 3}, {'int': 2}]),
 ]
 
 
@@ -249,7 +306,7 @@ CASES: list[tuple[str, list[object]]] = [
 def test_calculus(i: int) -> None:
     name, raw = CASES[i]
     args = [argument(a) for a in raw]
-    module = IP if hasattr(IP, name) else (QD if hasattr(QD, name) else OP)
+    module = IP if hasattr(IP, name) else (QD if hasattr(QD, name) else (AP if hasattr(AP, name) else OP))
     got = outcome(lambda: rc.logic_call('calculus', [Symbol(name)] + [encoded(a) for a in args]))
     if got != 'SKIP':
         assert got == outcome(lambda: encoded(getattr(module, name)(*args))), (name, raw)

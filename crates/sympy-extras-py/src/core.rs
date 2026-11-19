@@ -3474,6 +3474,43 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         tuple(vec![sym(&q.kind), center(q.center)])
                     }
                 }
+                "taylor_coefficients"
+                | "pade_from_coefficients"
+                | "pade"
+                | "rational_interpolate"
+                | "revert_coefficients"
+                | "series_reversion" => {
+                    use sympy_extras_core::series::approximants as ap;
+                    let int = |b: &Basic| {
+                        b.to_string()
+                            .parse::<i64>()
+                            .map_err(|_| pyo3::exceptions::PyValueError::new_err(format!("an integer, got {}", b)))
+                    };
+                    let flag_at = |i: usize| a.len() > i && a[i].to_string() == "True";
+                    let zero = Basic::int(0);
+                    let at = |i: usize| if a.len() > i { a[i].clone() } else { zero.clone() };
+                    match a[0].to_string().as_str() {
+                        "taylor_coefficients" => {
+                            tuple(ap::taylor_coefficients(&a[1], &a[2], int(&a[3])?, &at(4)).map_err(e)?)
+                        }
+                        "pade_from_coefficients" => {
+                            ap::pade_from_coefficients(a[1].args(), &a[2], int(&a[3])?, int(&a[4])?, flag_at(5))
+                                .map_err(e)?
+                        }
+                        "pade" => ap::pade(&a[1], &a[2], int(&a[3])?, int(&a[4])?, &at(5), flag_at(6)).map_err(e)?,
+                        "rational_interpolate" => {
+                            match ap::rational_interpolate(&pairs(&a[1]), &a[2], int(&a[3])?).map_err(e)? {
+                                Some(r) => r,
+                                None => sym("NONE"),
+                            }
+                        }
+                        "revert_coefficients" => tuple(ap::revert_coefficients(a[1].args()).map_err(e)?),
+                        _ => {
+                            let n: i64 = if a.len() > 4 { int(&a[4])? } else { 6 };
+                            ap::series_reversion(&a[1], &a[2], &a[3], n, &at(5)).map_err(e)?
+                        }
+                    }
+                }
                 "value_range" => op::value_range(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?,
                 "minimize" => optimum(op::minimize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
                 "maximize" => optimum(op::maximize(&a[1], &truth(&a[2]), optional(3).as_deref()).map_err(e)?),
