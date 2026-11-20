@@ -1294,6 +1294,7 @@ fn eval_facts(e: &Basic) -> FactList {
             facts
         }
         Head::Tuple | Head::Limit => FactList::new(),
+        Head::Sum | Head::Product => crate::concrete::expr_with_limits::facts(e),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
         Head::TranscendentalRoot => crate::solvers::isolation::root_facts(e),
         Head::ComplexRootOf(_) => crate::polys::complexrootof::root_facts(e),

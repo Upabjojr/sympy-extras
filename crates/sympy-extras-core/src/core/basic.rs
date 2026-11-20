@@ -134,6 +134,8 @@ pub enum Head {
     /// `Limit(e, z, z0, dir)`: the arguments `(e, z, z0, Symbol(dir))`
     /// (`core/limits.rs`).
     Limit,
+    Sum,
+    Product,
     /// `TranscendentalRoot(f, x, a, b)`: a real root of `f` isolated in
     /// `(a, b)` (`solvers/isolation.rs`).
     TranscendentalRoot,
@@ -945,6 +947,8 @@ impl Head {
             Head::RootSum => "RootSum",
             Head::Order => "Order",
             Head::Limit => "Limit",
+            Head::Sum => "Sum",
+            Head::Product => "Product",
             Head::TranscendentalRoot => "TranscendentalRoot",
             Head::BooleanTrue => "BooleanTrue",
             Head::BooleanFalse => "BooleanFalse",
@@ -1043,6 +1047,8 @@ impl Head {
                 | Head::RootSum
                 | Head::Order
                 | Head::Limit
+                | Head::Sum
+                | Head::Product
                 | Head::TranscendentalRoot
                 | Head::And
                 | Head::Or
@@ -1397,6 +1403,7 @@ impl Basic {
             Head::ComplexRootOf(_) => BTreeSet::new(),
             Head::ImageSet => crate::sets::fancysets::image_set_free_symbols(self),
             Head::Limit => crate::core::limits::free_symbols(self),
+            Head::Sum | Head::Product => crate::concrete::expr_with_limits::free_symbols(self),
             Head::TranscendentalRoot => BTreeSet::new(),
             Head::RootSum => crate::polys::rootoftools::free_symbols(self),
             Head::Subs => {

@@ -17,6 +17,7 @@ pub fn bound_symbols(e: &Basic) -> Vec<Basic> {
             e.args()[i].args().to_vec()
         }
         Head::IndexedRoot | Head::TranscendentalRoot => vec![e.args()[1].clone()],
+        Head::Sum | Head::Product => crate::concrete::expr_with_limits::bound_symbols(e),
         Head::RootSum => {
             let (_, var, _, t) = crate::polys::rootoftools::parts(e);
             if var == t {

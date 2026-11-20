@@ -193,6 +193,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "ImageSet" => Basic::new(Head::ImageSet, args()?),
         "Order" => Basic::new(Head::Order, args()?),
         "Limit" => Basic::new(Head::Limit, args()?),
+        "Sum" => Basic::new(Head::Sum, args()?),
+        "Product" => Basic::new(Head::Product, args()?),
         "TranscendentalRoot" => Basic::new(Head::TranscendentalRoot, args()?),
         "RootSum" => {
             // RootSum(f, Lambda(var, body), t): the Lambda flattened
@@ -535,6 +537,11 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             py.import("sympy_extras.solvers.isolation")?
                 .getattr("TranscendentalRoot")?
                 .call1(PyTuple::new(py, items)?)?
+        }
+        Head::Sum | Head::Product => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            let name: &str = if matches!(e.head(), Head::Sum) { "Sum" } else { "Product" };
+            py.import("sympy_extras.concrete.expr_with_limits")?.getattr(name)?.call1(PyTuple::new(py, items)?)?
         }
         Head::Limit => {
             let (expr, z, z0, dir) = sympy_extras_core::core::limits::parts(e);
@@ -6029,6 +6036,11 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     }
                 }
             }
+        }
+        "sum_" | "product_" => {
+            // the function and the Tuple(i, a, b) limits
+            use sympy_extras_core::concrete::expr_with_limits as ew;
+            if name == "sum_" { ew::sum_(&a[0], &a[1..]).map_err(e)? } else { ew::product_(&a[0], &a[1..]).map_err(e)? }
         }
         "hyperexpand" => {
             // (f, allow_hyper, rewrite: default | nonrepsmall | nonrep | None, place | NONE)
