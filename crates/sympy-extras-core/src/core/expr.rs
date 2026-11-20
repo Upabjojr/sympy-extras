@@ -724,20 +724,248 @@ fn nonzero_at_a_point(e: &Basic) -> PolyResult<bool> {
     Ok(false)
 }
 
-/// Whether `a - b` is zero (`Expr.equals`): decided by the facts or by
-/// a value at a point; what Python asks SymPy (the bridge) is not ported.
+/// Whether `a - b` is zero (`Expr.equals`), Python's truth value of the
+/// answer: `None` counts as `false`.
 pub fn equals(a: &Basic, b: &Basic) -> PolyResult<bool> {
+    Ok(equals_opt(a, b)? == Some(true))
+}
+
+// PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals
+/// Whether `a - b` is zero (`Expr.equals`): the structural rules, a value
+/// at a point, the simplified difference, its derivatives, the surds
+/// solved for and the minimal polynomial; `None` when undecided.
+pub fn equals_opt(a: &Basic, b: &Basic) -> PolyResult<Option<bool>> {
     let difference: Basic = super::add::sub(a, b)?;
     if difference.is_number_node() {
-        return Ok(difference.as_rational().is_some_and(|v| v.is_zero()));
+        return Ok(Some(difference.as_rational().is_some_and(|v| v.is_zero())));
     }
     if let Some(zero) = is(&difference, Predicate::zero) {
-        return Ok(zero);
+        return Ok(Some(zero));
     }
     if nonzero_at_a_point(&difference)? {
-        return Ok(false);
+        return Ok(Some(false));
     }
-    Err(crate::error::not_ported("equals by SymPy (the bridge)"))
+    let polar: bool = difference.preorder().iter().any(|n| {
+        matches!(
+            n.head(),
+            Head::Function(crate::core::basic::Function::ExpPolar | crate::core::basic::Function::PolarLift)
+        )
+    });
+    if polar {
+        return native_polar_zero_test(&difference);
+    }
+    if let Some(native) = simplified_zero_test(&difference)? {
+        return Ok(Some(native));
+    }
+    remaining_zero_test(&difference)
+}
+
+fn has_add_or_mod(e: &Basic) -> bool {
+    e.preorder()
+        .iter()
+        .any(|n| n.is_add() || matches!(n.head(), Head::Function(crate::core::basic::Function::Mod)))
+}
+
+fn factors_decided(d: &Basic) -> PolyResult<Option<bool>> {
+    let factors: Vec<Basic> = as_coeff_mul_tuple(d).1;
+    if factors.len() > 1 {
+        let mut decided: Vec<bool> = Vec::new();
+        for f in &factors {
+            match equals_opt(f, &Basic::zero())? {
+                Some(v) => decided.push(v),
+                None => return Ok(None),
+            }
+        }
+        return Ok(Some(decided.iter().any(|v| *v)));
+    }
+    Ok(None)
+}
+
+fn sorted_symbols(e: &Basic) -> Vec<Basic> {
+    let mut symbols: Vec<Basic> = e
+        .free_symbols()
+        .into_iter()
+        .filter(|s| matches!(s.head(), Head::Symbol(_)))
+        .collect();
+    symbols.sort_by_key(|s| s.to_string());
+    symbols
+}
+
+// PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps for a difference with polar numbers)
+fn native_polar_zero_test(diff: &Basic) -> PolyResult<Option<bool>> {
+    if is(diff, Predicate::zero) == Some(true) {
+        return Ok(Some(true));
+    }
+    if !has_add_or_mod(diff) {
+        return Ok(Some(false));
+    }
+    if let Some(v) = factors_decided(diff)? {
+        return Ok(Some(v));
+    }
+    let symbols: Vec<Basic> = sorted_symbols(diff);
+    if !symbols.is_empty() && polar_values_differ(diff, &symbols)? {
+        return Ok(Some(false));
+    }
+    for s in &symbols {
+        if is(&super::function::derivative(diff, s)?, Predicate::zero) == Some(false) {
+            return Ok(Some(false));
+        }
+    }
+    Ok(None)
+}
+
+// PORTED FROM SYMPY: sympy/core/expr.py:Expr.is_constant (the values at 0 and at 1)
+fn polar_values_differ(e: &Basic, symbols: &[Basic]) -> PolyResult<bool> {
+    let mut values: Vec<Basic> = Vec::new();
+    for k in 0..2 {
+        let pairs: Vec<(Basic, Basic)> = symbols.iter().map(|s| (s.clone(), Basic::int(k))).collect();
+        let at: Basic = match super::subs::subs_pairs(e, &pairs) {
+            Ok(v) => v,
+            Err(crate::error::PolyError::ZeroDivision(_)) => return Ok(false),
+            Err(err) => return Err(err),
+        };
+        if crate::core::logic::is_boolean(&at) || matches!(at.head(), Head::NaN) || !at.free_symbols().is_empty() {
+            return Ok(false);
+        }
+        values.push(at);
+    }
+    Ok(equals_opt(&values[1], &values[0])? == Some(false))
+}
+
+fn minpoly_is_x(d: &Basic) -> PolyResult<Option<bool>> {
+    use crate::error::{PolyError, PolysErrorKind};
+    match crate::polys::numberfields::minpoly::minimal_polynomial_coeffs(d) {
+        Ok(c) => Ok(Some(
+            c.len() == 2 && c[0] == crate::numbers::Int::from(1) && c[1] == crate::numbers::Int::from(0),
+        )),
+        Err(PolyError::Polys(PolysErrorKind::NotAlgebraic, _)) | Err(PolyError::Value(_)) => Ok(None),
+        Err(PolyError::NotImplemented(m)) if !m.starts_with(crate::error::NOT_PORTED_PREFIX) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+// PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps after the structural ones)
+fn simplified_zero_test(diff: &Basic) -> PolyResult<Option<bool>> {
+    let simplified: Basic = crate::simplify::simplify::simplify(diff, &crate::simplify::simplify::Options::default())?;
+    let d: Basic = super::exprtools::factor_terms(&simplified, true, false, false, true)?;
+    if is(&d, Predicate::zero) == Some(true) {
+        return Ok(Some(true));
+    }
+    if !has_add_or_mod(&d) {
+        return Ok(Some(false));
+    }
+    if let Some(v) = factors_decided(&d)? {
+        return Ok(Some(v));
+    }
+    if super::assumptions::is_number(&d) {
+        if let Some(v) = minpoly_is_x(&d)? {
+            return Ok(Some(v));
+        }
+    }
+    Ok(None)
+}
+
+// PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the steps after the simplification)
+fn remaining_zero_test(diff: &Basic) -> PolyResult<Option<bool>> {
+    if !super::assumptions::is_number(diff) {
+        let symbols: Vec<Basic> = sorted_symbols(diff);
+        let mut moving: bool = false;
+        for w in &symbols {
+            if super::function::derivative(diff, w)? != Basic::zero() {
+                moving = true;
+                break;
+            }
+        }
+        if moving {
+            let pairs: Vec<(Basic, Basic)> = symbols.iter().map(|s| (s.clone(), Basic::zero())).collect();
+            let at_zero: Basic = match super::subs::subs_pairs(diff, &pairs) {
+                Ok(v) => v,
+                Err(crate::error::PolyError::ZeroDivision(_)) => return Ok(None),
+                Err(err) => return Err(err),
+            };
+            if !crate::core::logic::is_boolean(&at_zero)
+                && !matches!(at_zero.head(), Head::NaN)
+                && super::assumptions::is_number(&at_zero)
+                && nonzero_at_a_point(&at_zero)?
+            {
+                return Ok(Some(false));
+            }
+        }
+        return Ok(None);
+    }
+    if let Some(v) = surds_zero_test(diff)? {
+        return Ok(Some(v));
+    }
+    minpoly_is_x(diff)
+}
+
+// PORTED FROM SYMPY: sympy/core/expr.py:Expr.equals (the surds solved for)
+fn surds_zero_test(diff: &Basic) -> PolyResult<Option<bool>> {
+    use crate::error::PolyError;
+    let mut unique: Vec<Basic> = Vec::new();
+    for p in diff.preorder() {
+        if p.is_pow()
+            && matches!(
+                p.args()[0].head(),
+                Head::Rational {
+                    integer_class: true,
+                    ..
+                }
+            )
+            && !unique.contains(&p)
+        {
+            unique.push(p);
+        }
+    }
+    // largest base first (a stable sort, as Python's)
+    unique.sort_by(|x, y| {
+        let (bx, by) = (x.args()[0].as_rational().cloned(), y.args()[0].as_rational().cloned());
+        by.cmp(&bx)
+    });
+    for surd in &unique {
+        let d: Basic = super::symbol::Dummy::new("s", &[]).0;
+        let rule: std::collections::HashMap<Basic, Basic> = [(surd.clone(), d.clone())].into_iter().collect();
+        let equation: Basic = diff.xreplace(&rule);
+        if crate::core::logic::is_boolean(&equation) || !equation.free_symbols().contains(&d) {
+            continue;
+        }
+        let solutions: Vec<Basic> = match crate::solvers::solvers::solve_equation(&equation, &d) {
+            Ok(Some(s)) => s,
+            Ok(None) => continue,
+            Err(PolyError::NotImplemented(m)) if !m.starts_with(crate::error::NOT_PORTED_PREFIX) => continue,
+            Err(PolyError::Value(_) | PolyError::Type(_) | PolyError::ZeroDivision(_)) => continue,
+            Err(err) => return Err(err),
+        };
+        if solutions.is_empty() {
+            continue;
+        }
+        if solutions.contains(surd) {
+            // the self-consistent result is present
+            return Ok(Some(true));
+        }
+        if solutions.iter().all(|s| {
+            matches!(
+                s.head(),
+                Head::Rational {
+                    integer_class: true,
+                    ..
+                }
+            )
+        }) {
+            // perfect powers are removed at instantiation: a surd is no integer
+            return Ok(Some(false));
+        }
+        if solutions.iter().all(|s| is(s, Predicate::algebraic) == Some(false)) {
+            // a surd is algebraic
+            return Ok(Some(false));
+        }
+        if solutions.iter().any(|s| unique.contains(s)) {
+            // different surds are not equal
+            return Ok(Some(false));
+        }
+        return Err(crate::error::not_ported("equals of surds by nsimplify"));
+    }
+    Ok(None)
 }
 
 /// The terms of a sum mapped to their numerical coefficients, in the

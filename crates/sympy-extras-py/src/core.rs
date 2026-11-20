@@ -540,8 +540,14 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         }
         Head::Sum | Head::Product => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
-            let name: &str = if matches!(e.head(), Head::Sum) { "Sum" } else { "Product" };
-            py.import("sympy_extras.concrete.expr_with_limits")?.getattr(name)?.call1(PyTuple::new(py, items)?)?
+            let name: &str = if matches!(e.head(), Head::Sum) {
+                "Sum"
+            } else {
+                "Product"
+            };
+            py.import("sympy_extras.concrete.expr_with_limits")?
+                .getattr(name)?
+                .call1(PyTuple::new(py, items)?)?
         }
         Head::Limit => {
             let (expr, z, z0, dir) = sympy_extras_core::core::limits::parts(e);
@@ -2574,7 +2580,13 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             };
             sympy_extras_core::functions::elementary::piecewise::piecewise_fold(&a[0], evaluate).map_err(e)?
         }
-        "exp_polar" | "polar_lift" | "periodic_argument" | "principal_branch" | "unbranched_argument" | "unpolarify" | "polarify" => {
+        "exp_polar"
+        | "polar_lift"
+        | "periodic_argument"
+        | "principal_branch"
+        | "unbranched_argument"
+        | "unpolarify"
+        | "polarify" => {
             // the polar numbers; unpolarify(e, exponents_only), polarify(e, subs, lift) -> Tuple(e, Tuple(pairs back))
             use sympy_extras_core::functions::elementary::polar as pl;
             let flag = |b: &Basic| b.to_string() == "True";
@@ -2586,8 +2598,12 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "unbranched_argument" => pl::unbranched_argument(&a[0]).map_err(e)?,
                 "unpolarify" => pl::unpolarify(&a[0], a.len() > 1 && flag(&a[1])).map_err(e)?,
                 _ => {
-                    let (result, back) = pl::polarify(&a[0], a.len() < 2 || flag(&a[1]), a.len() > 2 && flag(&a[2])).map_err(e)?;
-                    let pairs: Vec<Basic> = back.into_iter().map(|(d, s)| Basic::new(Head::Tuple, vec![d, s])).collect();
+                    let (result, back) =
+                        pl::polarify(&a[0], a.len() < 2 || flag(&a[1]), a.len() > 2 && flag(&a[2])).map_err(e)?;
+                    let pairs: Vec<Basic> = back
+                        .into_iter()
+                        .map(|(d, s)| Basic::new(Head::Tuple, vec![d, s]))
+                        .collect();
                     Basic::new(Head::Tuple, vec![result, Basic::new(Head::Tuple, pairs)])
                 }
             }
@@ -5985,8 +6001,14 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
             match a[0].to_string().as_str() {
                 "integrate" => {
-                    let cutoff: Option<String> = if a[4].to_string() == "NONE" { None } else { Some(a[4].to_string()) };
-                    match mr::mellin_integrate(&a[1], &a[2], a[3].args(), cutoff.as_deref(), a[5].to_string() == "True").map_err(e)? {
+                    let cutoff: Option<String> = if a[4].to_string() == "NONE" {
+                        None
+                    } else {
+                        Some(a[4].to_string())
+                    };
+                    match mr::mellin_integrate(&a[1], &a[2], a[3].args(), cutoff.as_deref(), a[5].to_string() == "True")
+                        .map_err(e)?
+                    {
                         Some(v) => Basic::new(Head::Tuple, vec![v.value, v.condition]),
                         None => none(),
                     }
@@ -6010,14 +6032,21 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 bq: b[4].args().to_vec(),
                 z: b[5].clone(),
             };
-            let pairs = |b: &Basic| b.args().iter().map(|p| (p.args()[0].clone(), p.args()[1].clone())).collect::<Vec<_>>();
+            let pairs = |b: &Basic| {
+                b.args()
+                    .iter()
+                    .map(|p| (p.args()[0].clone(), p.args()[1].clone()))
+                    .collect::<Vec<_>>()
+            };
             match a[0].to_string().as_str() {
                 "expansion" => sl::slater_expansion(&a[1], a[2].args()).map_err(e)?,
                 "expand" => match sl::expand_meijerg(&g_of(&a[1..7]), a[7].args()).map_err(e)? {
                     Some(v) => tuple(vec![v.value, v.condition]),
                     None => none(),
                 },
-                "line" => sl::line_conditions(&g_of(&a[1..7]), &a[7], &a[8]).map_err(e)?.unwrap_or_else(none),
+                "line" => sl::line_conditions(&g_of(&a[1..7]), &a[7], &a[8])
+                    .map_err(e)?
+                    .unwrap_or_else(none),
                 _ => {
                     let one = Basic::int(1);
                     let quotient = sympy_extras_core::integrals::mellin::GammaQuotient {
@@ -6031,7 +6060,14 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         extra: a[5].clone(),
                     };
                     match sl::mellin_barnes(&quotient).map_err(e)? {
-                        Some(g) => tuple(vec![g.prefactor, tuple(g.an), tuple(g.ap), tuple(g.bm), tuple(g.bq), g.z]),
+                        Some(g) => tuple(vec![
+                            g.prefactor,
+                            tuple(g.an),
+                            tuple(g.ap),
+                            tuple(g.bm),
+                            tuple(g.bq),
+                            g.z,
+                        ]),
                         None => none(),
                     }
                 }
@@ -6040,8 +6076,32 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         "sum_" | "product_" => {
             // the function and the Tuple(i, a, b) limits
             use sympy_extras_core::concrete::expr_with_limits as ew;
-            if name == "sum_" { ew::sum_(&a[0], &a[1..]).map_err(e)? } else { ew::product_(&a[0], &a[1..]).map_err(e)? }
+            if name == "sum_" {
+                ew::sum_(&a[0], &a[1..]).map_err(e)?
+            } else {
+                ew::product_(&a[0], &a[1..]).map_err(e)?
+            }
         }
+        "summation" | "product" | "eval_sum" | "eval_product" | "deltasummation" | "deltaproduct" | "telescopic" => {
+            // (f, Tuple(i, a, b)) for summation | product | eval_* | delta*, (L, R, Tuple) for telescopic;
+            // None when an eval_* or telescopic gives up
+            use sympy_extras_core::concrete::{delta, products, summations};
+            let lim = |t: &Basic| (t.args()[0].clone(), t.args()[1].clone(), t.args()[2].clone());
+            let opt =
+                |o: Option<Basic>| o.unwrap_or_else(|| sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0);
+            match name {
+                "summation" => summations::summation(&a[0], &lim(&a[1])).map_err(e)?,
+                "product" => products::product(&a[0], &lim(&a[1])).map_err(e)?,
+                "eval_sum" => opt(summations::eval_sum(&a[0], &lim(&a[1])).map_err(e)?),
+                "eval_product" => opt(products::eval_product(&a[0], &lim(&a[1])).map_err(e)?),
+                "deltasummation" => delta::deltasummation(&a[0], &lim(&a[1]), false).map_err(e)?,
+                "deltaproduct" => delta::deltaproduct(&a[0], &lim(&a[1])).map_err(e)?,
+                _ => opt(summations::telescopic(&a[0], &a[1], &lim(&a[2])).map_err(e)?),
+            }
+        }
+        "expand_func" => sympy_extras_core::functions::expand_func::expand_func(&a[0], true).map_err(e)?,
+        "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
+        "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {
             // (f, allow_hyper, rewrite: default | nonrepsmall | nonrep | None, place | NONE)
             use sympy_extras_core::simplify::hyperexpand as hx;
@@ -6051,7 +6111,11 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 "nonrep" => hx::Rewrite::NonRep,
                 _ => hx::Rewrite::Keep,
             };
-            let place: Option<Basic> = if a[3].to_string() == "NONE" { None } else { Some(a[3].clone()) };
+            let place: Option<Basic> = if a[3].to_string() == "NONE" {
+                None
+            } else {
+                Some(a[3].clone())
+            };
             hx::hyperexpand(&a[0], a[1].to_string() == "True", rewrite, place.as_ref()).map_err(e)?
         }
         "guess" => {
@@ -6060,20 +6124,38 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             use sympy_extras_core::numbers::{Int, Rat};
             let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
             let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
-            let terms: Vec<Rat> = a[1].args().iter().map(|t| t.as_rational().cloned().ok_or_else(|| pyo3::exceptions::PyValueError::new_err("a rational term"))).collect::<PyResult<_>>()?;
-            let size = |b: &Basic| -> Option<usize> { b.as_rational().and_then(|v| usize::try_from(v.numerator()).ok()) };
+            let terms: Vec<Rat> = a[1]
+                .args()
+                .iter()
+                .map(|t| {
+                    t.as_rational()
+                        .cloned()
+                        .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("a rational term"))
+                })
+                .collect::<PyResult<_>>()?;
+            let size =
+                |b: &Basic| -> Option<usize> { b.as_rational().and_then(|v| usize::try_from(v.numerator()).ok()) };
             let (max_order, max_degree) = (size(&a[2]), size(&a[3]));
             let margin: usize = size(&a[4]).unwrap_or(gs::MARGIN);
-            let polynomial = |p: &Vec<Int>| tuple(p.iter().map(|c| Basic::from_rational(Rat::from(c.clone()))).collect());
+            let polynomial =
+                |p: &Vec<Int>| tuple(p.iter().map(|c| Basic::from_rational(Rat::from(c.clone()))).collect());
             let polynomials = |ps: &Vec<Vec<Int>>| tuple(ps.iter().map(polynomial).collect());
             match a[0].to_string().as_str() {
-                "recurrence" => gs::guess_recurrence(&terms, max_order, max_degree, margin).map_err(e)?.map(|g| polynomials(&g.coefficients)).unwrap_or_else(none),
+                "recurrence" => gs::guess_recurrence(&terms, max_order, max_degree, margin)
+                    .map_err(e)?
+                    .map(|g| polynomials(&g.coefficients))
+                    .unwrap_or_else(none),
                 "differential" => gs::guess_differential_equation(&terms, max_order, max_degree, margin)
                     .map_err(e)?
                     .map(|g| tuple(vec![polynomials(&g.coefficients), polynomial(&g.inhomogeneous)]))
                     .unwrap_or_else(none),
-                "algebraic" => gs::guess_algebraic_equation(&terms, max_order, max_degree, margin).map_err(e)?.map(|g| polynomials(&g.coefficients)).unwrap_or_else(none),
-                _ => gs::guess_closed_form(&terms, max_order, max_degree, margin).map_err(e)?.unwrap_or_else(none),
+                "algebraic" => gs::guess_algebraic_equation(&terms, max_order, max_degree, margin)
+                    .map_err(e)?
+                    .map(|g| polynomials(&g.coefficients))
+                    .unwrap_or_else(none),
+                _ => gs::guess_closed_form(&terms, max_order, max_degree, margin)
+                    .map_err(e)?
+                    .unwrap_or_else(none),
             }
         }
         "elliptic" => {
@@ -6097,8 +6179,16 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     None => none(),
                 },
                 _ => {
-                    let reduction = el::Reduction { q: a[1].clone(), m: a[2].clone(), s: a[3].clone(), lower: a[4].clone(), upper: a[5].clone() };
-                    el::legendre_reduction(&reduction, a[6].args()).map_err(e)?.unwrap_or_else(none)
+                    let reduction = el::Reduction {
+                        q: a[1].clone(),
+                        m: a[2].clone(),
+                        s: a[3].clone(),
+                        lower: a[4].clone(),
+                        upper: a[5].clone(),
+                    };
+                    el::legendre_reduction(&reduction, a[6].args())
+                        .map_err(e)?
+                        .unwrap_or_else(none)
                 }
             }
         }
@@ -6106,7 +6196,11 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             // ("antiderivative", f, x, hints, degree_offset, retries) | ("cases", f, x): the antiderivative or NONE
             use sympy_extras_core::integrals::heurisch as hr;
             let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
-            let int_of = |b: &Basic| b.as_rational().and_then(|v| i64::try_from(v.numerator()).ok()).unwrap_or(0);
+            let int_of = |b: &Basic| {
+                b.as_rational()
+                    .and_then(|v| i64::try_from(v.numerator()).ok())
+                    .unwrap_or(0)
+            };
             let found = if a[0].to_string() == "cases" {
                 hr::heurisch_cases(&a[1], &a[2]).map_err(e)?
             } else {

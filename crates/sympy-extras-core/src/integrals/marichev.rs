@@ -205,7 +205,7 @@ pub fn tidy(value: &Basic, assumptions: &[Basic], condition: &Basic) -> R {
             false,
             false,
             false,
-            false,
+            true,
         )
     })?;
     if let Some(factored) = factored {
@@ -655,7 +655,7 @@ fn combine_linear_exponentials(term: &Basic, x: &Basic) -> R {
     if linear.len() < 2 {
         return Ok(term.clone());
     }
-    let argument: Basic = crate::core::exprtools::factor_terms(&add_all(&linear)?, false, false, false, false)?;
+    let argument: Basic = crate::core::exprtools::factor_terms(&add_all(&linear)?, false, false, false, true)?;
     m2(
         &mul_all(&others)?,
         &crate::functions::elementary::exponential::exp(&argument)?,

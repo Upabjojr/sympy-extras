@@ -1187,6 +1187,12 @@ pub fn doit(e: &Basic) -> PolyResult<Basic> {
     if matches!(e.head(), Head::Limit) {
         return crate::core::limits::doit(e, true);
     }
+    if matches!(e.head(), Head::Sum) {
+        return crate::concrete::summations::sum_doit(e, true);
+    }
+    if matches!(e.head(), Head::Product) {
+        return crate::concrete::products::product_doit(e, true);
+    }
     let mut args: Vec<Basic> = Vec::new();
     for a in e.args() {
         args.push(doit(a)?);

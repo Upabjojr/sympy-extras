@@ -545,8 +545,57 @@ fn lerchphi_rule(node: &Basic) -> PolyResult<Option<Basic>> {
         }
         return Ok(Some(subs(&res, &t, z)?));
     }
-    if matches!(a.head(), Head::Rational { .. }) {
-        return Err(not_ported("expand_func of lerchphi at a rational a (exp_polar)"));
+    if let Some((ap, aq)) = to_rat(a) {
+        use crate::functions::elementary::polar::{exp_polar, unpolarify};
+        use crate::functions::special::zeta_functions::polylog;
+        let mut shift: Basic = Basic::zero();
+        let mut factor: Basic = one();
+        let mut a: Basic = a.clone();
+        if ap > aq {
+            // a > 1: floor(a), one less at an integer
+            let mut n: i64 = ap.div_euclid(aq);
+            if n * aq == ap {
+                n -= 1;
+            }
+            a = sub(&a, &int(n))?;
+            factor = pow(z, &int(-n))?;
+            let mut terms: Vec<Basic> = Vec::new();
+            for k in 0..n {
+                terms.push(neg(&div(&pow(z, &int(k - n))?, &pow(&a2(&a, &int(k))?, s)?)?)?);
+            }
+            shift = add(&terms)?;
+        } else if ap <= 0 {
+            let n: i64 = (-ap).div_euclid(aq) + 1;
+            a = a2(&a, &int(n))?;
+            factor = pow(z, &int(n))?;
+            let mut terms: Vec<Basic> = Vec::new();
+            for k in 0..n {
+                terms.push(div(
+                    &pow(z, &int(n - 1 - k))?,
+                    &pow(&sub(&sub(&a, &int(k))?, &one())?, s)?,
+                )?);
+            }
+            shift = add(&terms)?;
+        }
+        let (p, q) = to_rat(&a).expect("a rational");
+        let zet: Basic = exp_polar(&div(
+            &m2(&m2(&int(2), &Basic::pi())?, &Basic::imaginary_unit())?,
+            &int(q),
+        )?)?;
+        let root: Basic = pow(z, &div(&one(), &int(q))?)?;
+        let up_zet: Basic = unpolarify(&zet, false)?;
+        let mut terms: Vec<Basic> = Vec::new();
+        for k in 0..q {
+            let mut term: Basic = polylog(s, &m2(&pow(&zet, &int(k))?, &root)?)?;
+            if matches!(term.head(), Head::Function(Function::PolyLog)) {
+                if let Some(expanded) = polylog_rule(&term)? {
+                    term = expanded;
+                }
+            }
+            terms.push(div(&term, &pow(&m2(&pow(&up_zet, &int(k))?, &root)?, &int(p))?)?);
+        }
+        let scaled: Basic = m2(&m2(&factor, &pow(&int(q), &sub(s, &one())?)?)?, &add(&terms)?)?;
+        return Ok(Some(a2(&shift, &scaled)?));
     }
     let pi_i: Basic = m2(&Basic::pi(), &Basic::imaginary_unit())?;
     let i: Basic = Basic::imaginary_unit();

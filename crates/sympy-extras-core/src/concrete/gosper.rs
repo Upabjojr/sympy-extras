@@ -75,16 +75,16 @@ impl UPoly {
         UPoly::new(&coeffs)
     }
 
-    fn is_zero(&self) -> bool {
+    pub fn is_zero(&self) -> bool {
         self.c.is_empty()
     }
     pub fn degree(&self) -> i64 {
         self.c.len() as i64 - 1
     }
-    fn lc(&self) -> Basic {
+    pub fn lc(&self) -> Basic {
         self.c.last().cloned().unwrap_or_else(Basic::zero)
     }
-    fn nth(&self, k: i64) -> Basic {
+    pub fn nth(&self, k: i64) -> Basic {
         if k >= 0 && (k as usize) < self.c.len() {
             self.c[k as usize].clone()
         } else {
@@ -92,6 +92,18 @@ impl UPoly {
         }
     }
     /// The polynomial as an expression in `n`.
+    /// The derivative (`diff`).
+    pub fn diff(&self) -> PolyResult<UPoly> {
+        let terms: Vec<Basic> = self
+            .c
+            .iter()
+            .enumerate()
+            .skip(1)
+            .map(|(k, c)| crate::core::mul::mul(&[c.clone(), Basic::int(k as i64)]))
+            .collect::<PolyResult<_>>()?;
+        UPoly::new(&terms)
+    }
+
     pub fn as_expr(&self, n: &Basic) -> R {
         let terms: Vec<Basic> = self
             .c
@@ -130,7 +142,7 @@ impl UPoly {
         }
         self.scale(&div(&Basic::one(), &self.lc())?)
     }
-    fn divmod(&self, other: &UPoly) -> PolyResult<(UPoly, UPoly)> {
+    pub fn divmod(&self, other: &UPoly) -> PolyResult<(UPoly, UPoly)> {
         let mut rem: Vec<Basic> = self.c.clone();
         let mut q: Vec<Basic> = vec![Basic::zero(); (rem.len() as i64 - other.c.len() as i64 + 1).max(1) as usize];
         let lc: Basic = other.lc();
@@ -147,10 +159,10 @@ impl UPoly {
         }
         Ok((UPoly::new(&q)?, UPoly::new(&rem)?))
     }
-    fn quo(&self, other: &UPoly) -> PolyResult<UPoly> {
+    pub fn quo(&self, other: &UPoly) -> PolyResult<UPoly> {
         Ok(self.divmod(other)?.0)
     }
-    fn gcd(&self, other: &UPoly) -> PolyResult<UPoly> {
+    pub fn gcd(&self, other: &UPoly) -> PolyResult<UPoly> {
         let (mut a, mut b) = (self.clone(), other.clone());
         while !b.is_zero() {
             let r: UPoly = a.divmod(&b)?.1;
@@ -164,7 +176,7 @@ impl UPoly {
         }
     }
     /// `p(n + s)`.
-    fn shift(&self, s: &Basic) -> PolyResult<UPoly> {
+    pub fn shift(&self, s: &Basic) -> PolyResult<UPoly> {
         let mut out: Vec<Basic> = vec![Basic::zero(); self.c.len()];
         for (k, cv) in self.c.iter().enumerate() {
             for (j, slot) in out.iter_mut().enumerate().take(k + 1) {
