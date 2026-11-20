@@ -2150,16 +2150,415 @@ pub fn integrate_nonlinear_no_specials(
     Ok((ret, b))
 }
 
+// ---------------------------------------------------------------------
+// the half-angle tangents back to sines and cosines
+
+fn sincos_unsupported(e: &PolyError) -> bool {
+    unsupported_constant(e)
+        || matches!(e, PolyError::ZeroDivision(_))
+        || matches!(e, PolyError::Polys(crate::error::PolysErrorKind::PolynomialError, _))
+}
+
+/// A polynomial in `s` and `c` over the tower field, the monomials as
+/// `(deg s, deg c)` (SymPy's `PolyRing(TOWER, ['s', 'c'])`, lex).
+type Bivariate = BTreeMap<(usize, usize), RationalFunction>;
+
+fn bivariate(e: &Basic, s: &Basic, c: &Basic) -> PolyResult<Bivariate> {
+    let mut terms: Bivariate = BTreeMap::new();
+    let p: TowerPoly = TowerPoly::from_expr(e, s)?;
+    for (i, cs) in p.terms() {
+        let q: TowerPoly = TowerPoly::from_element_strict(&cs, c)?;
+        for (j, cc) in q.terms() {
+            terms.insert((i, j), cc);
+        }
+    }
+    Ok(terms)
+}
+
+fn bivariate_expr(f: &Bivariate, s: &Basic, c: &Basic) -> R {
+    let mut summands: Vec<Basic> = Vec::new();
+    for ((i, j), v) in f {
+        summands.push(mul(&[
+            v.as_expr()?,
+            pw(s, &Basic::int(*i as i64))?,
+            pw(c, &Basic::int(*j as i64))?,
+        ])?);
+    }
+    add(&summands)
+}
+
+/// The division of `p` by `d` in the lex order (`PolyElement.div` by one
+/// divisor): `(quotient, remainder)`.
+fn bivariate_div(p: &Bivariate, d: &Bivariate) -> PolyResult<(Bivariate, Bivariate)> {
+    let (&(ds, dc), dlc) = d
+        .iter()
+        .next_back()
+        .ok_or_else(|| PolyError::ZeroDivision("polynomial division".to_string()))?;
+    let mut p: Bivariate = p.clone();
+    let mut q: Bivariate = BTreeMap::new();
+    let mut r: Bivariate = BTreeMap::new();
+    while let Some((&(ps, pc), plc)) = p.iter().next_back() {
+        crate::timeout::check()?;
+        let plc: RationalFunction = plc.clone();
+        if ps >= ds && pc >= dc {
+            let k: (usize, usize) = (ps - ds, pc - dc);
+            let coeff: RationalFunction = plc.div(dlc)?;
+            let entry: RationalFunction = q.get(&k).cloned().unwrap_or_else(RationalFunction::zero).add(&coeff)?;
+            q.insert(k, entry);
+            for (&(a, b), v) in d {
+                let m: (usize, usize) = (a + k.0, b + k.1);
+                let value: RationalFunction = p
+                    .get(&m)
+                    .cloned()
+                    .unwrap_or_else(RationalFunction::zero)
+                    .sub(&v.mul(&coeff)?)?;
+                if value.is_zero() {
+                    p.remove(&m);
+                } else {
+                    p.insert(m, value);
+                }
+            }
+            p.remove(&(ps, pc));
+        } else {
+            r.insert((ps, pc), plc);
+            p.remove(&(ps, pc));
+        }
+    }
+    q.retain(|_, v| !v.is_zero());
+    Ok((q, r))
+}
+
+fn ops(e: &Basic) -> PolyResult<i64> {
+    crate::core::function::count_ops(e)
+}
+
+/// The first shortest sine/cosine form, unless the tangent form (the last
+/// candidate) is strictly shorter.
+fn pick<T: Clone>(cands: &[T], key: &dyn Fn(&T) -> PolyResult<i64>) -> PolyResult<T> {
+    let n: usize = cands.len() - 1;
+    let mut best: usize = 0;
+    let mut best_key: i64 = key(&cands[0])?;
+    for (i, c) in cands.iter().enumerate().take(n).skip(1) {
+        let k: i64 = key(c)?;
+        if k < best_key {
+            best = i;
+            best_key = k;
+        }
+    }
+    if key(&cands[n])? < best_key {
+        return Ok(cands[n].clone());
+    }
+    Ok(cands[best].clone())
+}
+
+struct HalfAngle<'a> {
+    big_t: Basic,
+    s: Basic,
+    c: Basic,
+    sincos: Vec<(Basic, Basic)>,
+    tang: &'a Basic,
+    x: Option<&'a Basic>,
+}
+
+impl HalfAngle<'_> {
+    fn dropconst(&self, e: &Basic) -> R {
+        match self.x {
+            None => Ok(e.clone()),
+            Some(x) => add(&crate::core::expr::terms_of(e)
+                .into_iter()
+                .filter(|i| i.has(x))
+                .collect::<Vec<_>>()),
+        }
+    }
+
+    fn poly_in(e: &Basic, gen: &Basic) -> PolyResult<TowerPoly> {
+        TowerPoly::from_expr(e, gen)
+    }
+
+    /// The candidate forms of the rational function `e` of `T`: the
+    /// sine/cosine forms, then the tangent form.
+    fn forms(&self, e: &Basic, top: bool) -> PolyResult<Vec<Basic>> {
+        let (big_t, s, c) = (&self.big_t, &self.s, &self.c);
+        let fe: RationalFunction = element(e)?;
+        let n0: TowerPoly = Self::poly_in(&fe.numerator()?.as_expr()?, big_t)?;
+        let d0: TowerPoly = Self::poly_in(&fe.denominator()?.as_expr()?, big_t)?;
+        let m: i64 = n0.degree(None).max(d0.degree(None));
+        let one_c: Basic = add(&[Basic::one(), c.clone()])?;
+        let cleared = |p: &TowerPoly| -> R {
+            let mut summands: Vec<Basic> = Vec::new();
+            for (k, coeff) in p.terms() {
+                summands.push(mul(&[
+                    coeff.as_expr()?,
+                    pw(s, &Basic::int(k as i64))?,
+                    pw(&one_c, &Basic::int(m - k as i64))?,
+                ])?);
+            }
+            add(&summands)
+        };
+        let (n, d) = (cleared(&n0)?, cleared(&d0)?);
+        let mut cands: Vec<Basic> = Vec::new();
+        for (lin, other) in [(s, c), (c, s)] {
+            let g: TowerPoly = Self::poly_in(
+                &add(&[pw(lin, &Basic::int(2))?, pw(other, &Basic::int(2))?, Basic::int(-1)])?,
+                lin,
+            )?;
+            let mut nl: TowerPoly = Self::poly_in(&n, lin)?.rem(&g)?;
+            let mut dl: TowerPoly = Self::poly_in(&d, lin)?.rem(&g)?;
+            cands.push(mul(&[nl.as_expr()?, pw(&dl.as_expr()?, &Basic::int(-1))?])?);
+            if dl.degree(Some(lin)) == 1 {
+                let (d1, d0_) = (dl.nth(1), dl.nth(0));
+                let conj: Basic = add(&[d0_.as_expr()?, mul(&[Basic::int(-1), d1.as_expr()?, lin.clone()])?])?;
+                nl = Self::poly_in(&mul(&[nl.as_expr()?, conj.clone()])?, lin)?.rem(&g)?;
+                dl = Self::poly_in(&mul(&[dl.as_expr()?, conj])?, lin)?.rem(&g)?;
+                cands.push(mul(&[nl.as_expr()?, pw(&dl.as_expr()?, &Basic::int(-1))?])?);
+            }
+        }
+        let sc: [Basic; 2] = [s.clone(), c.clone()];
+        let mut out: Vec<Basic> = Vec::new();
+        for i in cands {
+            let fi: RationalFunction = element(&i)?;
+            let (ni, di) = (fi.numerator()?, fi.denominator()?);
+            let mut i: Basic = if !di.has(&sc) {
+                crate::core::function::expand_default(&fi.as_expr()?)?
+            } else if top {
+                let pn: Bivariate = bivariate(&ni.as_expr()?, s, c)?;
+                let pd: Bivariate = bivariate(&di.as_expr()?, s, c)?;
+                let (q, r) = bivariate_div(&pn, &pd)?;
+                add(&[
+                    crate::core::function::expand_default(&bivariate_expr(&q, s, c)?)?,
+                    mul(&[bivariate_expr(&r, s, c)?, pw(&di.as_expr()?, &Basic::int(-1))?])?,
+                ])?
+            } else {
+                mul(&[ni.as_expr()?, pw(&di.as_expr()?, &Basic::int(-1))?])?
+            };
+            i = xrep(&i, &self.sincos)?;
+            if top {
+                i = self.dropconst(&i)?;
+            }
+            out.push(i);
+        }
+        out.push(xrep(e, &[(big_t.clone(), self.tang.clone())])?);
+        Ok(out)
+    }
+
+    fn rational(&self, e: &Basic, top: bool) -> R {
+        pick(&self.forms(e, top)?, &|i: &Basic| ops(i))
+    }
+
+    /// `coeff*log(p)` up to a constant: a constant factor and a constant
+    /// numerator are pulled out of `p`.
+    fn logterm(&self, coeff: &Basic, p: &Basic) -> R {
+        let strip = |q: &Basic| -> PolyResult<(Basic, Basic)> {
+            let (n0, d0) = crate::core::expr::as_numer_denom(q)?;
+            let mut n: Basic = crate::core::expr::primitive(&n0)?.1;
+            let mut d: Basic = crate::core::expr::primitive(&d0)?.1;
+            if let Some(x) = self.x {
+                n = crate::core::expr::as_independent(
+                    &crate::core::exprtools::factor_terms(&n, false, false, false, true)?,
+                    x,
+                    false,
+                )?
+                .1;
+                d = crate::core::expr::as_independent(
+                    &crate::core::exprtools::factor_terms(&d, false, false, false, true)?,
+                    x,
+                    false,
+                )?
+                .1;
+                if !n.has(x) {
+                    return Ok((Basic::int(-1), d));
+                }
+            }
+            Ok((Basic::one(), mul(&[n, pw(&d, &Basic::int(-1))?])?))
+        };
+        let stripped: Vec<(Basic, Basic)> = self.forms(p, false)?.iter().map(strip).collect::<PolyResult<_>>()?;
+        let (sgn, arg) = pick(&stripped, &|i: &(Basic, Basic)| ops(&i.1))?;
+        mul(&[sgn, coeff.clone(), log(&arg)?])
+    }
+
+    fn rw(&self, e: &Basic) -> R {
+        let big_t: &Basic = &self.big_t;
+        if !e.has(big_t) {
+            return Ok(e.clone());
+        }
+        let tl: [Basic; 1] = [big_t.clone()];
+        if is_rational_function(e, &tl) {
+            return self.rational(e, false);
+        }
+        let args: Vec<Basic> = e.args().to_vec();
+        if e.is_add() || e.is_mul() {
+            let mut rat: Vec<Basic> = Vec::new();
+            let mut rest: Vec<Basic> = Vec::new();
+            for i in args {
+                if i.has(big_t) && is_rational_function(&i, &tl) {
+                    rat.push(i);
+                } else {
+                    rest.push(self.rw(&i)?);
+                }
+            }
+            if !rat.is_empty() {
+                rest.push(self.rational(&if e.is_add() { add(&rat)? } else { mul(&rat)? }, false)?);
+            }
+            return if e.is_add() { add(&rest) } else { mul(&rest) };
+        }
+        if is_fn(e, &[Function::Atan])
+            && crate::core::expr::polynomial_like(&args[0], &tl, crate::core::expr::PolynomialKind::Polynomial)
+                == Some(true)
+        {
+            return xrep(e, &[(big_t.clone(), self.tang.clone())]);
+        }
+        let new: Vec<Basic> = args.iter().map(|i| self.rw(i)).collect::<PolyResult<_>>()?;
+        crate::core::function::rebuild_evaluated(e, new)
+    }
+
+    fn top_level(&self, e: &Basic, x: &Basic) -> R {
+        let big_t: &Basic = &self.big_t;
+        let tl: [Basic; 1] = [big_t.clone()];
+        let mut rats: Vec<Basic> = Vec::new();
+        let mut logs: Vec<(Basic, Basic)> = Vec::new();
+        let mut rest: Vec<Basic> = Vec::new();
+        for i in crate::core::expr::terms_of(e) {
+            let (coeff, l) = crate::core::expr::as_independent(&i, big_t, i.is_add())?;
+            if !i.has(big_t) {
+                rest.push(i);
+            } else if is_rational_function(&i, &tl) {
+                rats.push(i);
+            } else if is_fn(&l, &[Function::Log])
+                && crate::core::expr::polynomial_like(&l.args()[0], &tl, crate::core::expr::PolynomialKind::Polynomial)
+                    == Some(true)
+                && !coeff.has(x)
+            {
+                logs.push((coeff, l.args()[0].clone()));
+            } else {
+                rest.push(self.rw(&i)?);
+            }
+        }
+        if !rats.is_empty() {
+            rest.push(self.rational(&add(&rats)?, true)?);
+        }
+        let mut groups: Vec<(Basic, Vec<(Rat, Basic)>)> = Vec::new();
+        'logs: for (coeff, p) in logs {
+            for group in groups.iter_mut() {
+                if let Some(r) = ratio(&coeff, &group.0)? {
+                    group.1.push((r, p));
+                    continue 'logs;
+                }
+            }
+            if crate::core::printing::could_extract_minus_sign(&coeff) {
+                groups.push((mul(&[Basic::int(-1), coeff])?, vec![(-Rat::ONE, p)]));
+            } else {
+                groups.push((coeff, vec![(Rat::ONE, p)]));
+            }
+        }
+        for (r, items) in &groups {
+            let mut separate_terms: Vec<Basic> = Vec::new();
+            for (n, p) in items {
+                separate_terms.push(self.logterm(&mul(&[r.clone(), rat(n)])?, p)?);
+            }
+            let separate: Basic = add(&separate_terms)?;
+            let mut l: Int = Int::ONE;
+            for (n, _) in items {
+                l = integer_lcm(&l, &crate::numbers::denom(n));
+            }
+            let lr: Rat = Rat::from(l.clone());
+            let mut factors: Vec<Basic> = Vec::new();
+            for (n, p) in items {
+                factors.push(pw(p, &rat(&(n * &lr)))?);
+            }
+            let combined: Basic = self.logterm(&mul(&[r.clone(), rat(&(Rat::ONE / lr))])?, &mul(&factors)?)?;
+            if ops(&combined)? <= ops(&separate)? {
+                rest.push(combined);
+            } else {
+                rest.push(separate);
+            }
+        }
+        add(&rest)
+    }
+}
+
+/// The rational functions of `tang == tan(theta/2)` in `expr` as rational
+/// functions of `sin(theta)` and `cos(theta)` (`_half_angle_to_sincos`);
+/// with `x`, `expr` is an antiderivative and may change by a constant.
+fn half_angle_to_sincos(expr: &Basic, tang: &Basic, theta: &Basic, x: Option<&Basic>) -> R {
+    let big_t: Basic = unique_dummy("T");
+    let (s, c) = (unique_dummy("s"), unique_dummy("c"));
+    let sincos: Vec<(Basic, Basic)> = vec![
+        (
+            s.clone(),
+            crate::functions::apply_function(Function::Sin, std::slice::from_ref(theta))?,
+        ),
+        (
+            c.clone(),
+            crate::functions::apply_function(Function::Cos, std::slice::from_ref(theta))?,
+        ),
+    ];
+    let h: HalfAngle = HalfAngle {
+        big_t: big_t.clone(),
+        s,
+        c,
+        sincos,
+        tang,
+        x,
+    };
+    let e: Basic = xrep(expr, &[(tang.clone(), big_t.clone())])?;
+    let result = match x {
+        None => h.rw(&e),
+        Some(x) => h.top_level(&e, x),
+    };
+    match result {
+        Err(err) if sincos_unsupported(&err) => xrep(&e, &[(big_t, tang.clone())]),
+        other => other,
+    }
+}
+
 impl DifferentialExtension {
-    /// The rational functions of the half-angle tangents back to sines and
-    /// cosines (`restore_sincos`).
-    pub fn restore_sincos(&self, expr: &Basic, _drop_constants: bool) -> R {
+    /// The half-angle tangents that `rewrite_trig` introduced back through
+    /// the sines and cosines of the original angles (`restore_sincos`).
+    pub fn restore_sincos(&self, expr: &Basic, drop_constants: bool) -> R {
         if self.sincos_args.is_empty() {
             return Ok(expr.clone());
         }
-        Err(crate::error::not_ported(
-            "restore_sincos (the half-angle tangents back to sines and cosines)",
-        ))
+        let x: &Basic = &self.x;
+        let mut s: Vec<(Basic, Basic)> = Vec::new();
+        for (t, f) in self.T.iter().rev().zip(self.Tfuncs.iter().rev()) {
+            s.push((t.clone(), f.apply(x)?));
+        }
+        let mut usertans: Vec<Basic> = atoms(&self.origf, &|e| is_fn(e, &[Function::Tan]));
+        for i in atoms(&self.origf, &|e| is_fn(e, &[Function::Cot])) {
+            usertans.push(tan(&i.args()[0])?);
+        }
+        let mut done: Vec<(Basic, Basic)> = Vec::new();
+        let mut expr: Basic = expr.clone();
+        for i in self.indices(Extension::Tan) {
+            let Some(extarg) = &self.extargs[i - 1] else { continue };
+            let mut g: Basic = subs_seq(extarg, &s)?;
+            for (tang, theta) in &done {
+                g = half_angle_to_sincos(&g, tang, theta, None)?;
+            }
+            let tang: Basic = tan(&g)?;
+            let theta: Basic = mul(&[Basic::int(2), g])?;
+            let mut matches: bool = false;
+            for u in &self.sincos_args {
+                let diff: Basic =
+                    crate::core::function::expand_default(&add(&[u.clone(), mul(&[Basic::int(-1), theta.clone()])?])?)?;
+                if !diff.has(x) {
+                    matches = true;
+                    break;
+                }
+            }
+            if usertans.contains(&tang) || !matches {
+                continue;
+            }
+            expr = half_angle_to_sincos(&expr, &tang, &theta, if drop_constants { Some(x) } else { None })?;
+            done.push((tang, theta));
+        }
+        if drop_constants {
+            expr = add(&crate::core::expr::terms_of(&expr)
+                .into_iter()
+                .filter(|i| i.has(x))
+                .collect::<Vec<_>>())?;
+        }
+        Ok(expr)
     }
 }
 

@@ -380,8 +380,8 @@ def _half_angle_to_sincos(expr: Expr, tang: Expr, theta: Expr,
             return e
         if _is_rational_function(e, [T]):
             return rational(e)
-        args = [as_expr(i) for i in e.args]
         if isinstance(e, (Add, Mul)):
+            args = [as_expr(i) for i in e.args]
             rat: list[Expr] = []
             rest: list[Expr] = []
             for i in args:
@@ -392,9 +392,18 @@ def _half_angle_to_sincos(expr: Expr, tang: Expr, theta: Expr,
             if rat:
                 rest.append(rational(add(*rat) if isinstance(e, Add) else mul(*rat)))
             return add(*rest) if isinstance(e, Add) else mul(*rest)
-        if isinstance(e, Atan) and args[0].is_polynomial(T) is True:
+        if isinstance(e, Atan) and _arg(e).is_polynomial(T) is True:
             return _xrep(e, {T: tang})
-        return _expr(e._evaluated(tuple(rw(i) for i in args)))
+        return _expr(e._evaluated(tuple(rw_arg(i) for i in e.args)))
+
+    def rw_arg(b: Basic) -> Basic:
+        # A RootSum carries its summand as a Lambda, not an Expr: rewrite
+        # inside its body
+        if isinstance(b, Lambda):
+            return Lambda(b.variables, rw(b.expr))
+        if isinstance(b, Expr):
+            return rw(b)
+        return b
 
     def top_level(e: Expr) -> Expr:
         rat: list[Expr] = []

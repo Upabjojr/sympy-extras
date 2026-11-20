@@ -1,7 +1,6 @@
 """The Rust port of the Risch algorithm (``integrals/risch/risch.py``)
-against the Python one. The integrands of the Python tests of the Risch package are read with
-the core's parser; the trigonometric ones need ``restore_sincos``, not
-ported yet, and are skipped."""
+against the Python one, on the integrands of the Python tests of the Risch
+package (read with the core's parser)."""
 from __future__ import annotations
 
 import re
@@ -12,7 +11,7 @@ import pytest
 from sympy_extras.core import Symbol
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.parsing import parse
-from sympy_extras.functions import exp, log, sqrt
+from sympy_extras.functions import cos, exp, log, sqrt
 from sympy_extras.integrals.risch.risch import risch_integrate
 
 from ..conftest import load
@@ -20,6 +19,7 @@ from ..conftest import load
 rc = load("sympy_extras_rs.core")
 
 x = Symbol('x')
+w = Symbol('w')
 
 
 def outcome(f: Callable[[], object]) -> str:
@@ -37,6 +37,8 @@ INTEGRANDS: list[Expr] = [
     (2 * x + 3) / (x**2 + 3 * x + 2)**2, 1 / (x**2 - 2)**3, (x**4 - 3) / (x**2 + x + 1), x**2 / (x - 1)**4,
     1 / (x**6 - 1), (x - sqrt(2)) / (x**2 - 2), 1 / ((x - 1) * (x - 2) * (x - 3)),
     log(x), exp(x), x * exp(x**2), log(x) / x, exp(x) / (exp(x) + 1), 1 / (x * log(x)),
+    # a RootSum in the antiderivative: restore_sincos rewrites inside its Lambda
+    cos(x + w) / (cos(x) / 2 + 1)**2,
 ]
 
 RECORDED: list[str] = [
@@ -62,6 +64,7 @@ RECORDED: list[str] = [
     'tan(x)**2',
     'tan(x)**5',
     'x*tan(x) + tan(x)**2 + 1',
+    'sin(x)/x',
     '(x**2*tan(x) + tan(x)**5 + tan(x)**3 + 1)/(tan(x)**2 + 1)**3',
     '(tan(x)**2 + 2)/((x + tan(x))**2 + 1)',
     '(x*(tan(x)**2 + 1) + 1)*exp(tan(x))',
@@ -69,10 +72,35 @@ RECORDED: list[str] = [
     'x*atan(x)',
     '1/((x**2 + 1)*atan(x))',
     'atan(x)/(x**2 + 1)',
+    'sin(x)',
+    '1/(cos(x) + 2)',
     'atan(1/x) + atan(x)',
     'acot(x)',
     '(tan(atan(x)/3)**2 + 1)/(x**2 + 1)',
+    'sin(x)**2',
+    'sin(x)**3',
+    'cos(x)**3',
+    '1/(sin(x) + 1)',
+    'sin(x)/cos(x)**2',
+    'x*cos(x)',
+    'exp(x)*sin(x)',
+    'exp(sin(x))*cos(x)',
+    'log(sin(x))*cos(x)',
+    'exp(x)*sin(exp(x))',
+    'sin(sin(x))*cos(x)',
+    'exp(x) + exp(x/2 + 1) + sin(x)',
+    'sin(3*x)',
+    'log(x)*sin(x)',
+    'sin(x)/(cos(x) + 2)',
+    'cos(x)/(sin(x) + 2)',
+    'sec(x)',
+    'sin(x) + tan(x)',
+    'sin(x)*cos(x)/(sin(x)**2 + 1)',
+    '1/sin(x)',
+    '(cos(x) + 1)**(-2)',
     'cot(x)',
+    'sin(x)*tan(x/2)',
+    'sin(x/2) + sin(x)',
     'exp(x*y)',
     'exp(x)/((exp(x) + 1)**2 + 1)',
     'exp(x)/(exp(2*x) + 1)',
