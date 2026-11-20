@@ -23,7 +23,8 @@ PolyElement` over ``ZZ``.
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; the evaluation drops the variable into an explicit
-# smaller ring; failures raise HeuristicGCDFailed as in SymPy.
+# smaller ring; failures raise HeuristicGCDFailed as in SymPy; the values
+# and the balanced digits computed by halves (subquadratic, issue #25).
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -86,14 +87,35 @@ def _evaluate_first(f: PolyElement[int], x: int, rest: PolyRing[int]) -> PolyEle
 
 # PORTED FROM SYMPY: sympy/polys/densetools.py:dup_eval
 def _horner(f: PolyElement[int], x: int) -> int:
-    """The value of a univariate polynomial at ``x`` (Horner's scheme)."""
+    """The value of a univariate polynomial at ``x``, the halves of the
+    coefficients evaluated recursively and joined with ``x**(2**k)``: the
+    values here have hundreds of thousands of digits, where Horner's
+    scheme is quadratic (issue #25)."""
     dense = [0] * (max(m[0] for m in f.terms) + 1)
     for m, c in f.terms.items():
         dense[m[0]] = c
-    result = 0
-    for c in reversed(dense):
-        result = result * x + c
-    return result
+    return _evaluate_dense(dense, _square_powers(x, len(dense)))
+
+
+def _square_powers(x: int, n: int) -> list[int]:
+    """``[x, x**2, x**4, ...]`` up to the first ``x**(2**k)`` with ``2**k >= n``."""
+    powers = [x]
+    while 1 << (len(powers) - 1) < n:
+        powers.append(powers[-1] * powers[-1])
+    return powers
+
+
+def _evaluate_dense(dense: list[int], powers: list[int]) -> int:
+    """``sum(dense[i] * x**i)`` with ``powers[k] = x**(2**k)``."""
+    n = len(dense)
+    if n <= 16:
+        result = 0
+        for c in reversed(dense):
+            result = result * powers[0] + c
+        return result
+    k = (n - 1).bit_length() - 1
+    half = 1 << k
+    return _evaluate_dense(dense[:half], powers) + powers[k] * _evaluate_dense(dense[half:], powers)
 
 
 # PORTED FROM SYMPY: sympy/polys/heuristicgcd.py:_gcd_interpolate
@@ -102,13 +124,10 @@ def _interpolate(h: PolyElement[int], x: int, ring: PolyRing[int]) -> PolyElemen
     are the balanced digits of ``h`` (a polynomial in the other ones) in
     base ``x``, made positive."""
     terms: dict[Monomial, int] = {}
-    i = 0
-    while h.terms:
-        digit = h.ring.from_dict({m: _balanced(c, x) for m, c in h.terms.items()})
-        h = _quo_ground(h - digit, x)
-        for m, c in digit.terms.items():
-            terms[(i,) + m] = c
-        i += 1
+    for m, c in h.terms.items():
+        for i, g in enumerate(_balanced_digits(c, x)):
+            if g:
+                terms[(i,) + m] = g
     f = ring.from_dict(terms)
     return -f if f.terms and f.LC < 0 else f
 
@@ -118,15 +137,52 @@ def _balanced(c: int, x: int) -> int:
     return r - x if r > x // 2 else r
 
 
+def _balanced_digits(c: int, x: int) -> list[int]:
+    """The balanced digits of ``c`` in base ``x``, the lowest first, as
+    the loop ``g = _balanced(c, x); c = (c - g) // x`` gives them, by
+    splitting at ``x**(2**k)``: the loop is quadratic in the size of
+    ``c``, which has hundreds of thousands of digits for the
+    evaluations of polynomials with large coefficients (issue #25).
+
+    The digits lie in ``[low, low + x - 1]`` with ``low = x//2 - x + 1``,
+    so the numbers with ``n`` digits are the ``x**n`` consecutive integers
+    from ``low*(x**n - 1)/(x - 1)``: the lower half of the digits of ``c``
+    is the number of that interval congruent to ``c``."""
+    if c == 0:
+        return []
+    low = x // 2 - x + 1
+    powers = [x]
+    starts = [low]
+
+    def inside(v: int, k: int) -> bool:
+        return starts[k] <= v <= starts[k] + powers[k] - 1
+
+    while not inside(c, len(powers) - 1):
+        X = powers[-1]
+        starts.append(starts[-1] * X + starts[-1])
+        powers.append(X * X)
+
+    def split(v: int, k: int, digits: list[int]) -> None:
+        if k == 0:
+            digits.append(v)
+            return
+        X, L = powers[k - 1], starts[k - 1]
+        lower = (v - L) % X + L
+        split(lower, k - 1, digits)
+        split((v - lower) // X, k - 1, digits)
+
+    digits: list[int] = []
+    split(c, len(powers) - 1, digits)
+    while digits and digits[-1] == 0:
+        digits.pop()
+    return digits
+
+
 def _interpolate_integer(h: int, x: int, ring: PolyRing[int]) -> PolyElement[int]:
     terms: dict[Monomial, int] = {}
-    i = 0
-    while h:
-        g = _balanced(h, x)
-        h = (h - g) // x
+    for i, g in enumerate(_balanced_digits(h, x)):
         if g:
             terms[(i,)] = g
-        i += 1
     f = ring.from_dict(terms)
     return -f if f.terms and f.LC < 0 else f
 

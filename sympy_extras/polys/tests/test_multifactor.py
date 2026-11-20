@@ -134,3 +134,23 @@ def test_sqf_list_matches_sympy(seed: int) -> None:
         if listed != str(sympy.sqf_list(q, frac=True)):
             different.append((str(q), listed, str(sympy.sqf_list(q, frac=True))))
     assert not different, different[:2]
+
+
+def test_irreducible_with_huge_coefficients_is_fast() -> None:
+    # issue #25: Wang's algorithm looked for the prime above the Mignotte
+    # bound (hundreds of digits) before recognising an irreducible
+    # polynomial: minutes for coefficients of 800 digits
+    import time
+    from sympy_extras.polys.rings import PolyElement
+    R = PolyRing(ZZ, ['z', 'w'])
+    d = 800
+    p = PolyElement({(1, 3): 10**d + 1, (0, 2): 10**(d - 1) + 7, (1, 0): 3, (0, 0): 1}, R)
+    start = time.time()
+    content, factors = zz_factor(p)
+    assert time.time() - start < 5
+    assert content == 1 and factors == [(p, 1)]
+    # a reducible one still lifts modulo the prime (smaller coefficients)
+    f = PolyElement({(1, 1): 10**100 + 1, (0, 0): 3}, R)
+    g = PolyElement({(1, 0): 1, (0, 2): 1, (0, 0): 7}, R)
+    content, factors = zz_factor(f * g)
+    assert content == 1 and len(factors) == 2 and {f, g} == {h for h, _ in factors}

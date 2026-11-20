@@ -4,11 +4,12 @@ is checked by substitution into the equation (the residual simplified by
 the native ``simplify``), not against the printed form."""
 from __future__ import annotations
 
-from sympy_extras.core import Eq, Function, Integer, Symbol
+from sympy_extras.core import Eq, Function, Integer, Rational, Symbol
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import AppliedUndef, Derivative
-from sympy_extras.functions import cos, exp, log, sin, sqrt
+from sympy_extras.functions import besselj, cos, exp, hyper, log, sin, sqrt
+from sympy_extras.settings import configure
 from sympy_extras.simplify.simplify import simplify
 from sympy_extras.solvers.lie import JetSpace, Symmetry
 from sympy_extras.solvers.linear_ode import has_integral
@@ -113,6 +114,28 @@ def test_check_ode_solution() -> None:
     # (checkodesol gives False too)
     assert not check_ode_solution(y.diff(x) - 1/(y*exp(y)), Eq(x - (y - 1)*exp(y), C1), y)
     assert not check_ode_solution(y*y.diff(x) - x, Eq(x**2 + y**2, C1), y)
+
+
+def test_unproved_correct_solutions_are_not_rejected() -> None:
+    # issue #25: SymPy's checkodesol answers False for these correct
+    # solutions (residuals in hyper and besselj which simplify does not
+    # reduce to zero); the verdict is None, False only for a residual
+    # shown nonzero numerically
+    a, b = Symbol('a'), Symbol('b')
+    weber = (x**2)**Rational(3, 4)*exp(-x**2/2)*hyper((a/4 + Rational(3, 4),), (Rational(3, 2),), x**2)/sqrt(x)
+    assert check_ode_solution(y.diff(x, 2) - (x**2 + a)*y, Eq(y, weber), y) is None
+    kummer = x*y.diff(x, 2) - x*y.diff(x) - a*y
+    assert check_ode_solution(kummer, Eq(y, x*hyper((a + 1,), (2,), x)), y) is None
+    assert check_ode_solution(kummer, Eq(y, x*hyper((a + 2,), (2,), x)), y) is False
+    bessel = sqrt(x)*x**(-a/2)*besselj(a/2 - Rational(1, 2), sqrt(b)*x)
+    assert check_ode_solution(x*y.diff(x, 2) + a*y.diff(x) + b*x*y, Eq(y, bessel), y) is None
+    # without the numerical checks a wrong solution is not proved wrong
+    assert check_ode_solution(y.diff(x) - y, Eq(y, Symbol('C1')*exp(2*x)), y) is False
+    with configure(numerical_checks=False):
+        assert check_ode_solution(y.diff(x) - y, Eq(y, Symbol('C1')*exp(2*x)), y) is None
+    # correct implicit solutions which are not proved: unknown, not wrong
+    assert check_ode_solution((1 + cos(y))*y.diff(x) - 1, Eq(y + sin(y), x + Symbol('C1')), y) is None
+    assert check_ode_solution(y.diff(x) - 1/(y*exp(y)), Eq(x - (y - 1)*exp(y), Symbol('C1')), y) is None
 
 
 def test_every_branch_of_an_implicit_solution_is_checked() -> None:
