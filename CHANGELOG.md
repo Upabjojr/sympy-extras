@@ -3749,6 +3749,25 @@ remove public functions. Breaking changes are listed here when they happen.
     true under it (`z = 2 + I` is a counterexample); `Abs(z) < 1` no
     longer makes `z` real either.
 
+- Bugs of SymPy recorded on issue #25 which the native ports had too:
+  - the numerical facts of a number (`is_real`, `is_imaginary`, the
+    sign) of a function of a rounding error: `sqrt(z)` of a sum `z`
+    which is exactly zero (`-sqrt(3) - sqrt(2) + sqrt(2*sqrt(6) + 5)`)
+    was imaginary because the noise of `z` is negative at both
+    precisions, and `sqrt(z) - 2`, which is `-2`, neither positive,
+    negative, zero nor real. The values at 53 and 160 bits must now
+    agree, not only their signs; such facts are unknown.
+  - `ConditionSet.subs` (and the evaluating `xreplace`) substitutes in the
+    condition first: a value which makes it false gives the empty set,
+    also when it makes the base set invalid (`ConditionSet(x, a >= 0,
+    Interval(-sqrt(a), sqrt(a)))` at `a = -1` raised `ValueError`); a
+    bound symbol is not replaced by a value.
+  - `MeijerG` nodes are rebuilt by `xreplace` (`TypeError` before), which
+    `is_constant` of `x**2*meijerg(..., x**-2)*besselj(0, x)` needs.
+  - `gammasimp` and `combsimp` merge gamma functions whose arguments
+    differ by an integer with a fractional shift: `gamma(n + 3/2)/gamma(n +
+    1/2)` is `n + 1/2` (SymPy leaves it), when that leaves fewer gamma
+    functions.
 - Issue #75, three wrong or missing results of the native core:
   - the native `Sum.doit` of a Gosper-summable term lost the isolated
     values of the parameters at which the Gosper certificate has a pole:

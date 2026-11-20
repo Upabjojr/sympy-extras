@@ -87,3 +87,18 @@ def test_sets_of_complex_numbers_are_ordered() -> None:
     # an intersection did not catch (SymPy's does)
     found = Intersection(finite_set(-I, I, sqrt(2)), Reals)
     assert len(found.args) == 2
+
+
+def test_condition_set_substitution_condition_first() -> None:
+    # issue #25: a parameter value which makes the condition false gives
+    # the empty set, also when it makes the base set invalid (SymPy raises
+    # ValueError: Non-real intervals are not supported)
+    u = condition_set(x, a >= 0, interval(-sqrt(a), sqrt(a)))
+    assert u.subs(a, -1) == EmptySet
+    assert u._xreplace_evaluated({a: Integer(-1)}) == EmptySet
+    assert u.subs(a, 4) == interval(-2, 2)
+    b = Symbol('b')
+    c = condition_set(x, (b >= -2) & (b < 2), finite_set(2))
+    assert c.subs(b, 1) == finite_set(2) and c.subs(b, 3) == EmptySet
+    # the bound symbol is not replaced by a value
+    assert u.subs(x, 3) == u

@@ -504,6 +504,18 @@ class MeijerG(Expr):
         an, aother, bm, bother = (_parameters(t) for t in lists if isinstance(t, Tuple))
         return meijerg(an, aother, bm, bother, z)
 
+    def _rebuild(self, args: tuple[Basic, ...]) -> Basic:
+        # the arguments are two pairs of tuples and the argument, not the
+        # five arguments of the constructor (xreplace raised TypeError)
+        first, second, z = args
+        if not (isinstance(first, Tuple) and isinstance(second, Tuple) and isinstance(z, Expr)):
+            raise TypeError("meijerg takes two pairs of parameter tuples and an expression")
+        lists = [first.args[0], first.args[1], second.args[0], second.args[1]]
+        if not all(isinstance(t, Tuple) for t in lists):
+            raise TypeError("meijerg takes two pairs of parameter tuples")
+        an, aother, bm, bother = (_parameters(t) for t in lists if isinstance(t, Tuple))
+        return MeijerG(an, aother, bm, bother, z)
+
     def _sympystr(self, printer: NodePrinter) -> str:
         first = Tuple(Tuple(*self._an), Tuple(*self._aother))
         second = Tuple(Tuple(*self._bm), Tuple(*self._bother))

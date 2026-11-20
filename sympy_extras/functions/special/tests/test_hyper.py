@@ -102,3 +102,15 @@ def test_meijerg_convergence_quantities_match_sympy() -> None:
         assert to_sympy(g.get_period()) == expected.get_period()
         assert tuple(to_sympy(e) for e in g.ap) == tuple(expected.ap)
         assert tuple(to_sympy(e) for e in g.bq) == tuple(expected.bq)
+
+
+def test_meijerg_xreplace_and_is_constant() -> None:
+    # issue #25: x**2*meijerg(..., x**-2)*besselj(0, x) is not constant;
+    # rebuilding the node by xreplace raised TypeError
+    from sympy_extras.functions import besselj
+    h = Rational(1, 2)
+    g = meijerg((h, h), (1, Rational(3, 2), Rational(3, 2), 2), (h, 1, 1), (1,), x**-2)
+    assert isinstance(g.xreplace({x: Integer(2)}), MeijerG)
+    assert str(g.xreplace({x: Integer(2)})) == \
+        'meijerg(((1/2, 1/2), (1, 3/2, 3/2, 2)), ((1/2, 1, 1), (1,)), 2**(-2))'
+    assert (x**2*g*besselj(0, x)).is_constant(x) is False

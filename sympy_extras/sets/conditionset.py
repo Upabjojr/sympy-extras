@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from typing import Final, Optional
 
-from sympy_extras.core.basic import Basic, NodePrinter
+from sympy_extras.core.basic import Basic, NodePrinter, ReplacementRule
 from sympy_extras.core.containers import Tuple
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.logic import Boolean, BooleanLike, and_, false, to_boolean, true
@@ -87,6 +87,29 @@ class ConditionSet(Set):
         if not isinstance(condition, Boolean) or not isinstance(base_set, Set):
             raise TypeError('ConditionSet takes an unknown, a condition and a set')
         return condition_set(sym, condition, base_set)
+
+    def _subs(self, old: Basic, new: Basic) -> Basic:
+        # the condition first: a parameter value which makes it false
+        # gives the empty set, even when it makes the base set invalid
+        # (Interval(-sqrt(a), sqrt(a)) under a >= 0 at a = -1: SymPy
+        # rebuilds the base set first and raises, issue #25)
+        if self == old:
+            return new
+        if old in self.symbols and not isinstance(new, Symbol):
+            return self  # a bound symbol is not replaced by a value
+        condition = self._condition._subs(old, new)
+        if condition is false:
+            return EmptySet
+        return self._evaluated((self._sym._subs(old, new), condition, self._base_set._subs(old, new)))
+
+    def _xreplace_evaluated(self, rule: ReplacementRule) -> Basic:
+        if self in rule:
+            return rule[self]
+        condition = self._condition._xreplace_evaluated(rule)
+        if condition is false:
+            return EmptySet
+        return self._evaluated((self._sym._xreplace_evaluated(rule), condition,
+                                self._base_set._xreplace_evaluated(rule)))
 
     @property
     def sym(self) -> Basic:
