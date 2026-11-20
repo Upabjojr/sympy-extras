@@ -6305,6 +6305,17 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 },
             }
         }
+        "manualintegrate" => {
+            // (integrate, f, x) -> the antiderivative; (steps, f, x) -> the tree of the rule names
+            use sympy_extras_core::integrals::manualintegrate as mi;
+            match a[0].to_string().as_str() {
+                "integrate" => mi::manualintegrate(&a[1], &a[2]).map_err(e)?,
+                _ => {
+                    let steps = mi::integral_steps(&a[1], &a[2]).map_err(e)?;
+                    sympy_extras_core::core::symbol::Symbol::new(&mi::rule_names(&steps), &[]).0
+                }
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {
