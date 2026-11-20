@@ -1087,7 +1087,12 @@ pub fn eval_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &B
         Head::Function(_) => {
             let name: String = class_name(e);
             if OWN_NSERIES.contains(&name.as_str()) {
-                return Err(not_ported(&format!("the series of {}", name)));
+                if let Some(found) = crate::functions::series_rules::series_rule(e, x, n, logx, cdir)? {
+                    return Ok(found);
+                }
+                if !SERIES_RULES.contains(&name.as_str()) {
+                    return Err(not_ported(&format!("the series of {}", name)));
+                }
             }
             if GENERIC_NSERIES.contains(&name.as_str()) {
                 if let Some(found) = generic_function_nseries(e, x, n, logx)? {
@@ -1210,6 +1215,45 @@ fn taylor_series(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> R {
 
 /// `_generic_function_nseries`: `None` for an argument going to an
 /// infinity.
+/// The classes with a ported rule (`functions/series_rules.rs`): when it
+/// falls back, the generic expansion follows as in Python.
+const SERIES_RULES: &[&str] = &[
+    "LambertW",
+    "Abs",
+    "Sign",
+    "Arg",
+    "Gamma",
+    "LogGamma",
+    "Expint",
+    "EiNode",
+    "LiNode",
+    "OffsetLiNode",
+    "SingularityFunctionNode",
+    "EllipticK",
+    "EllipticE",
+    "Floor",
+    "Ceiling",
+    "Frac",
+    "PolyLog",
+    "BesselJ",
+    "BesselI",
+    "BesselY",
+    "BesselK",
+    "SiNode",
+    "CiNode",
+    "ShiNode",
+    "ChiNode",
+];
+
+pub(crate) fn generic_function_nseries_pub(
+    f: &Basic,
+    x: &Basic,
+    n: i64,
+    logx: Option<&Basic>,
+) -> PolyResult<Option<Basic>> {
+    generic_function_nseries(f, x, n, logx)
+}
+
 fn generic_function_nseries(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> PolyResult<Option<Basic>> {
     let args: Vec<Basic> = f.args().to_vec();
     let args0: Vec<Basic> = args
