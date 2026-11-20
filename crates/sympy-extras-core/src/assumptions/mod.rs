@@ -8,6 +8,7 @@ pub mod facts;
 pub mod handlers;
 pub mod intervals;
 pub mod ivarith;
+pub mod limits;
 pub mod quantifiers;
 pub mod refine;
 pub mod resolve;

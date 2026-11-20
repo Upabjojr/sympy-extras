@@ -1,5 +1,6 @@
 //! Integration, ported from `sympy_extras.integrals`.
 
+pub mod algebraic;
 pub mod conditions;
 pub mod curves;
 pub mod dirichlet;
@@ -12,6 +13,7 @@ pub mod marichev;
 pub mod mellin;
 pub mod quadrature;
 pub mod radicals;
+pub mod rewriting;
 pub mod risch;
 pub mod slater;
 pub mod tables;

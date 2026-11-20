@@ -425,7 +425,9 @@ impl StrPrinter {
             Head::Order => crate::core::order::print(e, &|a: &Basic| self.doprint(a)),
             Head::Limit => crate::core::limits::print(e, &|a: &Basic| self.doprint(a)),
             Head::Sum | Head::Product => crate::concrete::expr_with_limits::print(e, &|a: &Basic| self.doprint(a)),
-            Head::Integral => crate::integrals::integral::print(e, &|a: &Basic| self.doprint(a)),
+            Head::Integral | Head::NonElementaryIntegral => {
+                crate::integrals::integral::print(e, &|a: &Basic| self.doprint(a))
+            }
             Head::TranscendentalRoot => crate::solvers::isolation::print(e, &|a: &Basic| self.doprint(a)),
             Head::Subs => {
                 let (expr, variables, point) = (&e.args()[0], e.args()[1].args(), e.args()[2].args());

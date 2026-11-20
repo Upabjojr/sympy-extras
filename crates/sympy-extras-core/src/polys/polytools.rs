@@ -2760,6 +2760,120 @@ pub fn cancel_fraction(p: &Basic, q: &Basic) -> PolyResult<(Basic, Basic)> {
     Ok((expr_of(&big_p, &gens)?, expr_of(&big_q, &gens)?))
 }
 
+/// The cancellation over `EX` (`_cancel_complex_or_ex`; the core has no
+/// floats, so `RR` and `CC` do not arise).
+fn cancel_ex(p: &Basic, q: &Basic, factored: &Basic) -> PolyResult<Basic> {
+    use crate::polys::domains::domain::Domain;
+    use crate::polys::domains::expressiondomain::EX;
+    let (decomposed, gens) = decompose_without_gens_many(&[p.clone(), q.clone()], true)?;
+    let mut reps: Vec<BTreeMap<Monomial, Basic>> = Vec::new();
+    for terms in decomposed {
+        let mut rep: BTreeMap<Monomial, Basic> = BTreeMap::new();
+        for (m, cs) in terms {
+            let c: Basic = core_add(&cs)?;
+            if !EX.is_zero(&c) {
+                rep.insert(m, c);
+            }
+        }
+        reps.push(rep);
+    }
+    if gens.is_empty() {
+        return expand_default(factored);
+    }
+    let n: usize = gens.len();
+    let (f, g) = (&reps[0], &reps[1]);
+    let (mut big_p, mut big_q): (BTreeMap<Monomial, Basic>, BTreeMap<Monomial, Basic>) = if f.is_empty() {
+        let mut one: BTreeMap<Monomial, Basic> = BTreeMap::new();
+        one.insert(vec![0; n], Basic::one());
+        (BTreeMap::new(), one)
+    } else if f.len() == 1 || g.len() == 1 {
+        let (term, other) = if f.len() == 1 { (f, g) } else { (g, f) };
+        let (mt, ct) = term.iter().next().expect("one term");
+        let mut common: Monomial = mt.clone();
+        for m in other.keys() {
+            for (c, b) in common.iter_mut().zip(m) {
+                *c = (*c).min(*b);
+            }
+        }
+        let shift = |m: &Monomial| -> Monomial { m.iter().zip(&common).map(|(a, b)| a - b).collect() };
+        let reduced_term: BTreeMap<Monomial, Basic> = [(shift(mt), ct.clone())].into_iter().collect();
+        let reduced_other: BTreeMap<Monomial, Basic> = other.iter().map(|(m, c)| (shift(m), c.clone())).collect();
+        if f.len() == 1 {
+            (reduced_term, reduced_other)
+        } else {
+            (reduced_other, reduced_term)
+        }
+    } else if n == 1
+        && f.values()
+            .chain(g.values())
+            .all(|c| crate::core::expr::is(c, crate::core::assumptions::Predicate::finite) == Some(true))
+    {
+        // (with zoo, oo or nan the subresultants need not end: nothing is
+        // cancelled, as in several generators)
+        let dense = |h: &BTreeMap<Monomial, Basic>| -> Vec<Basic> {
+            let degree: usize = h.keys().map(|m| m[0] as usize).max().unwrap_or(0);
+            let mut out: Vec<Basic> = vec![Basic::zero(); degree + 1];
+            for (m, c) in h {
+                out[degree - m[0] as usize] = c.clone();
+            }
+            out
+        };
+        let (df, dg) = (dense(f), dense(g));
+        let last: Vec<Basic> = crate::polys::euclidtools::dup_subresultants(&df, &dg, &EX)
+            .pop()
+            .unwrap_or_default();
+        let quotients = crate::polys::densetools::dup_monic(&last, &EX).and_then(|h| {
+            Ok((
+                crate::polys::densearith::dup_quo(&df, &h, &EX)?,
+                crate::polys::densearith::dup_quo(&dg, &h, &EX)?,
+            ))
+        });
+        let (qf, qg) = match quotients {
+            Ok(v) => v,
+            // a zero EX does not detect (oo - oo): nothing is cancelled
+            Err(PolyError::Polys(..)) => return core_mul(&[p.clone(), core_pow(q, &Basic::negative_one())?]),
+            Err(e) => return Err(e),
+        };
+        let sparse = |d: &[Basic]| -> BTreeMap<Monomial, Basic> {
+            let k: usize = d.len().saturating_sub(1);
+            d.iter()
+                .enumerate()
+                .filter(|(_, c)| !EX.is_zero(c))
+                .map(|(i, c)| (vec![(k - i) as u32], c.clone()))
+                .collect()
+        };
+        (sparse(&qf), sparse(&qg))
+    } else if n > 1
+        && f.values()
+            .chain(g.values())
+            .all(|c| crate::core::expr::is(c, crate::core::assumptions::Predicate::finite) == Some(true))
+    {
+        return Err(crate::error::not_ported("cancel over EX in several generators"));
+    } else {
+        (f.clone(), g.clone())
+    };
+    if let Some((_, lead)) = big_q.iter().next_back() {
+        if EX.is_negative(lead) {
+            big_p = big_p.iter().map(|(m, c)| (m.clone(), EX.neg(c))).collect();
+            big_q = big_q.iter().map(|(m, c)| (m.clone(), EX.neg(c))).collect();
+        }
+    }
+    let expr_of = |h: &BTreeMap<Monomial, Basic>| -> PolyResult<Basic> {
+        let mut parts: Vec<Basic> = Vec::new();
+        for (m, c) in h.iter().rev() {
+            let mut factors: Vec<Basic> = vec![c.clone()];
+            for (g, k) in gens.iter().zip(m) {
+                if *k != 0 {
+                    factors.push(core_pow(g, &Basic::int(*k as i64))?);
+                }
+            }
+            parts.push(core_mul(&factors)?);
+        }
+        core_add(&parts)
+    };
+    core_mul(&[expr_of(&big_p)?, core_pow(&expr_of(&big_q)?, &Basic::negative_one())?])
+}
+
 /// A rational function in lowest terms `P/Q` (`cancel`), the generators
 /// every non-numeric factor, or `gens` with the other factors in the
 /// coefficients; the domains `ZZ_I`, `RR` and `EX` are `NotImplemented`.
@@ -2777,11 +2891,9 @@ pub fn cancel(f: &Basic, gens: &[Basic]) -> PolyResult<Basic> {
     let (joint, reps) = match joint_rings(&[p.clone(), q.clone()], true) {
         Ok(r) => r,
         Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => {
-            let (ggens, greps) = match joint_rings_gaussian(&[p, q], true) {
+            let (ggens, greps) = match joint_rings_gaussian(&[p.clone(), q.clone()], true) {
                 Ok(r) => r,
-                Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => {
-                    return Err(crate::error::not_ported("cancel over RR or EX"))
-                }
+                Err(PolyError::Polys(PolysErrorKind::CoercionFailed, _)) => return cancel_ex(&p, &q, &factored),
                 Err(e) => return Err(e),
             };
             if ggens.is_empty() {

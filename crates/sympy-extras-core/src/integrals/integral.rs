@@ -40,6 +40,13 @@ fn checked(args: &[Basic]) -> PolyResult<()> {
     }
 }
 
+/// `NonElementaryIntegral(function, variable)` (`integrals/risch/risch.py`).
+pub fn non_elementary(function: &Basic, variable: &Basic) -> R {
+    let args: Vec<Basic> = vec![function.clone(), variable.clone()];
+    checked(&args)?;
+    Ok(Basic::new(Head::NonElementaryIntegral, args))
+}
+
 /// The node rebuilt from new arguments (`_evaluated`: no evaluation).
 pub fn evaluated(args: &[Basic]) -> R {
     checked(args)?;
@@ -103,6 +110,9 @@ pub fn subs_partial(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Option<Ba
         None => {
             if old == v || nf == *f {
                 return Ok(Some(e.clone()));
+            }
+            if matches!(e.head(), Head::NonElementaryIntegral) {
+                return Ok(Some(non_elementary(&nf, v)?));
             }
             Ok(Some(integral(&nf, v, None)?))
         }
