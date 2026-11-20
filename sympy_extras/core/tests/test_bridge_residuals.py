@@ -149,19 +149,18 @@ def test_expint_series_through_a_polar_ei_is_not_sympys() -> None:
     # SymPy 1.14 expands Ei(exp_polar(I*pi)/w) without its branch term
     # I*pi: expint(2, 1/w).series(w) is -I*pi/w + O(w**3), and
     # limit(x*exp(x)*expint(2, x), x, oo) is -oo*I (it is 1); the native
-    # asymptotic series of Ei declines a polar argument
-    from sympy.testing.pytest import raises
-    from sympy_extras.core.coreerrors import PoleError
+    # asymptotic series of Ei keeps the branch term of a polar argument
     from sympy_extras.core.limits import limit
+    from sympy_extras.core.numbers import I
     w = s.Symbol('w', positive=True)
     assert str(s.expint(2, 1 / w).series(w, 0, 3)) == '-I*pi/w + O(w**3)'
     native, variable = expr_from_sympy(s.expint(2, 1 / w)), expr_from_sympy(w)
     assert isinstance(native, Expr) and isinstance(variable, Symbol)
-    raises(PoleError, lambda: native.nseries(variable, n=4))
+    assert not native.nseries(variable, n=4).has(I)
     x = s.Symbol('x', positive=True)
     e, v = expr_from_sympy(x * s.exp(x) * s.expint(2, x)), expr_from_sympy(x)
     assert isinstance(v, Symbol)
-    assert str(limit(e, v, expr_from_sympy(s.oo))) != '-oo*I'
+    assert limit(e, v, expr_from_sympy(s.oo)) == 1
 
 
 def test_equals_of_polar_differences_needs_no_bridge() -> None:

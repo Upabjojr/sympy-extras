@@ -3744,6 +3744,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `sympy_extras.assumptions.solve` over the reals drops a candidate which
+  is real only where its imaginary part vanishes when the condition fails
+  there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`
+  (real at `y = 0` only, where they are 0), which stayed undecided once
+  `Q.real(I*y)` was no longer `False` for a real `y`; the definite
+  integral of `x/(x**2 + y**2)` over `(p, q)` evaluates again.
+
 - Issue #71: `solvers.lie` (and the face `lie_sympy`) lost the dependent
   variable inside an unevaluated derivative of an expression,
   `u_t - Derivative(u**2*u_x, x)`: `JetSpace.to_jet` replaced `u` by a

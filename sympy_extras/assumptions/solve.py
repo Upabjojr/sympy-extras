@@ -49,7 +49,7 @@ from sympy_extras.core.expr import Expr, as_expr
 from sympy_extras.core.logic import (And, Boolean, BooleanFalse, BooleanTrue, Not, Or, and_, false, to_boolean,
     true)
 from sympy_extras.core.mod import Mod
-from sympy_extras.core.numbers import Integer, NegativeInfinity, Rational
+from sympy_extras.core.numbers import I, Integer, NegativeInfinity, Rational
 from sympy_extras.core.power import sqrt
 from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq
 from sympy_extras.core.symbol import Dummy, Symbol
@@ -427,6 +427,8 @@ def _filter_finite(elements: Sequence[Expr], x: Symbol, condition: Boolean, fact
             if _evaluate(at_point, facts) is False or _numeric_root(at_point) is False:
                 continue
         value = _holds_at(condition, {x: e}, facts)
+        if value is None and real and _not_real_where_condition_fails(e, x, condition, facts):
+            continue
         if value is True:
             # the same number in two radical forms is one solution, and a
             # FiniteSet only merges structurally equal ones
@@ -439,6 +441,36 @@ def _filter_finite(elements: Sequence[Expr], x: Symbol, condition: Boolean, fact
     if undecided:
         result = union(result, condition_set(x, condition, finite_set(*undecided)))
     return result
+
+
+def _real_and_imaginary_parts(e: Expr, facts: Facts) -> Optional[tuple[Expr, Expr]]:
+    """The real and imaginary parts of ``e`` when its symbols are all real
+    under the facts, ``None`` otherwise."""
+    symbols = [s for s in e.free_symbols if isinstance(s, Symbol)]
+    if len(symbols) != len(e.free_symbols) or any(s not in facts.real for s in symbols):
+        return None
+    forward: dict[Basic, Basic] = {}
+    back: dict[Basic, Basic] = {}
+    for s in symbols:
+        d = Dummy(s.name, real=True)
+        forward[s] = d
+        back[d] = s
+    re_part, im_part = as_expr(e.xreplace(forward)).as_real_imag()
+    return as_expr(re_part.xreplace(back)), as_expr(im_part.xreplace(back))
+
+
+def _not_real_where_condition_fails(e: Expr, x: Symbol, condition: Boolean, facts: Facts) -> bool:
+    """Whether ``e`` is a real solution nowhere: it is real only where its
+    imaginary part vanishes, and there the condition fails. (The points
+    -I*y and I*y of x**2 + y**2 for a real y are real at y = 0 only, where
+    they are 0, and 0 is not in (p, q) for p > 0; SymPy's Q.real(I*y) is
+    False for a real y, which forgot y = 0, sympy-extras#25.)"""
+    if not e.has(I):
+        return False
+    parts = _real_and_imaginary_parts(e, facts)
+    if parts is None or parts[1] == 0:
+        return False
+    return _holds_at(and_(condition, Eq(parts[1], Integer(0))), {x: parts[0]}, facts) is False
 
 
 def _numeric_root(instance: Boolean) -> Truth:

@@ -126,3 +126,13 @@ def test_solutions_contradicting_the_flags_of_the_unknown_are_dropped() -> None:
     assert solve([x + y - 1, x - y], [x, y]) == point_set(Tuple(Rational(1, 2), Rational(1, 2)))
     m = Symbol('m', integer=True)
     assert solve([x + m - 1, x - m], [x, m]) == EmptySet
+
+
+def test_a_point_real_only_where_the_condition_fails() -> None:
+    # I*y for a real y is real at y = 0 only, where it is 0: outside (p, q)
+    # for p > 0, a case of the parameters for p < 0 < q (Q.real(I*y) is no
+    # longer False for a real y, sympy-extras#25, and the zeros of
+    # x**2 + y**2 on (p, q) were left undecided)
+    x, y, p, q = Symbol('x'), Symbol('y'), Symbol('p'), Symbol('q')
+    assert solve(x**2 + y**2, x, [x > p, x < q, p > 0, q > 0], domain=Reals) == EmptySet
+    assert isinstance(solve(x**2 + y**2, x, [x > p, x < q, p < 0, q > 0], domain=Reals), ConditionSet)
