@@ -233,7 +233,15 @@ class JetSpace:
 
     def to_jet(self, expr: Basic) -> Expr:
         """Rewrite the derivatives of the dependent variables as jet
-        coordinates."""
+        coordinates.
+
+        An unevaluated derivative of an expression which is not one of the
+        dependent variables, ``Derivative(u**2*u_x, x)``, is evaluated
+        first: replacing ``u`` by a symbol inside it would lose its
+        dependence on ``x``."""
+        if not isinstance(expr, Expr):
+            raise TypeError("an expression is expected, got %s" % (expr,))
+        expr = self._evaluated_derivatives(expr)
         replacements: dict[Basic, Basic] = {}
         for d in expr.atoms(Derivative):
             if not isinstance(d, Derivative):
@@ -250,9 +258,17 @@ class JetSpace:
                 replacements[d] = self.jet(a, tuple(counts))
         for a, f in enumerate(self.functions):
             replacements[f] = self.u[a]
-        if not isinstance(expr, Expr):
-            raise TypeError("an expression is expected, got %s" % (expr,))
         return _replaced(expr, replacements)
+
+    def _evaluated_derivatives(self, expr: Expr) -> Expr:
+        """``expr`` with the derivatives of expressions other than the
+        dependent variables evaluated (the outermost ones; evaluating them
+        evaluates the nested ones)."""
+        rule: dict[Basic, Basic] = {}
+        for d in expr.atoms(Derivative):
+            if isinstance(d, Derivative) and d.expr not in self.functions:
+                rule[d] = d.doit()
+        return _replaced(expr, rule) if rule else expr
 
     def from_jet(self, expr: Expr) -> Expr:
         """Rewrite the jet coordinates as derivatives of the functions."""
@@ -479,11 +495,27 @@ def _solve_for(eq: Expr, s: Symbol) -> list[Expr]:
     return attempt(lambda: solve_equation(eq, s), settings.timeout, native=True) or []
 
 
-def _leading_derivatives(jets: JetSpace, eqs: list[Expr]) -> dict[Basic, Basic]:
+def _degree_in(eq: Expr, s: Symbol) -> int:
+    """The degree of ``eq`` as a polynomial in ``s``, ``-1`` when it is
+    not a polynomial in ``s``."""
+    terms = _polynomial_terms(eq, [s])
+    if terms is None:
+        return -1
+    return max((m[0] for m in terms), default=0)
+
+
+def _leading_derivatives(jets: JetSpace, eqs: list[Expr],
+                         polynomial: Optional[dict[int, Symbol]] = None) -> dict[Basic, Basic]:
     """Solve every equation for its highest derivative, preferring one it
-    is linear in."""
+    is linear in.
+
+    With ``polynomial``, an equation which is a polynomial of degree at
+    least two in a highest derivative is not solved: the derivative is
+    recorded in ``polynomial`` under the index of the equation, and the
+    invariance condition is reduced modulo the equation instead (keeping
+    a single root would describe one branch of the equation only)."""
     solved: dict[Basic, Basic] = {}
-    for eq in eqs:
+    for index, eq in enumerate(eqs):
         candidates = sorted(jets.jets_in(eq), key=lambda aJ: (sum(aJ[1]), aJ[1], aJ[0]), reverse=True)
         top = sum(candidates[0][1]) if candidates else 0
         found = False
@@ -498,6 +530,17 @@ def _leading_derivatives(jets: JetSpace, eqs: list[Expr]) -> dict[Basic, Basic]:
                 solved[s] = expand_power_exp(-(eq - coefficient*s)/coefficient)
                 found = True
                 break
+        if not found and polynomial is not None:
+            for a, J in candidates:
+                if sum(J) < top:
+                    break
+                s = jets.jet(a, J)
+                if s in solved or s in polynomial.values():
+                    continue
+                if _degree_in(eq, s) >= 2:
+                    polynomial[index] = s
+                    found = True
+                    break
         if not found:
             for a, J in candidates:
                 s = jets.jet(a, J)
@@ -540,9 +583,12 @@ def infinitesimal_condition(equations: Union[Equation, Sequence[Equation]],
                             functions: Union[AppliedUndef, Sequence[AppliedUndef]],
                             symmetry: Symmetry) -> list[Expr]:
     """`\\mathrm{pr} X(\\Delta)` restricted to the solutions of the
-    equations: the leading derivatives are eliminated and the numerators
-    are returned, expressions in the jet coordinates which vanish
-    identically exactly when ``symmetry`` is a symmetry.
+    equations: the leading derivatives are eliminated (an equation which
+    is a polynomial of degree at least two in its leading derivative is
+    not solved for it: the conditions are pseudo-remainders modulo it, so
+    that all its branches count) and the numerators are returned,
+    expressions in the jet coordinates which vanish identically exactly
+    when ``symmetry`` is a symmetry.
 
     Examples
     ========
@@ -559,21 +605,68 @@ def infinitesimal_condition(equations: Union[Equation, Sequence[Equation]],
     return _condition(jets, eqs, symmetry)
 
 
+def _eliminated(jets: JetSpace, e: Expr, leading: dict[Basic, Basic]) -> Expr:
+    """The numerator of ``e`` with the solved leading derivatives
+    substituted."""
+    for _ in range(len(leading)):
+        new = _replaced(e, leading)
+        if new == e:
+            break
+        e = new
+    e = expand_power_exp(e)
+    if e.is_rational_function(*jets.x, *jets.u):
+        return numer(ratsimp(e))
+    return numer(e.together())
+
+
+def _pseudo_remainder(g: Expr, f: dict[int, Expr], s: Symbol) -> Optional[Expr]:
+    """The pseudo-remainder of ``g`` by the polynomial in ``s`` whose
+    coefficients are ``f`` (degree to coefficient), ``None`` when ``g`` is
+    not a polynomial in ``s``."""
+    terms = _polynomial_terms(g, [s])
+    if terms is None:
+        return None
+    remainder: dict[int, Expr] = {m[0]: c for m, c in terms.items()}
+    d = max(f)
+    lc = f[d]
+    while remainder and max(remainder) >= d:
+        n = max(remainder)
+        c = remainder.pop(n)
+        new = {k: expand(lc*v) for k, v in remainder.items()}
+        for k, fk in f.items():
+            if k < d:
+                new[k + n - d] = expand(new.get(k + n - d, Integer(0)) - c*fk)
+        remainder = {k: v for k, v in new.items() if v != 0}
+    return add(*[c*pow(s, Integer(k)) for k, c in remainder.items()])
+
+
 def _condition(jets: JetSpace, eqs: list[Expr], symmetry: Symmetry) -> list[Expr]:
-    leading = _leading_derivatives(jets, eqs)
+    """The invariance conditions: ``pr X`` applied to every equation, on
+    its solutions. The leading derivatives an equation is linear in are
+    eliminated by substitution; an equation which is a polynomial of
+    degree at least two in its leading derivative (``y*y'**2 - (y - x)*y'
+    - x``, the union of two families) is not solved for it, the
+    conditions are reduced modulo it, so that ``pr X(F)`` vanishes on all
+    the branches of ``F = 0`` (it is divisible by ``F``), not on one
+    root only."""
+    polynomial: dict[int, Symbol] = {}
+    leading = _leading_derivatives(jets, eqs, polynomial)
+    moduli: list[tuple[Symbol, dict[int, Expr]]] = []
+    for index, s in polynomial.items():
+        terms = _polynomial_terms(_eliminated(jets, eqs[index], leading), [s])
+        if terms is None:
+            continue
+        coefficients = {m[0]: c for m, c in terms.items()}
+        if coefficients and max(coefficients) >= 1:
+            moduli.append((s, coefficients))
     result: list[Expr] = []
     for eq in eqs:
-        condition = symmetry.apply(eq)
-        for _ in range(len(leading)):
-            new = _replaced(condition, leading)
-            if new == condition:
-                break
-            condition = new
-        condition = expand_power_exp(condition)
-        if condition.is_rational_function(*jets.x, *jets.u):
-            result.append(numer(ratsimp(condition)))
-        else:
-            result.append(numer(condition.together()))
+        condition = _eliminated(jets, symmetry.apply(eq), leading)
+        for s, f in moduli:
+            remainder = _pseudo_remainder(condition, f, s)
+            if remainder is not None:
+                condition = remainder
+        result.append(condition)
     return result
 
 

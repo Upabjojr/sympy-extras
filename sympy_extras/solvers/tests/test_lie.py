@@ -165,3 +165,17 @@ def test_the_size_of_the_symmetry_algebra_by_a_janet_basis() -> None:
     # the polynomial ansatz of degree two finds all the symmetries exactly
     # when their number is the dimension
     assert len(symmetries(u.diff(t) + u*u.diff(x) - u.diff(x, 2), u)) == 5
+
+
+def test_issues_71_72() -> None:
+    from sympy import Derivative
+    # 71: an unevaluated Derivative of a product
+    div = u.diff(t) - Derivative(u**2*u.diff(x), x)
+    assert len(symmetries(div, u, 2)) == 4
+    assert not check_symmetry([div], [u], Symmetry(JetSpace([u]), [0, 0], [1]))
+    # 72: all the branches of an equation quadratic in y'
+    y = Function('y')(x)
+    jets = JetSpace([y])
+    eq = y*y.diff(x)**2 - (y - x)*y.diff(x) - x
+    assert [(X.xi, X.eta) for X in symmetries(eq, y, 2)] == [((x,), (jets.u[0],))]
+    assert not check_symmetry([eq], [y], Symmetry(jets, [0], [1]))
