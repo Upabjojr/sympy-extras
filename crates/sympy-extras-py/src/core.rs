@@ -6258,6 +6258,23 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     .unwrap_or_else(none),
             }
         }
+        "rewriting" => {
+            // (forms, f, x, Tuple(assumptions)) -> Tuple; (subs, f, x) -> Tuple of
+            // Tuple(integrand, variable, back, forward, Tuple(facts)); (implied, f, x, Tuple(assumptions))
+            use sympy_extras_core::integrals::rewriting as rw;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            match a[0].to_string().as_str() {
+                "forms" => tuple(rw::rewritten_forms(&a[1], &a[2], a[3].args()).map_err(e)?),
+                "implied" => tuple(rw::implied_assumptions(&a[1], &a[2], a[3].args()).map_err(e)?),
+                _ => tuple(
+                    rw::power_substitutions(&a[1], &a[2])
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|s| tuple(vec![s.integrand, s.variable, s.back, s.forward, tuple(s.facts)]))
+                        .collect(),
+                ),
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {
