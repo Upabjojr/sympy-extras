@@ -300,7 +300,6 @@ fn cancel_expr(e: &Basic) -> R {
     }
 }
 
-
 impl DifferentialExtension {
     /// The differential extension of `f` in `x` (`handle_first` `log` or
     /// `exp`).
@@ -2017,7 +2016,7 @@ pub fn integrate_hypertangent_reduced(
     let tf: RationalFunction = RationalFunction::generator(&de.t);
     loop {
         crate::timeout::check()?;
-        let m: i64 = super::rde::order_at(&pd, &h2, &de.t)?.unwrap_or(i64::MAX);
+        let m: i64 = super::rde::order_at(&pd, &h2, &de.t)?;
         if pd.degree(Some(&de.t)) != 2 * m {
             return Err(PolyError::Value(format!(
                 "{}/{} is not reduced (the denominator must be a power of t**2 + 1).",
