@@ -417,6 +417,13 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The native `limit` at a finite point shifts the variable into one
+  of the sign of the direction when the variable has a sign assumption:
+  `u + 1` with `u` positive went to `1` from the right whatever the
+  direction, so `limit(sqrt(u - 1)/sqrt(1 - u), u, 1, '-')` was `-I` and a
+  real expression in `atanh(u)` and `log(Abs(u - 1))` had the limit
+  `log(2)/2 - I*pi` from the left (SymPy 1.14 too, issue #25); now `I`
+  and `log(2)/2`.
 - The generator check of the native `Poly` counts only the free
   occurrences of a symbol generator: a `CRootOf` whose polynomial is
   written in that symbol is a coefficient, as the same root in another
