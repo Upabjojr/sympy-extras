@@ -178,11 +178,11 @@ def reduce_order(ode: Equation, y: AppliedUndef, symmetry: Symmetry,
 
 
 def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
-                       timeout: Optional[float] = DEFAULT_TIMEOUT) -> bool:
+                       timeout: Optional[float] = DEFAULT_TIMEOUT) -> Optional[bool]:
     """Whether ``solution`` solves the ordinary differential equation, as
-    SymPy's ``checkodesol`` decides it
-    (:func:`sympy_extras.solvers.ode.check_ode_solution` on SymPy
-    objects).
+    SymPy's ``checkodesol`` proves it, ``None`` when it is neither proved
+    nor shown wrong (:func:`sympy_extras.solvers.ode.check_ode_solution`
+    on SymPy objects).
 
     Examples
     ========

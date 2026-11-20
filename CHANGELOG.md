@@ -417,6 +417,20 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.solvers.ode.check_ode_solution` (and its SymPy face)
+  answers `True`, `False` or `None` (issue #25): `None` when the residual
+  is neither simplified to zero nor shown nonzero, where SymPy's
+  `checkodesol` answers `False` for correct solutions in `hyper` or
+  Bessel functions; `False` only when the residual of an explicit
+  solution has a reliable nonzero value at a sample point (with the
+  numerical checks on). Callers that test the truth value see no change.
+- Wang's factorisation over `ZZ` (`polys.multifactor.zz_wang`) computes
+  the prime above the Mignotte bound only when there are factors to lift:
+  an irreducible bivariate polynomial with coefficients of 800 digits is
+  recognised in milliseconds (minutes before). The native heuristic gcd
+  evaluates and interpolates by halves (`x**(2**k)`) instead of Horner's
+  scheme and digit by digit, which were quadratic in the size of the
+  numbers (issue #25, `sqf_part` of polynomials with large coefficients).
 - `ite` evaluates as SymPy's `ITE` constructor: equal branches give the
   branch, `true`/`false` branches the condition or its negation, and an
   equation between a symbol used as a truth value and something else is

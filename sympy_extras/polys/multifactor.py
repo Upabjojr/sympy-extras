@@ -459,8 +459,6 @@ def zz_wang(f: Poly, mod: Optional[int] = None, seed: int = 0) -> list[Poly]:
     inner = PolyRing(ZZ, ring.names[1:])
     ct, T_inner = zz_factor(_drop_first(_lc_first(f), inner))
     T = [_add_first(t, ring) for t, _ in T_inner]
-    b = _mignotte_bound(f)
-    p = nextprime(b)
     if mod is None:
         mod = 2 if u == 1 else 1
     history: set[tuple[int, ...]] = set()
@@ -512,6 +510,10 @@ def zz_wang(f: Poly, mod: Optional[int] = None, seed: int = 0) -> list[Poly]:
     _, cs, E, H, A = configs[s_arg]
     try:
         g, HH, LC = _lead_coeffs(f, T, cs, E, H, A)
+        # the prime above the Mignotte bound only when there is something to
+        # lift: nextprime of a bound of hundreds of digits takes seconds, and
+        # an irreducible polynomial is recognised before (issue #25)
+        p = nextprime(_mignotte_bound(f))
         factors = _hensel_lifting(g, HH, LC, A, p)
     except ExtraneousFactors:
         return zz_wang(f, mod + 1, seed + 1)

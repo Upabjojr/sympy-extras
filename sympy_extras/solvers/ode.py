@@ -52,7 +52,8 @@ Examples
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: checkodesol for one equation and one solution on the typed core
-# (check_ode_solution, a boolean), sub_func_doit, strict typing.
+# (check_ode_solution, True, False or None: False only for a residual
+# shown nonzero numerically, issue #25), sub_func_doit, strict typing.
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -91,6 +92,8 @@ _ONE: Final[Expr] = Integer(1)
 
 #: what the polynomial routines raise on coefficients they cannot take
 _FAILURES = (BasePolynomialError, NotImplementedError, ValueError, TypeError, ZeroDivisionError)
+#: the failures of a numerical check of a residual
+_CHECK_FAILURES = _FAILURES + (ArithmeticError, RecursionError)
 
 
 def _limit(timeout: Optional[float]) -> Optional[float]:
@@ -470,16 +473,21 @@ def _linear_solution(e: Expr, target: Expr) -> Optional[list[Expr]]:
 
 # PORTED FROM SYMPY: sympy/solvers/ode/subscheck.py:checkodesol
 def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
-                       timeout: Optional[float] = DEFAULT_TIMEOUT, solve_for_func: bool = True) -> bool:
+                       timeout: Optional[float] = DEFAULT_TIMEOUT, solve_for_func: bool = True) -> Optional[bool]:
     """Whether ``solution`` (``Eq(f, rhs)``, an implicit relation ``Eq(F(x,
     f), G(x, f))`` or the right-hand side alone) solves the ordinary
-    differential equation, as SymPy's ``checkodesol`` decides it: an
+    differential equation, as SymPy's ``checkodesol`` proves it: an
     implicit relation is solved for ``f`` first (by SymPy's ``solve``,
-    within ``timeout`` seconds; ``False`` when it gives up, where
-    ``checkodesol`` raises), and every solution must be checked; the
+    within ``timeout`` seconds), and every solution must be checked; the
     solution is substituted and the residual simplified, else the
     derivatives of the relation are substituted (when ``solve`` finds no
-    solution). ``False`` when nothing proves it. Without
+    solution). ``True`` when the residual simplifies to zero, ``False``
+    when it is shown nonzero (the residual of an explicit solution has a
+    reliable nonzero value at a sample point, with the numerical checks
+    of :data:`sympy_extras.settings.settings` on), ``None`` when neither
+    is shown: SymPy's ``checkodesol`` answers ``False`` there, for
+    correct solutions in ``hyper`` or Bessel functions whose residual
+    ``simplify`` does not reduce (issue #25). Without
     ``solve_for_func`` (SymPy's argument of the same name) an implicit
     relation is checked through its derivatives without being solved.
 
@@ -497,14 +505,38 @@ def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
     False
     >>> check_ode_solution(y*y.diff(x) + x, Eq(x**2 + y**2, C1), y)
     True
+
+    A correct solution whose residual is not simplified to zero is not
+    rejected:
+
+    >>> from sympy_extras.functions import hyper
+    >>> a = symbols('a')
+    >>> print(check_ode_solution(x*y.diff(x, 2) - x*y.diff(x) - a*y, Eq(y, x*hyper((a + 1,), (2,), x)), y))
+    None
     """
     limit = _limit(timeout)
     found = attempt(lambda: _checkodesol(ode, solution, f, limit, solve_for_func), limit, native=True)
-    return found is True
+    return found if isinstance(found, bool) else None
+
+
+def _nonzero_residual(residual: Expr, x: Symbol) -> Optional[bool]:
+    """``False`` when the residual of an explicit solution has a reliable
+    nonzero value at a sample point of ``x > 0`` (the numerical checks on),
+    ``None`` otherwise: the verdict of :func:`_checkodesol` when the
+    residual is not simplified to zero."""
+    if not settings.numerical_checks:
+        return None
+    from sympy_extras.core.relational import Gt
+    from sympy_extras.integrals.conditions import numerical_verdict
+    try:
+        verdict = numerical_verdict(residual, _ZERO, None, Gt(x, _ZERO))
+    except _CHECK_FAILURES:
+        return None
+    return False if verdict is False else None
 
 
 def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Optional[float],
-                 solve_for_func: bool) -> bool:
+                 solve_for_func: bool) -> Optional[bool]:
     if len(func.args) != 1 or not isinstance(func.args[0], Symbol):
         raise ValueError("func must be a function of one variable, not %s" % (func,))
     x = func.args[0]
@@ -520,17 +552,22 @@ def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Op
     if solve_for_func and not solved:
         values = _solved_for(sol_lhs - sol_rhs, func, timeout)
         if values is None:
-            # SymPy's solve gives up: so does checkodesol
-            return False
+            # SymPy's solve gives up: nothing is proved
+            return None
         if values:
-            return all(_checkodesol(ode, Eq(func, value), func, timeout, False) for value in values)
+            verdicts = [_checkodesol(ode, Eq(func, value), func, timeout, False) for value in values]
+            if any(v is False for v in verdicts):
+                return False
+            return True if all(v is True for v in verdicts) else None
     if sol_lhs.has(Order) or sol_rhs.has(Order):
         # a truncated series: SymPy compares the orders of the terms
-        return False
+        return None
     s: Optional[Expr] = None
+    residual: Optional[Expr] = None
     # first pass: the solution substituted into the equation
     if sol_lhs == func:
-        substituted = besselsimp(_sub_func_doit(lhs_ode - rhs_ode, func, sol_rhs))
+        residual = _sub_func_doit(lhs_ode - rhs_ode, func, sol_rhs)
+        substituted = besselsimp(residual)
         simplified = simplify(substituted.rewrite(Exp))
         s = expand(simplified, force=True) if simplified != 0 else _ZERO
         if s == 0:
@@ -552,7 +589,7 @@ def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Op
             sdf = _linear_solution(diff(relation, x), diff(func, x)) or _solved_for(diff(relation, x),
                                                                                    diff(func, x), timeout)
             if sdf is None or not sdf:
-                return False
+                return None if residual is None else _nonzero_residual(residual, x)
             diffsols[i] = sdf[0]
         else:
             diffsols[i] = diff(diffsols[i - 1], x)
@@ -571,11 +608,13 @@ def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Op
     num = _replaced(num, {func: dummy})
     positive, reps = posify(num)
     s = _replaced(_replaced(simplify(positive), reps), {dummy: func})
-    return s == 0
+    if s == 0:
+        return True
+    return None if residual is None else _nonzero_residual(residual, x)
 
 
 def _verified(ode: Equation, candidate: Eq, y: AppliedUndef, timeout: Optional[float]) -> bool:
-    return check_ode_solution(ode, candidate, y, timeout)
+    return check_ode_solution(ode, candidate, y, timeout) is True
 
 
 # ---------------------------------------------------------------------------

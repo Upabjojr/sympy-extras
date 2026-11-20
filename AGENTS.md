@@ -542,7 +542,7 @@ sympy_extras/
                              a leading derivative of degree three or more by the native solve_equation)
         lie_sympy.py         the SymPy face of lie (used by ode_sympy, second_order_sympy, pde_sympy)
         ode.py               ode_symmetries, canonical_coordinates, reduce_order, dsolve_lie, solve_ode, ReducedODE,
-                             check_ode_solution (SymPy's checkodesol, PORTED FROM SYMPY): ODEs of any order by
+                             check_ode_solution (SymPy's checkodesol, PORTED FROM SYMPY; None, not False, when unproved): ODEs of any order by
                              reduction in canonical coordinates, and the dispatcher solve_ode (native; the classical hints
                              of dsolve.py; the native solve_equation and indefinite integration)
         ode_sympy.py         the SymPy face of ode (ReducedODE with SymPy attributes, the symmetries of lie_sympy)
