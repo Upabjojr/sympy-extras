@@ -224,6 +224,12 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
     let wp: usize = prec + GUARD;
     let real = |x: Real| -> Option<Complex> { Some(complex_real(x, wp)) };
     match e.head() {
+        // a variable bound by an enclosing quadrature (integrals/evalf.rs)
+        Head::Symbol(_) | Head::Dummy(..) => crate::integrals::evalf::bound_value(e),
+        Head::Piecewise if crate::integrals::evalf::binding_active(e) => {
+            crate::integrals::evalf::piecewise_value(e, prec)
+        }
+        Head::Integral => crate::integrals::evalf::integral_value(e, prec),
         Head::Rational { value, .. } => real(real_rat(value, wp)),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_value(e, wp),
         Head::TranscendentalRoot => crate::solvers::isolation::numeric_value(e, wp),
@@ -477,6 +483,11 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 super::basic::Function::Exp => {
                     // beyond the exponents of dashu's floats (mpmath's are unbounded)
                     if parts(&v).0.repr().exponent() > 40 {
+                        // an underflow at a node of a quadrature counts as
+                        // zero (mpmath's exponents are unbounded)
+                        if parts(&v).0 < Real::ZERO && crate::integrals::evalf::binding_active(&e.args()[0]) {
+                            return Some(complex_real(real_zero(wp), wp));
+                        }
                         return None;
                     }
                     v.exp()
