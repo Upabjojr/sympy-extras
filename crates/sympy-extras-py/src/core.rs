@@ -6204,6 +6204,19 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "assumption_limits" => {
+            // (limit, expr, x, x0, dir, Tuple(assumptions)); (limit_seq, expr, n, Tuple(assumptions));
+            // (series, expr, x, x0, n, Tuple(assumptions))
+            use sympy_extras_core::assumptions::limits as al;
+            match a[0].to_string().as_str() {
+                "limit" => al::limit(&a[1], &a[2], &a[3], &a[4].to_string(), a[5].args(), None).map_err(e)?,
+                "limit_seq" => al::limit_seq(&a[1], &a[2], a[3].args(), None).map_err(e)?,
+                _ => {
+                    let n: i64 = a[4].to_string().parse().unwrap_or(6);
+                    al::series(&a[1], &a[2], &a[3], n, a[5].args(), None).map_err(e)?
+                }
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {
