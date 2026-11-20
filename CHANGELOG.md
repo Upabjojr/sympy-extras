@@ -441,6 +441,22 @@ remove public functions. Breaking changes are listed here when they happen.
   evaluates and interpolates by halves (`x**(2**k)`) instead of Horner's
   scheme and digit by digit, which were quadratic in the size of the
   numbers (issue #25, `sqf_part` of polynomials with large coefficients).
+- The native `limit` at a finite point shifts the variable into one
+  of the sign of the direction when the variable has a sign assumption:
+  `u + 1` with `u` positive went to `1` from the right whatever the
+  direction, so `limit(sqrt(u - 1)/sqrt(1 - u), u, 1, '-')` was `-I` and a
+  real expression in `atanh(u)` and `log(Abs(u - 1))` had the limit
+  `log(2)/2 - I*pi` from the left (SymPy 1.14 too, issue #25); now `I`
+  and `log(2)/2`.
+- The generator check of the native `Poly` counts only the free
+  occurrences of a symbol generator: a `CRootOf` whose polynomial is
+  written in that symbol is a coefficient, as the same root in another
+  variable (SymPy 1.14 raises `PolynomialError` "contains an element of
+  the set of generators" for `Poly(y**2 + CRootOf(y**3 - 3*y + 1, 2)*y, y)`,
+  issue #25; the domain `EX` of such coefficients is not ported yet).
+- `interop.to_sympy` of a core `Float` zero is a SymPy `Float` of the same
+  precision (it was the integer `0`: SymPy 1.14's `Float(mpf(0))` is
+  `S.Zero`, issue #25).
 - `ite` evaluates as SymPy's `ITE` constructor: equal branches give the
   branch, `true`/`false` branches the condition or its negation, and an
   equation between a symbol used as a truth value and something else is

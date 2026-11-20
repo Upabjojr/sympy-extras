@@ -469,6 +469,9 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
         return sympy.Rational(e.p, e.q)
     if isinstance(e, Float):
         value = e.as_fraction()
+        if value == 0:
+            # SymPy's Float(mpf(0)) is the Integer 0 (sympy-extras#25)
+            return sympy.Float(0, precision=e.precision)
         with mpmath.workprec(e.precision):
             return sympy.Float(fraction_to_mpf(value), precision=e.precision)
     if isinstance(e, Pi):

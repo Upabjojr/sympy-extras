@@ -118,6 +118,19 @@ def test_construction_printing_errors() -> None:
     assert printed(factor_list(2*x**3 - 2*x, x)) == str(sympy.factor_list(2*sx**3 - 2*sx, sx))
 
 
+def test_bound_variable_of_a_root_is_not_a_generator() -> None:
+    from sympy_extras.polys.complexrootof import rootof
+    from sympy_extras.polys.polytools import _decompose_with_gens
+    y = Symbol('y')
+    r = rootof(y**3 - 3*y + 1, 2)
+    # SymPy 1.14 (and the port) raised PolynomialError "contains an element
+    # of the set of generators": has(y) sees the bound variable of the
+    # CRootOf, whose free_symbols are empty (sympy-extras#25)
+    assert _decompose_with_gens(y**2 + r*y, [y]) == {(2,): [1], (1,): [r]}
+    with pytest.raises(PolynomialError):
+        _decompose_with_gens(y**2 + sin(y)*y, [y])
+
+
 @pytest.mark.parametrize('seed', [1, 2, 3])
 def test_cancel_matches_sympy(seed: int) -> None:
     from sympy_extras.polys.polytools import cancel

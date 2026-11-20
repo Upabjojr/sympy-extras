@@ -301,13 +301,15 @@ class Limit(Expr):
         e = _set_signs(e, z, z0, dir)
 
         if e.is_meromorphic(z, z0):
+            mz = z
             if isinstance(z0, Infinity):
                 newe = e.subs(z, 1 / z)
                 cdir = -cdir
             else:
-                newe = e.subs(z, z + z0)
+                mz = _shifted_variable(z, z0, dir)
+                newe = e.subs(z, mz + z0)
             try:
-                coeff, ex = newe.leadterm(z, cdir=cdir)
+                coeff, ex = newe.leadterm(mz, cdir=cdir)
             except ValueError:
                 pass
             else:
@@ -332,8 +334,8 @@ class Limit(Expr):
             cdir = -cdir
             newz = dummy
         else:
-            newe = e.subs(z, z + z0)
-            newz = z
+            newz = _shifted_variable(z, z0, dir)
+            newe = e.subs(z, newz + z0)
         try:
             coeff, ex = newe.leadterm(newz, cdir=cdir)
         except (ValueError, NotImplementedError, PoleError):
@@ -380,6 +382,21 @@ class Limit(Expr):
                 return self
             return found_h
         return r
+
+
+def _shifted_variable(z: Symbol, z0: Expr, dir: str) -> Symbol:
+    """The variable ``h`` of ``z = z0 + h``, which goes to ``0`` from
+    ``dir``: ``z`` itself when its assumptions say nothing of its sign,
+    otherwise a dummy of the sign of the direction (not in SymPy: the
+    shifted ``z`` kept the assumptions of ``z``, so ``z = 1 + z`` with
+    ``z`` positive went to ``1`` from the right whatever the direction,
+    and ``limit(atanh(u) + log(1 - u)/2, u, 1, '-')`` was ``-log(2)/2``,
+    sympy-extras#25)."""
+    if all(v is None for v in (z.is_positive, z.is_negative, z.is_nonnegative, z.is_nonpositive)):
+        return z
+    if z.is_extended_real is True and z0.is_extended_real is True and dir in ('+', '-'):
+        return Dummy('h', positive=True) if dir == '+' else Dummy('h', negative=True)
+    return Dummy('h')
 
 
 def _int_of(e: Expr) -> int:

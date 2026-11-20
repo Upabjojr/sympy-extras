@@ -168,6 +168,13 @@ def _terms_of(e: Expr) -> tuple[Expr, ...]:
 Decomposed = dict[Monomial, list[Expr]]
 
 
+def _contains_generator(factor: Expr, g: Expr) -> bool:
+    """Whether ``factor`` depends on the generator ``g``: a symbol only
+    when it is free (SymPy's ``has`` also sees the bound variable of a
+    ``CRootOf``, sympy-extras#25), another generator as a subtree."""
+    return g in factor.free_symbols if isinstance(g, Symbol) else factor.has(g)
+
+
 # PORTED FROM SYMPY: sympy/polys/polyutils.py:_parallel_dict_from_expr_if_gens
 def _decompose_with_gens(e: Expr, gens: Sequence[Expr]) -> Decomposed:
     index = {g: i for i, g in enumerate(gens)}
@@ -184,7 +191,7 @@ def _decompose_with_gens(e: Expr, gens: Sequence[Expr]) -> Decomposed:
                 exponent, base = -exponent, pow(base, Integer(-1))
             if base in index:
                 monomial[index[base]] = exponent
-            elif not any(factor.has(g) for g in gens):
+            elif not any(_contains_generator(factor, g) for g in gens):
                 coefficient.append(factor)
             else:
                 raise PolynomialError('%s contains an element of the set of generators.' % (factor,))

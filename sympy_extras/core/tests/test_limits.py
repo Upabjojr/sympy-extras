@@ -103,3 +103,29 @@ def test_expint_at_infinity_keeps_the_branch_of_ei() -> None:
     assert limit(X * exp(X) * expint(2, 2 * X), X, oo) == 0
     assert limit(X**2 * exp(X) * expint(3, X), X, oo) == oo
     assert limit(expint(1, X) / expint(2, X), X, oo) == Integer(1)
+
+
+def test_one_sided_limit_of_a_positive_variable() -> None:
+    # z = z0 + z kept the assumptions of z: with u positive, u -> 1 from the
+    # left went to 1 from the right in the shifted variable, so the
+    # logarithms and roots took the branch of u > 1; SymPy 1.14 gives
+    # log(2)/2 - I*pi for the real expression below, whose limit is
+    # log(2)/2 (sympy-extras#25)
+    from sympy_extras.core import I, pi
+    from sympy_extras.core.numbers import Integer, Rational
+    from sympy_extras.core.evalf import numeric_value
+    from sympy_extras.functions import Abs, atanh, log, sqrt
+    u = Symbol('u', positive=True)
+    one = Integer(1)
+    assert limit(sqrt(u - 1)/sqrt(1 - u), u, one, '-') == I
+    assert limit(log(u - 1) - log(1 - u), u, one, '-') == I*pi
+    e = (-log(Abs(u - 1)) - atanh(u)/2 + u*log(Abs(u - 1))/2 - u**2*atanh(u)/2
+         - log(u + 1)*atanh(u)/2 - log(Abs(u - 1))*atanh(u)/2
+         + u**2*log(u + 1)*atanh(u)/2 + u**2*log(Abs(u - 1))*atanh(u)/2 + log(u + 1))
+    found = limit(e, u, one, '-')
+    near = numeric_value(e.subs(u, 1 - Rational(1, 10**12)), 80)
+    value = numeric_value(found, 80)
+    assert near is not None and value is not None and abs(complex(value) - complex(near)) < 1e-9
+    # the same from the right of a variable without assumptions
+    w = Symbol('w')
+    assert limit(sqrt(w - 1)/sqrt(1 - w), w, one, '-') == I
