@@ -3704,6 +3704,23 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- Issue #71: `solvers.lie` (and the face `lie_sympy`) lost the dependent
+  variable inside an unevaluated derivative of an expression,
+  `u_t - Derivative(u**2*u_x, x)`: `JetSpace.to_jet` replaced `u` by a
+  symbol inside it, so that the term vanished, `symmetries` returned
+  non-symmetries and `check_symmetry` accepted them (`u -> u + c`).
+  `to_jet` now evaluates the derivatives of expressions other than the
+  dependent variables first.
+- Issue #72: for an equation which is a polynomial of degree at least two
+  in its leading derivative (`y*y'**2 - (y - x)*y' - x`, the union of two
+  families), `symmetries`, `check_symmetry`, `infinitesimal_condition`,
+  `determining_system` and `symmetry_janet_basis` substituted one root
+  only and returned the symmetries of one branch (and `nan` components
+  for some cubics). The invariance condition is now the pseudo-remainder
+  of `pr X(F)` modulo `F` in the leading derivative, which vanishes when
+  `F` divides `pr X(F)`: all the branches count. `leading_derivatives`
+  still returns one root.
+
 - Issue #75, three wrong or missing results of the native core:
   - the native `Sum.doit` of a Gosper-summable term lost the isolated
     values of the parameters at which the Gosper certificate has a pole:

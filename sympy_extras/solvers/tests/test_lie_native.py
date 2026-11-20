@@ -3,7 +3,7 @@ similarity reductions (:mod:`sympy_extras.solvers.pde`) on objects of the
 core; ``test_lie.py`` and ``test_pde.py`` test the SymPy faces."""
 from __future__ import annotations
 
-from sympy_extras.core import Eq, Function, Integer, Rational, Symbol, diff, expand, oo
+from sympy_extras.core import Derivative, Eq, Expr, Function, Integer, Rational, Symbol, diff, expand, oo
 from sympy_extras.functions import exp, sin
 from sympy_extras.solvers.lie import (JetSpace, Symmetry, check_symmetry, determining_system,
     infinitesimal_condition, leading_derivatives, symmetries, symmetry_janet_basis)
@@ -142,3 +142,33 @@ def test_pde_symmetries_and_solutions() -> None:
     assert check_pde_solution(heat, u, exp(-t)*sin(x))
     assert check_pde_solution(Eq(u.diff(t), u.diff(x, 2)), u, x**2 + 2*t)
     assert not check_pde_solution(heat, u, x**2 + t)
+
+
+def test_unevaluated_derivative_of_a_product() -> None:
+    # issue #71: u_t = (u**2 u_x)_x written with an unevaluated Derivative
+    jets = JetSpace([u])
+    usym = jets.u[0]
+    u_x, u_xx, u_t = [jets.jet(0, J) for J in [(1, 0), (2, 0), (0, 1)]]
+    div = u.diff(t) - Derivative(u**2*u.diff(x), x)
+    assert jets.to_jet(div) == u_t - usym**2*u_xx - 2*usym*u_x**2
+    assert _generators(symmetries(div, u, 2)) == _generators(symmetries(expand(div.doit()), u, 2))
+    assert len(symmetries(div, u, 2)) == 4
+    assert not check_symmetry([div], [u], Symmetry(jets, [0, 0], [1]))
+    assert check_symmetry([div], [u], Symmetry(jets, [x, 0], [usym]))
+
+
+def test_all_branches_of_an_equation_nonlinear_in_the_derivative() -> None:
+    # issue #72: (y y' + x)(y' - 1) = 0, Kamke 1.471; the symmetries of the
+    # branch y' = 1 (or of the circles) alone are not symmetries
+    jets = JetSpace([y])
+    Y = jets.u[0]
+    eq = y*y.diff(x)**2 - (y - x)*y.diff(x) - x
+    assert [(X.xi, X.eta) for X in symmetries(eq, y, 2)] == [((x,), (Y,))]
+    branch: list[tuple[Expr, Expr]] = [(Integer(1), Integer(0)), (Y, x), (Integer(0), Integer(1)),
+        (Integer(0), Y - x), (Y, -x)]
+    for xi, eta in branch:
+        assert not check_symmetry([eq], [y], Symmetry(jets, [xi], [eta]))
+    assert check_symmetry([eq], [y], Symmetry(jets, [x], [Y]))
+    # Kamke 1.527: a cubic in y', no nan components
+    cubic = y.diff(x)**3 - x*y**4*y.diff(x) - y**5
+    assert [(X.xi, X.eta) for X in symmetries(cubic, y, 2)] == [((x,), (-3*Y/2,))]
