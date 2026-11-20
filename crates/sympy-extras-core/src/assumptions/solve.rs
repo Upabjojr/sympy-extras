@@ -469,6 +469,58 @@ fn same_number(first: &Basic, second: &Basic) -> PolyResult<bool> {
     Ok(polynomials.is_some_and(|(p, q)| p == q))
 }
 
+/// The real and imaginary parts of `e` when its symbols are all real
+/// under the facts, `None` otherwise (`_real_and_imaginary_parts`).
+fn real_and_imaginary_parts(e: &Basic, facts: &Facts) -> PolyResult<Option<(Basic, Basic)>> {
+    let free = e.free_symbols();
+    let symbols: Vec<Basic> = free
+        .iter()
+        .filter(|s| matches!(s.head(), Head::Symbol(_)))
+        .cloned()
+        .collect();
+    if symbols.len() != free.len() || symbols.iter().any(|s| !facts.real.contains(s)) {
+        return Ok(None);
+    }
+    let mut forward: HashMap<Basic, Basic> = HashMap::new();
+    let mut back: HashMap<Basic, Basic> = HashMap::new();
+    for s in &symbols {
+        let name: String = match s.head() {
+            Head::Symbol(d) => d.name.clone(),
+            _ => s.to_string(),
+        };
+        let d: Basic = crate::core::symbol::Dummy::new(&name, &[(crate::core::assumptions::Predicate::real, true)]).0;
+        forward.insert(s.clone(), d.clone());
+        back.insert(d, s.clone());
+    }
+    let replaced: Basic = e.xreplace(&forward);
+    let Some((re_part, im_part)) = crate::functions::elementary::complexes::as_real_imag(&replaced, true, None)? else {
+        return Ok(None);
+    };
+    Ok(Some((re_part.xreplace(&back), im_part.xreplace(&back))))
+}
+
+/// Whether `e` is a real solution nowhere: real only where its imaginary
+/// part vanishes, and there the condition fails
+/// (`_not_real_where_condition_fails`; SymPy's `Q.real(I*y)` is `False`
+/// for a real `y`, which forgot `y = 0`, sympy-extras#25).
+fn not_real_where_condition_fails(e: &Basic, x: &Basic, condition: &Basic, facts: &Facts) -> PolyResult<bool> {
+    if !e.has(&Basic::imaginary_unit()) {
+        return Ok(false);
+    }
+    let Some((re_part, im_part)) = real_and_imaginary_parts(e, facts)? else {
+        return Ok(false);
+    };
+    if im_part == Basic::zero() {
+        return Ok(false);
+    }
+    let rule: HashMap<Basic, Basic> = [(x.clone(), re_part)].into_iter().collect();
+    let formula: Basic = and_(&[
+        condition.clone(),
+        crate::core::relational::eq(&im_part, &Basic::zero())?,
+    ]);
+    Ok(holds_at(&formula, &rule, facts)? == Some(false))
+}
+
 fn filter_finite(elements: &[Basic], x: &Basic, condition: &Basic, facts: &Facts, formula: &Basic, real: bool) -> R {
     let mut kept: Vec<Basic> = Vec::new();
     let mut undecided: Vec<Basic> = Vec::new();
@@ -483,7 +535,11 @@ fn filter_finite(elements: &[Basic], x: &Basic, condition: &Basic, facts: &Facts
                 continue;
             }
         }
-        match holds_at(condition, &rule, facts)? {
+        let value: Option<bool> = holds_at(condition, &rule, facts)?;
+        if value.is_none() && real && not_real_where_condition_fails(e, x, condition, facts)? {
+            continue;
+        }
+        match value {
             Some(true) => {
                 let mut duplicate: bool = false;
                 for k in &kept {

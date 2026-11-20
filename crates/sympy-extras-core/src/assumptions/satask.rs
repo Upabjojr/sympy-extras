@@ -217,21 +217,29 @@ fn mul_facts(expr: &Basic) -> Vec<Basic> {
     let args: &[Basic] = expr.args();
     let not_rational = |e: &Basic| not_(&q1("rational", e));
     let real_or_imaginary = |e: &Basic| or_(&[q1("imaginary", e), q1("real", e)]);
+    // sympy-extras#74 (3): SymPy's facts that one irrational, imaginary or
+    // non-rational factor makes the product irrational, imaginary or not an
+    // integer forget a zero factor (I*0 is 0); here the other factors are
+    // nonzero
+    let nonzero: Basic = all_args(&|e: &Basic| not_(&q1("zero", e)), args);
     vec![
         equivalent(&[q1("zero", expr), any_arg(&q("zero"), args)]),
         implies(&all_args(&q("positive"), args), &q1("positive", expr)),
         implies(&all_args(&q("real"), args), &q1("real", expr)),
         implies(&all_args(&q("rational"), args), &q1("rational", expr)),
         implies(&all_args(&q("integer"), args), &q1("integer", expr)),
-        implies(&exactly_one_arg(&not_rational, args), &not_(&q1("integer", expr))),
+        implies(
+            &and_(&[nonzero.clone(), exactly_one_arg(&not_rational, args)]),
+            &not_(&q1("integer", expr)),
+        ),
         implies(&all_args(&q("commutative"), args), &q1("commutative", expr)),
         implies(&all_args(&q("prime"), args), &not_(&q1("prime", expr))),
         implies(
-            &all_args(&real_or_imaginary, args),
+            &and_(&[nonzero.clone(), all_args(&real_or_imaginary, args)]),
             &implies(&exactly_one_arg(&q("imaginary"), args), &q1("imaginary", expr)),
         ),
         implies(
-            &all_args(&q("real"), args),
+            &and_(&[nonzero, all_args(&q("real"), args)]),
             &implies(&exactly_one_arg(&q("irrational"), args), &q1("irrational", expr)),
         ),
         implies(

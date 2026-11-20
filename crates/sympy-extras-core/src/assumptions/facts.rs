@@ -288,12 +288,34 @@ fn is_number(e: &Basic) -> bool {
 
 /// The predicates implied by a top level atom beyond its equivalent one
 /// (`_consequences`).
+/// The variables an inequality makes real (`_real_variables`): its free
+/// symbols, except those met only inside `re`, `im`, `Abs`, `arg` and
+/// `conjugate` (the sides of `re(z)*im(z) > pi/2` are real, `z` is not,
+/// sympy-extras#74).
+fn real_variables(atom: &Basic) -> Vec<Basic> {
+    use crate::core::basic::Function;
+    let mut found: Vec<Basic> = Vec::new();
+    let mut stack: Vec<Basic> = vec![atom.args()[0].clone(), atom.args()[1].clone()];
+    while let Some(node) = stack.pop() {
+        if matches!(node.head(), Head::Symbol(_) | Head::Dummy(_, _)) {
+            found.push(node);
+        } else if !matches!(
+            node.head(),
+            Head::Function(Function::Re | Function::Im | Function::Abs | Function::Arg | Function::Conjugate)
+        ) {
+            stack.extend(node.args().iter().cloned());
+        }
+    }
+    let free = atom.free_symbols();
+    sorted_symbols(found.into_iter().filter(|s| free.contains(s)))
+}
+
 pub(crate) fn consequences(atom: &Basic) -> PolyResult<Vec<Basic>> {
     let mut result: Vec<Basic> = Vec::new();
     let Some(mut op) = rel_op(atom) else { return Ok(result) };
     let (mut lhs, mut rhs) = (atom.args()[0].clone(), atom.args()[1].clone());
     if matches!(op, RelOp::Gt | RelOp::Lt | RelOp::Ge | RelOp::Le) {
-        for s in sorted_symbols(atom.free_symbols()) {
+        for s in real_variables(atom) {
             result.push(q1("real", &s)?);
         }
     }
@@ -500,7 +522,9 @@ impl Facts {
             .into_iter()
             .chain(variables_given.iter().cloned())
         {
-            if is_true(&s, Predicate::extended_real) || known(&q1("real", &s)?) {
+            // is_real, not is_extended_real: a symbol only extended real
+            // may be oo (sympy-extras#74, 5)
+            if is_true(&s, Predicate::real) || known(&q1("real", &s)?) {
                 real.insert(s.clone());
             }
             if is_true(&s, Predicate::integer) || known(&q1("integer", &s)?) {
@@ -509,7 +533,7 @@ impl Facts {
         }
         for c in &conjuncts_ {
             if matches!(rel_op(c), Some(RelOp::Gt | RelOp::Lt | RelOp::Ge | RelOp::Le)) {
-                real.extend(c.free_symbols());
+                real.extend(real_variables(c));
             }
         }
         let real: Vec<Basic> = sorted_symbols(real);

@@ -310,6 +310,11 @@ fn integer(e: &Basic, a: &Basic) -> R {
                 }
             }
         }
+        if !output {
+            // an integer times an irrational number is 0 when the integer
+            // is (SymPy answers False, issue #25)
+            return zero_factor(e.args(), a);
+        }
         return Ok(Some(output));
     }
     if func(e) == Some(Function::Abs) {
@@ -318,6 +323,22 @@ fn integer(e: &Basic, a: &Basic) -> R {
         } else {
             None
         });
+    }
+    Ok(None)
+}
+
+/// Whether one of the factors is zero: `true` when one is, `false` when
+/// none is, `None` otherwise (`_zero_factor`).
+fn zero_factor(factors: &[Basic], a: &Basic) -> R {
+    let mut answers: Vec<Option<bool>> = Vec::new();
+    for f in factors {
+        answers.push(askq("zero", f, a)?);
+    }
+    if answers.contains(&Some(true)) {
+        return Ok(Some(true));
+    }
+    if answers.iter().all(|x| *x == Some(false)) {
+        return Ok(Some(false));
     }
     Ok(None)
 }
@@ -337,7 +358,13 @@ fn rational(e: &Basic, a: &Basic) -> R {
                 }
             }
         }
-        return closed_group(e, a, "rational");
+        let rational: Option<bool> = closed_group(e, a, "rational")?;
+        if rational == Some(false) && e.is_mul() {
+            // a rational number times an irrational one is 0 when the
+            // rational number is (SymPy answers False, issue #25)
+            return zero_factor(e.args(), a);
+        }
+        return Ok(rational);
     }
     if let Some(x) = exp_argument(e) {
         if is_yes(askq("rational", &x, a)?) {
@@ -438,13 +465,21 @@ fn real(e: &Basic, a: &Basic) -> R {
             return Ok(real_number(e));
         }
         let mut result: bool = true;
+        let mut reals: Vec<Basic> = Vec::new();
         for arg in e.args() {
             if is_yes(askq("real", arg, a)?) {
+                reals.push(arg.clone());
             } else if is_yes(askq("imaginary", arg, a)?) {
                 result = !result;
             } else {
                 return Ok(None);
             }
+        }
+        if !result {
+            // SymPy answers False without asking whether a real factor is
+            // zero: x*y is 0, real, at x = 0 for a real x and an imaginary y
+            // (issue #25)
+            return zero_factor(&reals, a);
         }
         return Ok(Some(result));
     }
@@ -602,12 +637,20 @@ fn imaginary(e: &Basic, a: &Basic) -> R {
             return Ok(imaginary_number(e));
         }
         let mut result: bool = false;
+        let mut real_factors: Vec<Basic> = Vec::new();
         for arg in e.args() {
             if is_yes(askq("imaginary", arg, a)?) {
                 result = !result;
             } else if !is_yes(askq("real", arg, a)?) {
                 return Ok(None);
+            } else {
+                real_factors.push(arg.clone());
             }
+        }
+        if result {
+            // as for Q.real: 0 = x*y at x = 0 is not imaginary (issue #25)
+            let zero: Option<bool> = zero_factor(&real_factors, a)?;
+            return Ok(zero.map(|z| !z));
         }
         return Ok(Some(result));
     }

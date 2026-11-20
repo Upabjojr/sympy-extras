@@ -875,17 +875,38 @@ fn noise(scale: &Real, prec: usize) -> Real {
     scale / real_int(&Int::from(2u8).pow(prec - 20), prec + 20)
 }
 
+/// Whether a value at 53 bits agrees with the value at 160 bits to the
+/// accuracy which 53 bits can trust (`_values_agree`): a function of a
+/// rounding error has the same sign at both precisions by chance but not
+/// the same size.
+fn values_agree(low: &(Real, Real), high: &(Real, Real)) -> bool {
+    let scale: Real = {
+        let (a, b) = (abs_real(&high.0), abs_real(&high.1));
+        if a > b {
+            a
+        } else {
+            b
+        }
+    };
+    let bound: Real = noise(&scale, 53);
+    let dr: Real = &low.0 - &high.0;
+    let di: Real = &low.1 - &high.1;
+    &(&dr * &dr) + &(&di * &di) <= &bound * &bound
+}
+
 /// The facts of a numerical expression found by evaluating it at two
 /// precisions: real or not, its sign, purely imaginary; nothing when the
 /// value is too small to be trusted.
 pub fn numeric_facts(e: &Basic) -> FactList {
     let mut reals: Vec<i32> = Vec::new();
     let mut imaginaries: Vec<i32> = Vec::new();
+    let mut values: Vec<(Real, Real)> = Vec::new();
     for prec in [53usize, 160] {
         let value = match numeric_value(e, prec) {
             Some(v) => v,
             None => return FactList::new(),
         };
+        values.push(parts(&value));
         let (re, im) = parts(&value);
         let (are, aim) = (abs_real(&re), abs_real(&im));
         let scale: Real = if are > aim { are.clone() } else { aim.clone() };
@@ -898,6 +919,11 @@ pub fn numeric_facts(e: &Basic) -> FactList {
     }
     let mut facts: FactList = FactList::new();
     if reals[0] != reals[1] || imaginaries[0] != imaginaries[1] {
+        return facts;
+    }
+    if !values_agree(&values[0], &values[1]) {
+        // a function of a rounding error (sqrt of a hidden zero is noise of
+        // a sign of its own, the same at both precisions): issue #25
         return facts;
     }
     if imaginaries[0] != 0 {
@@ -920,6 +946,7 @@ pub fn numeric_facts(e: &Basic) -> FactList {
 /// `None` when the sum is too small to be trusted.
 fn numeric_sign(args: &[Basic]) -> Option<i32> {
     let mut signs: Vec<i32> = Vec::new();
+    let mut totals: Vec<(Real, Real)> = Vec::new();
     for prec in [53usize, 160] {
         let mut total: Real = Real::ZERO;
         let mut scale: Real = Real::ZERO;
@@ -938,6 +965,10 @@ fn numeric_sign(args: &[Basic]) -> Option<i32> {
             return None;
         }
         signs.push(sign_of(&total));
+        totals.push((total, Real::ZERO));
+    }
+    if !values_agree(&totals[0], &totals[1]) {
+        return None;
     }
     if signs[0] == signs[1] {
         Some(signs[0])

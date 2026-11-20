@@ -36,6 +36,27 @@ def finite(v: Any) -> Any:
     return v
 
 
+def assert_facts(rust_facts: dict[str, bool], python_facts: dict[str, bool], e: Any) -> None:
+    """The facts agree, or the Rust ones extend the Python ones by true
+    facts of a number: the numeric facts of the Python core give up when
+    the value at 53 bits disagrees with the value at 160 bits beyond
+    rounding (sympy-extras#25), and mpmath at 53 bits loses digits on a
+    sum which cancels which the Rust evaluation, with guard bits, keeps
+    (a known difference)."""
+    if rust_facts == python_facts:
+        return
+    assert python_facts.items() <= rust_facts.items(), e
+    from sympy_extras.core.evalf import numeric_value
+    assert not e.free_symbols, e
+    v = numeric_value(e, 400)
+    assert v is not None, e
+    signs = {'positive': v.real > 0 and v.imag == 0, 'negative': v.real < 0 and v.imag == 0,
+             'zero': v == 0, 'real': v.imag == 0}
+    for name, value in signs.items():
+        if name in rust_facts:
+            assert rust_facts[name] == value, (e, name)
+
+
 NAMES = {'factorial': 1, 'binomial': 2, 'rf': 2, 'ff': 2, 'subfactorial': 1, 'factorial2': 1}
 
 
@@ -58,7 +79,7 @@ def test_factorials(rust: Any, seed: int) -> None:
             continue
         e = getattr(factorials, name)(*args)
         r = rc.logic_call(name, args)
-        assert rc.facts(r) == dict(facts_of(e)), e
+        assert_facts(rc.facts(r), dict(facts_of(e)), e)
         if not e.free_symbols:
             for prec in (53, 120):
                 ve, vr = finite(numeric_value(e, prec + 200)), rc.numeric_value(r, prec)

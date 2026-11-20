@@ -334,13 +334,11 @@ fn realness(e: &Basic, facts: &Facts) -> PolyResult<Truth> {
     let ev = |f: &Basic| evaluate(f, facts);
     let int = |n: i64| Basic::int(n);
     if e.is_symbol() {
-        return Ok(
-            if facts.real.contains(e) || is(e, Predicate::extended_real) == Some(true) {
-                Some(true)
-            } else {
-                None
-            },
-        );
+        return Ok(if facts.real.contains(e) || is(e, Predicate::real) == Some(true) {
+            Some(true)
+        } else {
+            None
+        });
     }
     if crate::core::assumptions::is_number(e) {
         return Ok(is(e, Predicate::extended_real));
@@ -357,7 +355,15 @@ fn realness(e: &Basic, facts: &Facts) -> PolyResult<Truth> {
         let (base, exponent) = (&e.args()[0], &e.args()[1]);
         let base_real: Truth = realness(base, facts)?;
         if is(exponent, Predicate::integer) == Some(true) {
-            return Ok(base_real);
+            // a non-real base can have a real power (I**2), and 1/x is zoo
+            // at x = 0
+            if base_real != Some(true) {
+                return Ok(None);
+            }
+            if is(exponent, Predicate::nonnegative) == Some(true) || nonzero(base, facts)? {
+                return Ok(Some(true));
+            }
+            return Ok(None);
         }
         if base_real != Some(true) {
             return Ok(None);
@@ -395,15 +401,28 @@ fn realness(e: &Basic, facts: &Facts) -> PolyResult<Truth> {
             and_(&[rl::gt(argument, &int(-1))?, rl::lt(argument, &int(1))?]),
             or_(&[rl::gt(argument, &int(1))?, rl::lt(argument, &int(-1))?]),
         ),
-        Function::Abs => Ok(if is(argument, Predicate::finite) != Some(false) {
-            Some(true)
-        } else {
-            None
-        }),
+        Function::Abs => {
+            if is(argument, Predicate::finite) == Some(true) || realness(argument, facts)? == Some(true) {
+                return Ok(Some(true));
+            }
+            let finite: Basic =
+                crate::core::assume::applied(&crate::core::assume::q("finite", 1), std::slice::from_ref(argument));
+            Ok(if predicate_ask(&finite, facts)? == Some(true) {
+                Some(true)
+            } else {
+                None
+            })
+        }
+        Function::Tan => {
+            let cosine: Basic = crate::functions::apply_function(Function::Cos, std::slice::from_ref(argument))?;
+            if realness(argument, facts)? == Some(true) && nonzero(&cosine, facts)? {
+                return Ok(Some(true));
+            }
+            Ok(None)
+        }
         Function::Exp
         | Function::Sin
         | Function::Cos
-        | Function::Tan
         | Function::Atan
         | Function::Sinh
         | Function::Cosh
@@ -417,6 +436,14 @@ fn realness(e: &Basic, facts: &Facts) -> PolyResult<Truth> {
         }),
         _ => Ok(None),
     }
+}
+
+/// Whether `e` is known to be nonzero under the facts (`_nonzero`).
+fn nonzero(e: &Basic, facts: &Facts) -> PolyResult<bool> {
+    if is(e, Predicate::zero) == Some(false) {
+        return Ok(true);
+    }
+    Ok(evaluate(&normalize(&crate::core::relational::ne(e, &Basic::int(0))?)?, facts)? == Some(true))
 }
 
 fn bounded_cad_ask(formula: &Basic, facts: &Facts) -> PolyResult<Truth> {
@@ -470,6 +497,16 @@ pub fn evaluate(formula: &Basic, facts: &Facts) -> PolyResult<Truth> {
             .map(|a| evaluate(a, facts))
             .collect::<PolyResult<_>>()?;
         let mut value: Truth = combine(formula, &values);
+        if value.is_none() {
+            // the predicates of the whole formula: an atom undecided alone
+            // decides nothing in the combination of the atoms, but
+            // element(x, Reals) | ~element(x, Reals) is Q.real(x) |
+            // ~Q.real(x), and Eq(x, 0) | Eq(y, 0) follows from Q.zero(x*y)
+            // (sympy-extras#74, 2 and 3)
+            if let Some(predicates) = crate::assumptions::facts::to_predicates(formula)? {
+                value = predicate_ask(&predicates, facts)?;
+            }
+        }
         if value.is_none() {
             value = cad_ask(formula, facts)?;
         }
