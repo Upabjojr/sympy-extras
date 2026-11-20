@@ -436,8 +436,8 @@ pub fn gamma_value(f: Function, values: &[Complex], prec: usize) -> Option<Compl
 }
 
 // ---------------------------------------------------------------------
-// the incomplete gammas and multigamma (without the polar arguments: the
-// Rust core has no polar numbers)
+// the incomplete gammas and multigamma (the branch factors of polar
+// arguments as Python takes them out)
 
 fn range_to(e: &Basic) -> PolyResult<i64> {
     integer_value(e)
@@ -462,11 +462,30 @@ fn lowergamma_eval(a: &Basic, x: &Basic) -> PolyResult<Basic> {
     if x.as_rational().is_some_and(|v| v.is_zero()) {
         return Ok(Basic::zero());
     }
+    let (bx, n) = crate::functions::elementary::polar::extract_branch_factor(x, false)?;
     if is_true(a, Predicate::integer) && is_true(a, Predicate::positive) {
         let nx: Basic = crate::core::function::unpolarify(x)?;
         if nx != *x {
             return lowergamma(a, &nx);
         }
+    } else if is_true(a, Predicate::integer) && is_true(a, Predicate::nonpositive) {
+        if n != Basic::zero() {
+            let minus_a: Basic = mul(&[Basic::negative_one(), a.clone()])?;
+            let top: Basic = mul(&[
+                int(2),
+                Basic::pi(),
+                Basic::imaginary_unit(),
+                n,
+                pow(&Basic::negative_one(), &minus_a)?,
+            ])?;
+            return add(&[
+                crate::core::mul::div(&top, &crate::functions::combinatorial::factorials::factorial(&minus_a)?)?,
+                lowergamma(a, &bx)?,
+            ]);
+        }
+    } else if n != Basic::zero() {
+        let phase: Basic = exp(&mul(&[int(2), Basic::pi(), Basic::imaginary_unit(), n, a.clone()])?)?;
+        return mul(&[phase, lowergamma(a, &bx)?]);
     }
     if let Some(r) = a.as_rational() {
         let (p, q) = (numer(r), denom(r));
@@ -541,11 +560,39 @@ fn uppergamma_eval(a: &Basic, z: &Basic) -> PolyResult<Basic> {
     if z.as_rational().is_some_and(|v| v.is_zero()) && is_true(&re(a)?, Predicate::positive) {
         return gamma(a);
     }
+    let (bz, n) = crate::functions::elementary::polar::extract_branch_factor(z, false)?;
     if is_true(a, Predicate::integer) && is_true(a, Predicate::positive) {
         let nx: Basic = crate::core::function::unpolarify(z)?;
         if nx != *z {
             return uppergamma(a, &nx);
         }
+    } else if is_true(a, Predicate::integer) && is_true(a, Predicate::nonpositive) {
+        if n != Basic::zero() {
+            let minus_a: Basic = mul(&[Basic::negative_one(), a.clone()])?;
+            let top: Basic = mul(&[
+                int(-2),
+                Basic::pi(),
+                Basic::imaginary_unit(),
+                n,
+                pow(&Basic::negative_one(), &minus_a)?,
+            ])?;
+            return add(&[
+                crate::core::mul::div(&top, &crate::functions::combinatorial::factorials::factorial(&minus_a)?)?,
+                uppergamma(a, &bz)?,
+            ]);
+        }
+    } else if n != Basic::zero() {
+        let branch: Basic = crate::functions::elementary::exponential::exp(&mul(&[
+            int(2),
+            Basic::pi(),
+            Basic::imaginary_unit(),
+            n,
+            a.clone(),
+        ])?)?;
+        return add(&[
+            mul(&[gamma(a)?, sub(&Basic::one(), &branch)?])?,
+            mul(&[branch, uppergamma(a, &bz)?])?,
+        ]);
     }
     if let Some(r) = a.as_rational() {
         let (p, q) = (numer(r), denom(r));

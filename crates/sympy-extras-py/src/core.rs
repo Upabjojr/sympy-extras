@@ -5971,6 +5971,18 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, solutions, count])
         }
+        "hyperexpand" => {
+            // (f, allow_hyper, rewrite: default | nonrepsmall | nonrep | None, place | NONE)
+            use sympy_extras_core::simplify::hyperexpand as hx;
+            let rewrite = match a[2].to_string().as_str() {
+                "default" => hx::Rewrite::Default,
+                "nonrepsmall" => hx::Rewrite::NonRepSmall,
+                "nonrep" => hx::Rewrite::NonRep,
+                _ => hx::Rewrite::Keep,
+            };
+            let place: Option<Basic> = if a[3].to_string() == "NONE" { None } else { Some(a[3].clone()) };
+            hx::hyperexpand(&a[0], a[1].to_string() == "True", rewrite, place.as_ref()).map_err(e)?
+        }
         "guess" => {
             // (kind, Tuple(terms), max_order | NONE, max_degree | NONE, margin): the polynomials, highest degree first
             use sympy_extras_core::concrete::guess as gs;

@@ -2,6 +2,8 @@
 
 pub mod fu;
 pub mod gammasimp;
+pub mod hyperexpand;
+pub mod hyperexpand_tables;
 pub mod normalform;
 pub mod powsimp;
 pub mod radsimp;

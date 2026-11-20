@@ -574,8 +574,7 @@ pub fn error_value(f: Function, values: &[Complex], prec: usize) -> Option<Compl
 
 // ---------------------------------------------------------------------
 // part 2: the exponential, trigonometric and logarithmic integrals and the
-// Fresnel integrals (without the polar arguments: the Rust core has no
-// polar numbers, so the branch factors of SymPy are always trivial)
+// Fresnel integrals (Python's rules take out no polar factors)
 
 /// The heads of part 2.
 pub fn is_integral_function(f: Function) -> bool {
@@ -624,21 +623,57 @@ fn trigonometric_integral_eval(f: Function, z: &Basic) -> PolyResult<Basic> {
             _ => Ok(Basic::oo()),
         };
     }
-    if odd_integral(f) {
-        if let Some(nz) = extract_multiplicatively(z, &i)? {
-            // i_factor(nz, 1)
-            let other: Basic = if f == Function::Si {
-                integral(Function::Shi, &nz)?
-            } else {
-                integral(Function::Si, &nz)?
-            };
-            return mul(&[i, other, Basic::one()]);
+    use crate::functions::elementary::polar::{extract_branch_factor, polar_lift};
+    let odd: bool = odd_integral(f);
+    // i_factor(z, sign) and minus_factor(z) of the class
+    let i_factor = |nz: &Basic, sign: i64| -> PolyResult<Basic> {
+        match f {
+            Function::Si => mul(&[i.clone(), integral(Function::Shi, nz)?, int(sign)]),
+            Function::Shi => mul(&[i.clone(), integral(Function::Si, nz)?, int(sign)]),
+            Function::Ci => add(&[
+                integral(Function::Chi, nz)?,
+                mul(&[i.clone(), pi.clone(), half.clone(), int(sign)])?,
+            ]),
+            _ => add(&[
+                integral(Function::Ci, nz)?,
+                mul(&[i.clone(), pi.clone(), half.clone(), int(sign)])?,
+            ]),
         }
-        if let Some(nz) = extract_multiplicatively(z, &Basic::negative_one())? {
-            return minus(&integral(f, &nz)?);
+    };
+    let minus_factor = |nz: &Basic| -> PolyResult<Basic> {
+        match f {
+            Function::Si | Function::Shi => mul(&[Basic::negative_one(), integral(f, nz)?]),
+            _ => add(&[integral(f, nz)?, mul(&[i.clone(), pi.clone()])?]),
         }
+    };
+    let mut nz = extract_multiplicatively(z, &polar_lift(&i)?)?;
+    if nz.is_none() && odd {
+        nz = extract_multiplicatively(z, &i)?;
     }
-    Ok(node(f, vec![z.clone()]))
+    if let Some(nz) = nz {
+        return i_factor(&nz, 1);
+    }
+    if let Some(nz) = extract_multiplicatively(z, &polar_lift(&mul(&[Basic::negative_one(), i.clone()])?)?)? {
+        return i_factor(&nz, -1);
+    }
+    let mut nz = extract_multiplicatively(z, &polar_lift(&Basic::negative_one())?)?;
+    if nz.is_none() && odd {
+        nz = extract_multiplicatively(z, &Basic::negative_one())?;
+    }
+    if let Some(nz) = nz {
+        return minus_factor(&nz);
+    }
+    // the branch factor: 2*pi*I*n*trigfunc(0) + f(z)
+    let (bz, n) = extract_branch_factor(z, false)?;
+    if n == Basic::zero() && bz == *z {
+        return Ok(node(f, vec![z.clone()]));
+    }
+    let jump: Basic = if odd {
+        Basic::zero()
+    } else {
+        mul(&[int(2), pi.clone(), i.clone(), n])?
+    };
+    add(&[jump, integral(f, &bz)?])
 }
 
 fn integral(f: Function, z: &Basic) -> PolyResult<Basic> {
@@ -689,7 +724,44 @@ fn part2_eval(f: Function, args: &[Basic]) -> PolyResult<Basic> {
                 let product: Basic = mul(&[pow(z, &sub(nu, &one)?)?, uppergamma(&sub(&one, nu)?, z)?])?;
                 return unpolarify(&expand_mul(&product, true)?);
             }
-            Ok(node(f, args.to_vec()))
+            // the branch factor (C/f lowergamma)
+            let (z, n) = crate::functions::elementary::polar::extract_branch_factor(&args[1], false)?;
+            if n == Basic::zero() {
+                return Ok(node(f, args.to_vec()));
+            }
+            let one: Basic = Basic::one();
+            let expint = |a: &Basic, b: &Basic| integral_function(Function::Expint, &[a.clone(), b.clone()]);
+            if is_true(nu, Predicate::integer) {
+                if crate::core::relational::gt(nu, &Basic::zero())? != crate::core::logic::true_() {
+                    return Ok(node(f, args.to_vec()));
+                }
+                let nu1: Basic = sub(nu, &one)?;
+                let power: Basic = div(
+                    &pow(&crate::core::function::unpolarify(&z)?, &nu1)?,
+                    &crate::functions::combinatorial::factorials::factorial(&nu1)?,
+                )?;
+                let term: Basic = mul(&[
+                    int(2),
+                    Basic::pi(),
+                    Basic::imaginary_unit(),
+                    n,
+                    pow(&Basic::negative_one(), &nu1)?,
+                    power,
+                ])?;
+                return sub(&expint(nu, &z)?, &term);
+            }
+            let phase: Basic = sub(
+                &crate::functions::elementary::exponential::exp(&mul(&[
+                    int(2),
+                    Basic::imaginary_unit(),
+                    Basic::pi(),
+                    nu.clone(),
+                    n,
+                ])?)?,
+                &one,
+            )?;
+            let gamma_part: Basic = crate::functions::special::gamma_functions::gamma(&sub(&one, nu)?)?;
+            add(&[mul(&[phase, pow(&z, &sub(nu, &one)?)?, gamma_part])?, expint(nu, &z)?])
         }
         Function::Ei => {
             let z: &Basic = &args[0];
@@ -699,7 +771,16 @@ fn part2_eval(f: Function, args: &[Basic]) -> PolyResult<Basic> {
             match z.head() {
                 Head::Infinity => Ok(Basic::oo()),
                 Head::NegativeInfinity => Ok(Basic::zero()),
-                _ => Ok(node(f, args.to_vec())),
+                _ => {
+                    let (nz, n) = crate::functions::elementary::polar::extract_branch_factor(z, false)?;
+                    if n != Basic::zero() {
+                        return add(&[
+                            integral(Function::Ei, &nz)?,
+                            mul(&[int(2), Basic::imaginary_unit(), Basic::pi(), n])?,
+                        ]);
+                    }
+                    Ok(node(f, args.to_vec()))
+                }
             }
         }
         Function::Si | Function::Ci | Function::Shi | Function::Chi => trigonometric_integral_eval(f, &args[0]),

@@ -738,7 +738,14 @@ fn hyper_rule(node: &Basic) -> PolyResult<Option<Basic>> {
             inv(&g(add(&[c.clone(), neg(b)?])?)?)?,
         ])?));
     }
-    Err(not_ported("hyperexpand"))
+    crate::simplify::hyperexpand::hyperexpand(node, false, crate::simplify::hyperexpand::Rewrite::Default, None)
+        .map(Some)
+}
+
+/// meijerg._eval_expand_func
+fn meijerg_rule(node: &Basic) -> PolyResult<Option<Basic>> {
+    crate::simplify::hyperexpand::hyperexpand(node, false, crate::simplify::hyperexpand::Rewrite::Default, None)
+        .map(Some)
 }
 
 fn not_ported_rule(node: &Basic) -> PolyResult<Option<Basic>> {
@@ -771,7 +778,7 @@ fn rule_for(e: &Basic) -> Option<Rule> {
         Head::GoldenRatio => golden_ratio_rule,
         Head::TribonacciConstant => tribonacci_rule,
         Head::Hyper => hyper_rule,
-        Head::MeijerG => not_ported_rule,
+        Head::MeijerG => meijerg_rule,
         _ => return None,
     };
     Some(rule)

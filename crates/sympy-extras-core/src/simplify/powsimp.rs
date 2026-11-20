@@ -13,7 +13,7 @@ use crate::core::basic::{Basic, Function, Head};
 use crate::core::expr::{as_base_exp, as_numer_denom, factors_of, is, is_false, is_integer_class, is_true, terms_of};
 use crate::core::sorting::{ordered, sort_key};
 use crate::core::symbol::Dummy;
-use crate::error::{not_ported, PolyResult};
+use crate::error::PolyResult;
 use crate::functions::elementary::exponential::{exp, log};
 use crate::numbers::*;
 
@@ -360,7 +360,11 @@ pub fn powdenest(eq: &Basic, force: bool, polar: bool) -> PolyResult<Basic> {
         return crate::core::function::xreplace_evaluated(&powdenest(&positive, false, polar)?, &back);
     }
     if polar {
-        return Err(not_ported("powdenest(polar=True): the Rust core has no polar numbers"));
+        use crate::functions::elementary::polar::{polarify, unpolarify};
+        let (polarized, back) = polarify(&e, true, false)?;
+        let inner: Basic = powdenest(&unpolarify(&polarized, true)?, false, false)?;
+        // SymPy's unpolarify(eq, subs) is unpolarify(eq.subs(subs))
+        return unpolarify(&crate::core::subs::subs_pairs(&inner, &back)?, false);
     }
     let new: Basic = powsimp(&e, false, Combine::All, false, &count_ops)?;
     xreplace_transform(&new, &|m: &Basic| m.is_pow() || is_exp(m), &denest_pow)

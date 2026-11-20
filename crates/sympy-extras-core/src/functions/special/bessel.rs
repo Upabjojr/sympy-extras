@@ -13,8 +13,8 @@
 //! -+z**2/4)` (the series of `hyper`, so for a moderate argument);
 //! `bessely`, `besselk`, `hankel1`, `hankel2` by the reflection formulas
 //! for a non-integer order only (mpmath's limits at an integer order are
-//! not ported). The core has no polar numbers: the branch factors are
-//! always trivial.
+//! not ported). The branch factor `exp_polar(2*pi*I*n)` of the argument
+//! is taken out as `exp(2*n*pi*nu*I)` for a non-integer order.
 //!
 //! Part 2: the spherical Bessel functions `jn`, `yn`, `hn1`, `hn2` (values
 //! at `0` and the infinities for `jn`, the derivative `f(n - 1, z) - f(n,
@@ -160,14 +160,27 @@ fn rotated(z: &Basic) -> PolyResult<Option<Basic>> {
 }
 
 /// The branch handling of `besselj` and `besseli`: an integer order loses
-/// the polar factors of the argument (the core has none: `unpolarify` is
-/// a reevaluation), the order is unpolarified.
+/// the polar factors of the argument, another one takes out
+/// `exp(2*n*pi*nu*I)` for the branch factor `exp_polar(2*pi*I*n)`; the
+/// order is unpolarified.
 fn branch(f: Function, nu: &Basic, z: &Basic) -> PolyResult<Option<Basic>> {
     use crate::core::function::unpolarify;
     if is_true(nu, Predicate::integer) {
         let newz: Basic = unpolarify(z)?;
         if newz != *z {
             return Ok(Some(bessel(f, &[nu.clone(), newz])?));
+        }
+    } else {
+        let (newz, n) = crate::functions::elementary::polar::extract_branch_factor(z, false)?;
+        if n != Basic::zero() {
+            let phase: Basic = crate::functions::elementary::exponential::exp(&crate::core::mul::mul(&[
+                Basic::int(2),
+                n,
+                Basic::pi(),
+                nu.clone(),
+                Basic::imaginary_unit(),
+            ])?)?;
+            return Ok(Some(crate::core::mul::mul(&[phase, bessel(f, &[nu.clone(), newz])?])?));
         }
     }
     let nnu: Basic = unpolarify(nu)?;

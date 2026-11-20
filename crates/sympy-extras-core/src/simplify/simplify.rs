@@ -483,8 +483,10 @@ fn expand_with(e: &Basic, power_exp: bool, log: bool) -> PolyResult<Basic> {
 
 fn eval_simplify(e: &Basic, o: &Options) -> PolyResult<Option<Basic>> {
     match e.head() {
-        Head::Hyper | Head::MeijerG => {
-            return Err(crate::error::not_ported("simplify of hyper and meijerg (hyperexpand)"))
+        Head::Hyper => {
+            // hyper._eval_simplify
+            use super::hyperexpand::{hyperexpand, Rewrite};
+            return Ok(Some(hyperexpand(e, false, Rewrite::Default, None)?));
         }
         Head::Piecewise => return Err(crate::error::not_ported("simplify of a Piecewise (piecewise_simplify)")),
         Head::Function(f) if crate::functions::special::bessel::is_bessel(*f) => {
@@ -632,8 +634,13 @@ pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
             return Err(crate::error::not_ported("simplify of a Piecewise (piecewise_simplify)"));
         }
     }
-    if has_head(&e, &|n| matches!(n.head(), Head::Hyper | Head::MeijerG)) {
-        return Err(crate::error::not_ported("simplify of hyper and meijerg (hyperexpand)"));
+    if has_head(&e, &|n| {
+        matches!(
+            n.head(),
+            Head::Hyper | Head::MeijerG | Head::Function(Function::ExpPolar | Function::PolarLift)
+        )
+    }) {
+        e = super::hyperexpand::hyperexpand(&e, false, super::hyperexpand::Rewrite::Default, None)?;
     }
     if has_f(&e, Function::KroneckerDelta) {
         e = kroneckersimp(&e)?;

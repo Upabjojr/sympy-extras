@@ -4,6 +4,8 @@
 //! numbers on the Riemann surface of the logarithm, where
 //! `exp_polar(2*I*pi)` is not `1`.
 
+#![allow(clippy::mutable_key_type)]
+
 use crate::core::assumptions::{facts_of, is_number, FactList, Predicate};
 use crate::core::basic::{Basic, Function, Head};
 use crate::core::evalf::{complex, numeric_value, parts, Complex, Real};
@@ -584,4 +586,75 @@ pub fn unpolarify(e: &Basic, exponents_only: bool) -> R {
     }
     let rules: Vec<(Basic, Basic)> = vec![(exp_polar(&int(0))?, int(1)), (polar_lift(&int(0))?, int(0))];
     crate::core::subs::subs_pairs(&current, &rules)
+}
+
+/// `(z, n)` with `e == z*exp_polar(2*pi*I*n)` and the multiple of `I*pi`
+/// left in `z` in `(-1, 1]` (`[0, 1)` and a half-integer `n` with
+/// `allow_half`) (`Expr.extract_branch_factor`).
+pub fn extract_branch_factor(e: &Basic, allow_half: bool) -> PolyResult<(Basic, Basic)> {
+    let mut n: Basic = int(0);
+    let mut res: Basic = int(1);
+    let mut exps: Vec<Basic> = Vec::new();
+    for a in factors_of(e) {
+        if func(&a) == Some(Function::ExpPolar) {
+            exps.push(a.args()[0].clone());
+        } else {
+            res = m2(&res, &a)?;
+        }
+    }
+    let mut piimult: Basic = int(0);
+    let mut extras: Vec<Basic> = Vec::new();
+    let ipi: Basic = m2(&Basic::pi(), &imaginary())?;
+    while let Some(x) = exps.pop() {
+        if x.is_add() {
+            exps.extend(x.args().iter().cloned());
+            continue;
+        }
+        if x.is_mul() {
+            if let Some(coeff) = crate::core::expr::as_coefficient(&x, &ipi)? {
+                piimult = a2(&piimult, &coeff)?;
+                continue;
+            }
+        }
+        extras.push(x);
+    }
+    let (coefficient, tail): (Basic, Vec<Basic>) = if is_number(&piimult) {
+        (piimult.clone(), Vec::new())
+    } else {
+        let free = piimult.free_symbols();
+        let terms: Vec<Basic> = if piimult.is_add() {
+            piimult.args().to_vec()
+        } else {
+            vec![piimult.clone()]
+        };
+        let shares = |t: &Basic| t.free_symbols().iter().any(|s| free.contains(s));
+        let constant: Vec<Basic> = terms.iter().filter(|t| !shares(t)).cloned().collect();
+        (
+            crate::core::add::add(&constant)?,
+            terms.into_iter().filter(|t| shares(t)).collect(),
+        )
+    };
+    let half: Basic = Basic::from_rational(crate::numbers::rat(1, 2));
+    let branchfact: Basic = m2(
+        &super::integers::rounding(Function::Ceiling, &s2(&d2(&coefficient, &int(2))?, &half)?)?,
+        &int(2),
+    )?;
+    n = a2(&n, &d2(&branchfact, &int(2))?)?;
+    let mut c: Basic = s2(&coefficient, &branchfact)?;
+    if allow_half {
+        if let Some(nc) = crate::core::expr::extract_additively(&c, &int(1))? {
+            n = a2(&n, &half)?;
+            c = nc;
+        }
+    }
+    let mut inside: Vec<Basic> = vec![c];
+    inside.extend(tail);
+    let newexp: Basic = a2(
+        &m2(&ipi, &crate::core::add::add(&inside)?)?,
+        &crate::core::add::add(&extras)?,
+    )?;
+    if !(newexp.is_number_node() && newexp == int(0)) {
+        res = m2(&res, &exp_polar(&newexp)?)?;
+    }
+    Ok((res, n))
 }
