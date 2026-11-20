@@ -6190,6 +6190,20 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "limit_seq" => {
+            // (expr, n | NONE, trials) -> the limit or NONE; (difference, expr, n, step); (dominant, expr, n)
+            use sympy_extras_core::series::limitseq as ls;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "difference" => ls::difference_delta(&a[1], &a[2], &a[3]).map_err(e)?,
+                "dominant" => ls::dominant(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                _ => {
+                    let n: Option<&Basic> = if a[2].to_string() == "NONE" { None } else { Some(&a[2]) };
+                    let trials: usize = a[3].to_string().parse().unwrap_or(5);
+                    ls::limit_seq(&a[1], n, trials).map_err(e)?.unwrap_or_else(none)
+                }
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {

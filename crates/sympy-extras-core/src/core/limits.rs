@@ -542,43 +542,162 @@ fn tractable_hyperbolic(f: Function, arg: &Basic) -> PolyResult<Option<Basic>> {
     })
 }
 
-/// The classes whose tractable form is a special function's rewrite (not
-/// ported yet).
-const SPECIAL_TRACTABLE: &[&str] = &[
-    "Gamma",
-    "RisingFactorial",
-    "FallingFactorial",
-    "Binomial",
-    "Harmonic",
-    "Erf",
-    "Erfc",
-    "Erfi",
-    "EiNode",
-    "LiNode",
-    "OffsetLiNode",
-    "UpperGamma",
-    "BesselI",
-    "BesselK",
-    "Fibonacci",
-    "LogGamma",
-    "Erfs",
-    "Eis",
-    "BesselIs",
-    "BesselKs",
+/// The classes whose tractable form needs the helpers `Erfs` and `Eis`
+/// (not ported yet).
+const SPECIAL_TRACTABLE: &[Function] = &[
+    Function::Erf,
+    Function::Erfc,
+    Function::Erfi,
+    Function::Ei,
+    Function::LogIntegral,
+    Function::OffsetLogIntegral,
 ];
 
-/// `e.rewrite('tractable', deep=True)` (or `'intractable'`) for the
-/// elementary functions: the hyperbolic functions in exponentials, the
-/// inverse trigonometric and hyperbolic functions in logarithms
-/// (`rewrite_tractable`).
+/// `e.rewrite('tractable', deep=True)` (or `'intractable'`) without the
+/// limit variable (`rewrite_tractable(e, None)`).
 pub fn rewrite_tractable(e: &Basic, intractable: bool) -> R {
+    rewrite_tractable_at(e, None, intractable)
+}
+
+fn gamma_rewrite(e: &Basic) -> R {
+    crate::core::rewriting::rewrite(e, &[], "gamma", &crate::core::rewriting::RewriteHints::default())
+}
+
+/// SymPy's `_eval_rewrite_as_tractable` of the gamma function, the
+/// factorials written with it, `harmonic`, `uppergamma`, `besseli`,
+/// `besselk` and `fibonacci` (`args` already rewritten): `None` for the
+/// other nodes and where SymPy's rule gives none (`_tractable_special`,
+/// `_tractable_error_and_bessel`).
+fn tractable_special(e: &Basic, f: Function, args: &[Basic], limitvar: Option<&Basic>) -> PolyResult<Option<Basic>> {
+    use crate::functions::special::gamma_functions::{gamma, loggamma, lowergamma, polygamma};
+    let exp = crate::functions::elementary::exponential::exp;
+    let tractable = |b: &Basic, var: Option<&Basic>| rewrite_tractable_at(b, var, false);
+    Ok(match f {
+        // PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:gamma._eval_rewrite_as_tractable
+        Function::Gamma => Some(exp(&loggamma(&args[0])?)?),
+        // PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:RisingFactorial._eval_rewrite_as_tractable,
+        // FallingFactorial._eval_rewrite_as_tractable
+        Function::RisingFactorial | Function::FallingFactorial => {
+            let (x, k) = (&args[0], &args[1]);
+            let rising: bool = f == Function::RisingFactorial;
+            if let Some(var) = limitvar {
+                let k_lim: Basic = subs(k, var, &Basic::oo())?;
+                let one: Basic = Basic::one();
+                if matches!(k_lim.head(), Head::Infinity) {
+                    if rising {
+                        return Ok(Some(div(&tractable(&gamma(&add2(x, k)?)?, limitvar)?, &gamma(x)?)?));
+                    }
+                    let top: Basic = crate::core::mul::mul(&[
+                        pow(&Basic::negative_one(), k)?,
+                        tractable(&gamma(&sub(k, x)?)?, limitvar)?,
+                    ])?;
+                    return Ok(Some(div(&top, &gamma(&neg(x)?)?)?));
+                }
+                if matches!(k_lim.head(), Head::NegativeInfinity) {
+                    if rising {
+                        let top: Basic =
+                            crate::core::mul::mul(&[pow(&Basic::negative_one(), k)?, gamma(&sub(&one, x)?)?])?;
+                        let bottom: Basic = tractable(&gamma(&add2(&sub(&neg(k)?, x)?, &one)?)?, limitvar)?;
+                        return Ok(Some(div(&top, &bottom)?));
+                    }
+                    let bottom: Basic = tractable(&gamma(&add2(&sub(x, k)?, &one)?)?, limitvar)?;
+                    return Ok(Some(div(&gamma(&add2(x, &one)?)?, &bottom)?));
+                }
+            }
+            let node: Basic = crate::core::function::rebuild_evaluated(e, args.to_vec())?;
+            Some(tractable(&gamma_rewrite(&node)?, limitvar)?)
+        }
+        // PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:binomial._eval_rewrite_as_tractable
+        Function::Binomial => {
+            let node: Basic = crate::core::function::rebuild_evaluated(e, args.to_vec())?;
+            Some(tractable(&gamma_rewrite(&node)?, None)?)
+        }
+        // PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:harmonic._eval_rewrite_as_tractable
+        Function::Harmonic => {
+            let n: &Basic = &args[0];
+            let m: Basic = if args.len() > 1 { args[1].clone() } else { Basic::one() };
+            let one: Basic = Basic::one();
+            if m == one {
+                let value: Basic = add2(
+                    &polygamma(&Basic::zero(), &add2(n, &one)?)?,
+                    &Basic::atom(Head::EulerGamma),
+                )?;
+                Some(tractable(&value, limitvar)?)
+            } else if yes(&m, Predicate::integer) && yes(&m, Predicate::positive) {
+                let m1: Basic = sub(&m, &one)?;
+                let difference: Basic = sub(&polygamma(&m1, &one)?, &polygamma(&m1, &add2(n, &one)?)?)?;
+                let value: Basic = div(
+                    &crate::core::mul::mul(&[pow(&Basic::negative_one(), &m)?, difference])?,
+                    &gamma(&m)?,
+                )?;
+                Some(tractable(&value, limitvar)?)
+            } else {
+                None
+            }
+        }
+        // PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:uppergamma._eval_rewrite_as_tractable
+        Function::UpperGamma => Some(sub(&exp(&loggamma(&args[0])?)?, &lowergamma(&args[0], &args[1])?)?),
+        // PORTED FROM SYMPY: sympy/functions/special/bessel.py:besseli._eval_rewrite_as_tractable,
+        // besselk._eval_rewrite_as_tractable
+        Function::BesselI | Function::BesselK => {
+            let (nu, z) = (&args[0], &args[1]);
+            if !yes(z, Predicate::extended_real) {
+                return Ok(None);
+            }
+            let (helper, sign) = if f == Function::BesselI {
+                (Function::BesselIs, z.clone())
+            } else {
+                (Function::BesselKs, neg(z)?)
+            };
+            let scaled: Basic = crate::functions::apply_function(helper, &[nu.clone(), z.clone()])?;
+            Some(crate::core::mul::mul(&[exp(&sign)?, scaled])?)
+        }
+        // PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:fibonacci._eval_rewrite_as_tractable
+        Function::Fibonacci if args.len() == 1 => {
+            let n: &Basic = &args[0];
+            let phi: Basic = Basic::atom(Head::GoldenRatio);
+            let phi_n: Basic = pow(&phi, n)?;
+            let cosine: Basic =
+                crate::functions::elementary::trigonometric::cos(&crate::core::mul::mul(&[Basic::pi(), n.clone()])?)?;
+            let top: Basic = sub(&phi_n, &div(&cosine, &phi_n)?)?;
+            Some(div(&top, &pow(&Basic::int(5), &div(&Basic::one(), &Basic::int(2))?)?)?)
+        }
+        _ => None,
+    })
+}
+
+/// SymPy's `_eval_rewrite_as_intractable` of `loggamma`, `_besseli` and
+/// `_besselk` (`args` already rewritten).
+fn intractable_special(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>> {
+    let exp = crate::functions::elementary::exponential::exp;
+    Ok(match f {
+        // PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:loggamma._eval_rewrite_as_intractable
+        Function::LogGamma => Some(log(&crate::functions::special::gamma_functions::gamma(&args[0])?)?),
+        Function::BesselIs => {
+            let value: Basic = crate::functions::apply_function(Function::BesselI, args)?;
+            Some(crate::core::mul::mul(&[exp(&neg(&args[1])?)?, value])?)
+        }
+        Function::BesselKs => {
+            let value: Basic = crate::functions::apply_function(Function::BesselK, args)?;
+            Some(crate::core::mul::mul(&[exp(&args[1])?, value])?)
+        }
+        _ => None,
+    })
+}
+
+/// `e.rewrite('tractable', deep=True, limitvar=...)` (or `'intractable'`):
+/// the hyperbolic functions in exponentials, the inverse trigonometric and
+/// hyperbolic functions in logarithms, the gamma function as
+/// `exp(loggamma)` and the factorials, harmonic numbers, Bessel functions
+/// through it (`rewrite_tractable`).
+pub fn rewrite_tractable_at(e: &Basic, limitvar: Option<&Basic>, intractable: bool) -> R {
     let args: Vec<Basic> = e
         .args()
         .iter()
-        .map(|a| rewrite_tractable(a, intractable))
+        .map(|a| rewrite_tractable_at(a, limitvar, intractable))
         .collect::<PolyResult<_>>()?;
     if let Head::Function(f) = e.head() {
-        if SPECIAL_TRACTABLE.contains(&e.class_name()) {
+        if !intractable && SPECIAL_TRACTABLE.contains(f) {
             return Err(not_ported(&format!("the tractable form of {}", e.class_name())));
         }
         if !intractable {
@@ -598,6 +717,13 @@ pub fn rewrite_tractable(e: &Basic, intractable: bool) -> R {
                     &crate::core::rewriting::RewriteHints::default(),
                 );
             }
+        }
+        if !intractable {
+            if let Some(r) = tractable_special(e, *f, &args, limitvar)? {
+                return Ok(r);
+            }
+        } else if let Some(r) = intractable_special(*f, &args)? {
+            return Ok(r);
         }
     }
     if args.is_empty() {
@@ -921,7 +1047,7 @@ fn limitinf(e: &Basic, x: &Basic) -> R {
         e = subs(&e, &x, &p)?;
         x = p;
     }
-    let rewritten: Basic = rewrite_tractable(&e, false)?;
+    let rewritten: Basic = rewrite_tractable_at(&e, Some(&x), false)?;
     e = crate::simplify::powsimp::powdenest(&rewritten, false, false)?;
     let (c0, e0) = if crate::core::accumbounds::is_bounds(&e) {
         let lo = mrv_leadterm(&e.args()[0], &x)?;
