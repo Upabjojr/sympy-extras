@@ -78,15 +78,6 @@ fn evaluate_first(f: &IntPoly, x: &Int, rest: &Arc<PolyRing<IntegerRing>>) -> In
     rest.from_dict(terms)
 }
 
-fn balanced(c: &Int, x: &Int) -> Int {
-    let r: Int = mod_floor(c, x);
-    if r > div_floor(x, &Int::from(2u8)) {
-        r - x
-    } else {
-        r
-    }
-}
-
 fn positive(f: IntPoly) -> IntPoly {
     if !f.terms.is_empty() && is_negative(&f.LC()) {
         f.neg()
@@ -100,34 +91,104 @@ fn positive(f: IntPoly) -> IntPoly {
 /// `x`, made positive.
 fn interpolate(h: &IntPoly, x: &Int, ring: &Arc<PolyRing<IntegerRing>>) -> IntPoly {
     let mut terms: Terms<Int> = Terms::new();
-    let mut h: IntPoly = h.clone();
-    let mut i: u32 = 0;
-    while !h.terms.is_empty() {
-        let digit: IntPoly = h
-            .ring
-            .from_dict(h.terms.iter().map(|(m, c)| (m.clone(), balanced(c, x))).collect());
-        h = quo_ground(&h.sub(&digit), x);
-        for (m, c) in &digit.terms {
-            let mut key: Monomial = vec![i];
-            key.extend_from_slice(m);
-            terms.insert(key, c.clone());
+    for (m, c) in &h.terms {
+        for (i, g) in balanced_digits(c, x).into_iter().enumerate() {
+            if !g.is_zero() {
+                let mut key: Monomial = vec![i as u32];
+                key.extend_from_slice(m);
+                terms.insert(key, g);
+            }
         }
-        i += 1;
     }
     positive(ring.from_dict(terms))
 }
 
+/// The balanced digits of `c` in base `x`, the lowest first, as the loop
+/// `g = balanced(c, x); c = (c - g) // x` gives them, by splitting at
+/// `x**(2**k)` (`_balanced_digits`; the loop is quadratic in the size of
+/// `c`, issue #25). The digits lie in `[low, low + x - 1]` with
+/// `low = x//2 - x + 1`, so the numbers with `n` digits are the `x**n`
+/// consecutive integers from `low*(x**n - 1)/(x - 1)`.
+fn balanced_digits(c: &Int, x: &Int) -> Vec<Int> {
+    if c.is_zero() {
+        return Vec::new();
+    }
+    let low: Int = div_floor(x, &Int::from(2u8)) - x + Int::ONE;
+    let mut powers: Vec<Int> = vec![x.clone()];
+    let mut starts: Vec<Int> = vec![low];
+    let inside = |v: &Int, k: usize, powers: &[Int], starts: &[Int]| -> bool {
+        starts[k] <= *v && *v <= &starts[k] + &powers[k] - Int::ONE
+    };
+    while !inside(c, powers.len() - 1, &powers, &starts) {
+        let big_x: Int = powers[powers.len() - 1].clone();
+        let last: Int = starts[starts.len() - 1].clone();
+        starts.push(&last * &big_x + &last);
+        powers.push(&big_x * &big_x);
+    }
+    fn split(v: Int, k: usize, powers: &[Int], starts: &[Int], digits: &mut Vec<Int>) {
+        if k == 0 {
+            digits.push(v);
+            return;
+        }
+        let (big_x, l) = (&powers[k - 1], &starts[k - 1]);
+        let lower: Int = mod_floor(&(&v - l), big_x) + l;
+        let upper: Int = div_floor(&(&v - &lower), big_x);
+        split(lower, k - 1, powers, starts, digits);
+        split(upper, k - 1, powers, starts, digits);
+    }
+    let mut digits: Vec<Int> = Vec::new();
+    split(c.clone(), powers.len() - 1, &powers, &starts, &mut digits);
+    while digits.last().is_some_and(|d| d.is_zero()) {
+        digits.pop();
+    }
+    digits
+}
+
+/// The value of a univariate polynomial at `x`, the halves of the
+/// coefficients evaluated recursively and joined with `x**(2**k)`
+/// (`_horner`; Horner's scheme is quadratic on values of hundreds of
+/// thousands of digits, issue #25).
+fn horner(f: &IntPoly, x: &Int) -> Int {
+    let n: usize = f.terms.keys().map(|m| m[0] as usize).max().unwrap_or(0) + 1;
+    let mut dense: Vec<Int> = vec![Int::ZERO; n];
+    for (m, c) in &f.terms {
+        dense[m[0] as usize] = c.clone();
+    }
+    evaluate_dense(&dense, &square_powers(x, n))
+}
+
+/// `[x, x**2, x**4, ...]` up to the first `x**(2**k)` with `2**k >= n`
+/// (`_square_powers`).
+fn square_powers(x: &Int, n: usize) -> Vec<Int> {
+    let mut powers: Vec<Int> = vec![x.clone()];
+    while (1usize << (powers.len() - 1)) < n {
+        let last: Int = powers[powers.len() - 1].clone();
+        powers.push(&last * &last);
+    }
+    powers
+}
+
+/// `sum(dense[i] * x**i)` with `powers[k] = x**(2**k)` (`_evaluate_dense`).
+fn evaluate_dense(dense: &[Int], powers: &[Int]) -> Int {
+    let n: usize = dense.len();
+    if n <= 16 {
+        let mut result: Int = Int::ZERO;
+        for c in dense.iter().rev() {
+            result = result * &powers[0] + c;
+        }
+        return result;
+    }
+    let k: usize = (usize::BITS - (n - 1).leading_zeros()) as usize - 1;
+    let half: usize = 1 << k;
+    evaluate_dense(&dense[..half], powers) + &powers[k] * evaluate_dense(&dense[half..], powers)
+}
+
 fn interpolate_integer(h: &Int, x: &Int, ring: &Arc<PolyRing<IntegerRing>>) -> IntPoly {
     let mut terms: Terms<Int> = Terms::new();
-    let mut h: Int = h.clone();
-    let mut i: u32 = 0;
-    while !h.is_zero() {
-        let g: Int = balanced(&h, x);
-        h = div_floor(&(&h - &g), x);
+    for (i, g) in balanced_digits(h, x).into_iter().enumerate() {
         if !g.is_zero() {
-            terms.insert(vec![i], g);
+            terms.insert(vec![i as u32], g);
         }
-        i += 1;
     }
     positive(ring.from_dict(terms))
 }
@@ -167,14 +228,7 @@ pub fn heugcd(f: &IntPoly, g: &IntPoly) -> PolyResult<Cofactors> {
     for _ in 0..HEU_GCD_MAX {
         match &rest {
             None => {
-                let at = |p: &IntPoly| -> Int {
-                    let mut total: Int = Int::ZERO;
-                    for (m, c) in &p.terms {
-                        total += c * x.pow(m[0] as usize);
-                    }
-                    total
-                };
-                let (ff, gg) = (at(&f), at(&g));
+                let (ff, gg) = (horner(&f, &x), horner(&g, &x));
                 if !ff.is_zero() && !gg.is_zero() {
                     let hi: Int = gcd(&ff, &gg);
                     let h: IntPoly = primitive_part(&interpolate_integer(&hi, &x, &ring));

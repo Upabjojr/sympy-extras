@@ -258,13 +258,15 @@ pub fn doit(node: &Basic, deep: bool) -> R {
     };
     e = set_signs(&e, &z, &z0, &dir)?;
     if crate::core::meromorphic::is_meromorphic(&e, &z, &z0)? == Some(true) {
+        let mut mz: Basic = z.clone();
         let newe: Basic = if matches!(z0.head(), Head::Infinity) {
             cdir = neg(&cdir)?;
             subs(&e, &z, &div(&Basic::one(), &z)?)?
         } else {
-            subs(&e, &z, &add2(&z, &z0)?)?
+            mz = shifted_variable(&z, &z0, &dir);
+            subs(&e, &z, &add2(&mz, &z0)?)?
         };
-        match leadterm(&newe, &z, None, &cdir) {
+        match leadterm(&newe, &mz, None, &cdir) {
             Err(PolyError::Value(_)) => {}
             Err(err) => return Err(err),
             Ok((coeff, ex)) => {
@@ -298,7 +300,8 @@ pub fn doit(node: &Basic, deep: bool) -> R {
         cdir = neg(&cdir)?;
         (subs(&e, &z, &div(&Basic::one(), &dummy)?)?, dummy)
     } else {
-        (subs(&e, &z, &add2(&z, &z0)?)?, z.clone())
+        let newz: Basic = shifted_variable(&z, &z0, &dir);
+        (subs(&e, &z, &add2(&newz, &z0)?)?, newz)
     };
     match leadterm(&newe, &newz, None, &cdir) {
         Err(err) if caught(&err, true, true, true) => {
@@ -700,6 +703,16 @@ pub fn rewrite_tractable_at(e: &Basic, limitvar: Option<&Basic>, intractable: bo
         if !intractable && SPECIAL_TRACTABLE.contains(f) {
             return Err(not_ported(&format!("the tractable form of {}", e.class_name())));
         }
+        // not SymPy's: expint of a positive integer order at a positive
+        // argument goes through eis (sympy-extras#25), which needs the
+        // helper `Eis`
+        if !intractable
+            && *f == Function::Expint
+            && args[0].as_rational().is_some_and(|q| q.is_int() && *q >= Rat::ONE)
+            && is(&args[1], Predicate::positive) == Some(true)
+        {
+            return Err(not_ported("the tractable form of expint (through eis)"));
+        }
         if !intractable {
             if matches!(
                 f,
@@ -1100,6 +1113,34 @@ fn moveup2(s: &SubsSet, x: &Basic) -> PolyResult<SubsSet> {
 
 /// `(c0, e0)`: the leading term `c0*w**e0` of `e` in the most rapidly
 /// varying `w` going to zero (`mrv_leadterm`).
+/// The variable `h` of `z = z0 + h`, which goes to `0` from `dir`
+/// (`_shifted_variable`): `z` itself when its assumptions say nothing of
+/// its sign, otherwise a dummy of the sign of the direction (not in SymPy:
+/// the shifted `z` kept the assumptions of `z`, sympy-extras#25).
+fn shifted_variable(z: &Basic, z0: &Basic, dir: &str) -> Basic {
+    let signs = [
+        Predicate::positive,
+        Predicate::negative,
+        Predicate::nonnegative,
+        Predicate::nonpositive,
+    ];
+    if signs.iter().all(|p| is(z, *p).is_none()) {
+        return z.clone();
+    }
+    if is(z, Predicate::extended_real) == Some(true)
+        && is(z0, Predicate::extended_real) == Some(true)
+        && (dir == "+" || dir == "-")
+    {
+        let p: Predicate = if dir == "+" {
+            Predicate::positive
+        } else {
+            Predicate::negative
+        };
+        return Dummy::new("h", &[(p, true)]).0;
+    }
+    Dummy::new("h", &[]).0
+}
+
 fn mrv_leadterm(e: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
     if !e.has(x) {
         return Ok((e.clone(), Basic::zero()));
@@ -1125,6 +1166,15 @@ fn mrv_leadterm(e: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
             let mut series: Basic = crate::core::order::order(&Basic::one(), &[])?;
             let mut incr: i64 = 1;
             while is_order(&series) {
+                if n0 + incr > 128 {
+                    // SymPy's loop has no end: the expansion of a function
+                    // which is exponentially small in w (expint(2, 1/w)) is
+                    // O(w**n) for every n
+                    return Err(PolyError::Pole(format!(
+                        "the expansion of {} in {} vanishes to every order",
+                        f, w
+                    )));
+                }
                 series = eval_nseries(&f, &w, n0 + incr, Some(&logw), &Basic::zero())?;
                 incr *= 2;
             }

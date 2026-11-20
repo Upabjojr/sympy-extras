@@ -231,6 +231,20 @@ pub fn xreplace_evaluated(e: &Basic, rule: &std::collections::HashMap<Basic, Bas
     if matches!(e.head(), Head::RootSum) {
         return crate::polys::rootoftools::xreplace_evaluated(e, rule);
     }
+    if matches!(e.head(), Head::ConditionSet) {
+        // the condition first: false gives the empty set, whatever the
+        // base set becomes (ConditionSet._xreplace_evaluated)
+        let condition: Basic = xreplace_evaluated(&e.args()[1], rule)?;
+        if condition == crate::core::logic::false_() {
+            return Ok(crate::sets::sets::empty_set());
+        }
+        let args: Vec<Basic> = vec![
+            xreplace_evaluated(&e.args()[0], rule)?,
+            condition,
+            xreplace_evaluated(&e.args()[2], rule)?,
+        ];
+        return rebuild_evaluated(e, args);
+    }
     let mut args: Vec<Basic> = Vec::new();
     for a in e.args() {
         args.push(xreplace_evaluated(a, rule)?);

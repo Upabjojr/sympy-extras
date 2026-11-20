@@ -645,8 +645,6 @@ pub fn zz_wang(f: &Poly, modulus: Option<i64>, seed: u64) -> PolyResult<Vec<Poly
     let inner: Ring = PolyRing::new(ZZ, ring.names[1..].to_vec(), MonomialOrder::Lex)?;
     let (ct, t_inner) = zz_factor(&drop_first(&lc_first(f), &inner))?;
     let t: Vec<Poly> = t_inner.iter().map(|(ti, _)| add_first(ti, &ring)).collect();
-    let b: Int = mignotte_bound(f);
-    let p: Int = nextprime(&b);
     let mut modulus: i64 = modulus.unwrap_or(if u == 1 { 2 } else { 1 });
     let mut history: HashSet<Vec<Int>> = HashSet::new();
     let mut configs: Vec<Config> = Vec::new();
@@ -711,8 +709,13 @@ pub fn zz_wang(f: &Poly, modulus: Option<i64>, seed: u64) -> PolyResult<Vec<Poly
         }
     }
     let (_, cs, e, h, a) = &configs[best];
-    let lifted: Result<Vec<Poly>, Failure> =
-        lead_coeffs(f, &t, cs, e, h, a).and_then(|(g, hh, lc)| hensel_lifting(&g, &hh, &lc, a, &p));
+    // the prime above the Mignotte bound only when there is something to
+    // lift: nextprime of a bound of hundreds of digits takes seconds, and an
+    // irreducible polynomial is recognised before (issue #25)
+    let lifted: Result<Vec<Poly>, Failure> = lead_coeffs(f, &t, cs, e, h, a).and_then(|(g, hh, lc)| {
+        let p: Int = nextprime(&mignotte_bound(f));
+        hensel_lifting(&g, &hh, &lc, a, &p)
+    });
     let factors: Vec<Poly> = match lifted {
         Ok(factors) => factors,
         Err(Failure::Inexact) => return Err(value_error("inexact division".to_string())),

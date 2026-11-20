@@ -35,9 +35,6 @@ fn pw(a: &Basic, b: &Basic) -> R {
 fn mul_all(v: &[Basic]) -> R {
     crate::core::mul::mul(v)
 }
-fn add_all(v: &[Basic]) -> R {
-    crate::core::add::add(v)
-}
 fn subs(e: &Basic, old: &Basic, new: &Basic) -> R {
     crate::core::subs::subs(e, old, new)
 }
@@ -118,25 +115,29 @@ pub fn eval_product(term: &Basic, limits: &Limit) -> OptR {
             }
             Err(e) => return Err(e),
         };
-        let (mut big_a, mut big_b, mut big_q) = (int(1), int(1), int(1));
+        let (mut big_a, mut big_b, mut big_d) = (int(1), int(1), int(1));
         let found = crate::polys::polyroots::roots(term, std::slice::from_ref(k), true, true, None)?;
         let mut multiplicity: i64 = 0;
         for (r, m) in found.iter() {
             let m: i64 = *m as i64;
             multiplicity += m;
             big_a = m2(&big_a, &pw(&rf(&s2(a, r)?, &count_of(n, a)?)?, &int(m))?)?;
-            big_q = m2(&big_q, &pw(&s2(n, r)?, &int(m))?)?;
+            big_d = m2(&big_d, &pw(&s2(k, r)?, &int(m))?)?;
         }
-        if multiplicity < poly.degree(0)? {
-            let mut terms: Vec<Basic> = Vec::new();
-            for (monomial, c) in poly.terms()? {
-                let coefficient: Basic = crate::polys::polytools::cancel(&d2(&c, &big_q)?, &[])?;
-                terms.push(m2(&coefficient, &pw(k, &int(monomial[0] as i64))?)?);
+        // SymPy builds Q = prod((n - r)**m), a constant in k, and takes the
+        // product of quo(poly, Q.as_poly(k)), the whole polynomial again:
+        // wrong when some roots are found, a recursion without end when none
+        // is. The remaining factor is the monic cofactor of the roots found,
+        // and with no root found the other methods are tried (issue #25)
+        if multiplicity > 0 {
+            if multiplicity < poly.degree(0)? {
+                let divisor = crate::polys::polytools::Poly::new(&big_d, std::slice::from_ref(k))?;
+                let cofactor: Basic = poly.div(&divisor)?.0.monic()?.as_expr()?;
+                big_b = doit_of(&cofactor, limits)?;
             }
-            big_b = doit_of(&add_all(&terms)?, limits)?;
+            let lc: Basic = poly.LC()?;
+            return Ok(Some(m2(&m2(&pw(&lc, &count_of(n, a)?)?, &big_a)?, &big_b)?));
         }
-        let lc: Basic = poly.LC()?;
-        return Ok(Some(m2(&m2(&pw(&lc, &count_of(n, a)?)?, &big_a)?, &big_b)?));
     }
     if term.is_add() {
         let factored: Basic = crate::core::exprtools::factor_terms(term, false, false, true, true)?;
@@ -213,24 +214,18 @@ fn eval_polynomial_ex(term: &Basic, limits: &Limit) -> OptR {
             None => counts.push((r, 1)),
         }
     }
-    let (mut big_a, mut big_b, mut big_q) = (int(1), int(1), int(1));
+    let mut big_a: Basic = int(1);
     let mut multiplicity: i64 = 0;
     for (r, m) in &counts {
         multiplicity += m;
         big_a = m2(&big_a, &pw(&rf(&s2(a, r)?, &count_of(n, a)?)?, &int(*m))?)?;
-        big_q = m2(&big_q, &pw(&s2(n, r)?, &int(*m))?)?;
     }
     if multiplicity < poly.degree() {
-        let mut terms: Vec<Basic> = Vec::new();
-        for (j, c) in poly.c.iter().enumerate() {
-            terms.push(m2(
-                &crate::polys::polytools::cancel(&d2(c, &big_q)?, &[])?,
-                &pw(k, &int(j as i64))?,
-            )?);
-        }
-        big_b = doit_of(&add_all(&terms)?, limits)?;
+        // SymPy's quo(poly, Q.as_poly(k)) divides by a constant in k (issue
+        // #25): the cofactor of the roots found is not known here
+        return Ok(None);
     }
-    Ok(Some(m2(&m2(&pw(&poly.lc(), &count_of(n, a)?)?, &big_a)?, &big_b)?))
+    Ok(Some(m2(&pw(&poly.lc(), &count_of(n, a)?)?, &big_a)?))
 }
 
 /// The product evaluated over its limits in turn (`product_doit`).

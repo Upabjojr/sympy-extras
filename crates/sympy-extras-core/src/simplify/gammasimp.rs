@@ -21,7 +21,7 @@ use crate::core::mul::mul;
 use crate::core::power::pow;
 use crate::core::sorting::{ordered, sort_key};
 use crate::error::PolyResult;
-use crate::numbers::Rat;
+use crate::numbers::{Int, Rat};
 
 type Leaf = fn(&Basic, &Basic) -> PolyResult<Basic>;
 
@@ -73,7 +73,7 @@ fn is_application(b: &Basic) -> bool {
 // PORTED FROM SYMPY: sympy/simplify/gammasimp.py:_rf
 /// The rising factorial `rf(a, b)` with the integer parts of `a` and `b`
 /// taken out as products; the rest is `leaf(a, b)`.
-fn rf(a: &Basic, b: &Basic, leaf: Leaf) -> PolyResult<Basic> {
+fn rf(a: &Basic, b: &Basic, leaf: Leaf, fractional: bool) -> PolyResult<Basic> {
     if let Some(n) = to_int(b) {
         if n == 0 {
             return Ok(one());
@@ -91,11 +91,53 @@ fn rf(a: &Basic, b: &Basic, leaf: Leaf) -> PolyResult<Basic> {
         let (c, b0) = as_coeff_add(b);
         if let Some(ci) = to_int(&c) {
             if ci > 0 {
-                return mul(&[rf(a, &b0, leaf)?, rf(&add(&[a.clone(), b0.clone()])?, &c, leaf)?]);
+                return mul(&[
+                    rf(a, &b0, leaf, fractional)?,
+                    rf(&add(&[a.clone(), b0.clone()])?, &c, leaf, fractional)?,
+                ]);
             }
             if ci < 0 {
                 let shifted: Basic = add(&[a.clone(), b0.clone(), c.clone()])?;
-                return mul(&[rf(a, &b0, leaf)?, inv(&rf(&shifted, &int(-ci), leaf)?)?]);
+                return mul(&[
+                    rf(a, &b0, leaf, fractional)?,
+                    inv(&rf(&shifted, &int(-ci), leaf, fractional)?)?,
+                ]);
+            }
+        }
+        if let (true, None, Some(q)) = (fractional, to_int(&c), c.as_rational()) {
+            let whole_: Int = {
+                // Python's floor division
+                let (n, d) = (crate::numbers::numer(q), crate::numbers::denom(q));
+                let f: Int = &n / &d;
+                if (&n % &d) != Int::ZERO && n < Int::ZERO {
+                    f - Int::ONE
+                } else {
+                    f
+                }
+            };
+            if whole_ != Int::ZERO {
+                // not SymPy's: the integer part of a fractional shift taken
+                // out too, so that gamma(n + 3/2)/gamma(n + 1/2) is n + 1/2
+                // (SymPy leaves it, issue #25); the rest keeps a shift in
+                // [0, 1)
+                let w: i64 =
+                    i64::try_from(&whole_).map_err(|_| crate::error::value_error("a huge shift".to_string()))?;
+                let rest: Basic = add(&[b0.clone(), Basic::from_rational(q - Rat::from(whole_.clone()))])?;
+                if w > 0 {
+                    return mul(&[
+                        rf(a, &rest, leaf, fractional)?,
+                        rf(&add(&[a.clone(), rest.clone()])?, &int(w), leaf, fractional)?,
+                    ]);
+                }
+                return mul(&[
+                    rf(a, &rest, leaf, fractional)?,
+                    inv(&rf(
+                        &add(&[a.clone(), rest.clone(), int(w)])?,
+                        &int(-w),
+                        leaf,
+                        fractional,
+                    )?)?,
+                ]);
             }
         }
     }
@@ -104,16 +146,21 @@ fn rf(a: &Basic, b: &Basic, leaf: Leaf) -> PolyResult<Basic> {
         if let Some(ci) = to_int(&c) {
             if ci > 0 {
                 return mul(&[
-                    rf(&a0, b, leaf)?,
-                    rf(&add(&[a0.clone(), b.clone()])?, &c, leaf)?,
-                    inv(&rf(&a0, &c, leaf)?)?,
+                    rf(&a0, b, leaf, fractional)?,
+                    rf(&add(&[a0.clone(), b.clone()])?, &c, leaf, fractional)?,
+                    inv(&rf(&a0, &c, leaf, fractional)?)?,
                 ]);
             }
             if ci < 0 {
                 return mul(&[
-                    rf(&a0, b, leaf)?,
-                    rf(&add(&[a0.clone(), c.clone()])?, &int(-ci), leaf)?,
-                    inv(&rf(&add(&[a0.clone(), b.clone(), c.clone()])?, &int(-ci), leaf)?)?,
+                    rf(&a0, b, leaf, fractional)?,
+                    rf(&add(&[a0.clone(), c.clone()])?, &int(-ci), leaf, fractional)?,
+                    inv(&rf(
+                        &add(&[a0.clone(), b.clone(), c.clone()])?,
+                        &int(-ci),
+                        leaf,
+                        fractional,
+                    )?)?,
                 ]);
             }
         }
@@ -130,10 +177,10 @@ fn comb_leaf(_: &Basic, b: &Basic) -> PolyResult<Basic> {
 }
 
 /// Every `gamma(n)` as `rf(1, n - 1)` with the given leaf.
-fn through_rf(e: &Basic, leaf: Leaf) -> PolyResult<Basic> {
+fn through_rf(e: &Basic, leaf: Leaf, fractional: bool) -> PolyResult<Basic> {
     crate::core::function::replace_where(e, &is_gamma, &|b: &Basic| {
         let shifted: Basic = crate::core::function::expand_method(&add(&[b.args()[0].clone(), int(-1)])?)?;
-        rf(&one(), &shifted, leaf)
+        rf(&one(), &shifted, leaf, fractional)
     })
 }
 
@@ -175,7 +222,7 @@ fn gamma_count(x: &Basic) -> usize {
 }
 
 fn gamma_rat(x: &Basic) -> PolyResult<Basic> {
-    let xx: Basic = through_rf(x, gamma_leaf)?;
+    let xx: Basic = through_rf(x, gamma_leaf, false)?;
     Ok(if gamma_count(&xx) < gamma_count(x) {
         xx
     } else {
@@ -615,7 +662,17 @@ fn factor(e: &Basic) -> PolyResult<Basic> {
 
 // PORTED FROM SYMPY: sympy/simplify/gammasimp.py:_gammasimp
 fn gammasimp_inner(expr: &Basic, as_comb: bool) -> PolyResult<Basic> {
-    let expr: Basic = through_rf(expr, if as_comb { comb_leaf } else { gamma_leaf })?;
+    let leaf: Leaf = if as_comb { comb_leaf } else { gamma_leaf };
+    let integral: Basic = through_rf(expr, leaf, false)?;
+    // not SymPy's: gamma functions whose arguments differ by an integer but
+    // have a fractional shift (gamma(n + 3/2)/gamma(n + 1/2), left by SymPy,
+    // issue #25) merged too, when that leaves fewer of them
+    let fractional: Basic = through_rf(expr, leaf, true)?;
+    let expr: Basic = if gamma_count(&fractional) < gamma_count(&integral) {
+        fractional
+    } else {
+        integral
+    };
     let was: Basic = factor(&expr)?;
     let mut expr: Basic = rule_gamma(&was, as_comb, 0)?;
     if expr != was {

@@ -95,6 +95,27 @@ fn subs_node_rec(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Basic> {
     if crate::assumptions::quantifiers::is_quantifier(e) {
         return crate::assumptions::quantifiers::quantifier_subs(e, old, new, &|f: &Basic| subs_node_rec(f, old, new));
     }
+    if matches!(e.head(), Head::ConditionSet) {
+        // ConditionSet._subs: the condition first; a parameter value which
+        // makes it false gives the empty set, even when it makes the base
+        // set invalid (SymPy rebuilds the base set first and raises, issue
+        // #25); a bound symbol is not replaced by a value
+        let (sym, condition, base) = (&e.args()[0], &e.args()[1], &e.args()[2]);
+        let bound: Vec<Basic> = if matches!(sym.head(), Head::Tuple) {
+            sym.args().to_vec()
+        } else {
+            vec![sym.clone()]
+        };
+        if bound.contains(old) && !matches!(new.head(), Head::Symbol(_) | Head::Dummy(_, _)) {
+            return Ok(e.clone());
+        }
+        let condition: Basic = subs_node_rec(condition, old, new)?;
+        if condition == crate::core::logic::false_() {
+            return Ok(crate::sets::sets::empty_set());
+        }
+        let args: Vec<Basic> = vec![subs_node_rec(sym, old, new)?, condition, subs_node_rec(base, old, new)?];
+        return rebuild_evaluated(e, args);
+    }
     if let Some(replaced) = subs_partial(e, old, new)? {
         return Ok(replaced);
     }

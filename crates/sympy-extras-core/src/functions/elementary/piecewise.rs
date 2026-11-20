@@ -171,6 +171,12 @@ fn canonical_coeff(r: &Basic) -> PolyResult<Basic> {
         }
     };
     let (m, lhs) = as_coeff_mul_rational(&rest);
+    if m == Basic::zero() {
+        // a relation between numbers (unevaluated Eq(1, 1)): SymPy divides
+        // by m = 0 and gets Eq(0, nan), False, so that its Piecewise drops a
+        // true condition (issue #25); it is evaluated instead
+        return evaluate_relation(op_of(&r), &r.args()[0], &r.args()[1]);
+    }
     let rhs: Basic = div(&sub(rhs, &b)?, &m)?;
     let mut op: RelOp = op_of(&r);
     if is_true(&m, Predicate::negative) {

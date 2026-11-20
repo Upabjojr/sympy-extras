@@ -2214,7 +2214,20 @@ fn meijergexpand(func0: &GFunction, z0: &Basic, allow_hyper: bool, rewrite: Rewr
         &Basic::from_rational(crate::numbers::rat((full_ap + full_bq) as i64, 2)),
     )?;
     let polar = |e: &Basic| crate::functions::elementary::polar::polar_lift(e);
-    if gt0(&delta)? || (delta == int(0) && full_ap == full_bq && polar(z0)? == polar(&int(1))?) {
+    let mut bq_terms: Vec<Basic> = func_.bm.clone();
+    bq_terms.extend(func_.bq.iter().cloned());
+    let mut ap_terms: Vec<Basic> = func_.an.clone();
+    ap_terms.extend(func_.ap.iter().cloned());
+    let nu: Basic = s2(&crate::core::add::add(&bq_terms)?, &crate::core::add::add(&ap_terms)?)?;
+    // SymPy's (re(m.nu) < -1) is not False holds always (a relational is
+    // never the Python False), so SymPy drops the condition and gives 0 for
+    // the divergent G(1) = meijerg(((), (1/2,)), ((0,), ()), 1): here it is
+    // tested (issue #25)
+    let nu_condition = || -> PolyResult<bool> {
+        let r: Basic = crate::core::relational::lt(&crate::functions::elementary::complexes::re(&nu)?, &int(-1))?;
+        Ok(r != crate::core::logic::false_())
+    };
+    if gt0(&delta)? || (delta == int(0) && full_ap == full_bq && nu_condition()? && polar(z0)? == polar(&int(1))?) {
         if !cond1.is_false() {
             cond1 = Condition::Decided(true);
         }

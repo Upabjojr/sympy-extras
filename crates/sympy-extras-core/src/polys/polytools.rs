@@ -246,6 +246,17 @@ fn exponent_of(n: i64) -> PolyResult<u32> {
     u32::try_from(n).map_err(|_| polynomial_error("a huge exponent".to_string()))
 }
 
+/// Whether `factor` depends on the generator `g` (`_contains_generator`):
+/// a symbol only when it is free (SymPy's `has` also sees the bound
+/// variable of a `CRootOf`, sympy-extras#25), another generator as a
+/// subtree.
+fn contains_generator(factor: &Basic, g: &Basic) -> bool {
+    if matches!(g.head(), Head::Symbol(_) | Head::Dummy(_, _)) {
+        return factor.free_symbols().contains(g);
+    }
+    factor.has(g)
+}
+
 /// The terms of `e` (expanded) in the generators `gens`
 /// (`_parallel_dict_from_expr_if_gens`).
 pub(crate) fn decompose_with_gens(e: &Basic, gens: &[Basic]) -> PolyResult<Decomposed> {
@@ -265,7 +276,7 @@ pub(crate) fn decompose_with_gens(e: &Basic, gens: &[Basic]) -> PolyResult<Decom
             }
             if let Some(i) = gens.iter().position(|g| *g == base) {
                 monomial[i] = exponent_of(exponent)?;
-            } else if !gens.iter().any(|g| factor.has(g)) {
+            } else if !gens.iter().any(|g| contains_generator(&factor, g)) {
                 coefficient.push(factor);
             } else {
                 return Err(polynomial_error(format!(
