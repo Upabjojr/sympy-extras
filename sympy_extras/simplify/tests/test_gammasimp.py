@@ -45,3 +45,16 @@ def test_gammasimp_random_products() -> None:
         for _ in range(rng.randint(2, 4)):
             e *= s.gamma(rng.choice([x, y, 2 * x, x + y]) + rng.choice(shifts))**rng.choice([1, -1, 2])
         assert _ours(gammasimp, e) == str(s.gammasimp(e)), e
+
+
+def test_gammasimp_fractional_shift_differing_by_integers() -> None:
+    # issue #25: SymPy leaves gamma(n + 3/2)/gamma(n + 1/2); it is n + 1/2
+    from sympy_extras.core import Rational, Symbol
+    from sympy_extras.functions import gamma
+    m, z = Symbol('m', integer=True, nonnegative=True), Symbol('z')
+    assert str(gammasimp(gamma(m + Rational(3, 2))/gamma(m + Rational(1, 2)))) == '(2*m + 1)/2'
+    assert str(gammasimp(gamma(m + Rational(5, 4))/gamma(m + Rational(1, 4)))) == '(4*m + 1)/4'
+    assert str(combsimp(gamma(z + Rational(7, 2))/gamma(z - Rational(3, 2)))) == \
+        '(2*z - 3)*(2*z - 1)*(2*z + 1)*(2*z + 3)*(2*z + 5)/32'
+    # a single gamma function is not rewritten
+    assert gammasimp(gamma(z - Rational(1, 2))) == gamma(z - Rational(1, 2))

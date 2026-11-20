@@ -63,9 +63,10 @@ def _int(e: Expr) -> Optional[int]:
 
 
 # PORTED FROM SYMPY: sympy/simplify/gammasimp.py:_rf
-def _rf(a: Expr, b: Expr, leaf: Leaf) -> Expr:
+def _rf(a: Expr, b: Expr, leaf: Leaf, fractional: bool = False) -> Expr:
     """The rising factorial ``rf(a, b)`` with the integer parts of ``a``
-    and ``b`` taken out as products; the rest is ``leaf(a, b)``."""
+    and ``b`` taken out as products; the rest is ``leaf(a, b)``. With
+    ``fractional``, the integer part of a fractional shift of ``b`` too."""
     n = _int(b)
     if n is not None:
         if n == 0:
@@ -77,17 +78,27 @@ def _rf(a: Expr, b: Expr, leaf: Leaf) -> Expr:
         c, b0 = b.as_coeff_Add()
         ci = _int(c)
         if ci is not None and ci > 0:
-            return mul(_rf(a, b0, leaf), _rf(add(a, b0), c, leaf))
+            return mul(_rf(a, b0, leaf, fractional), _rf(add(a, b0), c, leaf, fractional))
         if ci is not None and ci < 0:
-            return mul(_rf(a, b0, leaf), _inv(_rf(add(a, b0, c), Integer(-ci), leaf)))
+            return mul(_rf(a, b0, leaf, fractional), _inv(_rf(add(a, b0, c), Integer(-ci), leaf, fractional)))
+        whole = c.p // c.q if fractional and isinstance(c, Rational) and ci is None else 0
+        if isinstance(c, Rational) and whole != 0:
+            # not SymPy's: the integer part of a fractional shift taken out
+            # too, so that gamma(n + 3/2)/gamma(n + 1/2) is n + 1/2 (SymPy
+            # leaves it, issue #25); the rest keeps a shift in [0, 1)
+            rest = add(b0, number_from_fraction(Fraction(c.p - whole * c.q, c.q)))
+            if whole > 0:
+                return mul(_rf(a, rest, leaf, fractional), _rf(add(a, rest), Integer(whole), leaf, fractional))
+            return mul(_rf(a, rest, leaf, fractional), _inv(_rf(add(a, rest, Integer(whole)), Integer(-whole), leaf, fractional)))
     if isinstance(a, Add):
         c, a0 = a.as_coeff_Add()
         ci = _int(c)
         if ci is not None and ci > 0:
-            return mul(_rf(a0, b, leaf), _rf(add(a0, b), c, leaf), _inv(_rf(a0, c, leaf)))
+            return mul(_rf(a0, b, leaf, fractional), _rf(add(a0, b), c, leaf, fractional),
+                       _inv(_rf(a0, c, leaf, fractional)))
         if ci is not None and ci < 0:
-            return mul(_rf(a0, b, leaf), _rf(add(a0, c), Integer(-ci), leaf),
-                       _inv(_rf(add(a0, b, c), Integer(-ci), leaf)))
+            return mul(_rf(a0, b, leaf, fractional), _rf(add(a0, c), Integer(-ci), leaf, fractional),
+                       _inv(_rf(add(a0, b, c), Integer(-ci), leaf, fractional)))
     return leaf(a, b)
 
 
@@ -106,12 +117,12 @@ def _is_gamma(b: Basic) -> bool:
     return isinstance(b, Gamma)
 
 
-def _through_rf(e: Expr, leaf: Leaf) -> Expr:
+def _through_rf(e: Expr, leaf: Leaf, fractional: bool = False) -> Expr:
     """Every ``gamma(n)`` as ``_rf(1, n - 1)`` with the given leaf."""
     from sympy_extras.core.function import expand
 
     def value(b: Basic) -> Basic:
-        return _rf(ONE, expand(add(_expr(b.args[0]), Integer(-1))), leaf)
+        return _rf(ONE, expand(add(_expr(b.args[0]), Integer(-1))), leaf, fractional)
     return _expr(e.replace(_is_gamma, value))
 
 
@@ -434,7 +445,13 @@ def _gamma_types() -> tuple[type, ...]:
 # PORTED FROM SYMPY: sympy/simplify/gammasimp.py:_gammasimp
 def _gammasimp(expr: Expr, as_comb: bool) -> Expr:
     from sympy_extras.polys.polytools import factor
-    expr = _through_rf(expr, _comb_leaf if as_comb else _gamma_leaf)
+    leaf = _comb_leaf if as_comb else _gamma_leaf
+    integral = _through_rf(expr, leaf)
+    # not SymPy's: gamma functions whose arguments differ by an integer
+    # but have a fractional shift (gamma(n + 3/2)/gamma(n + 1/2), left by
+    # SymPy, issue #25) merged too, when that leaves fewer of them
+    fractional = _through_rf(expr, leaf, True)
+    expr = fractional if _gamma_count(fractional) < _gamma_count(integral) else integral
     was = factor(expr)
     expr = _rule_gamma(was, as_comb)
     if expr != was:

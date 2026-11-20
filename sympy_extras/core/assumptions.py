@@ -469,6 +469,7 @@ def numeric_facts(e: Expr) -> Facts:
     facts: Facts = {}
     reals: list[int] = []
     imaginaries: list[int] = []
+    values: list[mpmath.mpc] = []
     for prec in (53, 160):
         with mpmath.workprec(prec):
             value = numeric_value(e, prec)
@@ -480,7 +481,12 @@ def numeric_facts(e: Expr) -> Facts:
             threshold = scale * mpmath.mpf(2) ** (-(prec - 20))
             reals.append(0 if abs(value.real) <= threshold else (1 if value.real > 0 else -1))
             imaginaries.append(0 if abs(value.imag) <= threshold else (1 if value.imag > 0 else -1))
+            values.append(value)
     if reals[0] != reals[1] or imaginaries[0] != imaginaries[1]:
+        return {}
+    if not _values_agree(values[0], values[1]):
+        # a function of a rounding error (sqrt of a hidden zero is noise
+        # of a sign of its own, the same at both precisions): issue #25
         return {}
     if imaginaries[0] != 0:
         facts.update(real=False, zero=False)
@@ -497,6 +503,7 @@ def _numeric_sign(args: tuple[Expr, ...]) -> Optional[int]:
     exact zero leaves noise)."""
     from .evalf import numeric_value
     signs: list[int] = []
+    totals: list[mpmath.mpc] = []
     for prec in (53, 160):
         total = mpmath.mpf(0)
         scale = mpmath.mpf(0)
@@ -510,7 +517,20 @@ def _numeric_sign(args: tuple[Expr, ...]) -> Optional[int]:
             if scale == 0 or abs(total) <= scale * mpmath.mpf(2) ** (-(prec - 20)):
                 return None
         signs.append(1 if total > 0 else -1)
+        totals.append(mpmath.mpc(total))
+    if not _values_agree(totals[0], totals[1]):
+        return None
     return signs[0] if signs[0] == signs[1] else None
+
+
+def _values_agree(low: mpmath.mpc, high: mpmath.mpc) -> bool:
+    """Whether a value at 53 bits agrees with the value at 160 bits to the
+    accuracy which 53 bits can trust: a value which is a function of a
+    rounding error (the square root of a sum which is exactly zero) has
+    the same sign at both precisions by chance but not the same size."""
+    with mpmath.workprec(160):
+        scale = max(abs(high.real), abs(high.imag))
+        return bool(abs(low - high) <= scale * mpmath.mpf(2) ** (-(53 - 20)))
 
 
 def _consecutive_factors(args: tuple[Expr, ...]) -> bool:
