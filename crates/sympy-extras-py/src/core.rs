@@ -194,6 +194,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Order" => Basic::new(Head::Order, args()?),
         "Limit" => Basic::new(Head::Limit, args()?),
         "Sum" => Basic::new(Head::Sum, args()?),
+        "Integral" => Basic::new(Head::Integral, args()?),
         "Product" => Basic::new(Head::Product, args()?),
         "TranscendentalRoot" => Basic::new(Head::TranscendentalRoot, args()?),
         "RootSum" => {
@@ -547,6 +548,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             };
             py.import("sympy_extras.concrete.expr_with_limits")?
                 .getattr(name)?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::Integral => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.integrals.integral")?
+                .getattr("Integral")?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::Limit => {
@@ -6100,6 +6107,27 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             }
         }
         "expand_func" => sympy_extras_core::functions::expand_func::expand_func(&a[0], true).map_err(e)?,
+        "integral" => {
+            // (op, Integral, ...): free (the free symbols as a Tuple), diff (s), subs (old, new),
+            // number (is_number), node (the node rebuilt by the core's constructor)
+            use sympy_extras_core::integrals::integral as ig;
+            let node: &Basic = &a[1];
+            match a[0].to_string().as_str() {
+                "free" => Basic::new(
+                    Head::Tuple,
+                    sympy_extras_core::core::sorting::ordered(ig::free_symbols(node).into_iter().collect()),
+                ),
+                "diff" => sympy_extras_core::core::function::derivative(node, &a[2]).map_err(e)?,
+                "subs" => sympy_extras_core::core::subs::subs(node, &a[2], &a[3]).map_err(e)?,
+                "number" => {
+                    sympy_extras_core::core::logic::boolean(sympy_extras_core::core::assumptions::is_number(node))
+                }
+                _ => {
+                    let (f, v, bounds) = ig::parts(node);
+                    ig::integral(f, v, bounds).map_err(e)?
+                }
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {

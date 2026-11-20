@@ -656,6 +656,9 @@ pub fn is_number(e: &Basic) -> bool {
     if matches!(e.head(), Head::TranscendentalRoot) {
         return true;
     }
+    if matches!(e.head(), Head::Integral) {
+        return crate::integrals::integral::is_number(e);
+    }
     if matches!(e.head(), Head::IndexedRoot | Head::RootSum) {
         // _is_number_node: no free symbols (the variable is bound)
         return e.free_symbols().is_empty();
@@ -1295,6 +1298,7 @@ fn eval_facts(e: &Basic) -> FactList {
         }
         Head::Tuple | Head::Limit => FactList::new(),
         Head::Sum | Head::Product => crate::concrete::expr_with_limits::facts(e),
+        Head::Integral => crate::integrals::integral::facts(e),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_facts(e),
         Head::TranscendentalRoot => crate::solvers::isolation::root_facts(e),
         Head::ComplexRootOf(_) => crate::polys::complexrootof::root_facts(e),

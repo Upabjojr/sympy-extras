@@ -136,6 +136,9 @@ pub enum Head {
     Limit,
     Sum,
     Product,
+    /// `Integral(f, x)` or `Integral(f, (x, a, b))`: the arguments `(f, x)`
+    /// or `(f, x, a, b)` (`integrals/integral.rs`).
+    Integral,
     /// `TranscendentalRoot(f, x, a, b)`: a real root of `f` isolated in
     /// `(a, b)` (`solvers/isolation.rs`).
     TranscendentalRoot,
@@ -948,6 +951,7 @@ impl Head {
             Head::Order => "Order",
             Head::Limit => "Limit",
             Head::Sum => "Sum",
+            Head::Integral => "Integral",
             Head::Product => "Product",
             Head::TranscendentalRoot => "TranscendentalRoot",
             Head::BooleanTrue => "BooleanTrue",
@@ -1049,6 +1053,7 @@ impl Head {
                 | Head::Limit
                 | Head::Sum
                 | Head::Product
+                | Head::Integral
                 | Head::TranscendentalRoot
                 | Head::And
                 | Head::Or
@@ -1404,6 +1409,7 @@ impl Basic {
             Head::ImageSet => crate::sets::fancysets::image_set_free_symbols(self),
             Head::Limit => crate::core::limits::free_symbols(self),
             Head::Sum | Head::Product => crate::concrete::expr_with_limits::free_symbols(self),
+            Head::Integral => crate::integrals::integral::free_symbols(self),
             Head::TranscendentalRoot => BTreeSet::new(),
             Head::RootSum => crate::polys::rootoftools::free_symbols(self),
             Head::Subs => {
