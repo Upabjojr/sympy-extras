@@ -85,3 +85,17 @@ def test_agrees_with_sympy_satask() -> None:
         assert native == sympy_consistent(sympy_boolean(f)), f
         inconsistent += not native
     assert inconsistent > 20
+
+
+def test_a_zero_factor_in_the_facts_of_a_product() -> None:
+    # sympy-extras#74 (3): SymPy's facts of Mul made a product with one
+    # imaginary (irrational, non-rational) factor imaginary (irrational,
+    # not an integer), forgetting that the other factors may be zero:
+    # Q.zero(x*y) was inconsistent with ~Q.real(x) (x = I, y = 0)
+    assert predicates_consistent(and_(Q.zero(x*y), not_(Q.real(x))))
+    assert predicates_consistent(and_(Q.zero(x*y), Q.imaginary(x)))
+    assert predicates_consistent(and_(Q.zero(x*y), Q.irrational(x)))
+    assert predicates_consistent(and_(Q.integer(x*y), Q.zero(y), not_(Q.rational(x))))
+    # with the other factors nonzero the facts hold as before
+    assert not predicates_consistent(and_(Q.imaginary(x), Q.real(y), Q.nonzero(y), not_(Q.imaginary(x*y))))
+    assert not predicates_consistent(and_(Q.irrational(x), Q.rational(y), Q.nonzero(y), not_(Q.irrational(x*y))))

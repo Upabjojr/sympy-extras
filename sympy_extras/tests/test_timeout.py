@@ -65,6 +65,20 @@ def test_manualintegrate_patterns_are_complete_after_an_interrupted_build() -> N
     assert manualintegrate(exp(x) / x, x) == Ei(x)
 
 
+def test_attempt_without_the_manualintegrate_cache() -> None:
+    # sympy-extras#74 (1): SymPy master rewrote manualintegrate on a
+    # solver and dropped the module-level _integral_cache; clearing it
+    # raised AttributeError in every time-limited step (most of ask)
+    import sympy.integrals.manualintegrate as manual
+    namespace = vars(manual)
+    saved = namespace.pop('_integral_cache')
+    try:
+        assert attempt(lambda: 1, 5) == 1
+    finally:
+        namespace['_integral_cache'] = saved
+    assert attempt(lambda: 1, 5) == 1
+
+
 def test_attempt_contains_a_polynomial_error() -> None:
     # sympy-extras: SymPy's singularities() raises PolynomialError from
     # CRootOf on a polynomial in two symbols, and it escaped attempt() as

@@ -27,6 +27,7 @@ from sympy.core.expr import Expr
 from sympy.core.symbol import Symbol
 from sympy.core.sympify import sympify
 from sympy.logic.boolalg import Boolean
+from sympy.matrices.expressions.matexpr import MatrixExpr
 from sympy.sets.sets import Set
 
 from sympy_extras._typing_sympy import QuantifierPrefix, Truth, as_boolean, as_symbol
@@ -220,4 +221,14 @@ def ask(query: Union[Boolean, bool], assumptions: Assumptions = None, domain: Op
     >>> ask(Q.positive(x), Eq(x, 3))
     True
     """
+    statements: list[Union[Basic, bool]] = [query]
+    if isinstance(assumptions, (Basic, bool)):
+        statements.append(assumptions)
+    elif assumptions is not None:
+        statements.extend(assumptions)
+    if any(isinstance(b, Basic) and b.has(MatrixExpr) for b in statements):
+        # sympy-extras#74 (4): a relation of a matrix (Gt(X, 3,
+        # evaluate=False)) is not a statement about numbers; the core has
+        # no matrices, and its conversion raised TypeError
+        return None
     return native.ask(core_boolean(query), core_assumptions(assumptions), core_domain(domain))

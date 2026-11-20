@@ -46,7 +46,10 @@ systems of `resolve` over the complex numbers and Hermite's count of
 ## Conventions
 
 - **An inequality is a statement about real numbers.** `x > y` says that
-  `x` and `y` are real and `x - y` is positive, as in Mathematica.
+  `x` and `y` are real and `x - y` is positive, as in Mathematica. The
+  variables an inequality contains algebraically are made real; one met
+  only inside `re`, `im`, `Abs`, `arg` or `conjugate` is not:
+  `re(z)*im(z) > pi/2` and `Abs(z) < 1` leave `z` complex.
   Equations `Eq(x, y)` and `Ne(x, y)` do not imply anything about the
   domain.
 - **Variables are complex unless something says otherwise.** `ask(x**2 >= 0)`

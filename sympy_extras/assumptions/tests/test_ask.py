@@ -225,3 +225,26 @@ def test_the_structure_theorem_does_not_call_itself() -> None:
     assert ask_(Eq(log((exp(x) + 1) * (exp(x) + 2)), log(exp(x) + 1) + log(exp(x) + 2)), x > 0) is True
     assert ask_(Eq(sqrt((exp(x) + 1)**2), exp(x) + 1), x > 0) is True
     assert vars(module)['_structure_depth'] == 0
+
+
+def test_issue_74() -> None:
+    # sympy-extras#74, the reports as written, on SymPy objects
+    from sympy import MatrixSymbol, Gt, Lt, log, exp, re, im, tan, Abs
+    from sympy_extras.assumptions.refine_sympy import refine, simplify
+    z = Symbol('z')
+    A = re(z)*im(z) > pi/2
+    assert ask(Eq(log(exp(z**2)), z**2), A) is not True
+    assert refine(log(exp(z**2)) - z**2, A) != 0 and simplify(log(exp(z**2)) - z**2, A) != 0
+    assert ask(Q.real(z), A) is None and ask(Eq(im(z), 0), A) is False
+    assert ask(element(x, S.Reals) | ~element(x, S.Reals)) is True
+    assert ask(Eq(x, 0) | Eq(y, 0), Eq(x*y, 0)) is True
+    assert ask(element(x, S.Reals), Eq(x*y, 0)) is None
+    X = MatrixSymbol('X', 2, 2)
+    assert ask(Gt(X, 3, evaluate=False)) is None
+    assert ask(Gt(X, 3, evaluate=False) & Lt(X, 2, evaluate=False)) is None
+    assert ask(Q.gt(X, 3) & Q.lt(X, 2)) is None
+    xe = Symbol('xe', extended_real=True)
+    assert ask(element(1/x, S.Reals), element(x, S.Reals)) is None
+    assert ask(element(tan(x), S.Reals), element(x, S.Reals)) is None
+    assert ask(element(Abs(1/x), S.Reals), element(x, S.Reals)) is None
+    assert ask(element(xe, S.Reals)) is None
