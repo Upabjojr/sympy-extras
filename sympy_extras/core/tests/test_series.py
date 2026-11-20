@@ -317,6 +317,16 @@ def test_special_function_series_rules() -> None:
     # to the order asked, expint(2, x) is real for x > 0
     assert ours(S.sinc(2*sx), 6) == '1 - 2*x**2/3 + 2*x**4/15 + O(x**6)'
     assert ours(S.expint(2, sx), 3) == '1 + x*(log(x) - 1 + EulerGamma) - x**2/2 + O(x**3)'
+    # the branch of Ei at infinity (issue #25): SymPy's series of
+    # expint(2, 1/x) is -I*pi/x + O(x**3), that of Ei(exp_polar(I*pi)/x)
+    # misses its I*pi; the function is exponentially small
+    sp = sympy.Symbol('x', positive=True)
+    op = expr_from_sympy(sp)
+    assert isinstance(op, Symbol)
+    assert str(to_sympy(expr_from_sympy(S.expint(2, 1/sp)).series(op, 0, 3), evaluate=False)) == 'O(x**3)'
+    for side, branch in ((1, 'I*pi'), (-1, '-I*pi')):
+        ei = to_sympy(expr_from_sympy(S.Ei(S.exp_polar(side*S.I*S.pi)/sp)).series(op, 0, 3), evaluate=False)
+        assert str(ei) == '-x*(1 - x + 2*x**2 + O(x**3))*exp(-1/x) ' + ('+ I*pi' if side == 1 else '- I*pi'), branch
     got = expr_from_sympy(S.SingularityFunction(sx, -1, 2)).nseries(ox, n=6)
     assert str(to_sympy(got, evaluate=False)) == 'x**2 + 2*x + 1'
 

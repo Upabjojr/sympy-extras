@@ -87,3 +87,19 @@ def test_a_step_away_from_its_jump() -> None:
     assert limit(X * Heaviside(X - 1), X, Integer(2), '-') == 2
     assert limit(Heaviside(1 / X), X, Integer(0), '-') == 0
     assert limit(Heaviside(1 / X), X, Integer(0), '+') == 1
+
+
+def test_expint_at_infinity_keeps_the_branch_of_ei() -> None:
+    # the bug (SymPy 1.14's, issue #25): limit(x*exp(x)*expint(2, x), x, oo)
+    # was -oo*I, the series of Ei(exp_polar(I*pi)/w) dropping its I*pi;
+    # natively the series raised PoleError and the limit stayed unevaluated
+    from sympy_extras.core import Integer, oo
+    from sympy_extras.functions import exp, expint
+    P = Symbol('x', positive=True)
+    assert limit(P * exp(P) * expint(2, P), P, oo) == 1
+    assert limit(X * exp(X) * expint(5, X), X, oo) == 1
+    assert limit(X * (X * exp(X) * expint(1, X) - 1), X, oo) == -1
+    assert limit(expint(2, X), X, oo) == 0
+    assert limit(X * exp(X) * expint(2, 2 * X), X, oo) == 0
+    assert limit(X**2 * exp(X) * expint(3, X), X, oo) == oo
+    assert limit(expint(1, X) / expint(2, X), X, oo) == Integer(1)

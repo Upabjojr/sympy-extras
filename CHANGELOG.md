@@ -417,6 +417,16 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The native series of `Ei` at infinity keeps the branch of a polar
+  argument: `Ei(q*exp_polar(+-I*pi))` with `q -> +oo` expands as
+  `+-I*pi` plus the series of `Ei(-q)` (SymPy 1.14 drops the `I*pi`,
+  issue #25; the native code raised `PoleError`), so the series of
+  `expint(2, 1/w)` is `O(w**n)`. The Gruntz limits rewrite `expint(n, z)`
+  with a positive integer order and a positive argument through
+  `eis(-z)` (`limit(x*exp(x)*expint(2, x), x, oo)` is 1, SymPy's
+  `-oo*I`; unevaluated before), and `mrv_leadterm` raises `PoleError`
+  when an expansion stays `O(w**n)` beyond `n = 128` (SymPy's loop never
+  ends on an exponentially small function).
 - `ite` evaluates as SymPy's `ITE` constructor: equal branches give the
   branch, `true`/`false` branches the condition or its negation, and an
   equation between a symbol used as a truth value and something else is
