@@ -34,6 +34,15 @@ pub fn check() -> PolyResult<()> {
     Ok(())
 }
 
+/// The seconds left of the innermost limit in force, in the units of the
+/// settings (divided by `time_scale`; a little rather than nothing once
+/// it has expired), `None` without a limit (`remaining_time`).
+pub fn remaining_time() -> Option<f64> {
+    let end: Instant = DEADLINES.with(|d| d.borrow().last().copied())?;
+    let left: f64 = end.saturating_duration_since(Instant::now()).as_secs_f64().max(1e-6);
+    Some(left / crate::settings::settings().time_scale)
+}
+
 /// The payload of the unwinding of [`check_infallible`].
 struct TimeLimitUnwind;
 

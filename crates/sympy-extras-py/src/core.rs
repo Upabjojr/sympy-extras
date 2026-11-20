@@ -6128,6 +6128,68 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "special_values" => {
+            // (op, ...): points (value, Tuple(params), Tuple(assumptions)) -> Tuple of points;
+            // condition (c) -> point or NONE; equality (value, Tuple(params)); undefined (e, point);
+            // assumptions (point, Tuple(assumptions)) -> Tuple or NONE; defined (f, Tuple(vars));
+            // with (value, Tuple(params), Tuple(assumptions), alt, sympy_style, keep_unevaluated):
+            // compute substitutes the point into alt. A point is a Tuple of Tuple(p, v).
+            use sympy_extras_core::special_values as sv;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let pt = |p: &sv::Point| tuple(p.iter().map(|(k, v)| tuple(vec![k.clone(), v.clone()])).collect());
+            let from_pt = |t: &Basic| -> sv::Point {
+                t.args()
+                    .iter()
+                    .map(|kv| (kv.args()[0].clone(), kv.args()[1].clone()))
+                    .collect()
+            };
+            let flag = |b: &Basic| b.to_string() == "True";
+            match a[0].to_string().as_str() {
+                "points" => tuple(
+                    sv::special_points(&a[1], a[2].args(), a[3].args(), None)
+                        .map_err(e)?
+                        .iter()
+                        .map(pt)
+                        .collect(),
+                ),
+                "condition" => sv::condition_point(&a[1])
+                    .map_err(e)?
+                    .map(|p| pt(&p))
+                    .unwrap_or_else(none),
+                "equality" => tuple(
+                    sv::equality_points(&a[1], a[2].args())
+                        .map_err(e)?
+                        .iter()
+                        .map(pt)
+                        .collect(),
+                ),
+                "undefined" => {
+                    sympy_extras_core::core::logic::boolean(sv::undefined_at(&a[1], &from_pt(&a[2])).map_err(e)?)
+                }
+                "assumptions" => sv::point_assumptions(&from_pt(&a[1]), a[2].args())
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "defined" => sympy_extras_core::core::logic::boolean(sv::defined_problem(&a[1], a[2].args())),
+                _ => {
+                    let alt: Basic = a[4].clone();
+                    let compute = move |p: &sv::Point, _: &[Basic]| sv::replaced(&alt, p).map(Some);
+                    sv::with_special_values(
+                        &a[1],
+                        a[2].args(),
+                        a[3].args(),
+                        &compute,
+                        None,
+                        flag(&a[5]),
+                        None,
+                        flag(&a[6]),
+                        None,
+                    )
+                    .map_err(e)?
+                }
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {
