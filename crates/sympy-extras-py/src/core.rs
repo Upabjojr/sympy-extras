@@ -6217,6 +6217,47 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "algebraic" => {
+            // (euler, f, x, Tuple(assumptions)) | (moebius, f, x) -> Tuple of Tuple(t, x_of_t, t_of_x,
+            // Tuple(Tuple(atom, value)...)); (binomial, f, x) -> Tuple(C, m, a, b, n, p); (exponents, f, x)
+            // -> Tuple(m, a, b, n, p); (hyper, f, x) -> the antiderivative; NONE when not found
+            use sympy_extras_core::integrals::algebraic as al;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let rat = |r: &sympy_extras_core::numbers::Rat| Basic::from_rational(r.clone());
+            let of = |s: &al::Rationalisation| {
+                let radicals: Vec<Basic> = s
+                    .radicals
+                    .iter()
+                    .map(|(a, v)| tuple(vec![a.clone(), v.clone()]))
+                    .collect();
+                tuple(vec![s.t.clone(), s.x_of_t.clone(), s.t_of_x.clone(), tuple(radicals)])
+            };
+            match a[0].to_string().as_str() {
+                "euler" => tuple(
+                    al::euler_substitutions(&a[1], &a[2], a[3].args())
+                        .map_err(e)?
+                        .iter()
+                        .map(of)
+                        .collect(),
+                ),
+                "moebius" => al::moebius_root(&a[1], &a[2])
+                    .map_err(e)?
+                    .map(|s| tuple(vec![of(&s)]))
+                    .unwrap_or_else(none),
+                "binomial" => al::binomial_differential(&a[1], &a[2])
+                    .map_err(e)?
+                    .map(|v| tuple(v.to_vec()))
+                    .unwrap_or_else(none),
+                "exponents" => al::binomial_exponents(&a[1], &a[2])
+                    .map_err(e)?
+                    .map(|b| tuple(vec![rat(&b.m), b.a.clone(), b.b.clone(), rat(&b.n), rat(&b.p)]))
+                    .unwrap_or_else(none),
+                _ => al::binomial_hypergeometric_antiderivative(&a[1], &a[2])
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {
