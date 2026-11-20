@@ -426,7 +426,7 @@ fn p(a: Basic, b: Basic) -> (Basic, Basic) {
     (a, b)
 }
 
-const BETA_LOWER: &str = "(1 - x)**(b - 1) theta(1 - x)";
+pub(crate) const BETA_LOWER: &str = "(1 - x)**(b - 1) theta(1 - x)";
 
 fn exp_kernel() -> PolyResult<Kernel> {
     Ok(kernel(
@@ -459,7 +459,7 @@ fn power_kernel(a: &Basic) -> PolyResult<Kernel> {
     )?;
     Ok(kernel("(1 + x)**(-a)", q, vec![a.clone()], cut_plane(beta())?, 0))
 }
-fn beta_kernel(b: &Basic) -> PolyResult<Kernel> {
+pub(crate) fn beta_kernel(b: &Basic) -> PolyResult<Kernel> {
     let q = GammaQuotient::new(
         int(1),
         vec![],

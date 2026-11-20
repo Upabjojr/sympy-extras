@@ -5971,6 +5971,23 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, solutions, count])
         }
+        "marichev" => {
+            // integrate(f, x, Tuple(facts), cutoff | NONE, regularize) -> Tuple(value, condition) | NONE;
+            // tidy(value, Tuple(facts), condition), checked_tidy(...) -> expr
+            use sympy_extras_core::integrals::marichev as mr;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "integrate" => {
+                    let cutoff: Option<String> = if a[4].to_string() == "NONE" { None } else { Some(a[4].to_string()) };
+                    match mr::mellin_integrate(&a[1], &a[2], a[3].args(), cutoff.as_deref(), a[5].to_string() == "True").map_err(e)? {
+                        Some(v) => Basic::new(Head::Tuple, vec![v.value, v.condition]),
+                        None => none(),
+                    }
+                }
+                "tidy" => mr::tidy(&a[1], a[2].args(), &a[3]).map_err(e)?,
+                _ => mr::checked_tidy(&a[1], a[2].args(), &a[3]).map_err(e)?,
+            }
+        }
         "slater" => {
             // expansion(g, Tuple(facts)) -> expr; expand(prefactor, an, ap, bm, bq, z, Tuple(facts)) -> Tuple(value, cond) | NONE;
             // line(prefactor, an, ap, bm, bq, z, lower, upper) -> cond | NONE;

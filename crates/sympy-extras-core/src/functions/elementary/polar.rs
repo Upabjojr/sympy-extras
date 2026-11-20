@@ -398,6 +398,12 @@ fn periodic_value(z: &Basic, period: &Basic, prec: usize) -> Option<Complex> {
     Some(complex(&u - &(&n * &q), Real::ZERO))
 }
 
+/// The arguments which are no expressions (the Tuples of hyper, the
+/// Booleans) are kept as they are by `_polarify`.
+fn is_expression(a: &Basic) -> bool {
+    !matches!(a.head(), Head::Tuple) && !crate::core::logic::is_boolean(a)
+}
+
 fn polarify_node(e: &Basic, lift: bool, pause: bool) -> R {
     if yes(e, Predicate::polar) {
         return Ok(e.clone());
@@ -427,14 +433,26 @@ fn polarify_node(e: &Basic, lift: bool, pause: bool) -> R {
         let args: Vec<Basic> = e
             .args()
             .iter()
-            .map(|a| polarify_node(a, lift, false))
+            .map(|a| {
+                if is_expression(a) {
+                    polarify_node(a, lift, false)
+                } else {
+                    Ok(a.clone())
+                }
+            })
             .collect::<PolyResult<_>>()?;
         return crate::core::function::rebuild_evaluated(e, args);
     }
     let args: Vec<Basic> = e
         .args()
         .iter()
-        .map(|a| polarify_node(a, lift, pause))
+        .map(|a| {
+            if is_expression(a) {
+                polarify_node(a, lift, pause)
+            } else {
+                Ok(a.clone())
+            }
+        })
         .collect::<PolyResult<_>>()?;
     crate::core::function::rebuild_evaluated(e, args)
 }

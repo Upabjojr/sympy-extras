@@ -6,6 +6,7 @@ pub mod dirichlet;
 pub mod elliptic;
 pub mod exponential;
 pub mod heurisch;
+pub mod marichev;
 pub mod mellin;
 pub mod radicals;
 pub mod risch;
