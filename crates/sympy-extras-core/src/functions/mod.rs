@@ -1,5 +1,6 @@
 //! Port of `sympy_extras/functions`: the function classes on the core.
 
+pub mod aseries;
 pub mod combinatorial;
 pub mod elementary;
 pub mod expand_func;

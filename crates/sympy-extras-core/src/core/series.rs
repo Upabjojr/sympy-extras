@@ -1261,13 +1261,78 @@ fn generic_function_nseries(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) 
         .map(|a| limit_lite(a, x, &Basic::zero()))
         .collect::<PolyResult<_>>()?;
     if args0.iter().any(|a| is(a, Predicate::finite) == Some(false)) {
-        return Err(not_ported("the asymptotic series of a function"));
+        return asymptotic_branch(f, &args, &args0, x, n, logx).map(Some);
     }
     let one_argument: bool = !NOT_ONE_ARGUMENT.contains(&class_name(f).as_str());
     if !one_argument || args0[0] != Basic::zero() {
         return Ok(Some(derivative_series(f, x, n, logx, true)?));
     }
     Ok(Some(taylor_series(f, x, n, logx)?))
+}
+
+/// The classes whose SymPy counterpart has an `_eval_aseries` of its own
+/// (`_SYMPY_OWN_ASERIES`): those without a ported rule are not ported.
+const SYMPY_OWN_ASERIES: &[&str] = &[
+    "Acot",
+    "Atan",
+    "BesselI",
+    "BesselIs",
+    "BesselK",
+    "BesselKs",
+    "CiNode",
+    "DiGamma",
+    "EiNode",
+    "Eis",
+    "Erf",
+    "Erfc",
+    "Erfi",
+    "Erfs",
+    "Expint",
+    "FresnelC",
+    "FresnelS",
+    "LogGamma",
+    "LowerGamma",
+    "PolyGamma",
+    "SiNode",
+    "TriGamma",
+];
+
+/// SymPy's asymptotic branch of `Function._eval_nseries`: an argument
+/// going to an infinity faster than logarithmically takes the class's own
+/// `_eval_aseries` (`functions/aseries.rs`), SymPy's `PoleError` for a
+/// class without one.
+fn asymptotic_branch(f: &Basic, args: &[Basic], args0: &[Basic], x: &Basic, n: i64, logx: Option<&Basic>) -> R {
+    let mut infinite: bool = false;
+    for a in args {
+        let leading: Basic = as_leading_term(a, std::slice::from_ref(x), logx, &Basic::zero())?;
+        let a0: Basic = limit_lite(&leading, x, &Basic::zero())?;
+        if a0.preorder().iter().any(|t| {
+            matches!(
+                t.head(),
+                Head::Infinity | Head::NegativeInfinity | Head::ComplexInfinity | Head::NaN
+            )
+        }) {
+            infinite = true;
+        }
+    }
+    if !infinite {
+        return Err(not_ported(
+            "the series of a function at an argument going to an infinity logarithmically",
+        ));
+    }
+    if let Some(found) = crate::functions::aseries::aseries_rule(f, n, args0, x, logx)? {
+        return Ok(found);
+    }
+    let name: String = class_name(f);
+    if SYMPY_OWN_ASERIES.contains(&name.as_str()) {
+        return Err(not_ported(&format!("the asymptotic series of {}", name)));
+    }
+    let listed: Vec<String> = args0.iter().map(|a| a.to_string()).collect();
+    Err(crate::error::pole_error(&format!(
+        "Asymptotic expansion of {} around [{}] is not implemented.",
+        name,
+        listed.join(", ")
+    )))
 }
 
 /// `Application._eval_nseries` (`one_argument`: whether `nargs` is `{1}`,
@@ -1286,7 +1351,7 @@ pub(crate) fn application_nseries(
         .map(|t| limit_lite(t, x, &Basic::zero()))
         .collect::<PolyResult<_>>()?;
     if args0.iter().any(|t| is(t, Predicate::finite) == Some(false)) {
-        return Err(not_ported("the series of a function at an infinite argument"));
+        return asymptotic_branch(f, f.args(), &args0, x, n, logx);
     }
     let more_than_one: bool = !matches!(f.head(), Head::Function(_)) && f.args().len() > 1;
     if one_argument != Some(true) || !is_zero_number(&args0[0]) || more_than_one {
@@ -1886,18 +1951,40 @@ fn pow_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic)
     if ex.has(x) {
         return eval_nseries(&exp(&mul(&[ex.clone(), log(&b)?])?)?, x, n, logx, cdir);
     }
-    let me: Basic = me;
+    let mut me: Basic = me;
     if let Some(l) = logx {
         if has_any(&b, &|n| matches!(n.head(), Head::Function(Function::Log))) {
-            return Err(not_ported(&format!(
-                "the series of {} with logx (log(c*x**ex) replaced)",
-                e
-            )));
+            // log(c*x**ex) -> log(c) + ex*logx
+            let wc: Basic = crate::core::symbol::Wild::new("c", vec![x.clone()], Vec::new(), &[]).0;
+            let wex: Basic = crate::core::symbol::Wild::new("ex", vec![x.clone()], Vec::new(), &[]).0;
+            let pattern: Basic = mul(&[wc.clone(), pow(x, &wex)?])?;
+            b = crate::core::function::replace_where(
+                &b,
+                &|n| matches!(n.head(), Head::Function(Function::Log)),
+                &|n| {
+                    let found = crate::core::matching::match_pattern(&n.args()[0], &pattern, &[], false)?;
+                    let Some(found) = found else { return Ok(n.clone()) };
+                    let get = |w: &Basic| found.iter().find(|(k, _)| k == w).map(|(_, v)| v.clone());
+                    let (Some(c), Some(k)) = (get(&wc), get(&wex)) else {
+                        return Ok(n.clone());
+                    };
+                    add(&[log(&c)?, mul(&[k, l.clone()])?])
+                },
+            )?;
+            me = pow(&b, &ex)?;
         }
-        let _ = l;
     }
     b = remove_o(&b)?;
-    let m: Basic = match leadterm(&b, x, None, &Basic::zero()) {
+    let forced: bool = logx.is_some()
+        && has_any(&b, &|n| {
+            matches!(n.head(), Head::Function(Function::PolyGamma) | Head::EulerGamma)
+        });
+    let first = if forced {
+        Err(value_error(String::new()))
+    } else {
+        leadterm(&b, x, None, &Basic::zero())
+    };
+    let m: Basic = match first {
         Ok((_, m)) => m,
         Err(err) if caught(&err, true, true, false, true) => {
             b = remove_o(&eval_nseries(&b, x, n.max(2), logx, cdir)?)?;
