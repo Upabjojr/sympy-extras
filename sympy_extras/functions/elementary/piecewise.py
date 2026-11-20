@@ -245,8 +245,13 @@ def _canonical_coeff(rel: Relational) -> Boolean:
     rel = rel.canonical
     b, rest = _coeff_add_rational(rel.lhs)
     m, lhs = rest.as_coeff_Mul(rational=True)
-    rhs = div(sub(rel.rhs, b), m)
     cls = type(rel)
+    if m == 0:
+        # a relation between numbers (unevaluated Eq(1, 1)): SymPy divides
+        # by m = 0 and gets Eq(0, nan), False, so that its Piecewise drops
+        # a true condition (issue #25); it is evaluated instead
+        return _FUNCTIONS[cls](rel.lhs, rel.rhs)
+    rhs = div(sub(rel.rhs, b), m)
     if m.is_negative:
         cls = _REVERSED[cls]
     return _FUNCTIONS[cls](lhs, rhs)

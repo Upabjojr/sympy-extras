@@ -1862,7 +1862,8 @@ def _meijergexpand(func: GFunction, z0: Expr, allow_hyper: bool = False, rewrite
     from sympy_extras.core.function import expand_func
     from sympy_extras.core.numbers import oo, zoo
     from sympy_extras.functions.combinatorial.factorials import factorial, rf
-    from sympy_extras.functions.elementary.complexes import abs_, polar_lift
+    from sympy_extras.core.add import add
+    from sympy_extras.functions.elementary.complexes import abs_, polar_lift, re
     from sympy_extras.functions.elementary.piecewise import piecewise
     from sympy_extras.functions.special.gamma_functions import gamma
     from sympy_extras.functions.special.hyper import Hyper
@@ -1993,9 +1994,13 @@ def _meijergexpand(func: GFunction, z0: Expr, allow_hyper: bool = False, rewrite
     # m = func(z): its delta and nu (SymPy's meijerg.delta and meijerg.nu)
     full_ap, full_bq = list(func.an) + list(func.ap), list(func.bm) + list(func.bq)
     delta = Integer(len(func.bm) + len(func.an)) - Rational(len(full_ap) + len(full_bq), 2)
+    nu = add(*full_bq) - add(*full_ap)
     # SymPy's (re(m.nu) < -1) is not False holds always (a relational is
-    # never the Python False)
-    if _truth(delta > 0) or (delta == 0 and len(full_ap) == len(full_bq) and polar_lift(z0) == polar_lift(ONE)):
+    # never the Python False), so SymPy drops the condition and gives 0 for
+    # the divergent G(1) = meijerg(((), (1/2,)), ((0,), ()), 1): here it is
+    # tested (issue #25)
+    if _truth(delta > 0) or (delta == 0 and len(full_ap) == len(full_bq) and (re(nu) < -1) is not false
+                             and polar_lift(z0) == polar_lift(ONE)):
         if cond1 is not False:
             cond1 = True
         if cond2 is not False:

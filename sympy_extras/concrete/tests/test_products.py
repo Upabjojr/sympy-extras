@@ -35,3 +35,20 @@ def test_product_doit_matches_sympy() -> None:
     for f, lim in CASES[:12]:
         p = SympyProduct(f, lim)
         assert str(to_sympy(expr_from_sympy(p).doit(), evaluate=False)) == str(p.doit()), p
+
+
+def test_product_of_a_polynomial_with_some_roots_not_found() -> None:
+    # SymPy's Product._eval_product took the product of quo(poly, Q.as_poly(k))
+    # with Q = prod((n - r)**m), a constant in k: the whole polynomial again,
+    # so the native port recursed without end on k**5 - k - 1 (no root
+    # found) and SymPy fails with an AttributeError on k*(k**5 - k - 1)
+    from sympy_extras.concrete.expr_with_limits import Product
+    from sympy_extras.core.numbers import Integer
+    nk, nn = Symbol('k', integer=True), Symbol('n', integer=True)
+    for f in [nk**5 - nk - 1, nk*(nk**5 - nk - 1), 3*(nk + 2)**2*(nk**5 - nk - 1),
+              (nk - 1)*(nk**3 - 2)*(nk**5 - nk - 1)]:
+        got = product(f, (nk, Integer(1), nn))
+        assert got.has(Product), f
+        for top in range(2, 5):
+            want = product(f, (nk, Integer(1), Integer(top)))
+            assert (got.subs(nn, Integer(top)).doit() - want).expand() == 0, (f, top)

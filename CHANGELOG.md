@@ -3704,6 +3704,26 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- SymPy bugs of issue #25 present in the native ports:
+  - `product` of a polynomial of which `roots` finds only some roots
+    took the product of the whole polynomial again (SymPy's
+    `Product._eval_product` divides by `prod((n - r)**m)`, a constant in
+    `k`): `product(k**5 - k - 1, (k, 1, n))` recursed without end and
+    `product(k*(k**5 - k - 1), (k, 1, n))` was wrong (SymPy fails with an
+    `AttributeError`). The remaining factor is the monic cofactor of the
+    roots found (`factorial(n)*Product(k**5 - k - 1, (k, 1, n))`), and the
+    product stays unevaluated when no root is found;
+  - `hyperexpand` of a Meijer G-function with `delta = 0` at `z = 1`
+    tests `re(nu) < -1` (SymPy's test is always true), so that the
+    divergent `meijerg(((), (1/2,)), ((0,), ()), 1)` is no longer `0`;
+  - `ask` answered `False` to `Q.real(x*y)` under `Q.real(x) &
+    Q.imaginary(y)` (and `True` to `Q.imaginary(x*y)`, `False` to
+    `Q.integer(x*y)` or `Q.rational(x*y)` under `Q.integer(x) &
+    Q.irrational(y)`), ignoring that `x = 0` gives `0`: the handlers of
+    `Mul` and the facts of the SAT step ask whether a factor is zero;
+  - `piecewise` dropped a true unevaluated relation between numbers:
+    `piecewise((n, Eq(1, 1)), (5, True))` with the unevaluating `Eq` was
+    `5` (SymPy's `_canonical_coeff` divides by `0`), it is `n`.
 - Issue #75, three wrong or missing results of the native core:
   - the native `Sum.doit` of a Gosper-summable term lost the isolated
     values of the parameters at which the Gosper certificate has a pole:

@@ -29,6 +29,27 @@ def test_real_root_of_a_base_of_unknown_sign() -> None:
     assert ask(Q.real(x**3), Q.real(x)) is True
 
 
+def test_product_with_a_factor_which_may_be_zero() -> None:
+    # SymPy 1.14 answers ask(Q.real(x*y), Q.real(x) & Q.imaginary(y)) with
+    # False (and True for Q.imaginary): x = 0 makes x*y = 0, which is real
+    # and not imaginary. The same holds for an integer (rational) factor
+    # times an irrational one, in the handlers and in the facts of the SAT
+    # step
+    x, y = Symbol('x'), Symbol('y')
+    assert ask(Q.real(x*y), Q.real(x) & Q.imaginary(y)) is None
+    assert ask(Q.imaginary(x*y), Q.real(x) & Q.imaginary(y)) is None
+    assert ask(Q.real(x*y), Q.zero(x) & Q.imaginary(y)) is True
+    assert ask(Q.imaginary(x*y), Q.zero(x) & Q.imaginary(y)) is False
+    assert ask(Q.real(x*y), Q.nonzero(x) & Q.imaginary(y)) is False
+    assert ask(Q.imaginary(x*y), Q.nonzero(x) & Q.imaginary(y)) is True
+    assert ask(Q.integer(x*y), Q.integer(x) & Q.irrational(y)) is None
+    assert ask(Q.integer(x*y), Q.zero(x) & Q.irrational(y)) is True
+    assert ask(Q.integer(x*y), Q.integer(x) & Q.nonzero(x) & Q.irrational(y)) is False
+    assert ask(Q.rational(x*y), Q.rational(x) & Q.irrational(y)) is None
+    assert ask(Q.irrational(x*y), Q.rational(x) & Q.irrational(y)) is None
+    assert ask(Q.irrational(x*y), Q.rational(x) & Q.nonzero(x) & Q.irrational(y)) is True
+
+
 def test_order_of_functions() -> None:
     x = Symbol('x')
     assert ask(Q.positive(log(x)), Q.positive(x) & Q.negative(x - 1)) is False

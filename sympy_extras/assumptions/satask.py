@@ -219,17 +219,23 @@ def _add_facts(expr: Add) -> list[Boolean]:
 # PORTED FROM SYMPY: sympy/assumptions/sathandlers.py:_ (Mul)
 def _mul_facts(expr: Mul) -> list[Boolean]:
     args = expr.args
+    # SymPy's facts about one irrational, not rational or imaginary factor
+    # have no condition that the other factors are nonzero: x*y = 0 at
+    # x = 0 is an integer, rational and not imaginary, and SymPy answers
+    # ask(Q.real(x*y), Q.real(x) & Q.imaginary(y)) with False (issue #25)
+    nonzero = not_(_any_arg(Q.zero, args))
     return [equivalent(Q.zero(expr), _any_arg(Q.zero, args)),
             implies(_all_args(Q.positive, args), Q.positive(expr)),
             implies(_all_args(Q.real, args), Q.real(expr)),
             implies(_all_args(Q.rational, args), Q.rational(expr)),
             implies(_all_args(Q.integer, args), Q.integer(expr)),
-            implies(_exactly_one_arg(_not_rational, args), not_(Q.integer(expr))),
+            implies(and_(nonzero, _exactly_one_arg(_not_rational, args)), not_(Q.integer(expr))),
             implies(_all_args(Q.commutative, args), Q.commutative(expr)),
             implies(_all_args(Q.prime, args), not_(Q.prime(expr))),
-            implies(_all_args(_real_or_imaginary, args),
+            implies(and_(_all_args(_real_or_imaginary, args), nonzero),
                     implies(_exactly_one_arg(Q.imaginary, args), Q.imaginary(expr))),
-            implies(_all_args(Q.real, args), implies(_exactly_one_arg(Q.irrational, args), Q.irrational(expr))),
+            implies(and_(_all_args(Q.real, args), nonzero),
+                    implies(_exactly_one_arg(Q.irrational, args), Q.irrational(expr))),
             implies(_all_args(Q.integer, args), equivalent(_any_arg(Q.even, args), Q.even(expr)))]
 
 

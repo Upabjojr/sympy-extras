@@ -196,3 +196,14 @@ def test_piecewise_fold_keeps_the_limits_of_a_sum() -> None:
     s = Sum(piecewise((a**k, gt(a, 0)), (k, true)), (k, Integer(1), oo))
     assert piecewise_fold(s) == Piecewise((Sum(a**k, (k, Integer(1), oo)), gt(a, 0)),
                                           (Sum(k, (k, Integer(1), oo)), true))
+
+
+def test_unevaluated_relation_between_numbers_is_decided() -> None:
+    # SymPy's _canonical_coeff divides by the coefficient 0 of a relation
+    # between numbers: Piecewise((n, Eq(1, 1, evaluate=False)), (5, True))
+    # was 5 (and n with Ne), the true condition dropped
+    from sympy_extras.core.relational import Eq, Lt, Ne
+    n = Symbol('n')
+    assert piecewise((n, Eq(Integer(1), Integer(1))), (Integer(5), True)) == n
+    assert piecewise((n, Ne(Integer(1), Integer(1))), (Integer(5), True)) == 5
+    assert piecewise((n, Lt(Integer(1), Integer(2))), (Integer(5), True)) == n
