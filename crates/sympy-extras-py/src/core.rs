@@ -5971,6 +5971,48 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             let count = Basic::integer((count_steps(&step) as i64).into());
             Basic::new(Head::Tuple, vec![label, solutions, count])
         }
+        "slater" => {
+            // expansion(g, Tuple(facts)) -> expr; expand(prefactor, an, ap, bm, bq, z, Tuple(facts)) -> Tuple(value, cond) | NONE;
+            // line(prefactor, an, ap, bm, bq, z, lower, upper) -> cond | NONE;
+            // mellin_barnes(constant, Tuple(bases), Tuple(numerator), Tuple(denominator), extra) -> Tuple(prefactor, an, ap, bm, bq, z) | NONE
+            use sympy_extras_core::integrals::slater as sl;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let g_of = |b: &[Basic]| sl::MeijerG {
+                prefactor: b[0].clone(),
+                an: b[1].args().to_vec(),
+                ap: b[2].args().to_vec(),
+                bm: b[3].args().to_vec(),
+                bq: b[4].args().to_vec(),
+                z: b[5].clone(),
+            };
+            let pairs = |b: &Basic| b.args().iter().map(|p| (p.args()[0].clone(), p.args()[1].clone())).collect::<Vec<_>>();
+            match a[0].to_string().as_str() {
+                "expansion" => sl::slater_expansion(&a[1], a[2].args()).map_err(e)?,
+                "expand" => match sl::expand_meijerg(&g_of(&a[1..7]), a[7].args()).map_err(e)? {
+                    Some(v) => tuple(vec![v.value, v.condition]),
+                    None => none(),
+                },
+                "line" => sl::line_conditions(&g_of(&a[1..7]), &a[7], &a[8]).map_err(e)?.unwrap_or_else(none),
+                _ => {
+                    let one = Basic::int(1);
+                    let quotient = sympy_extras_core::integrals::mellin::GammaQuotient {
+                        constant: a[1].clone(),
+                        bases: pairs(&a[2]),
+                        numerator: pairs(&a[3]),
+                        denominator: pairs(&a[4]),
+                        lower: one.clone(),
+                        upper: one.clone(),
+                        condition: sympy_extras_core::core::logic::true_(),
+                        extra: a[5].clone(),
+                    };
+                    match sl::mellin_barnes(&quotient).map_err(e)? {
+                        Some(g) => tuple(vec![g.prefactor, tuple(g.an), tuple(g.ap), tuple(g.bm), tuple(g.bq), g.z]),
+                        None => none(),
+                    }
+                }
+            }
+        }
         "hyperexpand" => {
             // (f, allow_hyper, rewrite: default | nonrepsmall | nonrep | None, place | NONE)
             use sympy_extras_core::simplify::hyperexpand as hx;

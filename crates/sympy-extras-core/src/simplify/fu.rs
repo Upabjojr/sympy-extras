@@ -1820,6 +1820,8 @@ pub type Measure = fn(&Basic) -> PolyResult<Vec<i64>>;
 /// The tree applied greedily (`greedy`); a minimisation keeps the first
 /// result of least measure.
 pub fn apply_greedy(tree: &Tree, objective: Measure, e: &Basic) -> R {
+    // the time limit of an enclosing `attempt` (Python's alarm interrupts anywhere)
+    crate::timeout::check()?;
     match tree {
         Tree::Rule(r) => r(e),
         Tree::Chain(rules) => {

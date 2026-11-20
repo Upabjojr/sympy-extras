@@ -48,7 +48,15 @@ pub fn check_infallible() {
     }
 }
 
+/// The errors Python's `attempt` takes as giving up; a part of the port
+/// which is missing (`not_ported`) is no Python error and goes through, so
+/// that it is reported instead of a different answer.
 fn gives_up(e: &PolyError) -> bool {
+    if let PolyError::NotImplemented(m) = e {
+        if m.starts_with(crate::error::NOT_PORTED_PREFIX) {
+            return false;
+        }
+    }
     !matches!(e, PolyError::Index(_) | PolyError::TimeLimit(_))
 }
 

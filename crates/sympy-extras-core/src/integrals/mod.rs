@@ -9,5 +9,6 @@ pub mod heurisch;
 pub mod mellin;
 pub mod radicals;
 pub mod risch;
+pub mod slater;
 pub mod tables;
 pub mod trigonometric;

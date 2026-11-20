@@ -78,6 +78,7 @@ pub fn iterfreeargs(node: &Basic) -> Vec<Basic> {
 /// `f` applied to every node of the tree, children first (the atoms only
 /// when `atoms`); the rebuilt nodes are evaluated (`bottom_up`).
 pub fn bottom_up(rv: &Basic, f: &dyn Fn(&Basic) -> PolyResult<Basic>, atoms: bool) -> PolyResult<Basic> {
+    crate::timeout::check()?;
     if rv.args().is_empty() {
         return if atoms { f(rv) } else { Ok(rv.clone()) };
     }

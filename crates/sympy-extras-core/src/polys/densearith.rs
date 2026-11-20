@@ -330,6 +330,7 @@ pub fn dup_pdiv<K: Domain>(f: &[K::Elem], g: &[K::Elem], k: &K) -> PolyResult<(V
     let mut r: Vec<K::Elem> = f.to_vec();
     let mut n: usize = f.len() - g.len() + 1;
     while r.len() > dg {
+        crate::timeout::check_infallible();
         // r = lc r - lc(r) x**(dr - dg) g, q = lc q + lc(r) x**(dr - dg)
         let shift: usize = r.len() - 1 - dg;
         let lr: K::Elem = r[0].clone();

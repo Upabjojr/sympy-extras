@@ -86,6 +86,7 @@ pub fn dup_subresultants<K: Domain>(f: &[K::Elem], g: &[K::Elem], k: &K) -> Vec<
     let mut beta: K::Elem = if delta % 2 == 1 { k.one() } else { k.neg(&k.one()) };
     let mut psi: K::Elem = k.neg(&k.one());
     loop {
+        crate::timeout::check_infallible();
         let r: Vec<K::Elem> = prem(&a, &b, k);
         if r.is_empty() {
             break;

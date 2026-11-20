@@ -484,6 +484,9 @@ impl<K: Domain> PolyElement<K> {
         let k: &K = self.domain();
         let mut result: Terms<K::Elem> = Terms::new();
         for (m1, c1) in &self.terms {
+            // a product of large polynomials is long: the time limit of an
+            // enclosing attempt (Python's alarm interrupts anywhere)
+            crate::timeout::check_infallible();
             for (m2, c2) in &other.terms {
                 Self::add_into(k, &mut result, monomial_mul(m1, m2), k.mul(c1, c2));
             }

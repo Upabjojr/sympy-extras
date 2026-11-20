@@ -116,6 +116,9 @@ pub fn arithmetic_error(message: String) -> PolyError {
 }
 
 /// `NotImplementedError(message)`: a part of the Python core not ported yet.
+/// The beginning of the messages of [`not_ported`].
+pub const NOT_PORTED_PREFIX: &str = "not ported";
+
 pub fn not_ported(message: &str) -> PolyError {
     PolyError::NotImplemented(format!("not ported to the Rust core yet: {}", message))
 }

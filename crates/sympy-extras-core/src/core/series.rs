@@ -525,7 +525,10 @@ pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, c
         Head::Function(_) => {
             let name: String = class_name(e);
             if OWN_LEADING_TERM.contains(&name.as_str()) {
-                return Err(not_ported(&format!("the leading term of {}", name)));
+                // the ported rules of the classes without a method of their own
+                if let Some(found) = crate::functions::leading_terms::leading_term_rule(e, x, logx, cdir)? {
+                    return Ok(found);
+                }
             }
             generic_leading_term(e, x, logx)
         }
@@ -561,6 +564,10 @@ pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, c
 
 /// `Function._eval_as_leading_term`: the function itself, unless an
 /// argument vanishes at `x = 0`.
+pub(crate) fn generic_leading_term_pub(f: &Basic, x: &Basic, logx: Option<&Basic>) -> R {
+    generic_leading_term(f, x, logx)
+}
+
 fn generic_leading_term(f: &Basic, x: &Basic, logx: Option<&Basic>) -> R {
     let o: Basic = order_at_zero(&Basic::one(), x)?;
     for a in f.args() {

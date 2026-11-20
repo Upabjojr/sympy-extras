@@ -3,6 +3,7 @@
 pub mod combinatorial;
 pub mod elementary;
 pub mod expand_func;
+pub mod leading_terms;
 pub mod special;
 
 use crate::core::basic::{Basic, Function};
