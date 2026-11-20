@@ -226,7 +226,8 @@ def _mul_facts(expr: Mul) -> list[Boolean]:
     # non-rational factor makes the product irrational, imaginary or not
     # an integer forget a zero factor (I*0 is 0): with them Q.zero(x*y)
     # was inconsistent with ~Q.real(x), and ask(Q.real(x), Q.zero(x*y))
-    # was True; here the other factors are nonzero
+    # was True, and ask(Q.real(x*y), Q.real(x) & Q.imaginary(y)) was False
+    # (sympy-extras#25); here the other factors are nonzero
     args = expr.args
     nonzero = _all_args(_nonzero, args)
     return [equivalent(Q.zero(expr), _any_arg(Q.zero, args)),

@@ -258,6 +258,10 @@ def _integer(e: Expr, assumptions: Boolean) -> Truth:
                         return None
                 else:
                     return None
+        if not output:
+            # an integer times an irrational number is 0 when the integer is
+            # (SymPy answers False, issue #25)
+            return _zero_factor([_e(a) for a in e.args], assumptions)
         return output
     if isinstance(e, Abs):
         if _ask(_q('integer', _arg(e)), assumptions):
@@ -280,7 +284,12 @@ def _rational(e: Expr, assumptions: Boolean) -> Truth:
             z = _value(e)
             if z is not None and _is_zero_part(z.imag, z) is False:
                 return False
-        return _closed_group(e, assumptions, 'rational')
+        rational = _closed_group(e, assumptions, 'rational')
+        if rational is False and isinstance(e, Mul):
+            # a rational number times an irrational one is 0 when the
+            # rational number is (SymPy answers False, issue #25)
+            return _zero_factor([_e(a) for a in e.args], assumptions)
+        return rational
     x = _exp_argument(e)
     if x is not None:
         if _ask(_q('rational', x), assumptions):
@@ -337,6 +346,17 @@ def _irrational(e: Expr, assumptions: Boolean) -> Truth:
     return real
 
 
+def _zero_factor(factors: list[Expr], assumptions: Boolean) -> Truth:
+    """Whether one of the factors is zero: ``True`` when one is, ``False``
+    when none is, ``None`` otherwise."""
+    answers = [_ask(_q('zero', f), assumptions) for f in factors]
+    if any(answer is True for answer in answers):
+        return True
+    if all(answer is False for answer in answers):
+        return False
+    return None
+
+
 # PORTED FROM SYMPY: sympy/assumptions/handlers/sets.py (RealPredicate)
 def _real(e: Expr, assumptions: Boolean) -> Truth:
     if isinstance(e, (Abs, Exp1, Float, GoldenRatioType, Im, Pi, Rational, Re, TribonacciConstantType)):
@@ -351,14 +371,20 @@ def _real(e: Expr, assumptions: Boolean) -> Truth:
         if e.is_number:
             return _real_number(e)
         result = True
+        reals: list[Expr] = []
         for a in e.args:
             arg = _e(a)
             if _ask(_q('real', arg), assumptions):
-                pass
+                reals.append(arg)
             elif _ask(_q('imaginary', arg), assumptions):
                 result = not result
             else:
                 return None
+        if not result:
+            # SymPy answers False without asking whether a real factor is
+            # zero: x*y is 0, real, at x = 0 for a real x and an imaginary y
+            # (issue #25)
+            return _zero_factor(reals, assumptions)
         return result
     x = _exp_argument(e)
     if x is not None:
@@ -474,12 +500,19 @@ def _imaginary(e: Expr, assumptions: Boolean) -> Truth:
         if e.is_number:
             return _imaginary_number(e)
         result = False
+        real_factors: list[Expr] = []
         for a in e.args:
             arg = _e(a)
             if _ask(_q('imaginary', arg), assumptions):
                 result = not result
             elif not _ask(_q('real', arg), assumptions):
                 return None
+            else:
+                real_factors.append(arg)
+        if result:
+            # as for Q.real: 0 = x*y at x = 0 is not imaginary (issue #25)
+            zero = _zero_factor(real_factors, assumptions)
+            return None if zero is None else not zero
         return result
     x = _exp_argument(e)
     if x is not None:

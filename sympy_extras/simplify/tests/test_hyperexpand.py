@@ -137,6 +137,20 @@ def test_meijerg_expansions_match_sympy() -> None:
         assert str(to_sympy(hyperexpand(expr_from_sympy(e)), evaluate=False)) == str(sympy.hyperexpand(e)), e
 
 
+def test_divergent_meijerg_at_one_is_not_zero() -> None:
+    # SymPy's _meijergexpand tests (re(nu) < -1) is not False, which always
+    # holds, so G(1) = meijerg(((), (a,)), ((0,), ()), 1) = (1 - z)**(a - 1)/gamma(a)
+    # at z = 1 was 0 also for a = 1/2 and a = -1/2, where it diverges
+    from sympy_extras.core import Integer, Rational
+    from sympy_extras.functions.special.hyper import MeijerG, meijerg
+    from sympy_extras.simplify.hyperexpand import hyperexpand
+    for a in (Rational(1, 2), Rational(-1, 2)):
+        assert isinstance(hyperexpand(meijerg([], [a], [Integer(0)], [], Integer(1))), MeijerG), a
+    # re(nu) < -1: the value at z = 1 is the limit 0
+    for a in (Integer(2), Rational(3, 2)):
+        assert hyperexpand(meijerg([], [a], [Integer(0)], [], Integer(1))) == 0, a
+
+
 def test_residue_matches_sympy() -> None:
     from sympy import I, cos, exp, gamma, pi, sin
     from sympy_extras.series import residue

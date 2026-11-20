@@ -95,22 +95,24 @@ def eval_product(term: Expr, limits: Limits) -> Optional[Expr]:
             return _eval_polynomial_ex(term, limits)
         A: Expr = ONE
         B: Expr = ONE
-        Q: Expr = ONE
+        D: Expr = ONE
         found = roots(poly)
         assert isinstance(found, dict)
         M = 0
         for r, m in found.items():
             M += m
             A = A * rf(a - r, n - a + 1)**m
-            Q = Q * (n - r)**m
-        if M < poly.degree():
-            from sympy_extras.core.add import add
-            from sympy_extras.polys.polytools import cancel
-            # SymPy's quo(poly, Q.as_poly(k)): Q, in n, is a constant in k,
-            # each coefficient divided (an element of the fraction field)
-            arg = add(*[cancel(c / Q) * k**m[0] for m, c in poly.terms()])
-            B = _doit(arg, (k, a, n))
-        return poly.LC()**(n - a + 1) * A * B
+            D = D * (k - r)**m
+        # SymPy builds Q = prod((n - r)**m), a constant in k, and takes the
+        # product of quo(poly, Q.as_poly(k)), the whole polynomial again:
+        # wrong when some roots are found (SymPy then fails with an
+        # AttributeError), and a recursion without end when none is. The
+        # remaining factor is the monic cofactor of the roots found, and
+        # with no root found the other methods are tried (issue #25)
+        if M > 0:
+            if M < poly.degree():
+                B = _doit(poly.quo(Poly(D, k)).monic().as_expr(), (k, a, n))
+            return poly.LC()**(n - a + 1) * A * B
     if isinstance(term, Add):
         factored = factor_terms(term, fraction=True)
         if isinstance(factored, Mul):
@@ -163,12 +165,9 @@ def _eval_polynomial_ex(term: Expr, limits: Limits) -> Optional[Expr]:
     other domains) by its roots (the closed forms of the native
     ``ex_roots``): ``LC**(n - a + 1)*prod(rf(a - r, n - a + 1)**m)``;
     ``None`` when they are not found (SymPy's recursion on the cofactor
-    would not end), the remaining cofactor (a constant in ``k``) taken
-    out as SymPy's ``quo`` does."""
-    from sympy_extras.core.add import add
+    would not end) or only some of them are."""
     from sympy_extras.functions.combinatorial.factorials import rf
     from sympy_extras.polys.polyroots import ex_roots
-    from sympy_extras.polys.polytools import cancel
     from .gosper import _UPoly
     k, a, n = limits
     try:
@@ -190,17 +189,15 @@ def _eval_polynomial_ex(term: Expr, limits: Limits) -> Optional[Expr]:
         else:
             counts.append((r, 1))
     A: Expr = ONE
-    B: Expr = ONE
-    Q: Expr = ONE
     M = 0
     for r, m in counts:
         M += m
         A = A * rf(a - r, n - a + 1)**m
-        Q = Q * (n - r)**m
     if M < poly.degree():
-        arg = add(*[cancel(c / Q) * k**j for j, c in enumerate(poly.c)])
-        B = _doit(arg, (k, a, n))
-    return poly.lc()**(n - a + 1) * A * B
+        # SymPy's quo(poly, Q.as_poly(k)) divides by a constant in k (issue
+        # #25): the cofactor of the roots found is not known here
+        return None
+    return poly.lc()**(n - a + 1) * A
 
 
 def _through_delta(term: Expr, limits: Limits) -> Optional[Expr]:
