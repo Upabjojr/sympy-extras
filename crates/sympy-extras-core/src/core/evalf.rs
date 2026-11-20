@@ -230,6 +230,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             crate::integrals::evalf::piecewise_value(e, prec)
         }
         Head::Integral => crate::integrals::evalf::integral_value(e, prec),
+        Head::Sum => crate::concrete::evalf::sum_value(e, prec),
         Head::Rational { value, .. } => real(real_rat(value, wp)),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_value(e, wp),
         Head::TranscendentalRoot => crate::solvers::isolation::numeric_value(e, wp),
