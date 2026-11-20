@@ -478,7 +478,17 @@ class EiNode(DefinedFunction):
             if z.has(ExpPolar, PolarLift):
                 # SymPy's series forgets the branch: its expansion of
                 # Ei(exp_polar(I*pi)/w) misses I*pi, so that of expint(2, 1/w)
-                # is -I*pi/w + O(w**4) (the function is exponentially small)
+                # is -I*pi/w + O(w**4) (the function is exponentially small,
+                # sympy-extras#25). Ei(q*exp_polar(+-I*pi)) with q -> +oo is
+                # Ei(-q) +- I*pi, the principal value just above (below) the cut
+                from sympy_extras.functions.elementary.complexes import polar_lift, unpolarify
+                if isinstance(args0[0], NegativeInfinity):
+                    for side, branch in ((ONE, polar_lift(MINUS_ONE)), (MINUS_ONE, ExpPolar(mul(MINUS_ONE, I, pi)))):
+                        q = div(z, branch)
+                        if not q.has(ExpPolar, PolarLift):
+                            zp = unpolarify(z)
+                            s = [factorial(Integer(k)) / zp**k for k in range(n)]
+                            return add(mul(side, I, pi), (exp(zp) / zp) * add(*s, order(1 / zp**n, x)))
                 raise PoleError('Asymptotic expansion of Ei of the polar number %s is not implemented.' % (z,))
             s = [factorial(Integer(k)) / z**k for k in range(n)]
             return (exp(z) / z) * add(*s, order(1 / z**n, x))

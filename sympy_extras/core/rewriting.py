@@ -368,8 +368,8 @@ def _tractable_error_and_bessel(e: Expr, args: tuple[Basic, ...], limitvar: Opti
     rewritten, ``e`` the node before, as SymPy's ``self``); ``None`` for
     the other nodes and where SymPy's rule gives ``None``."""
     from sympy_extras.functions.special.bessel import BesselI, BesselK, besselis, besselks
-    from sympy_extras.functions.special.error_functions import (EiNode, Erf, Erfc, Erfi, LiNode, OffsetLiNode, eis,
-                                                                 erfs)
+    from sympy_extras.functions.special.error_functions import (EiNode, Erf, Erfc, Erfi, Expint, LiNode, OffsetLiNode,
+                                                                 eis, erfs)
     from sympy_extras.functions.special.gamma_functions import UpperGamma, loggamma, lowergamma
     from sympy_extras.functions.combinatorial.numbers import Fibonacci
     from sympy_extras.functions.elementary.exponential import exp, log
@@ -400,6 +400,18 @@ def _tractable_error_and_bessel(e: Expr, args: tuple[Basic, ...], limitvar: Opti
         # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Li._eval_rewrite_as_tractable
         # (self.rewrite(li).rewrite("tractable", deep=True), without the limit variable)
         return rewrite_tractable(_rewrite(e, (), LiNode, RewriteHints()), None)
+    if isinstance(e, Expint):
+        # not SymPy's (expint has no tractable form there, and the limit of
+        # x*exp(x)*expint(2, x) at oo is -oo*I, sympy-extras#25): for a
+        # positive integer order and a positive argument, E_1(z) = -Ei(-z)
+        # = -exp(-z)*eis(-z) and E_n(z) = (exp(-z) - z*E_(n-1)(z))/(n - 1)
+        nu, z = expr_args
+        if isinstance(nu, Integer) and nu.p >= 1 and z.is_positive is True:
+            factor = -eis(-z)
+            for k in range(2, nu.p + 1):
+                factor = (1 - z * factor) / Integer(k - 1)
+            return exp(-z) * factor
+        return None
     if isinstance(e, UpperGamma):
         # PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:uppergamma._eval_rewrite_as_tractable
         s, x = expr_args

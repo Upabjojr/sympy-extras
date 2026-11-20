@@ -411,6 +411,11 @@ def mrv_leadterm(e: Expr, x: Symbol) -> tuple[Expr, Expr]:
         _series: Expr = order(Integer(1))
         incr = 1
         while _series.is_Order:
+            if n0 + incr > 128:
+                # SymPy's loop has no end: the expansion of a function which
+                # is exponentially small in w (expint(2, 1/w)) is O(w**n)
+                # for every n
+                raise PoleError("the expansion of %s in %s vanishes to every order" % (f, w))
             _series = f._eval_nseries(w, n0 + incr, logw, Integer(0))
             incr *= 2
         series = _series.expand().removeO()
