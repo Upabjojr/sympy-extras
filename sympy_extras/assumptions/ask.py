@@ -33,7 +33,7 @@ from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, BooleanFals
 from sympy_extras.core.mul import Mul
 from sympy_extras.core.numbers import E, Rational, number_from_fraction, pi
 from sympy_extras.core.power import Pow
-from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, ne
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.functions.elementary.complexes import Abs
 from sympy_extras.functions.elementary.exponential import Exp, Log
@@ -45,7 +45,7 @@ from sympy_extras.functions.elementary.trigonometric import Acos, Asin, Atan, Co
 from sympy_extras.sets.sets import Contains, Reals, Set
 
 from .context import global_assumptions
-from .facts import Facts, _predicate_of_atom, element, normalize, to_polynomial
+from .facts import Facts, _predicate_of_atom, element, normalize, to_polynomial, to_predicates
 from .quantifiers import Prefix, Quantifier
 
 __all__ = ['ask', 'Assumptions', 'Truth']
@@ -310,9 +310,13 @@ def _fragile(e: Expr) -> bool:
 
 def _realness(e: Expr, facts: Facts) -> Truth:
     """Whether ``e`` is a real number, by the structure of the expression
-    and the facts about the signs of its parts."""
+    and the facts about the signs of its parts.
+
+    A real number is finite: a symbol only ``extended_real`` may be
+    ``oo``, a negative power and ``tan`` have poles and ``Abs`` of an
+    infinite argument is ``oo`` (sympy-extras#74, 5)."""
     if isinstance(e, Symbol):
-        return True if e in facts.real or e.is_extended_real else None
+        return True if e in facts.real or e.is_real else None
     if e.is_number:
         return True if e.is_extended_real else (False if e.is_extended_real is False else None)
     if isinstance(e, (Add, Mul)):
@@ -322,7 +326,13 @@ def _realness(e: Expr, facts: Facts) -> Truth:
         base, exponent = e.base, e.exp
         base_real = _realness(base, facts)
         if exponent.is_integer:
-            return base_real
+            # a non-real base can have a real power (I**2), and 1/x is zoo
+            # at x = 0
+            if base_real is not True:
+                return None
+            if exponent.is_nonnegative or _nonzero(base, facts):
+                return True
+            return None
         if base_real is not True:
             return None
         if isinstance(exponent, Rational) or _realness(exponent, facts) is True:
@@ -361,11 +371,26 @@ def _realness(e: Expr, facts: Facts) -> Truth:
             return False
         return None
     if isinstance(e, Abs):
-        return True if as_expr(e.args[0]).is_finite is not False else None
-    if isinstance(e, (Exp, Sin, Cos, Tan, Atan, Sinh, Cosh, Tanh, Asinh, Floor, Ceiling)):
+        argument = as_expr(e.args[0])
+        if argument.is_finite or _realness(argument, facts) is True:
+            return True
+        return True if _predicate_ask(Q.finite(argument), facts) is True else None
+    if isinstance(e, Tan):
+        argument = as_expr(e.args[0])
+        if _realness(argument, facts) is True and _nonzero(Cos(argument), facts):
+            return True
+        return None
+    if isinstance(e, (Exp, Sin, Cos, Atan, Sinh, Cosh, Tanh, Asinh, Floor, Ceiling)):
         argument = as_expr(e.args[0])
         return True if _realness(argument, facts) is True else None
     return None
+
+
+def _nonzero(e: Expr, facts: Facts) -> bool:
+    """Whether ``e`` is known to be nonzero under the facts."""
+    if e.is_zero is False:
+        return True
+    return _evaluate(normalize(ne(e, 0)), facts) is True
 
 
 def _bounded_cad_ask(formula: Boolean, facts: Facts) -> Truth:
@@ -412,6 +437,15 @@ def _evaluate(formula: Boolean, facts: Facts) -> Truth:
     if isinstance(formula, (And, Or, Implies, Equivalent, Xor, ITE)):
         values = [_evaluate(to_boolean(arg), facts) for arg in formula.args]
         value = _combine(formula, values)
+        if value is None:
+            # the predicates of the whole formula: an atom undecided alone
+            # decides nothing in the combination of the atoms, but
+            # element(x, Reals) | ~element(x, Reals) is Q.real(x) |
+            # ~Q.real(x), and Eq(x, 0) | Eq(y, 0) follows from Q.zero(x*y)
+            # (sympy-extras#74, 2 and 3)
+            predicates = to_predicates(formula)
+            if predicates is not None:
+                value = _predicate_ask(predicates, facts)
         if value is None:
             value = _cad_ask(formula, facts)
         if value is None:

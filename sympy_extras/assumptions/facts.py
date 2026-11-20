@@ -56,6 +56,7 @@ from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, BooleanLike
 from sympy_extras.core.numbers import Infinity, NegativeInfinity
 from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ge, gt, le, lt, ne
 from sympy_extras.core.symbol import Symbol
+from sympy_extras.functions.elementary.complexes import Abs, Arg, Conjugate, Im, Re
 from sympy_extras.sets.fancysets import ComplexesClass, IntegersClass, Naturals0Class, NaturalsClass, RationalsClass
 from sympy_extras.sets.sets import (Complement, Contains, EmptySetClass, FiniteSet, Intersection, Interval,
     RealsClass, Reals, Set, Union as SetUnion, UniversalSetClass)
@@ -347,6 +348,28 @@ def to_predicates(formula: Boolean) -> Optional[Boolean]:
     return _predicate_of_atom(formula)
 
 
+#: the functions whose arguments an inequality does not make real: they
+#: are written for complex arguments (``re(z)*im(z) > 1``, ``Abs(z) < 1``)
+_COMPLEX_ARGUMENTS: Final = (Re, Im, Abs, Arg, Conjugate)
+
+
+def _real_variables(atom: Relational) -> list[Symbol]:
+    """The variables an inequality makes real: its free symbols, except
+    those met only inside ``re``, ``im``, ``Abs``, ``arg`` and
+    ``conjugate``. The sides of ``re(z)*im(z) > pi/2`` are real, ``z`` is
+    not (``z = 2 + I`` satisfies it); before, ``z`` was real, and
+    ``log(exp(z**2)) = z**2`` came out true under it (sympy-extras#74)."""
+    found: set[Symbol] = set()
+    stack: list[Basic] = [atom.lhs, atom.rhs]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, Symbol):
+            found.add(node)
+        elif not isinstance(node, _COMPLEX_ARGUMENTS):
+            stack.extend(node.args)
+    return sorted(found & atom.free_symbols, key=lambda s: s.name)
+
+
 def _consequences(atom: Boolean) -> list[Boolean]:
     """Predicates implied by a top level atom beyond its equivalent
     predicate: the reality of the variables of an inequality and simple
@@ -356,7 +379,7 @@ def _consequences(atom: Boolean) -> list[Boolean]:
         return result
     lhs, rhs = atom.lhs, atom.rhs
     if isinstance(atom, (Gt, Lt, Ge, Le)):
-        result.extend(Q.real(s) for s in sorted(atom.free_symbols, key=lambda s: s.name))
+        result.extend(Q.real(s) for s in _real_variables(atom))
     # sign conditions on the non-numeric side
     if lhs.is_number and not rhs.is_number:
         lhs, rhs = rhs, lhs
@@ -582,13 +605,15 @@ class Facts:
         real: set[Symbol] = set()
         integer: set[Symbol] = set()
         for s in formula.free_symbols | variables_given:
-            if s.is_extended_real or self._known(Q.real(s)):
+            # is_real, not is_extended_real: a symbol only extended real
+            # may be oo (sympy-extras#74, 5)
+            if s.is_real or self._known(Q.real(s)):
                 real.add(s)
             if s.is_integer or self._known(Q.integer(s)):
                 integer.add(s)
         for c in self.conjuncts:
             if isinstance(c, (Gt, Lt, Ge, Le)):
-                real.update(c.free_symbols)
+                real.update(_real_variables(c))
         self.real: Final[set[Symbol]] = real
         self.integer: Final[set[Symbol]] = integer
 

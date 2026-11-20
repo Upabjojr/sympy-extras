@@ -281,12 +281,23 @@ def _restore_manualintegrate() -> None:
     met inside ``exp(exp(x))``) is ``DontKnowRule`` for the rest of the
     process. The marks are cleared before a limit is set: no
     ``manualintegrate`` is on the stack then, the limits being set around
-    its calls, not inside them."""
+    its calls, not inside them.
+
+    The tables are looked up in the namespace of the module, not as
+    attributes: SymPy after 1.14 rewrote ``manualintegrate`` on a solver
+    without the module-level ``_integral_cache`` (and may drop the other
+    tables too), and a table which is not there is not repaired."""
     import sympy.integrals.manualintegrate as manual
     from sympy.core.symbol import Dummy
     from sympy.functions.elementary.exponential import exp
-    manual._integral_cache.clear()
-    patterns, wilds = manual._special_function_patterns, manual._wilds
+    namespace = vars(manual)
+    cache = namespace.get('_integral_cache')
+    if isinstance(cache, dict):
+        cache.clear()
+    patterns, wilds = namespace.get('_special_function_patterns'), namespace.get('_wilds')
+    if not (isinstance(patterns, list) and isinstance(wilds, list)
+            and 'special_function_rule' in namespace and 'IntegralInfo' in namespace):
+        return
     if patterns and len(wilds) == 5:
         return
     fresh_patterns: list[object] = []

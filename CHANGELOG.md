@@ -3704,6 +3704,35 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- Issue #74, six findings in the assumptions (`sympy_extras.assumptions`,
+  the native modules and their SymPy faces):
+  - a time-limited step no longer raises `AttributeError` on SymPy master,
+    which dropped `manualintegrate._integral_cache`: `_timeout`
+    clears and repairs the tables of `manualintegrate` only when the
+    module has them;
+  - `ask` asks the predicates of a whole Boolean combination when its
+    atoms alone do not decide it: `element(x, Reals) | ~element(x,
+    Reals)` is `True`, and so is `Eq(x, 0) | Eq(y, 0)` under `Eq(x*y, 0)`
+    with complex `x`, `y`;
+  - the native facts of a product (`satask`, ported from SymPy's
+    `sathandlers`) require the other factors to be nonzero before one
+    imaginary, irrational or non-rational factor makes the product
+    imaginary, irrational or not an integer: `Q.zero(x*y)` was
+    inconsistent with `~Q.real(x)`, and `ask(element(x, Reals), Eq(x*y,
+    0))` was `True` (SymPy 1.14 has the same bug);
+  - `ask` of the SymPy face returns `None` for a statement about a
+    matrix (`Gt(X, 3, evaluate=False)` with a `MatrixSymbol`), which
+    raised `TypeError`;
+  - a real number is finite in `ask`: `1/x`, `x**-2`, `tan(x)` and
+    `Abs(1/x)` are real for real `x` only where they have no pole (the
+    base nonzero, `cos(x) != 0`, the argument of `Abs` finite), and a
+    symbol which is only `extended_real` is not known to be real;
+  - an inequality makes real the variables it contains algebraically,
+    not those met only inside `re`, `im`, `Abs`, `arg` or `conjugate`:
+    `re(z)*im(z) > pi/2` made `z` real, and `log(exp(z**2)) = z**2` was
+    true under it (`z = 2 + I` is a counterexample); `Abs(z) < 1` no
+    longer makes `z` real either.
+
 - Issue #75, three wrong or missing results of the native core:
   - the native `Sum.doit` of a Gosper-summable term lost the isolated
     values of the parameters at which the Gosper certificate has a pole:

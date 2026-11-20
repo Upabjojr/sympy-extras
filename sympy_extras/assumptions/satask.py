@@ -216,20 +216,31 @@ def _add_facts(expr: Add) -> list[Boolean]:
             implies(_all_args(Q.real, args), implies(_exactly_one_arg(Q.irrational, args), Q.irrational(expr)))]
 
 
+def _nonzero(e: Expr) -> Boolean:
+    return not_(Q.zero(e))
+
+
 # PORTED FROM SYMPY: sympy/assumptions/sathandlers.py:_ (Mul)
 def _mul_facts(expr: Mul) -> list[Boolean]:
+    # sympy-extras#74 (3): SymPy's facts that one irrational, imaginary or
+    # non-rational factor makes the product irrational, imaginary or not
+    # an integer forget a zero factor (I*0 is 0): with them Q.zero(x*y)
+    # was inconsistent with ~Q.real(x), and ask(Q.real(x), Q.zero(x*y))
+    # was True; here the other factors are nonzero
     args = expr.args
+    nonzero = _all_args(_nonzero, args)
     return [equivalent(Q.zero(expr), _any_arg(Q.zero, args)),
             implies(_all_args(Q.positive, args), Q.positive(expr)),
             implies(_all_args(Q.real, args), Q.real(expr)),
             implies(_all_args(Q.rational, args), Q.rational(expr)),
             implies(_all_args(Q.integer, args), Q.integer(expr)),
-            implies(_exactly_one_arg(_not_rational, args), not_(Q.integer(expr))),
+            implies(and_(nonzero, _exactly_one_arg(_not_rational, args)), not_(Q.integer(expr))),
             implies(_all_args(Q.commutative, args), Q.commutative(expr)),
             implies(_all_args(Q.prime, args), not_(Q.prime(expr))),
-            implies(_all_args(_real_or_imaginary, args),
+            implies(and_(nonzero, _all_args(_real_or_imaginary, args)),
                     implies(_exactly_one_arg(Q.imaginary, args), Q.imaginary(expr))),
-            implies(_all_args(Q.real, args), implies(_exactly_one_arg(Q.irrational, args), Q.irrational(expr))),
+            implies(and_(nonzero, _all_args(Q.real, args)),
+                    implies(_exactly_one_arg(Q.irrational, args), Q.irrational(expr))),
             implies(_all_args(Q.integer, args), equivalent(_any_arg(Q.even, args), Q.even(expr)))]
 
 

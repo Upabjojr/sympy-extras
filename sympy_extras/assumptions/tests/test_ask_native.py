@@ -92,3 +92,36 @@ def test_native_simplification_of_a_relation() -> None:
     assert simplify_relational(Lt(x**2 + 1, x**2), 1.7, False, False, True) is false
     # an unchanged relation stays as it is
     assert simplify_relational(Lt(sin(x), 0), 1.7, False, False, True) == Lt(sin(x), 0)
+
+
+def test_issue_74_native() -> None:
+    # sympy-extras#74: the reports on the SymPy face, here on the core
+    from sympy_extras.core.logic import not_, or_
+    from sympy_extras.functions import im, re, tan
+    z = Symbol('z')
+    # (1) the variables of an inequality met only inside re, im, Abs,
+    # arg, conjugate are not real: z = 2 + I satisfies re(z)*im(z) > pi/2
+    # and log(exp(z**2)) - z**2 is -2*I*pi there
+    A = re(z)*im(z) > pi/2
+    assert ask(Eq(log(exp(z**2)), z**2), A) is not True
+    assert ask(Q.real(z), A) is None and ask(Eq(im(z), 0), A) is False
+    assert ask(Q.real(z), abs_(z) < 1) is None
+    assert ask(Q.real(x), x*y > 0) is True                # x appears algebraically
+    # (2) p | ~p with a membership
+    assert ask(or_(element(x, Reals), not_(element(x, Reals)))) is True
+    assert ask(or_(element(x, Integers), not_(element(x, Integers)))) is True
+    # (3) a product is zero when a factor is, also for complex factors,
+    # and that does not make the factors real (x = I, y = 0)
+    assert ask(Eq(x, 0) | Eq(y, 0), Eq(x*y, 0)) is True
+    assert ask(element(x, Reals), Eq(x*y, 0)) is None
+    # (5) poles and infinities are not real numbers
+    xe = Symbol('xe', extended_real=True)
+    assert ask(element(1/x, Reals), element(x, Reals)) is None
+    assert ask(element(x**-2, Reals), element(x, Reals)) is None
+    assert ask(element(tan(x), Reals), element(x, Reals)) is None
+    assert ask(element(abs_(1/x), Reals), element(x, Reals)) is None
+    assert ask(element(xe, Reals)) is None
+    assert ask(element(1/x, Reals), element(x, Reals) & (x > 0)) is True
+    assert ask(element(tan(x), Reals), (x > 0) & (x < 1)) is True
+    assert ask(element(x**2, Reals), element(x, Reals)) is True
+    assert ask(element(abs_(x), Reals), element(x, Reals)) is True
