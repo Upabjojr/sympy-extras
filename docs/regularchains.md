@@ -206,9 +206,9 @@ False
 >>> for chain in triangularize(system, x, y, z):
 ...     print(chain.polys, chain.numerical_solutions(6))
 [z**2 + 2*z - 1, y - z, x - z] [{z: -2.41421, y: -2.41421, x: -2.41421}, {z: 0.414214, y: 0.414214, x: 0.414214}]
-[z, y, x - 1] [{z: 0, y: 0, x: 1.00000}]
-[z, y - 1, x] [{z: 0, y: 1.00000, x: 0}]
-[z - 1, y, x] [{z: 1.00000, y: 0, x: 0}]
+[z, y, x - 1] [{z: 0.0, y: 0.0, x: 1.00000}]
+[z, y - 1, x] [{z: 0.0, y: 1.00000, x: 0.0}]
+[z - 1, y, x] [{z: 1.00000, y: 0.0, x: 0.0}]
 
 ```
 

@@ -1045,12 +1045,12 @@ def test_function_of_a_hidden_zero_has_no_numeric_facts() -> None:
     # issue #25: z is exactly 0 and its value a rounding error, negative at
     # 53 and at 160 bits: sqrt(z) was imaginary and sqrt(z) - 2 (that is,
     # -2) neither positive, nor negative, nor zero, nor real
-    z = sympify('-sqrt(3) - sqrt(2) + sqrt(2*sqrt(6) + 5)')
+    z = as_expr(sympify('-sqrt(3) - sqrt(2) + sqrt(2*sqrt(6) + 5)'))
     root = sqrt(z)
     assert root.is_imaginary is None and root.is_real is None and root.is_negative is False
     shifted = root - 2
     assert shifted.is_real is not False and shifted.is_negative is not False and shifted.is_zero is not True
-    p = 2*sqrt(sympify('-6 + (-2 + sqrt(2))**2 + 4*sqrt(2)')) + 2*sqrt(2)
+    p = 2*sqrt(as_expr(sympify('-6 + (-2 + sqrt(2))**2 + 4*sqrt(2)'))) + 2*sqrt(2)
     assert p.is_negative is not True and p.is_zero is not True
     # numbers which are not hidden zeros keep their facts
     assert (pi - 3).is_positive is True and (sqrt(2) - sqrt(3)).is_negative is True
