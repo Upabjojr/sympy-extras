@@ -40,6 +40,9 @@ pub struct AlgebraicField {
     pub minpoly: Vec<Rat>,
     pub degree: usize,
     pub alpha_expr: Basic,
+    /// Every element counts as nonnegative (`is_negative` is `false`), for
+    /// the sparse rings over the field (`trager._UnorderedField`).
+    pub unordered: bool,
 }
 
 impl AlgebraicField {
@@ -55,7 +58,16 @@ impl AlgebraicField {
             minpoly,
             degree,
             alpha_expr,
+            unordered: false,
         })
+    }
+
+    /// The field whose `is_negative` is always `false`
+    /// (`trager._UnorderedField`).
+    pub fn unordered(minpoly: Vec<Rat>, alpha_expr: Basic) -> PolyResult<AlgebraicField> {
+        let mut field: AlgebraicField = AlgebraicField::new(minpoly, alpha_expr)?;
+        field.unordered = true;
+        Ok(field)
     }
 
     /// The generator itself.
@@ -236,6 +248,13 @@ impl Domain for AlgebraicField {
 
     fn is_ordered(&self) -> bool {
         false
+    }
+
+    fn is_negative(&self, _a: &AlgebraicElement) -> bool {
+        if self.unordered {
+            return false;
+        }
+        panic!("{} is not ordered", self.name())
     }
 
     fn characteristic(&self) -> Int {

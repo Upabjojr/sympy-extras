@@ -6287,6 +6287,24 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             sympy_extras_core::integrals::risch::risch::risch_integrate(&a[0], &a[1], None, "log", None, "piecewise")
                 .map_err(e)?
         }
+        "trager" => {
+            // (antiderivative|reduce|hermite|nonelementary, f, x): the antiderivative, Tuple(F, h),
+            // Tuple(g, h), True/False; NONE when not found or undecided
+            use sympy_extras_core::integrals::trager as tg;
+            let none = || sympy_extras_core::core::symbol::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let pair = |p: Option<(Basic, Basic)>| p.map(|(a, b)| tuple(vec![a, b])).unwrap_or_else(none);
+            match a[0].to_string().as_str() {
+                "antiderivative" => tg::trager_antiderivative(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                "reduce" => pair(tg::trager_reduce(&a[1], &a[2]).map_err(e)?),
+                "hermite" => pair(tg::hermite_reduce_algebraic(&a[1], &a[2]).map_err(e)?),
+                _ => match tg::is_nonelementary_algebraic(&a[1], &a[2]).map_err(e)? {
+                    Some(true) => sympy_extras_core::core::logic::true_(),
+                    Some(false) => sympy_extras_core::core::logic::false_(),
+                    None => none(),
+                },
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {

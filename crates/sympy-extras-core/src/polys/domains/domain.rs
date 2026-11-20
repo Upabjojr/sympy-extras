@@ -316,10 +316,14 @@ pub trait Domain: Clone + PartialEq + Debug {
     // dispatches to the implementation
 
     /// The irreducible factorisation of a dense polynomial: the constant and
-    /// the factors with their multiplicities (`ZZ`, `QQ`, `GF(p)`; panics
-    /// for a domain without one, as Python's `NotImplementedError`).
+    /// the factors with their multiplicities (`ZZ`, `QQ`, `GF(p)`, the
+    /// number fields; `NotImplemented` for a domain without one, as
+    /// Python's `NotImplementedError`).
     fn factor_dense(&self, _f: &[Self::Elem]) -> PolyResult<(Self::Elem, Vec<(Vec<Self::Elem>, usize)>)> {
-        panic!("no factorisation over {}", self.name())
+        Err(crate::error::PolyError::NotImplemented(format!(
+            "no factorisation over {}",
+            self.name()
+        )))
     }
 
     /// Isolating intervals of the real roots with multiplicities (ordered

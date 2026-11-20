@@ -17,4 +17,5 @@ pub mod rewriting;
 pub mod risch;
 pub mod slater;
 pub mod tables;
+pub mod trager;
 pub mod trigonometric;

@@ -45,6 +45,7 @@ use super::super::densebasic::dup_from_dict;
 use super::super::euclidtools::{dup_gcd, dup_subresultants};
 use super::super::heuristicgcd::{deflate, heugcd, inflate};
 use super::super::rings::{Monomial, MonomialOrder, PolyElement, PolyRing, Terms};
+use super::algebraicfield::AlgebraicField;
 use super::domain::Domain;
 use super::finitefield::FiniteField;
 use super::gaussiandomains::GaussianIntegerRing;
@@ -243,6 +244,10 @@ impl SparseGround for RationalField {
 }
 
 impl SparseGround for FiniteField {}
+
+/// The generic hooks over a number field (`SparsePolynomialRing(K, ...)`
+/// of `trager._algebraic_parametric`).
+impl SparseGround for AlgebraicField {}
 
 /// The generic hooks: `SparsePolynomialRing(ZZ_I, ...)` of
 /// `gaussianfactor` (the subresultant gcd).

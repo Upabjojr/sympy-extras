@@ -475,7 +475,7 @@ fn real_and_imaginary_parts(e: &Basic, facts: &Facts) -> PolyResult<Option<(Basi
     let free = e.free_symbols();
     let symbols: Vec<Basic> = free
         .iter()
-        .filter(|s| matches!(s.head(), Head::Symbol(_)))
+        .filter(|s| matches!(s.head(), Head::Symbol(_) | Head::Dummy(_, _)))
         .cloned()
         .collect();
     if symbols.len() != free.len() || symbols.iter().any(|s| !facts.real.contains(s)) {
@@ -485,7 +485,7 @@ fn real_and_imaginary_parts(e: &Basic, facts: &Facts) -> PolyResult<Option<(Basi
     let mut back: HashMap<Basic, Basic> = HashMap::new();
     for s in &symbols {
         let name: String = match s.head() {
-            Head::Symbol(d) => d.name.clone(),
+            Head::Symbol(d) | Head::Dummy(d, _) => d.name.clone(),
             _ => s.to_string(),
         };
         let d: Basic = crate::core::symbol::Dummy::new(&name, &[(crate::core::assumptions::Predicate::real, true)]).0;
