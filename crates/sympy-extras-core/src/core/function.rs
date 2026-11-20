@@ -32,6 +32,7 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Limit => crate::core::limits::evaluated(&args),
         Head::Sum | Head::Product => crate::concrete::expr_with_limits::evaluated(e.head().clone(), &args),
         Head::Integral => crate::integrals::integral::evaluated(&args),
+        Head::NonElementaryIntegral => crate::integrals::integral::non_elementary(&args[0], &args[1]),
         Head::TranscendentalRoot => crate::solvers::isolation::evaluated(&args),
         Head::Subs => {
             // Subs._evaluated: the variables are symbols (_as_symbol)
@@ -1141,6 +1142,15 @@ pub fn derivative(e: &Basic, s: &Basic) -> PolyResult<Basic> {
         Head::Hyper | Head::MeijerG => crate::functions::special::hyper::hyper_derivative(e, s),
         Head::RootSum => crate::polys::rootoftools::derivative(e, s),
         Head::Integral => crate::integrals::integral::derivative(e, s),
+        Head::NonElementaryIntegral => {
+            if *s == e.args()[1] {
+                return Ok(e.args()[0].clone());
+            }
+            if !e.args()[0].free_symbols().contains(s) {
+                return Ok(Basic::zero());
+            }
+            Ok(derivative_node(e, &[(s.clone(), 1)]))
+        }
         Head::Derivative => {
             let mut counts: Vec<(Basic, u64)> = derivative_counts(e);
             counts.push((s.clone(), 1));

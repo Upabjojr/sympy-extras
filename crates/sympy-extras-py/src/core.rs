@@ -195,6 +195,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Limit" => Basic::new(Head::Limit, args()?),
         "Sum" => Basic::new(Head::Sum, args()?),
         "Integral" => Basic::new(Head::Integral, args()?),
+        "NonElementaryIntegral" => Basic::new(Head::NonElementaryIntegral, args()?),
         "Product" => Basic::new(Head::Product, args()?),
         "TranscendentalRoot" => Basic::new(Head::TranscendentalRoot, args()?),
         "RootSum" => {
@@ -554,6 +555,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.integrals.integral")?
                 .getattr("Integral")?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::NonElementaryIntegral => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.integrals.risch.risch")?
+                .getattr("NonElementaryIntegral")?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::Limit => {
@@ -6274,6 +6281,11 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         .collect(),
                 ),
             }
+        }
+        "risch_integrate" => {
+            // (f, x) -> risch_integrate(f, x)
+            sympy_extras_core::integrals::risch::risch::risch_integrate(&a[0], &a[1], None, "log", None, "piecewise")
+                .map_err(e)?
         }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,

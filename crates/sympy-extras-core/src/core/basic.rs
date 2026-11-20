@@ -139,6 +139,10 @@ pub enum Head {
     /// `Integral(f, x)` or `Integral(f, (x, a, b))`: the arguments `(f, x)`
     /// or `(f, x, a, b)` (`integrals/integral.rs`).
     Integral,
+    /// `NonElementaryIntegral(f, x)`: the integral proved not elementary by
+    /// the Risch algorithm (`integrals/risch/risch.rs`), printed as
+    /// `Integral(f, x)`.
+    NonElementaryIntegral,
     /// `TranscendentalRoot(f, x, a, b)`: a real root of `f` isolated in
     /// `(a, b)` (`solvers/isolation.rs`).
     TranscendentalRoot,
@@ -952,6 +956,7 @@ impl Head {
             Head::Limit => "Limit",
             Head::Sum => "Sum",
             Head::Integral => "Integral",
+            Head::NonElementaryIntegral => "NonElementaryIntegral",
             Head::Product => "Product",
             Head::TranscendentalRoot => "TranscendentalRoot",
             Head::BooleanTrue => "BooleanTrue",
@@ -1054,6 +1059,7 @@ impl Head {
                 | Head::Sum
                 | Head::Product
                 | Head::Integral
+                | Head::NonElementaryIntegral
                 | Head::TranscendentalRoot
                 | Head::And
                 | Head::Or
@@ -1409,7 +1415,7 @@ impl Basic {
             Head::ImageSet => crate::sets::fancysets::image_set_free_symbols(self),
             Head::Limit => crate::core::limits::free_symbols(self),
             Head::Sum | Head::Product => crate::concrete::expr_with_limits::free_symbols(self),
-            Head::Integral => crate::integrals::integral::free_symbols(self),
+            Head::Integral | Head::NonElementaryIntegral => crate::integrals::integral::free_symbols(self),
             Head::TranscendentalRoot => BTreeSet::new(),
             Head::RootSum => crate::polys::rootoftools::free_symbols(self),
             Head::Subs => {
