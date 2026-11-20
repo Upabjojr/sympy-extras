@@ -271,6 +271,15 @@ def test_round_trip_with_sympy() -> None:
     assert C.as_expr(C.sympify('sin(x)')).is_real is None and interop.SymPyFunction(sympy.exp)(cp).is_positive is True
 
 
+def test_zero_float_stays_a_float() -> None:
+    # to_sympy(Float(0)) was the Integer 0: SymPy 1.14's Float(mpf(0)) is
+    # S.Zero (sympy-extras#25), so the type depended on the value
+    for precision in [53, 100]:
+        converted = to_sympy(C.Float(0, precision=precision))
+        assert isinstance(converted, sympy.Float) and converted.is_zero and converted._prec == precision
+        assert from_sympy(converted) == C.Float(0, precision=precision)
+
+
 def test_symbols_with_assumptions_round_trip() -> None:
     for assumptions in [{'positive': True}, {'integer': True}, {'real': True}, {'even': True},
                         {'negative': True, 'integer': True}, {'nonzero': True}, {'commutative': False},

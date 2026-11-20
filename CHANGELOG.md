@@ -417,6 +417,9 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `interop.to_sympy` of a core `Float` zero is a SymPy `Float` of the same
+  precision (it was the integer `0`: SymPy 1.14's `Float(mpf(0))` is
+  `S.Zero`, issue #25).
 - `ite` evaluates as SymPy's `ITE` constructor: equal branches give the
   branch, `true`/`false` branches the condition or its negation, and an
   equation between a symbol used as a truth value and something else is
