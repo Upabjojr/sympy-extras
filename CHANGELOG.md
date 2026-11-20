@@ -417,6 +417,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- The generator check of the native `Poly` counts only the free
+  occurrences of a symbol generator: a `CRootOf` whose polynomial is
+  written in that symbol is a coefficient, as the same root in another
+  variable (SymPy 1.14 raises `PolynomialError` "contains an element of
+  the set of generators" for `Poly(y**2 + CRootOf(y**3 - 3*y + 1, 2)*y, y)`,
+  issue #25; the domain `EX` of such coefficients is not ported yet).
 - `interop.to_sympy` of a core `Float` zero is a SymPy `Float` of the same
   precision (it was the integer `0`: SymPy 1.14's `Float(mpf(0))` is
   `S.Zero`, issue #25).
