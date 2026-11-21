@@ -6316,6 +6316,27 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "meijerint" => {
+            // (indefinite, f, x) | (definite, f, x, a, b) | (inversion, f, x, t) -> Tuple(value, cond) or NONE;
+            // (antiderivative, f, x) -> the value or NONE; (rewrite, f, x, recursive) -> Tuple(terms, cond) or NONE
+            use sympy_extras_core::integrals::meijerint as mj;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let pair = |r: Option<(Basic, Basic)>| r.map(|(v, c)| tuple(vec![v, c])).unwrap_or_else(none);
+            match a[0].to_string().as_str() {
+                "indefinite" => pair(mj::meijerint_indefinite(&a[1], &a[2]).map_err(e)?),
+                "definite" => pair(mj::meijerint_definite(&a[1], &a[2], &a[3], &a[4]).map_err(e)?),
+                "inversion" => pair(mj::meijerint_inversion(&a[1], &a[2], &a[3]).map_err(e)?),
+                "antiderivative" => mj::meijer_antiderivative(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                _ => match mj::rewrite_single(&a[1], &a[2], a[3].to_string() == "True").map_err(e)? {
+                    None => none(),
+                    Some((terms, cond)) => tuple(vec![
+                        tuple(terms.into_iter().map(|(c, s, g)| tuple(vec![c, s, g])).collect()),
+                        cond,
+                    ]),
+                },
+            }
+        }
         "sum_doit" => sympy_extras_core::concrete::summations::sum_doit(&a[0], true).map_err(e)?,
         "product_doit" => sympy_extras_core::concrete::products::product_doit(&a[0], true).map_err(e)?,
         "hyperexpand" => {

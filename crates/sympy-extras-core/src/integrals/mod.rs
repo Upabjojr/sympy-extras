@@ -11,6 +11,7 @@ pub mod heurisch;
 pub mod integral;
 pub mod manualintegrate;
 pub mod marichev;
+pub mod meijerint;
 pub mod mellin;
 pub mod quadrature;
 pub mod radicals;
