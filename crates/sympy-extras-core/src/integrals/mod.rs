@@ -8,6 +8,7 @@ pub mod elliptic;
 pub mod evalf;
 pub mod exponential;
 pub mod heurisch;
+pub mod indefinite;
 pub mod integral;
 pub mod manualintegrate;
 pub mod marichev;

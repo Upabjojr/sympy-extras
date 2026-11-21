@@ -6316,6 +6316,26 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "indefinite" => {
+            // (verified, f, x) -> Tuple(F, method) or NONE; (integral, f, x, special_values) -> the value;
+            // (check, F, f, x) -> True | False | NONE; (real_form, F, f, x); (conjugate, F, x)
+            use sympy_extras_core::integrals::indefinite as ind;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let sym = |s: &str| sympy_extras_core::core::Symbol::new(s, &[]).0;
+            match a[0].to_string().as_str() {
+                "verified" => match ind::verified_antiderivative(&a[1], &a[2], &[], None).map_err(e)? {
+                    Some((v, name)) => Basic::new(Head::Tuple, vec![v, sym(&name.replace(' ', "_"))]),
+                    None => none(),
+                },
+                "integral" => ind::indefinite_integral(&a[1], &a[2], &[], a[3].to_string() == "True").map_err(e)?,
+                "check" => match ind::is_antiderivative(&a[1], &a[2], &a[3], &[]).map_err(e)? {
+                    Some(b) => sympy_extras_core::core::logic::boolean(b),
+                    None => none(),
+                },
+                "real_form" => ind::real_form(&a[1], &a[2], &a[3], &[]).map_err(e)?,
+                _ => ind::conjugate_logarithms(&a[1], &a[2]).map_err(e)?,
+            }
+        }
         "meijerint" => {
             // (indefinite, f, x) | (definite, f, x, a, b) | (inversion, f, x, t) -> Tuple(value, cond) or NONE;
             // (antiderivative, f, x) -> the value or NONE; (rewrite, f, x, recursive) -> Tuple(terms, cond) or NONE

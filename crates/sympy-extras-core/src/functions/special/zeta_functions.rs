@@ -305,6 +305,20 @@ fn polylog_eval(s: &Basic, z: &Basic) -> PolyResult<Basic> {
     if *s == Basic::negative_one() {
         return div(z, &pow(&sub(&one, z)?, &int(2))?);
     }
+    // polylog is branched, but not over the unit disk
+    let polar: bool = z
+        .preorder()
+        .iter()
+        .any(|n| matches!(n.head(), Head::Function(Function::ExpPolar | Function::PolarLift)));
+    if polar {
+        let inside: bool = is_one || {
+            let size: Basic = crate::functions::elementary::complexes::abs_(z)?;
+            crate::core::relational::le(&size, &one)? == crate::core::logic::true_()
+        };
+        if inside {
+            return polylog(s, &crate::functions::elementary::polar::unpolarify(z, false)?);
+        }
+    }
     Ok(node(Function::PolyLog, vec![s.clone(), z.clone()]))
 }
 

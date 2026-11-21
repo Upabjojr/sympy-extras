@@ -102,6 +102,9 @@ def test_real_forms() -> None:
     # the dummy of the real variable has a name of its own (the typed
     # polynomials identify symbols by name)
     assert conjugate_logarithms(-I * log(x - I) / 2 + I * log(x + I) / 2 + log(x), x) == atan(x) + log(x)
+    # an imaginary multiple of the logarithm of a real argument, not one of
+    # a pair, is kept (it was dropped)
+    assert conjugate_logarithms(F + I * log(x), x) == atan(x) + I * log(x)
 
 
 def test_special_values_in_sympys_form() -> None:

@@ -3727,6 +3727,115 @@ fn meijerint_indefinite_1(f: &Basic, x: &Basic) -> PolyResult<Option<Conditional
     Ok(Some((res, my_unpolarify_cond(&cond)?)))
 }
 
+/// A condition `x < c`, `x <= c`, `x > c` or `x >= c` with a real number
+/// `c`: `(c, below, closed)`; `None` for another condition
+/// (`_breakpoint`).
+fn breakpoint(cond: &Basic, x: &Basic) -> Option<(Basic, bool, bool)> {
+    if !is_relational(cond) {
+        return None;
+    }
+    let op: RelOp = rel_op(cond);
+    if !matches!(op, RelOp::Lt | RelOp::Le | RelOp::Gt | RelOp::Ge) {
+        return None;
+    }
+    let (lhs, rhs) = (&cond.args()[0], &cond.args()[1]);
+    let below_op: bool = matches!(op, RelOp::Lt | RelOp::Le);
+    let (c, below) = if lhs == x && !rhs.has(x) {
+        (rhs.clone(), below_op)
+    } else if rhs == x && !lhs.has(x) {
+        (lhs.clone(), !below_op)
+    } else {
+        return None;
+    };
+    if !(crate::core::assumptions::is_number(&c) && yes(&c, Predicate::extended_real)) {
+        return None;
+    }
+    Some((c, below, matches!(op, RelOp::Le | RelOp::Ge)))
+}
+
+fn float_of(c: &Basic) -> f64 {
+    crate::core::evalf::numeric_value(c, 64)
+        .map(|v| crate::core::evalf::parts(&v).0.to_f64().value())
+        .unwrap_or(f64::NAN)
+}
+
+/// A continuous antiderivative of a `Piecewise` whose conditions are `x`
+/// against real numbers, the pieces by the verified methods, each shifted
+/// to join the one before at the breakpoint (`_piecewise_antiderivative`).
+fn piecewise_antiderivative(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
+    let mut pieces: Vec<(Basic, Option<(Basic, bool, bool)>)> = Vec::new();
+    for pair in f.args() {
+        let (expr, cond) = (&pair.args()[0], &pair.args()[1]);
+        if is_true(cond) {
+            pieces.push((expr.clone(), None));
+            break;
+        }
+        let Some(point) = breakpoint(cond, x) else {
+            return Ok(None);
+        };
+        pieces.push((expr.clone(), Some(point)));
+    }
+    let mut cuts: Vec<Basic> = Vec::new();
+    for (_, p) in &pieces {
+        if let Some((c, _, _)) = p {
+            if !cuts.contains(c) {
+                cuts.push(c.clone());
+            }
+        }
+    }
+    if cuts.is_empty() {
+        return Ok(None);
+    }
+    cuts.sort_by(|a, b| {
+        float_of(a)
+            .partial_cmp(&float_of(b))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut samples: Vec<Basic> = vec![s2(&cuts[0], &one())?];
+    for w in cuts.windows(2) {
+        samples.push(d2(&a2(&w[0], &w[1])?, &int(2))?);
+    }
+    samples.push(a2(&cuts[cuts.len() - 1], &one())?);
+    let piece_at = |point: &Basic| -> PolyResult<Option<Basic>> {
+        for (expr, cond) in &pieces {
+            let Some((c, below, _)) = cond else {
+                return Ok(Some(expr.clone()));
+            };
+            let holds: Basic = if *below { lt(point, c)? } else { gt(point, c)? };
+            if is_true(&holds) {
+                return Ok(Some(expr.clone()));
+            }
+        }
+        Ok(None)
+    };
+    let mut total: Option<Basic> = None;
+    let mut branches: Vec<(Basic, Basic)> = Vec::new();
+    for (i, sample) in samples.iter().enumerate() {
+        let Some(g) = piece_at(sample)? else {
+            return Ok(None);
+        };
+        let mut big_g: Basic = if g.has(x) {
+            let Some(found) = crate::integrals::indefinite::verified_antiderivative(&g, x, &[], None)? else {
+                return Ok(None);
+            };
+            found.0
+        } else {
+            m2(&g, x)?
+        };
+        if let Some(t) = &total {
+            let c: &Basic = &cuts[i - 1];
+            big_g = a2(&big_g, &s2(&subs(t, x, c)?, &subs(&big_g, x, c)?)?)?;
+            if has_nan_zoo(&big_g) {
+                return Ok(None);
+            }
+        }
+        total = Some(big_g.clone());
+        let cond: Basic = if i < cuts.len() { le(x, &cuts[i])? } else { true_() };
+        branches.push((big_g, cond));
+    }
+    Ok(Some(piecewise(&branches)?))
+}
+
 fn is_unevaluated(e: &Basic) -> bool {
     has_any(e, &|n| matches!(n.head(), Head::Integral | Head::NonElementaryIntegral))
 }
@@ -3739,9 +3848,7 @@ fn is_unevaluated(e: &Basic) -> bool {
 pub fn meijer_antiderivative(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
     let e: &Basic = f;
     if matches!(e.head(), Head::Piecewise) {
-        return Err(crate::error::not_ported(
-            "the antiderivative of a Piecewise (indefinite.verified_antiderivative)",
-        ));
+        return piecewise_antiderivative(e, x);
     }
     if !e.has(x) {
         return Ok(Some(m2(e, x)?));

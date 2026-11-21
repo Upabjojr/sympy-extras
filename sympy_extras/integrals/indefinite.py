@@ -426,7 +426,11 @@ def conjugate_logarithms(F: Expr, x: Symbol) -> Expr:
             others.append(term)
     used: set[int] = set()
     for i, (a, u, v) in enumerate(terms):
-        if i in used or v == S.Zero or u == S.Zero:
+        if i in used:
+            continue
+        if v == S.Zero or u == S.Zero:
+            # not one of a pair: kept as it is (it was dropped)
+            others.append(a * log(u + I * v))
             continue
         for j in range(i + 1, len(terms)):
             b, u2, v2 = terms[j]
