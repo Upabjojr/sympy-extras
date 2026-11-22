@@ -6319,6 +6319,44 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "deltafunctions" => {
+            // (integrate, f, x) -> the value or NONE; (expand, d, x); (change_mul, node, x) -> Tuple(delta | NONE, rest | NONE)
+            use sympy_extras_core::integrals::deltafunctions as df;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "integrate" => df::deltaintegrate(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                "expand" => df::expand_diracdelta(&a[1], &a[2]).map_err(e)?,
+                _ => {
+                    let (d, r) = df::change_mul(&a[1], &a[2]).map_err(e)?;
+                    Basic::new(Head::Tuple, vec![d.unwrap_or_else(none), r.unwrap_or_else(none)])
+                }
+            }
+        }
+        "brackets" => {
+            // (mellin | ramanujan | brackets, f, x, s) -> Tuple(transform, lower, upper) or NONE;
+            // (taylor, f, x) -> Tuple(coefficient, index, period, offset) or NONE;
+            // (formal, f, x) -> Tuple(formula, index, start, independent) or NONE
+            use sympy_extras_core::integrals::brackets as br;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let transform = |t: Option<sympy_extras_core::integrals::mellin::MellinTransform>| match t {
+                Some(t) => tuple(vec![t.transform, t.strip.0, t.strip.1]),
+                None => none(),
+            };
+            match a[0].to_string().as_str() {
+                "mellin" => transform(br::mellin_transform_series(&a[1], &a[2], &a[3], &[]).map_err(e)?),
+                "ramanujan" => transform(br::ramanujan_master_theorem(&a[1], &a[2], &a[3]).map_err(e)?),
+                "brackets" => transform(br::method_of_brackets(&a[1], &a[2], &a[3], &[]).map_err(e)?),
+                "taylor" => match br::taylor_coefficient(&a[1], &a[2]).map_err(e)? {
+                    Some(c) => tuple(vec![c.coefficient, c.index, Basic::int(c.period), c.offset]),
+                    None => none(),
+                },
+                _ => match br::formal_series_terms(&a[1], &a[2]).map_err(e)? {
+                    Some(t) => tuple(vec![t.formula, t.index, t.start, t.independent]),
+                    None => none(),
+                },
+            }
+        }
         "indefinite" => {
             // (verified, f, x) -> Tuple(F, method) or NONE; (integral, f, x, special_values) -> the value;
             // (check, F, f, x) -> True | False | NONE; (real_form, F, f, x); (conjugate, F, x)

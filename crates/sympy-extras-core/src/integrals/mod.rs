@@ -1,8 +1,10 @@
 //! Integration, ported from `sympy_extras.integrals`.
 
 pub mod algebraic;
+pub mod brackets;
 pub mod conditions;
 pub mod curves;
+pub mod deltafunctions;
 pub mod dirichlet;
 pub mod elliptic;
 pub mod evalf;
