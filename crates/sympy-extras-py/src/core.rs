@@ -6351,6 +6351,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     Basic::atom(Head::BooleanFalse)
                 }
             };
+            let truth_of = |b: &Basic| matches!(b.head(), Head::BooleanTrue);
             let float = |v: f64| -> Basic {
                 match sympy_extras_core::numbers::Rat::try_from(v) {
                     Ok(r) => Basic::from_rational(r),
@@ -6373,6 +6374,75 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 },
                 "converges" => truth(df::quadrature_converges(&a[1], &a[2], &a[3], &a[4], a[5].args()).map_err(e)?),
                 "crossings" => tuple(df::axis_crossings(&a[1], &a[2]).map_err(e)?),
+                "helper" => {
+                    // (helper, name, args...): the module-level helpers of the integrator
+                    let b: &[Basic] = &a[2..];
+                    let opt = |r: Option<Basic>| r.unwrap_or_else(none);
+                    let ints = |v: Vec<(Basic, i32)>| {
+                        tuple(
+                            v.into_iter()
+                                .map(|(c, p)| tuple(vec![c, Basic::int(p as i64)]))
+                                .collect(),
+                        )
+                    };
+                    let n = |x: &Basic| -> i64 { x.to_string().parse().unwrap_or(0) };
+                    match a[1].to_string().as_str() {
+                        "positions" => ints(df::positions(&b[0], &b[1], &b[2], truth_of(&b[3])).map_err(e)?),
+                        "merged" => df::merged_disjunction(&b[0]).map_err(e)?,
+                        "strict" => df::strict_where_undefined(&b[0], &b[1]).map_err(e)?,
+                        "odd_roots" => df::real_odd_roots(&b[0]).map_err(e)?,
+                        "nowhere" => truth(df::holds_nowhere(&b[0], b[1].args(), b[2].args()).map_err(e)?),
+                        "outside" => {
+                            truth(df::holds_outside(&b[0], &b[1], &b[2], &b[3], &b[4], &b[5], b[6].args()).map_err(e)?)
+                        }
+                        "real_for_real" => truth(df::real_for_real_parameters(&b[0]).map_err(e)?),
+                        "complex_for_real" => truth(df::complex_for_real_parameters(&b[0]).map_err(e)?),
+                        "arcsine" => df::arcsine_substitution(&b[0], &b[1], &b[2]).map_err(e)?,
+                        "factored" => match df::factored(&b[0], &b[1]).map_err(e)? {
+                            None => none(),
+                            Some((c, fs, sq)) => tuple(vec![
+                                c,
+                                tuple(fs.into_iter().map(|(f, m)| tuple(vec![f, m])).collect()),
+                                truth(sq),
+                            ]),
+                        },
+                        "squares" => df::trigonometric_squares(&b[0]).map_err(e)?,
+                        "combined" => df::combined_exponentials(&b[0], b.get(1)).map_err(e)?,
+                        "sums_to_products" => df::sums_to_products(&b[0], &b[1]).map_err(e)?,
+                        "forms" => tuple(df::forms(&b[0], &b[1], b[2].args()).map_err(e)?),
+                        "generator" => opt(df::exponential_generator(&b[0], &b[1], truth_of(&b[2])).map_err(e)?),
+                        "trig_zeros" => opt(df::trigonometric_zeros(&b[0], &b[1], &b[2], &b[3])
+                            .map_err(e)?
+                            .map(tuple)),
+                        "singular" => opt(df::singular_points(&b[0], &b[1], &b[2], &b[3]).map_err(e)?.map(tuple)),
+                        "candidates" => opt(df::candidate_points(&b[0], &b[1], &b[2], &b[3]).map_err(e)?.map(tuple)),
+                        "flattened" => df::flattened_powers(&b[0], &b[1], &b[2], &b[3]).map_err(e)?,
+                        "algebraic" => truth(df::algebraic(&b[0], &b[1]).map_err(e)?),
+                        "radical_base" => opt(df::radical_base(&b[0], &b[1])
+                            .map_err(e)?
+                            .map(|(q, k)| tuple(vec![q, Basic::int(k)]))),
+                        "denest" => df::denest(&b[0], b[1].args()).map_err(e)?,
+                        "signed_nodes" => tuple(df::signed_nodes(&b[0], &b[1])),
+                        "log_inside" => truth(df::logarithm_inside(&b[0], &b[1]).map_err(e)?),
+                        "zeta_one" => df::zeta_about_one(&b[0], &b[1]).map_err(e)?,
+                        "finite_at" => truth(df::finite_at(&b[0], &b[1], &b[2]).map_err(e)?),
+                        "powers_of_logs" => df::powers_of_logarithms(&b[0], &b[1]).map_err(e)?,
+                        "log_powers_only" => truth(df::log_powers_only(&b[0], &b[1]).map_err(e)?),
+                        "hermite" => df::hermite_as_kummer(&b[0], b[1].args()).map_err(e)?,
+                        "quarter" => opt(df::quarter(&b[0]).map_err(e)?.map(Basic::int)),
+                        "tangent" => df::tangent_of(&b[0]).map_err(e)?,
+                        "endpoint" => opt(df::endpoint(&b[0], &b[1], &b[2], &b[3].to_string()).map_err(e)?),
+                        "from_integrate" => match df::from_integrate(&b[0], &b[1]) {
+                            None => none(),
+                            Some(c) => tuple(vec![c.value, c.condition]),
+                        },
+                        "even" => truth(df::even(&b[0])),
+                        _ => {
+                            let _ = n;
+                            return Err(e(sympy_extras_core::error::not_ported("unknown helper")));
+                        }
+                    }
+                }
                 _ => tuple(df::branch_regions(&a[1], a[2].args()).map_err(e)?),
             }
         }
