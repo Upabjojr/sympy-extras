@@ -57,13 +57,16 @@ Examples
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
+import random
 from typing import Callable, Final, Optional, Sequence, TypeVar
 
+from sympy_extras._numeric import reliable_complex
 from sympy_extras._timeout import attempt
+from sympy_extras.core.add import Add
 from sympy_extras.core.basic import Basic, preorder_traversal
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import Application, AppliedUndef, Derivative, Function, count_ops, diff, expand
-from sympy_extras.core.numbers import Integer, nan
+from sympy_extras.core.numbers import Integer, Rational, nan
 from sympy_extras.core.order import Order
 from sympy_extras.core.relational import Eq
 from sympy_extras.core.symbol import Dummy, Symbol
@@ -476,20 +479,32 @@ def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
                        timeout: Optional[float] = DEFAULT_TIMEOUT, solve_for_func: bool = True) -> Optional[bool]:
     """Whether ``solution`` (``Eq(f, rhs)``, an implicit relation ``Eq(F(x,
     f), G(x, f))`` or the right-hand side alone) solves the ordinary
-    differential equation, as SymPy's ``checkodesol`` proves it: an
-    implicit relation is solved for ``f`` first (by SymPy's ``solve``,
-    within ``timeout`` seconds), and every solution must be checked; the
-    solution is substituted and the residual simplified, else the
-    derivatives of the relation are substituted (when ``solve`` finds no
-    solution). ``True`` when the residual simplifies to zero, ``False``
-    when it is shown nonzero (the residual of an explicit solution has a
-    reliable nonzero value at a sample point, with the numerical checks
-    of :data:`sympy_extras.settings.settings` on), ``None`` when neither
-    is shown: SymPy's ``checkodesol`` answers ``False`` there, for
-    correct solutions in ``hyper`` or Bessel functions whose residual
-    ``simplify`` does not reduce (issue #25). Without
-    ``solve_for_func`` (SymPy's argument of the same name) an implicit
-    relation is checked through its derivatives without being solved.
+    differential equation, as SymPy's ``checkodesol`` proves it.
+
+    An implicit relation ``F = G`` is differentiated: ``f'`` is solved
+    from ``d(F - G)/dx = 0`` (it is linear there), the higher derivatives
+    are its derivatives, and they are substituted into the equation,
+    which checks every branch of the relation at once. The residual is
+    evaluated first at a few points of the relation (a constant of the
+    relation, or another symbol in which it is linear, taken from the
+    relation at positive rational values of the others): a reliable
+    nonzero value there shows the relation wrong. Otherwise it is
+    simplified, and reduced modulo the relation (a constant replaced by
+    its value from the relation) when it vanishes only there. When this
+    proves nothing, the relation is solved for ``f`` (by the native
+    ``solve``, within ``timeout`` seconds) unless ``solve_for_func`` is
+    false (SymPy's argument of the same name), and every solution must be
+    checked: the solution is substituted and the residual simplified.
+
+    ``True`` when a residual simplifies to zero, ``False`` when it is
+    shown nonzero (the residual of an explicit solution has a reliable
+    nonzero value at a sample point, or the one of an implicit solution
+    at a point of the relation, with the numerical checks of
+    :data:`sympy_extras.settings.settings` on), ``None`` when neither is
+    shown: SymPy's ``checkodesol`` answers ``False`` there, for correct
+    solutions in ``hyper`` or Bessel functions whose residual
+    ``simplify`` does not reduce (issue #25), and raises
+    ``NotImplementedError`` for a relation which ``solve`` gives up on.
 
     Examples
     ========
@@ -505,6 +520,14 @@ def check_ode_solution(ode: Equation, solution: Basic, f: AppliedUndef,
     False
     >>> check_ode_solution(y*y.diff(x) + x, Eq(x**2 + y**2, C1), y)
     True
+
+    Implicit relations which are not solved for ``y``:
+
+    >>> from sympy_extras.functions import cos, sin
+    >>> check_ode_solution((1 + cos(y))*y.diff(x) - 1, Eq(y + sin(y), x + C1), y)
+    True
+    >>> check_ode_solution((1 + cos(y))*y.diff(x) + 1, Eq(y + sin(y), x + C1), y)
+    False
 
     A correct solution whose residual is not simplified to zero is not
     rejected:
@@ -549,16 +572,34 @@ def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Op
         sol_lhs, sol_rhs = func, _expr(solution)
     order = ode_order(lhs_ode - rhs_ode, func)
     solved = sol_lhs == func and not sol_rhs.has(func)
+    relation = sol_lhs - sol_rhs
+    implicit: Optional[Expr] = None
+    if not solved and not relation.has(Order):
+        # an implicit relation: the derivatives of the relation
+        # substituted decide every branch at once; the residual is
+        # sampled on the relation first (cheap: a wrong relation is not
+        # handed to simplify, nor solved), then simplified, reduced
+        # modulo the relation when it vanishes only there (y' = C for
+        # y = C*x)
+        implicit = _derivatives_substituted(lhs_ode, rhs_ode, relation, func, x, order, timeout)
+        if implicit is not None:
+            if _off_the_relation(implicit, relation, func, x) is False:
+                return False
+            if _zero_residual(implicit, func):
+                return True
+            reduced = _modulo_relation(implicit, relation, func, x, lhs_ode - rhs_ode)
+            if reduced is not None and _zero_residual(reduced, func):
+                return True
     if solve_for_func and not solved:
-        values = _solved_for(sol_lhs - sol_rhs, func, timeout)
-        if values is None:
-            # SymPy's solve gives up: nothing is proved
-            return None
+        values = _solved_for(relation, func, timeout)
         if values:
             verdicts = [_checkodesol(ode, Eq(func, value), func, timeout, False) for value in values]
             if any(v is False for v in verdicts):
                 return False
-            return True if all(v is True for v in verdicts) else None
+            if all(v is True for v in verdicts):
+                return True
+        # SymPy's solve gives up, finds no solution, or the branches are
+        # not all proved: the passes on the relation itself
     if sol_lhs.has(Order) or sol_rhs.has(Order):
         # a truncated series: SymPy compares the orders of the terms
         return None
@@ -576,20 +617,36 @@ def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Op
     s = simplify(trigsimp(diff(sol_lhs, x, order) - diff(sol_rhs, x, order)) - trigsimp(lhs_ode) + trigsimp(rhs_ode))
     if s == 0:
         return True
-    # third pass: the derivatives of the relation substituted, from the
+    if not solved:
+        # the third pass (the derivatives of the relation substituted)
+        # was the first one
+        return None
+    # third pass: the derivatives of the solution substituted, from the
     # highest down
+    derived = _derivatives_substituted(lhs_ode, rhs_ode, relation, func, x, order, timeout)
+    if derived is not None and _zero_residual(derived, func):
+        return True
+    return None if residual is None else _nonzero_residual(residual, x)
+
+
+def _derivatives_substituted(lhs_ode: Expr, rhs_ode: Expr, relation: Expr, func: AppliedUndef, x: Symbol,
+                             order: int, timeout: Optional[float]) -> Optional[Expr]:
+    """The residual of the equation with the derivatives of ``func`` up
+    to ``order`` replaced by their values from the derivatives of the
+    relation ``relation = 0`` (``func`` itself too when the relation is
+    ``func - g(x)``), ``None`` when the first derivative of the relation
+    is not solved for ``f'``."""
     diffsols: dict[int, Expr] = {}
-    if sol_lhs == func and not sol_rhs.has(func):
-        diffsols[0] = sol_rhs
-    elif sol_rhs == func and not sol_lhs.has(func):
-        diffsols[0] = sol_lhs
-    relation = sol_lhs - sol_rhs
+    if relation.has(func) and not relation.has(Derivative):
+        explicit = _linear_solution(relation, func)
+        if explicit is not None and not explicit[0].has(func):
+            diffsols[0] = explicit[0]
     for i in range(1, order + 1):
         if i == 1:
             sdf = _linear_solution(diff(relation, x), diff(func, x)) or _solved_for(diff(relation, x),
                                                                                    diff(func, x), timeout)
             if sdf is None or not sdf:
-                return None if residual is None else _nonzero_residual(residual, x)
+                return None
             diffsols[i] = sdf[0]
         else:
             diffsols[i] = diff(diffsols[i - 1], x)
@@ -599,18 +656,123 @@ def _checkodesol(ode: Equation, solution: Basic, func: AppliedUndef, timeout: Op
         target = diff(func, x, i) if i else func
         lhs = _sub_func_doit(lhs, target, diffsols[i])
         rhs = _sub_func_doit(rhs, target, diffsols[i])
+    return lhs - rhs
+
+
+def _zero_residual(residual: Expr, func: AppliedUndef) -> bool:
+    """Whether ``simplify`` proves the residual zero, as SymPy's
+    ``checkodesol`` does: the residual, then its numerator with ``func``
+    positive."""
     # SymPy simplifies Eq(lhs, rhs) after every substitution; once, after
     # the last one, decides the same (the native simplify is slower)
-    if simplify(lhs - rhs) == 0:
+    if simplify(residual) == 0:
         return True
-    num = trigsimp((lhs - rhs).as_numer_denom()[0])
+    num = trigsimp(residual.as_numer_denom()[0])
     dummy = Dummy('func')
     num = _replaced(num, {func: dummy})
     positive, reps = posify(num)
-    s = _replaced(_replaced(simplify(positive), reps), {dummy: func})
-    if s == 0:
-        return True
-    return None if residual is None else _nonzero_residual(residual, x)
+    return _replaced(_replaced(simplify(positive), reps), {dummy: func}) == 0
+
+
+def _linear_variable(relation: Expr, candidates: Sequence[Symbol]) -> Optional[tuple[Symbol, Expr]]:
+    """The first of ``candidates`` in which ``relation`` is linear, with
+    its value from ``relation = 0``, ``None`` when there is none."""
+    for v in candidates:
+        if not relation.has(v):
+            continue
+        a = diff(relation, v)
+        if a == 0 or a.has(v):
+            continue
+        return v, _normal(-relation.subs(v, _ZERO)/a)
+    return None
+
+
+def _constants_first(relation: Expr, ode: Expr, x: Symbol, last: Sequence[Symbol]) -> list[Symbol]:
+    """The symbols of the relation other than ``x`` and ``last``: its
+    constants (the symbols not in ``ode``) first, then the parameters of
+    the equation, then ``last``."""
+    names = sorted((s for s in relation.free_symbols if isinstance(s, Symbol) and s != x and s not in last),
+                   key=lambda s: s.name)
+    taken = ode.free_symbols
+    return [s for s in names if s not in taken] + [s for s in names if s in taken] + list(last)
+
+
+def _modulo_relation(residual: Expr, relation: Expr, func: AppliedUndef, x: Symbol, ode: Expr) -> Optional[Expr]:
+    """The residual with a constant of the relation (a symbol in which
+    the relation is linear, not in the equation) replaced by its value
+    from the relation, ``None`` when there is none in the residual."""
+    if relation.has(Derivative):
+        return None
+    y = Dummy('y')
+    F = _replaced(relation, {func: y})
+    constants = [s for s in _constants_first(F, ode, x, []) if s not in ode.free_symbols]
+    found = _linear_variable(F, constants)
+    if found is None or not residual.has(found[0]):
+        return None
+    v, value = found
+    return _replaced(residual, {v: _replaced(value, {y: func})})
+
+
+#: the points of the relation at which the residual of an implicit
+#: solution is evaluated
+_RELATION_SAMPLES = 4
+
+
+def _off_the_relation(residual: Expr, relation: Expr, func: AppliedUndef, x: Symbol) -> Optional[bool]:
+    """``False`` when the residual of an implicit solution has a reliable
+    nonzero value at a point of the relation, ``None`` otherwise (the
+    numerical checks off, no point found, or zero at every point).
+
+    The points have positive rational coordinates (``x``, ``f``, the
+    constants and the parameters) except one symbol in which the
+    relation is linear, a constant by preference, whose value is taken
+    from the relation, real (and positive for ``x`` and ``f``); the
+    derivative of the relation in ``f`` is real and nonzero there, so
+    that the relation defines a solution through the point, whose
+    derivatives are the ones substituted into the residual. The terms of
+    the residual must be real at the point, so that no branch cut of a
+    logarithm or a root separates it from the real solutions."""
+    if not settings.numerical_checks or residual.has(Derivative) or relation.has(Derivative):
+        return None
+    y = Dummy('y')
+    R = _replaced(residual, {func: y})
+    F = _replaced(relation, {func: y})
+    if any(isinstance(a, AppliedUndef) for a in preorder_traversal(R)):
+        return None
+    found = _linear_variable(F, _constants_first(F, R, x, [x, y]))
+    if found is None:
+        return None
+    v, value = found
+    on_relation = _replaced(R, {v: value})
+    slope = _replaced(diff(F, y), {v: value})
+    terms = list(on_relation.args) if isinstance(on_relation, Add) else [on_relation]
+    symbols = sorted((s for s in R.free_symbols | F.free_symbols if isinstance(s, Symbol) and s != v),
+                     key=lambda s: s.name)
+    rng = random.Random(str((residual, relation)))
+    for _ in range(_RELATION_SAMPLES):
+        point: dict[Symbol, Expr] = {s: Rational(rng.randint(3, 19), 4) for s in symbols}
+        try:
+            v0 = reliable_complex(value, 30, point)
+            if v0 is None or v0.imag != 0 or (v in (x, y) and not v0.real > 0):
+                continue
+            d = reliable_complex(slope, 30, point)
+            r = reliable_complex(on_relation, 30, point)
+            if d is None or d == 0 or d.imag != 0 or r is None:
+                continue
+            scale = 1.0
+            for t in terms:
+                z = reliable_complex(t, 30, point)
+                if z is None or z.imag != 0:
+                    # a complex value: a branch of a logarithm or of a
+                    # root may be the reason
+                    scale = 0.0
+                    break
+                scale = max(scale, abs(z))
+        except _CHECK_FAILURES:
+            continue
+        if scale > 0 and abs(r) > 1e-12*scale:
+            return False
+    return None
 
 
 def _verified(ode: Equation, candidate: Eq, y: AppliedUndef, timeout: Optional[float]) -> bool:
