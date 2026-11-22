@@ -3795,6 +3795,16 @@ remove public functions. Breaking changes are listed here when they happen.
     `re(z)*im(z) > pi/2` made `z` real, and `log(exp(z**2)) = z**2` was
     true under it (`z = 2 + I` is a counterexample); `Abs(z) < 1` no
     longer makes `z` real either.
+  - `ask` decides `Eq` and `Ne` between expressions of complex variables
+    by their real and imaginary parts (`as_real_imag`) in real variables
+    standing for `re(z)`, `im(z)` and `Abs(z)`, with `arg` and `atan2`
+    variables in `(-pi, pi]` and `pi` between rational bounds, under the
+    facts translated alike; and `Q.real(e)` is `False` when the
+    imaginary part of `e` is not zero there. `log(exp(z**2)) = z**2` is
+    now `False` under `re(z)*im(z) > pi/2` (it was `None`), and so is
+    `Q.real(z)`, consistent with `Eq(im(z), 0)`. The step runs only for a
+    variable whose parts are finite (`z` finite, or `re(z)` and `im(z)`,
+    or `Abs(z)`, in an inequality of the facts).
 
 - Bugs of SymPy recorded on issue #25 which the native ports had too:
   - the numerical facts of a number (`is_real`, `is_imaginary`, the

@@ -233,9 +233,12 @@ def test_issue_74() -> None:
     from sympy_extras.assumptions.refine_sympy import refine, simplify
     z = Symbol('z')
     A = re(z)*im(z) > pi/2
-    assert ask(Eq(log(exp(z**2)), z**2), A) is not True
+    # None before: Im(z**2) = 2*re(z)*im(z) > pi, out of the range (-pi, pi]
+    # of Im(log(exp(z**2))), decided by the real and imaginary parts
+    assert ask(Eq(log(exp(z**2)), z**2), A) is False
     assert refine(log(exp(z**2)) - z**2, A) != 0 and simplify(log(exp(z**2)) - z**2, A) != 0
-    assert ask(Q.real(z), A) is None and ask(Eq(im(z), 0), A) is False
+    # None before, while ask(Eq(im(z), 0), A) was False
+    assert ask(Q.real(z), A) is False and ask(Eq(im(z), 0), A) is False
     assert ask(element(x, S.Reals) | ~element(x, S.Reals)) is True
     assert ask(Eq(x, 0) | Eq(y, 0), Eq(x*y, 0)) is True
     assert ask(element(x, S.Reals), Eq(x*y, 0)) is None
