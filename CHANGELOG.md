@@ -417,6 +417,19 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `check_ode_solution` (`sympy_extras.solvers.ode` and its SymPy face)
+  checks implicit solutions `Eq(F(x, y), G(x, y))` through their
+  derivatives before solving them: `y'` from the derivative of the
+  relation (and its derivatives for higher orders) is substituted into
+  the equation, the residual is evaluated first at points of the
+  relation (a wrong relation is `False` at once, with the numerical
+  checks on), then simplified, reduced modulo the relation when it
+  vanishes only there (`y' = y/x` for `y**2 = C1*x**2`). A relation which
+  the native `solve` gives up on (`y + sin(y) = x + C1`), or solves into
+  branches which `simplify` does not prove (LambertW, Cardano), was
+  `None`, right or wrong; such relations are now `True` or `False`, and
+  the check of a wrong implicit relation no longer runs into the time
+  limit.
 - The native series of `Ei` at infinity keeps the branch of a polar
   argument: `Ei(q*exp_polar(+-I*pi))` with `q -> +oo` expands as
   `+-I*pi` plus the series of `Ei(-q)` (SymPy 1.14 drops the `I*pi`,
