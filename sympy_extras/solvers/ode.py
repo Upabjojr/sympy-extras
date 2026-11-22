@@ -377,7 +377,7 @@ def reduce_order(ode: Equation, y: AppliedUndef, symmetry: Symmetry,
     if coordinates is None:
         return None
     r, s = coordinates
-    leading = _leading_derivatives(jets, [eq])
+    leading = _leading_derivatives(jets, [eq], branch=True)
     y_n = jets.jet(0, (n,))
     if y_n not in leading:
         return None
