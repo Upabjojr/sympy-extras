@@ -11,8 +11,8 @@
 //! the expressions agree on. `piecewise_fold` brings the `Piecewise` of a
 //! sum, product or function to the top.
 //!
-//! Not ported: `piecewise_intervals`, `piecewise_simplify` (it simplifies
-//! the conditions through SymPy), the leading term.
+//! `piecewise_intervals` (SymPy's `Piecewise._intervals`) and
+//! `piecewise_simplify` are ported; not ported: the leading term.
 
 // PORTED FROM SYMPY: sympy/functions/elementary/piecewise.py (Piecewise, ExprCondPair,
 // _piecewise_collapse_arguments, piecewise_fold), sympy/core/relational.py
@@ -569,4 +569,592 @@ pub fn piecewise_facts(e: &Basic) -> FactList {
         }
     }
     facts
+}
+
+// ---------------------------------------------------------------------
+// the intervals of a Piecewise and piecewise_simplify
+
+/// The pairs `(expression, condition)` of a `Piecewise` node.
+fn pairs_of(pw: &Basic) -> Vec<(Basic, Basic)> {
+    pw.args()
+        .iter()
+        .map(|p| (p.args()[0].clone(), p.args()[1].clone()))
+        .collect()
+}
+
+fn is_rel(e: &Basic, ops: &[RelOp]) -> bool {
+    matches!(e.head(), Head::Relational(op) if ops.contains(op))
+}
+
+/// SymPy's `r.lts` and `r.gts`: the smaller and the greater side
+/// (`_lts_gts`).
+fn lts_gts(r: &Basic) -> (Basic, Basic) {
+    if is_rel(r, &[RelOp::Lt, RelOp::Le]) {
+        (r.args()[0].clone(), r.args()[1].clone())
+    } else {
+        (r.args()[1].clone(), r.args()[0].clone())
+    }
+}
+
+/// The negations pushed to the relations and `Xor`, `Implies`,
+/// `Equivalent` and `ITE` written with `And` and `Or` (`_to_nnf`).
+fn to_nnf_pw(b: &Basic) -> PolyResult<Basic> {
+    use crate::core::logic::not_;
+    let xor_clauses = |args: &[Basic], first: usize| -> Vec<Basic> {
+        let mut clauses: Vec<Basic> = Vec::new();
+        let n: usize = args.len();
+        let mut i: usize = first;
+        while i <= n {
+            for negated in combinations_of(n, i) {
+                let parts: Vec<Basic> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(k, s)| if negated.contains(&k) { not_(s) } else { s.clone() })
+                    .collect();
+                clauses.push(or_(&parts));
+            }
+            i += 2;
+        }
+        clauses
+    };
+    let all =
+        |v: &[Basic], f: &dyn Fn(&Basic) -> PolyResult<Basic>| -> PolyResult<Vec<Basic>> { v.iter().map(f).collect() };
+    match b.head() {
+        Head::Not => {
+            if crate::logic::boolalg::is_literal(b) {
+                return Ok(b.clone());
+            }
+            let inner: &Basic = &b.args()[0];
+            match inner.head() {
+                Head::And => Ok(or_(&all(inner.args(), &|a| to_nnf_pw(&not_(a)))?)),
+                Head::Or => Ok(and_(&all(inner.args(), &|a| to_nnf_pw(&not_(a)))?)),
+                Head::Implies => Ok(and_(&[
+                    to_nnf_pw(&inner.args()[0])?,
+                    to_nnf_pw(&not_(&inner.args()[1]))?,
+                ])),
+                Head::Equivalent => {
+                    let negs: Vec<Basic> = inner.args().iter().map(not_).collect();
+                    Ok(and_(&[to_nnf_pw(&or_(inner.args()))?, to_nnf_pw(&or_(&negs))?]))
+                }
+                Head::Xor => Ok(and_(&all(&xor_clauses(inner.args(), 1), &to_nnf_pw)?)),
+                Head::Ite => {
+                    let (c, t, e) = (&inner.args()[0], &inner.args()[1], &inner.args()[2]);
+                    Ok(and_(&[
+                        to_nnf_pw(&or_(&[c.clone(), not_(e)]))?,
+                        to_nnf_pw(&or_(&[not_(c), not_(t)]))?,
+                    ]))
+                }
+                _ => Ok(b.clone()),
+            }
+        }
+        Head::And => Ok(and_(&all(b.args(), &to_nnf_pw)?)),
+        Head::Or => Ok(or_(&all(b.args(), &to_nnf_pw)?)),
+        Head::Xor => Ok(and_(&all(&xor_clauses(b.args(), 0), &to_nnf_pw)?)),
+        Head::Implies => Ok(or_(&[to_nnf_pw(&not_(&b.args()[0]))?, to_nnf_pw(&b.args()[1])?])),
+        Head::Equivalent => {
+            let args: &[Basic] = b.args();
+            let n: usize = args.len();
+            let mut parts: Vec<Basic> = Vec::new();
+            for k in 0..n {
+                let (p, q) = (&args[k], &args[(k + 1) % n]);
+                parts.push(to_nnf_pw(&or_(&[not_(p), q.clone()]))?);
+            }
+            Ok(and_(&parts))
+        }
+        Head::Ite => {
+            let (c, t, e) = (&b.args()[0], &b.args()[1], &b.args()[2]);
+            Ok(and_(&[
+                to_nnf_pw(&or_(&[not_(c), t.clone()]))?,
+                to_nnf_pw(&or_(&[c.clone(), e.clone()]))?,
+            ]))
+        }
+        _ => Ok(b.clone()),
+    }
+}
+
+/// The index sets of `itertools.combinations(range(n), k)`, in its order.
+fn combinations_of(n: usize, k: usize) -> Vec<Vec<usize>> {
+    let mut out: Vec<Vec<usize>> = Vec::new();
+    if k > n {
+        return out;
+    }
+    let mut idx: Vec<usize> = (0..k).collect();
+    loop {
+        out.push(idx.clone());
+        let mut i: isize = k as isize - 1;
+        while i >= 0 && idx[i as usize] == i as usize + n - k {
+            i -= 1;
+        }
+        if i < 0 {
+            return out;
+        }
+        idx[i as usize] += 1;
+        for j in (i as usize + 1)..k {
+            idx[j] = idx[j - 1] + 1;
+        }
+    }
+}
+
+/// SymPy's `to_cnf` without simplification (`_to_cnf`).
+fn to_cnf_pw(b: &Basic) -> PolyResult<Basic> {
+    Ok(distribute_and_over_or(&to_nnf_pw(b)?))
+}
+
+/// The disjunctive normal form by distribution of `And` over `Or`
+/// (`_distribute_or_over_and`).
+fn distribute_or_over_and_pw(e: &Basic) -> Basic {
+    match e.head() {
+        Head::And => {
+            for (k, arg) in e.args().iter().enumerate() {
+                if matches!(arg.head(), Head::Or) {
+                    let others: Vec<Basic> = e
+                        .args()
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| *i != k)
+                        .map(|(_, a)| a.clone())
+                        .collect();
+                    let rest: Basic = and_(&others);
+                    let parts: Vec<Basic> = arg
+                        .args()
+                        .iter()
+                        .map(|c| distribute_or_over_and_pw(&and_(&[c.clone(), rest.clone()])))
+                        .collect();
+                    return or_(&parts);
+                }
+            }
+            e.clone()
+        }
+        Head::Or => or_(&e.args().iter().map(distribute_or_over_and_pw).collect::<Vec<_>>()),
+        _ => e.clone(),
+    }
+}
+
+/// `(lower, upper, expression, index)` of a piece on an interval.
+pub type IntervalPiece = (Basic, Basic, Basic, usize);
+
+/// The intervals of `sym` on which the pieces apply, or the reason a
+/// condition cannot be written with intervals of `sym`
+/// (`piecewise_intervals`, SymPy's `Piecewise._intervals`).
+pub fn piecewise_intervals(pw: &Basic, sym: &Basic, err_on_eq: bool) -> PolyResult<Result<Vec<IntervalPiece>, String>> {
+    use crate::core::relational::{gt, lt};
+    use crate::functions::elementary::miscellaneous::{max_, min_};
+    let oo: Basic = Basic::atom(Head::Infinity);
+    let neg_oo: Basic = Basic::atom(Head::NegativeInfinity);
+    let nonsymfail = |cond: &Basic| format!("A condition not involving {} appeared: {}", sym, cond);
+    let mut relations: Vec<Basic> = Vec::new();
+    for n in pw.preorder() {
+        if matches!(n.head(), Head::Relational(_)) && !relations.contains(&n) {
+            relations.push(n);
+        }
+    }
+    let mut reps: HashMap<Basic, Basic> = HashMap::new();
+    for r in crate::core::sorting::ordered(relations) {
+        if !r.free_symbols().contains(sym) {
+            return Ok(Err(nonsymfail(&r)));
+        }
+        let rv: Basic = match crate::solvers::inequalities::solve_inequality(&r, sym) {
+            Ok(v) => v,
+            Err(PolyError::NotImplemented(m)) if !m.starts_with(crate::error::NOT_PORTED_PREFIX) => {
+                return Ok(Err(format!("Unable to solve relational {} for {}.", r, sym)))
+            }
+            Err(e) => return Err(e),
+        };
+        let rv: Basic = if matches!(rv.head(), Head::Relational(_)) {
+            if rv.args()[0] != *sym || rv.args()[1].free_symbols().contains(sym) {
+                return Ok(Err(format!("Unable to solve relational {} for {}.", r, sym)));
+            }
+            if is_rel(&rv, &[RelOp::Eq]) {
+                false_()
+            } else if is_rel(&rv, &[RelOp::Ne]) {
+                match (lt(sym, &rv.args()[1]), gt(sym, &rv.args()[1])) {
+                    (Ok(a), Ok(b)) => or_(&[a, b]),
+                    (Err(PolyError::Type(_)), _) | (_, Err(PolyError::Type(_))) => true_(),
+                    (Err(e), _) | (_, Err(e)) => return Err(e),
+                }
+            } else {
+                rv
+            }
+        } else if rv == and_(&[lt(&neg_oo, sym)?, lt(sym, &oo)?]) {
+            true_()
+        } else {
+            rv
+        };
+        reps.insert(r, rv);
+    }
+    let args: Vec<(Basic, Basic)> = pairs_of(pw).into_iter().map(|(e, c)| (e, c.xreplace(&reps))).collect();
+    let mut expr_cond: Vec<(usize, Basic, Basic)> = Vec::new();
+    let mut default: Option<(Basic, usize)> = None;
+    for (i, (expr, cond)) in args.iter().enumerate() {
+        if *cond == false_() {
+            continue;
+        }
+        if *cond == true_() {
+            default = Some((expr.clone(), i));
+            break;
+        }
+        if is_rel(cond, &[RelOp::Eq]) {
+            if err_on_eq {
+                return Ok(Err(format!("encountered Eq condition: {}", cond)));
+            }
+            continue;
+        }
+        let mut cond: Basic = to_cnf_pw(cond)?;
+        if matches!(cond.head(), Head::And) {
+            cond = distribute_or_over_and_pw(&cond);
+        }
+        if matches!(cond.head(), Head::Or) {
+            for o in cond.args() {
+                if !is_rel(o, &[RelOp::Eq]) {
+                    expr_cond.push((i, expr.clone(), o.clone()));
+                }
+            }
+        } else if cond != false_() {
+            expr_cond.push((i, expr.clone(), cond));
+        }
+    }
+    let mut int_expr: Vec<IntervalPiece> = Vec::new();
+    let mut k: usize = 0;
+    while k < expr_cond.len() {
+        let (iarg, expr, cond) = expr_cond[k].clone();
+        k += 1;
+        let (mut lower, mut upper): (Basic, Basic);
+        if matches!(cond.head(), Head::And) {
+            lower = neg_oo.clone();
+            upper = oo.clone();
+            let mut exclude: Vec<Basic> = Vec::new();
+            for cond2 in cond.args() {
+                if !matches!(cond2.head(), Head::Relational(_)) {
+                    return Ok(Err("expecting only Relationals".to_string()));
+                }
+                if is_rel(cond2, &[RelOp::Eq]) {
+                    lower = upper.clone();
+                    if err_on_eq {
+                        return Ok(Err("encountered secondary Eq condition".to_string()));
+                    }
+                    break;
+                }
+                if is_rel(cond2, &[RelOp::Ne]) {
+                    let (l_, r_) = (&cond2.args()[0], &cond2.args()[1]);
+                    if l_ == sym {
+                        exclude.push(r_.clone());
+                    } else if r_ == sym {
+                        exclude.push(l_.clone());
+                    } else {
+                        return Ok(Err(nonsymfail(cond2)));
+                    }
+                    continue;
+                }
+                let (lts, gts) = lts_gts(cond2);
+                if lts == *sym {
+                    upper = min_(&[gts, upper])?;
+                } else if gts == *sym {
+                    lower = max_(&[lts, lower])?;
+                } else {
+                    return Ok(Err(nonsymfail(cond2)));
+                }
+            }
+            if !exclude.is_empty() {
+                let points: Vec<Basic> = crate::core::sorting::ordered(exclude);
+                let mut previous: Basic = lower.clone();
+                let mut bounds: Vec<(Basic, Basic)> = Vec::new();
+                for e in points {
+                    bounds.push((previous.clone(), e.clone()));
+                    previous = e;
+                }
+                bounds.push((previous, upper.clone()));
+                for (lo, hi) in bounds {
+                    expr_cond.push((iarg, expr.clone(), and_(&[lt(&lo, sym)?, lt(sym, &hi)?])));
+                }
+                continue;
+            }
+        } else if matches!(cond.head(), Head::Relational(_)) && !is_rel(&cond, &[RelOp::Ne]) {
+            (lower, upper) = lts_gts(&cond);
+            if lower == *sym {
+                lower = neg_oo.clone();
+            } else if upper == *sym {
+                upper = oo.clone();
+            } else {
+                return Ok(Err(nonsymfail(&cond)));
+            }
+        } else {
+            return Ok(Err(format!("unrecognized condition: {}", cond)));
+        }
+        upper = max_(&[lower.clone(), upper])?;
+        if err_on_eq && lower == upper {
+            return Ok(Err("encountered Eq condition".to_string()));
+        }
+        if crate::core::relational::ge(&lower, &upper)? != true_() {
+            int_expr.push((lower, upper, expr, iarg));
+        }
+    }
+    if let Some((d, i)) = default {
+        int_expr.push((neg_oo, oo, d, i));
+    }
+    let mut unique: Vec<IntervalPiece> = Vec::new();
+    for piece in int_expr {
+        if !unique.contains(&piece) {
+            unique.push(piece);
+        }
+    }
+    Ok(Ok(unique))
+}
+
+/// SymPy's `simplify` of a condition, natively (`_simplify_condition`).
+pub(crate) fn simplify_condition(c: &Basic) -> PolyResult<Basic> {
+    use crate::assumptions::refine::{measure, simplify_relational};
+    let relation = |r: &Basic| simplify_relational(r, 1.7, false, true);
+    crate::logic::boolsimp::simplify_boolean(c, &relation, &measure, 1.7, true)
+}
+
+/// The pieces simplified: for one variable the conditions rewritten as
+/// disjoint intervals of it (`nan` where no piece applies), otherwise each
+/// condition simplified; the expressions simplified
+/// (`piecewise_simplify_arguments`).
+pub fn piecewise_simplify_arguments(pw: &Basic, doit: bool) -> PolyResult<Basic> {
+    use crate::core::relational::{ge, gt, le, lt};
+    use crate::sets::sets::{complement, contains, empty_set, finite_set, inf, interval, is_subset, reals, union};
+    let pairs: Vec<(Basic, Basic)> = pairs_of(pw);
+    let first = pairs[0].1.free_symbols();
+    let has_eq: bool = pw.preorder().iter().any(|n| is_rel(n, &[RelOp::Eq]));
+    let mut new_args: Option<Vec<(Basic, Basic)>> = None;
+    if first.len() == 1 && !has_eq {
+        let x: Basic = first.into_iter().next().expect("one symbol");
+        let include = |c: &Basic, a: &Basic| -> PolyResult<bool> {
+            match crate::core::subs::subs(c, &x, a) {
+                Ok(v) => Ok(v == true_()),
+                Err(PolyError::Type(_)) => Ok(false),
+                Err(e) => Err(e),
+            }
+        };
+        let member = |s: &Basic, a: &Basic| -> PolyResult<bool> {
+            let c: Basic = contains(s, a)?;
+            if c == true_() {
+                return Ok(true);
+            }
+            if c == false_() {
+                return Ok(false);
+            }
+            Err(PolyError::Type(format!("did not evaluate to a bool: {}", c)))
+        };
+        let infinite = |e: &Basic| is_true(e, Predicate::infinite);
+        if let Ok(abe) = piecewise_intervals(pw, &x, true)? {
+            let mut out: Vec<(Basic, Basic)> = Vec::new();
+            let mut covered: Basic = empty_set();
+            for (a, b, e, i) in abe {
+                let c: Basic = pairs[i].1.clone();
+                let mut a: Basic = a;
+                let mut incl_a: bool = include(&c, &a)?;
+                let incl_b: bool = include(&c, &b)?;
+                let iv: Basic = interval(&a, &b, !incl_a, !incl_b)?;
+                let cset: Basic = complement(&iv, &covered)?;
+                if cset == empty_set() {
+                    continue;
+                }
+                match inf(&cset) {
+                    Ok(v) => {
+                        a = v;
+                        incl_a = include(&c, &a)?;
+                    }
+                    Err(PolyError::NotImplemented(m)) if !m.starts_with(crate::error::NOT_PORTED_PREFIX) => {}
+                    Err(e) => return Err(e),
+                }
+                let c: Basic = if incl_a && incl_b {
+                    if infinite(&a) && infinite(&b) {
+                        true_()
+                    } else if infinite(&b) {
+                        if member(&covered, &a)? {
+                            gt(&x, &a)?
+                        } else {
+                            ge(&x, &a)?
+                        }
+                    } else if infinite(&a) {
+                        le(&x, &b)?
+                    } else if member(&covered, &a)? {
+                        and_(&[lt(&a, &x)?, le(&x, &b)?])
+                    } else {
+                        and_(&[le(&a, &x)?, le(&x, &b)?])
+                    }
+                } else if incl_a {
+                    if infinite(&a) {
+                        lt(&x, &b)?
+                    } else if member(&covered, &a)? {
+                        and_(&[lt(&a, &x)?, lt(&x, &b)?])
+                    } else {
+                        and_(&[le(&a, &x)?, lt(&x, &b)?])
+                    }
+                } else if incl_b {
+                    if infinite(&b) {
+                        gt(&x, &a)?
+                    } else {
+                        and_(&[lt(&a, &x)?, le(&x, &b)?])
+                    }
+                } else if member(&covered, &a)? {
+                    lt(&x, &b)?
+                } else {
+                    and_(&[lt(&a, &x)?, lt(&x, &b)?])
+                };
+                covered = union(&[covered, iv])?;
+                if matches!(a.head(), Head::NegativeInfinity) && incl_a {
+                    covered = union(&[covered, finite_set(&[Basic::atom(Head::NegativeInfinity)])])?;
+                }
+                if matches!(b.head(), Head::Infinity) && incl_b {
+                    covered = union(&[covered, finite_set(std::slice::from_ref(&b))])?;
+                }
+                out.push((e, c));
+            }
+            if is_subset(&reals(), &covered)? != Some(true) {
+                out.push((Basic::atom(Head::NaN), true_()));
+            }
+            new_args = Some(out);
+        }
+    }
+    let new_args: Vec<(Basic, Basic)> = match new_args {
+        Some(v) => v,
+        None => pairs
+            .iter()
+            .map(|(e, c)| Ok((e.clone(), simplify_condition(c)?)))
+            .collect::<PolyResult<_>>()?,
+    };
+    let _ = doit;
+    let options = crate::simplify::simplify::Options {
+        doit: false,
+        ..crate::simplify::simplify::Options::default()
+    };
+    let mut fin: Vec<(Basic, Basic)> = Vec::new();
+    for (e, c) in new_args {
+        let newe: Basic = crate::simplify::simplify::simplify(&e, &options)?;
+        fin.push((newe, c));
+    }
+    piecewise(&fin)
+}
+
+/// SymPy's `_diff_wrt`: a symbol, an undefined function, a derivative.
+fn diff_wrt(e: &Basic) -> bool {
+    matches!(
+        e.head(),
+        Head::Symbol(_) | Head::Dummy(..) | Head::Undefined(_) | Head::Derivative
+    )
+}
+
+fn blessed(e: &Basic) -> bool {
+    let (l, r) = (&e.args()[0], &e.args()[1]);
+    diff_wrt(l)
+        && (diff_wrt(r)
+            || r.as_rational().is_some()
+            || matches!(
+                r.head(),
+                Head::Pi | Head::Exp1 | Head::EulerGamma | Head::Catalan | Head::GoldenRatio | Head::TribonacciConstant
+            ))
+}
+
+fn eqs_and_others(cond: &Basic) -> (Vec<Basic>, Vec<Basic>) {
+    if matches!(cond.head(), Head::And) {
+        let eqs: Vec<Basic> = cond
+            .args()
+            .iter()
+            .filter(|a| is_rel(a, &[RelOp::Eq]))
+            .cloned()
+            .collect();
+        let others: Vec<Basic> = cond
+            .args()
+            .iter()
+            .filter(|a| !is_rel(a, &[RelOp::Eq]))
+            .cloned()
+            .collect();
+        return (eqs, others);
+    }
+    if is_rel(cond, &[RelOp::Eq]) {
+        return (vec![cond.clone()], Vec::new());
+    }
+    (Vec::new(), Vec::new())
+}
+
+fn subs_pair(e: &Basic, eq: &Basic) -> PolyResult<Basic> {
+    crate::core::subs::subs(e, &eq.args()[0], &eq.args()[1])
+}
+
+/// The expression of a piece with the equations of its condition
+/// substituted (`_piecewise_simplify_eq_and`).
+fn simplify_eq_and(mut args: Vec<(Basic, Basic)>) -> PolyResult<Vec<(Basic, Basic)>> {
+    for slot in args.iter_mut() {
+        let (mut expr, cond) = slot.clone();
+        let (eqs, mut other) = eqs_and_others(&cond);
+        if eqs.is_empty() {
+            continue;
+        }
+        let mut eqs: Vec<Basic> = crate::core::sorting::ordered(eqs)
+            .into_iter()
+            .filter(|e| matches!(e.head(), Head::Relational(_)))
+            .collect();
+        let mut j: usize = 0;
+        while j < eqs.len() {
+            let e: Basic = eqs[j].clone();
+            if blessed(&e) {
+                expr = as_expression(subs_pair(&expr, &e)?)?;
+                let mut rest: Vec<Basic> = Vec::new();
+                for ei in &eqs[j + 1..] {
+                    let r: Basic = subs_pair(ei, &e)?;
+                    if matches!(r.head(), Head::Relational(_)) {
+                        rest.push(r);
+                    }
+                }
+                eqs.truncate(j + 1);
+                eqs.extend(rest);
+                other = other.iter().map(|ei| subs_pair(ei, &e)).collect::<PolyResult<_>>()?;
+            }
+            j += 1;
+        }
+        let mut all: Vec<Basic> = eqs;
+        all.extend(other);
+        *slot = (expr, and_(&all));
+    }
+    Ok(args)
+}
+
+/// A piece whose expression equals the next one under its equations takes
+/// the next expression (`_piecewise_simplify_equal_to_next_segment`).
+fn simplify_equal_to_next_segment(mut args: Vec<(Basic, Basic)>) -> PolyResult<Vec<(Basic, Basic)>> {
+    let mut prevexpr: Option<Basic> = None;
+    let n: usize = args.len();
+    for i in (0..n).rev() {
+        let (expr, cond) = args[i].clone();
+        if let Some(prev) = prevexpr.clone() {
+            let (eqs, other) = eqs_and_others(&cond);
+            let (mut p, mut q) = (prev, expr.clone());
+            if !eqs.is_empty() && other.is_empty() {
+                for e in crate::core::sorting::ordered(eqs) {
+                    if n == 2 || blessed(&e) {
+                        p = as_expression(subs_pair(&p, &e)?)?;
+                        q = as_expression(subs_pair(&q, &e)?)?;
+                    }
+                }
+            }
+            if p == q {
+                args[i] = (args[i + 1].0.clone(), cond);
+            } else {
+                prevexpr = Some(expr);
+            }
+        } else {
+            prevexpr = Some(expr);
+        }
+    }
+    Ok(args)
+}
+
+/// A `Piecewise` simplified: its pieces, the equations of the conditions
+/// substituted, the pieces equal to the next one merged
+/// (`piecewise_simplify`).
+pub fn piecewise_simplify(expr: &Basic, doit: bool) -> PolyResult<Basic> {
+    if !matches!(expr.head(), Head::Piecewise) {
+        return Ok(expr.clone());
+    }
+    let simplified: Basic = piecewise_simplify_arguments(expr, doit)?;
+    if !matches!(simplified.head(), Head::Piecewise) {
+        return Ok(simplified);
+    }
+    let args: Vec<(Basic, Basic)> = pairs_of(&simplified);
+    let args = simplify_eq_and(args)?;
+    let args = simplify_equal_to_next_segment(args)?;
+    piecewise(&args)
 }

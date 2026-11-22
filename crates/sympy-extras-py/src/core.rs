@@ -2586,6 +2586,9 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         "piecewise" => {
             sympy_extras_core::functions::elementary::piecewise::piecewise_of_pairs(a.to_vec()).map_err(e)?
         }
+        "piecewise_simplify" => {
+            sympy_extras_core::functions::elementary::piecewise::piecewise_simplify(&a[0], true).map_err(e)?
+        }
         "piecewise_fold" | "piecewise_fold_none" | "piecewise_fold_false" => {
             let evaluate: Option<bool> = match name {
                 "piecewise_fold" => Some(true),

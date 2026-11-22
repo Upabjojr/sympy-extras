@@ -872,3 +872,72 @@ pub fn jacobi_normalized(n: &Basic, a: &Basic, b: &Basic, x: &Basic) -> PolyResu
     )?;
     div(&jacobi(n, a, b, x)?, &pow(&factor, &Basic::half())?)
 }
+
+// ---------------------------------------------------------------------
+// numerical values (mpmath's hypergeometric definitions)
+
+/// The value of an orthogonal polynomial at the values of its arguments
+/// (a non-integer order: an integer one is a polynomial already), by
+/// mpmath's definitions through `hyp2f1` and `hyp1f1`: `chebyt`, `chebyu`,
+/// `legendre`, `gegenbauer`, `jacobi`, `laguerre`; `None` for the others
+/// and where the series of `hyper_value` is not ported.
+pub fn orthogonal_value(
+    f: Function,
+    values: &[crate::core::evalf::Complex],
+    prec: usize,
+) -> Option<crate::core::evalf::Complex> {
+    use crate::core::evalf::{complex_real, real_int, real_rat, Complex};
+    use crate::functions::special::gamma_numeric::gamma;
+    use crate::functions::special::hyper::hyper_value;
+    let wp: usize = prec + 20;
+    let c = |p: i64, q: i64| -> Complex { complex_real(real_rat(&crate::numbers::rat(p, q), wp), wp) };
+    let one: Complex = complex_real(real_int(&Int::ONE, wp), wp);
+    let half_one_minus = |x: &Complex| -> Complex { &(&one - x) / &c(2, 1) };
+    // binomial(m + k, k) for numbers: gamma(m + k + 1)/(gamma(k + 1)*gamma(m + 1))
+    let binomial = |top: &Complex, k: &Complex| -> Option<Complex> {
+        let a: Complex = gamma(&(top + &one), wp)?;
+        let b: Complex = gamma(&(k + &one), wp)?;
+        let d: Complex = gamma(&(&(top - k) + &one), wp)?;
+        let den: Complex = &b * &d;
+        if den.is_zero() {
+            return None;
+        }
+        Some(&a / &den)
+    };
+    let n: &Complex = &values[0];
+    let mn: Complex = -n;
+    match f {
+        Function::ChebyshevT => hyper_value(&[mn, n.clone()], &[c(1, 2)], &half_one_minus(&values[1]), prec),
+        Function::ChebyshevU => {
+            let h: Complex = hyper_value(&[mn, n + &c(2, 1)], &[c(3, 2)], &half_one_minus(&values[1]), prec)?;
+            Some(&(n + &one) * &h)
+        }
+        Function::Legendre => hyper_value(
+            &[mn, n + &one],
+            std::slice::from_ref(&one),
+            &half_one_minus(&values[1]),
+            prec,
+        ),
+        Function::Gegenbauer => {
+            let a: &Complex = &values[1];
+            let two_a: Complex = a + a;
+            let b: Complex = binomial(&(&(n + &two_a) - &one), n)?;
+            let h: Complex = hyper_value(&[mn, n + &two_a], &[a + &c(1, 2)], &half_one_minus(&values[2]), prec)?;
+            Some(&b * &h)
+        }
+        Function::Jacobi => {
+            let (a, b, x) = (&values[1], &values[2], &values[3]);
+            let k: Complex = binomial(&(n + a), n)?;
+            let h: Complex = hyper_value(&[mn, &(&(n + a) + b) + &one], &[a + &one], &half_one_minus(x), prec)?;
+            Some(&k * &h)
+        }
+        Function::Laguerre => hyper_value(&[mn], std::slice::from_ref(&one), &values[1], prec),
+        Function::AssocLaguerre => {
+            let (a, z) = (&values[1], &values[2]);
+            let k: Complex = binomial(&(n + a), n)?;
+            let h: Complex = hyper_value(&[mn], &[a + &one], z, prec)?;
+            Some(&k * &h)
+        }
+        _ => None,
+    }
+}
