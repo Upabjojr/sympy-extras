@@ -6319,6 +6319,53 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "antiderivative" => {
+            // (integral | pv | fp, f, x, a, b) -> the value or NONE; (antiderivative, f, x); (singularities, f, x)
+            // and (discontinuities, F, x, a, b) -> Tuple or NONE; (shape, f, x) -> Tuple(elementary, quick, by_parts);
+            // (select, F, x, a, b); (generic, F, x); (continuous, F, x, p); (limit, F, x, p, dir);
+            // (cancelled, F, x); (real_logs, F, x)
+            use sympy_extras_core::integrals::antiderivative as ad;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let b = sympy_extras_core::core::logic::boolean;
+            let value = |r: Option<sympy_extras_core::integrals::conditions::ConditionalValue>| match r {
+                Some(c) => c.value,
+                None => none(),
+            };
+            match a[0].to_string().as_str() {
+                "integral" => {
+                    value(ad::antiderivative_integral(&a[1], &a[2], &a[3], &a[4], &[], false, None, None).map_err(e)?)
+                }
+                "pv" => value(ad::principal_value_integral(&a[1], &a[2], &a[3], &a[4], &[], None).map_err(e)?),
+                "fp" => value(ad::finite_part_integral(&a[1], &a[2], &a[3], &a[4], &[], None).map_err(e)?),
+                "antiderivative" => ad::antiderivative(&a[1], &a[2], &[], false)
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "singularities" => ad::singularities(&a[1], &a[2], &[], None)
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "discontinuities" => ad::discontinuities(&a[1], &a[2], &a[3], &a[4], &[])
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "shape" => tuple(vec![
+                    b(ad::elementary_polynomial(&a[1], &a[2]).map_err(e)?),
+                    b(ad::quick_shape(&a[1], &a[2]).map_err(e)?),
+                    b(ad::by_parts_shape(&a[1], &a[2]).map_err(e)?),
+                ]),
+                "select" => ad::select_branch(&a[1], &a[2], &a[3], &a[4], &[])
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "generic" => ad::generic_antiderivative(&a[1], &a[2]).map_err(e)?,
+                "continuous" => b(ad::continuous_at(&a[1], &a[2], &a[3], &[]).map_err(e)?),
+                "limit" => ad::one_sided_limit(&a[1], &a[2], &a[3], &a[4].to_string(), &[])
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "cancelled" => ad::cancelled_logarithms(&a[1], &a[2]).map_err(e)?,
+                _ => ad::real_logarithms(&a[1], &a[2]).map_err(e)?,
+            }
+        }
         "deltafunctions" => {
             // (integrate, f, x) -> the value or NONE; (expand, d, x); (change_mul, node, x) -> Tuple(delta | NONE, rest | NONE)
             use sympy_extras_core::integrals::deltafunctions as df;

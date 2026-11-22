@@ -1,6 +1,7 @@
 //! Integration, ported from `sympy_extras.integrals`.
 
 pub mod algebraic;
+pub mod antiderivative;
 pub mod brackets;
 pub mod conditions;
 pub mod curves;
