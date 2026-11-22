@@ -2,6 +2,7 @@
 
 pub mod algebraic;
 pub mod antiderivative;
+pub mod asymptotic;
 pub mod brackets;
 pub mod conditions;
 pub mod curves;

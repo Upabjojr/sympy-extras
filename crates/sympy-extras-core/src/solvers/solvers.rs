@@ -227,6 +227,13 @@ fn distinct(values: Vec<Basic>) -> Vec<Basic> {
 pub(crate) fn polynomial_roots(e: &Basic, x: &Basic, degree: usize) -> O {
     let found = match crate::polys::polyroots::roots(e, std::slice::from_ref(x), true, true, None) {
         Ok(f) => Some(f),
+        // the Gaussian domain ZZ_I, which the Rust polynomials do not have:
+        // Python's roots finds every root, the fallbacks below give fewer
+        // (one root of -4*x**3 + I); an EX domain goes on to ex_roots, the
+        // route which gives Python's roots there
+        Err(crate::error::PolyError::Polys(_, m)) if m.starts_with("the domain ZZ_I") => {
+            return Err(crate::error::not_ported(&format!("roots over {}", m)))
+        }
         Err(err) if crate::polys::rootoftools::is_failure(&err) => None,
         Err(err) => return Err(err),
     };
