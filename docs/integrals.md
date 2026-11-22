@@ -237,6 +237,25 @@ Piecewise((1, Eq(k, 0)), ((exp(k) - 1)/k, True))
 
 ```
 
+Rational functions of `sin` and `cos` over whole periods go to the
+residues inside the unit circle. With a single parameter and no
+assumptions, the result is split into cases between the parameter values
+where a pole can cross the circle:
+
+```python
+>>> from sympy_extras.core import Symbol, pi
+>>> from sympy_extras.functions import cos
+>>> from sympy_extras.integrals.residues import period_integral
+>>> t, q = Symbol('t'), Symbol('q')
+>>> period_integral(1/(q + cos(t)), t, 0, 2*pi).as_piecewise(0)
+Piecewise((-2*pi/sqrt(q**2 - 1), q < -1), (2*pi/sqrt(q**2 - 1), q > 1), (0, True))
+
+```
+
+`floor`, `ceiling` and `frac` of a function of the variable are
+integrated piece by piece between the points where their argument takes
+an integer value.
+
 ## The other methods
 
 The driver tries, after the Mellin method and the residues:

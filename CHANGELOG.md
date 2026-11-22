@@ -10,6 +10,33 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.integrals.definite`: rational functions of `sin` and
+  `cos` with parameters over whole periods (issue #53). The driver tries
+  the residues inside the unit circle before cutting the range into
+  quarter periods: `1/(c + cos(x))` over `(0, 2*pi)` under `c > 1` is
+  `2*pi/sqrt(c**2 - 1)`, `sin(x)**2/(c + cos(x))` is
+  `2*pi*(c - sqrt(c**2 - 1))`. Before, the quarter periods used up the
+  time limit and the integral came back unevaluated. With a single
+  parameter and no assumptions, `period_integral` splits the real line
+  where a pole can cross the unit circle and gives one case per interval
+  with a value: `1/(c + cos(x))` is `2*pi/sqrt(c**2 - 1)` for `c > 1` and
+  its opposite for `c < -1`, and the Poisson kernel
+  `1/(1 - 2*k*cos(x) + k**2)` is `2*pi/(1 - k**2)` for `-1 < k < 1` and
+  `2*pi/(k**2 - 1)` for `|k| > 1`. Where a pole stays on the circle the
+  integral diverges and gets no case. A real parameter whose sign decides
+  which pole is inside is split into `d > 0`, `d < 0` and `d = 0`
+  (`1/(c + d*cos(x))` under `c > Abs(d)`). Radicals in denominators are
+  rationalised, and a square root of a negative base is written through
+  the positive one.
+- `sympy_extras.integrals.definite`: `floor`, `ceiling` and `frac` of a
+  real function of the variable over a range with numeric ends. The range
+  is cut where the argument takes an integer value. The levels lie
+  between the extreme values at the ends and at the zeros of the
+  derivative. `floor(x)` over `(0, 7/2)` is `9/2`, `floor(x**2)` over
+  `(0, 2)` is `5 - sqrt(2) - sqrt(3)`, and `floor(3*sin(x))` over `(0, pi)`
+  is `2*pi - 2*asin(1/3) - 2*asin(2/3)`. All three came back unevaluated
+  before.
+
 - `sympy_extras.series.sequences`: native `RecursiveSeq` (a recurrence
   `y(n) = f(y(n - 1), ..., y(n - d))` with initial values, dummies
   `c_0, ...` by default; indexing, slicing, iteration, the cache of the
@@ -417,6 +444,12 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `sympy_extras.integrals.residues.period_integral` no longer trusts a
+  pole position decided at one sample of a single parameter when the
+  assumptions let the parameter cross a value where a pole meets the
+  unit circle. The bug: `1/(2 + c*cos(x))` over `(0, 2*pi)` under `c > 0`
+  was `2*pi/sqrt(4 - c**2)` with no condition, wrong for `c >= 2`, where
+  the integral diverges. It is now that value for `0 < c < 2`.
 - The native series of `Ei` at infinity keeps the branch of a polar
   argument: `Ei(q*exp_polar(+-I*pi))` with `q -> +oo` expands as
   `+-I*pi` plus the series of `Ei(-q)` (SymPy 1.14 drops the `I*pi`,
