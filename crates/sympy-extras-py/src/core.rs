@@ -267,6 +267,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Hankel1" => Basic::new(Head::Function(Function::Hankel1), args()?),
         "Hankel2" => Basic::new(Head::Function(Function::Hankel2), args()?),
         "BesselIs" => Basic::new(Head::Function(Function::BesselIs), args()?),
+        "Erfs" => Basic::new(Head::Function(Function::Erfs), args()?),
+        "Eis" => Basic::new(Head::Function(Function::Eis), args()?),
         "BesselKs" => Basic::new(Head::Function(Function::BesselKs), args()?),
         "SphericalJ" => Basic::new(Head::Function(Function::SphericalJ), args()?),
         "SphericalY" => Basic::new(Head::Function(Function::SphericalY), args()?),
@@ -719,7 +721,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::LogIntegral
                 | Function::OffsetLogIntegral
                 | Function::FresnelS
-                | Function::FresnelC => "error_functions",
+                | Function::FresnelC
+                | Function::Erfs
+                | Function::Eis => "error_functions",
                 Function::SingularityFunction => "singularity_functions",
                 Function::Ynm | Function::Znm => "spherical_harmonics",
                 Function::Legendre
@@ -787,6 +791,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_integral_function(*f)
+                || matches!(f, Function::Erfs | Function::Eis)
             {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
@@ -6317,6 +6322,55 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     let steps = mi::integral_steps(&a[1], &a[2]).map_err(e)?;
                     sympy_extras_core::core::symbol::Symbol::new(&mi::rule_names(&steps), &[]).0
                 }
+            }
+        }
+        "asymptotic" => {
+            // (integral, f, x, a, b, t, order, uniform); (watson, phi, x, t, order); (laplace, phi, h, x, a, b, t, order);
+            // (stationary | uniform, phi, h, x, a, b, t, kind); (steepest, phi, h, x, t);
+            // (exponential_part | oscillatory_part, f, x, t) -> Tuple; NONE for None
+            use sympy_extras_core::integrals::asymptotic as asy;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let sym = |s: &str| sympy_extras_core::core::Symbol::new(s, &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let n = |b: &Basic| -> i64 { b.to_string().parse().unwrap_or(1) };
+            let opt = |r: Option<Basic>| r.unwrap_or_else(none);
+            match a[0].to_string().as_str() {
+                "integral" => opt(asy::asymptotic_integral(
+                    &a[1],
+                    &a[2],
+                    &a[3],
+                    &a[4],
+                    &a[5],
+                    n(&a[6]),
+                    &[],
+                    a[7].to_string() == "True",
+                )
+                .map_err(e)?),
+                "watson" => opt(asy::watson_lemma(&a[1], &a[2], &a[3], n(&a[4]) as usize).map_err(e)?),
+                "laplace" => {
+                    opt(asy::laplace_method(&a[1], &a[2], &a[3], &a[4], &a[5], &a[6], n(&a[7]), &[]).map_err(e)?)
+                }
+                "stationary" => {
+                    opt(
+                        asy::stationary_phase(&a[1], &a[2], &a[3], &a[4], &a[5], &a[6], &a[7].to_string(), &[])
+                            .map_err(e)?,
+                    )
+                }
+                "uniform" => {
+                    opt(
+                        asy::uniform_expansion(&a[1], &a[2], &a[3], &a[4], &a[5], &a[6], &a[7].to_string(), &[])
+                            .map_err(e)?,
+                    )
+                }
+                "steepest" => opt(asy::steepest_descent(&a[1], &a[2], &a[3], &a[4], &[]).map_err(e)?),
+                "exponential_part" => match asy::exponential_part(&a[1], &a[2], &a[3]).map_err(e)? {
+                    Some((p, h)) => tuple(vec![p, h]),
+                    None => none(),
+                },
+                _ => match asy::oscillatory_part(&a[1], &a[2], &a[3]).map_err(e)? {
+                    Some((p, h, k)) => tuple(vec![p, h, sym(k)]),
+                    None => none(),
+                },
             }
         }
         "antiderivative" => {

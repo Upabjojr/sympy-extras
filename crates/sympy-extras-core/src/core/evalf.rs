@@ -699,6 +699,8 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::MathieuC
                 | super::basic::Function::MathieuSPrime
                 | super::basic::Function::MathieuCPrime => return None,
+                // SymPy's helpers of the Gruntz algorithm: no numerical value
+                super::basic::Function::Erfs | super::basic::Function::Eis => return None,
                 // no value of its own (Python asks SymPy)
                 super::basic::Function::Mod
                 | super::basic::Function::KroneckerDelta

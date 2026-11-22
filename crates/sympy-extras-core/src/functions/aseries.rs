@@ -75,11 +75,151 @@ pub fn aseries_rule(f: &Basic, n: i64, args0: &[Basic], x: &Basic, logx: Option<
             polygamma_aseries(f, &Basic::one(), &f.args()[0], n, &args, x, logx)?
         }
         Function::LowerGamma => lowergamma_aseries(f, n, args0, x)?,
+        Function::Erfs => erfs_aseries(f, n, args0, x, logx)?,
+        Function::Erf => erf_aseries(f, n, args0, x)?,
+        Function::Erfc => {
+            let node: Basic = Basic::new(Head::Function(Function::Erf), vec![f.args()[0].clone()]);
+            crate::core::add::sub(&Basic::one(), &erf_aseries(&node, n, args0, x)?)?
+        }
+        Function::Erfi => erfi_aseries(f, n, args0, x)?,
+        Function::Eis => eis_aseries(f, n, args0, x, logx)?,
+        Function::Atan | Function::Acot => atan_acot_aseries(f, *g == Function::Acot, n, args0, x, logx)?,
         Function::BesselI | Function::BesselK | Function::BesselIs | Function::BesselKs => {
             bessel_aseries(f, *g, n, args0, x)?
         }
         _ => return Ok(None),
     }))
+}
+
+fn factorial2_of(k: i64) -> R {
+    crate::functions::apply_function(Function::Factorial2, &[int(k)])
+}
+
+/// The asymptotic series of `erf(z)` at an argument going to an infinity
+/// faster than logarithmically, the node itself when the leading term of
+/// the argument is not found (`_erf_aseries`).
+fn erf_aseries(f: &Basic, n: i64, args0: &[Basic], x: &Basic) -> R {
+    if matches!(args0[0].head(), Head::Infinity | Head::NegativeInfinity) {
+        let z: &Basic = &f.args()[0];
+        let ex: Basic = match crate::core::series::leadterm(z, x, None, &Basic::zero()) {
+            Ok((_, ex)) => ex,
+            Err(PolyError::Value(_)) => return Ok(f.clone()),
+            Err(PolyError::NotImplemented(m)) if !m.starts_with(crate::error::NOT_PORTED_PREFIX) => {
+                return Ok(f.clone())
+            }
+            Err(e) => return Err(e),
+        };
+        // as x -> 1/x for the aseries
+        let ex: Basic = m2(&int(-1), &ex)?;
+        if crate::core::expr::is(&ex, crate::core::assumptions::Predicate::positive) == Some(true) {
+            let count: Basic = crate::functions::apply_function(Function::Ceiling, &[d2(&int(n), &ex)?])?;
+            let Some(newn) = count
+                .as_rational()
+                .filter(|q| q.is_int())
+                .and_then(|q| i64::try_from(crate::numbers::numer(q)).ok())
+            else {
+                return Err(PolyError::Type(format!(
+                    "the number of terms is not an integer: {}",
+                    count
+                )));
+            };
+            let mut terms: Vec<Basic> = Vec::new();
+            for k in 0..newn {
+                let top: Basic = m2(&pw(&int(-1), &int(k))?, &factorial2_of(2 * k - 1)?)?;
+                terms.push(d2(&top, &m2(&pw(z, &int(2 * k + 1))?, &pw(&int(2), &int(k))?)?)?);
+            }
+            terms.push(order_in(&d2(&Basic::one(), &pw(z, &int(newn))?)?, x)?);
+            let gauss: Basic = d2(
+                &crate::functions::elementary::exponential::exp(&m2(&int(-1), &pw(z, &int(2))?)?)?,
+                &pw(&Basic::pi(), &Basic::half())?,
+            )?;
+            return crate::core::add::sub(&Basic::one(), &m2(&gauss, &crate::core::add::add(&terms)?)?);
+        }
+    }
+    Err(default(f, args0))
+}
+
+// PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erfi._eval_aseries
+fn erfi_aseries(f: &Basic, n: i64, args0: &[Basic], x: &Basic) -> R {
+    if !is_oo(&args0[0]) {
+        return Err(default(f, args0));
+    }
+    let z: &Basic = &f.args()[0];
+    let mut terms: Vec<Basic> = Vec::new();
+    for k in 0..n {
+        terms.push(d2(
+            &factorial2_of(2 * k - 1)?,
+            &m2(&pw(&int(2), &int(k))?, &pw(z, &int(2 * k + 1))?)?,
+        )?);
+    }
+    terms.push(order_in(&d2(&Basic::one(), &pw(z, &int(n))?)?, x)?);
+    let gauss: Basic = d2(
+        &crate::functions::elementary::exponential::exp(&pw(z, &int(2))?)?,
+        &pw(&Basic::pi(), &Basic::half())?,
+    )?;
+    a2(
+        &m2(&int(-1), &Basic::atom(Head::ImaginaryUnit))?,
+        &m2(&gauss, &crate::core::add::add(&terms)?)?,
+    )
+}
+
+/// The terms expanded and the order added (`_helper_aseries`).
+fn helper_aseries(terms: &[Basic], o: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> R {
+    a2(&nseries(&crate::core::add::add(terms)?, x, n, logx)?, o)
+}
+
+fn factorial_of(k: i64) -> R {
+    crate::functions::combinatorial::factorials::factorial(&int(k))
+}
+
+// PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_erfs._eval_aseries
+fn erfs_aseries(f: &Basic, n: i64, args0: &[Basic], x: &Basic, logx: Option<&Basic>) -> R {
+    let point: &Basic = &args0[0];
+    let along_i: bool = crate::core::expr::extract_multiplicatively(point, &Basic::atom(Head::ImaginaryUnit))?
+        .is_some_and(|v| is_oo(&v));
+    if !(is_oo(point) || along_i) {
+        return Err(default(f, args0));
+    }
+    let z: &Basic = &f.args()[0];
+    let inverse: Basic = d2(&Basic::one(), z)?;
+    let sqrt_pi: Basic = pw(&Basic::pi(), &Basic::half())?;
+    let mut terms: Vec<Basic> = Vec::new();
+    for k in 0..n {
+        let top: Basic = m2(&factorial_of(2 * k)?, &pw(&int(-4), &int(-k))?)?;
+        let coefficient: Basic = d2(&top, &m2(&sqrt_pi, &factorial_of(k)?)?)?;
+        terms.push(m2(&coefficient, &pw(&inverse, &int(2 * k + 1))?)?);
+    }
+    let o: Basic = order_in(&d2(&Basic::one(), &pw(z, &int(2 * n + 1))?)?, x)?;
+    helper_aseries(&terms, &o, x, n, logx)
+}
+
+// PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_eis._eval_aseries
+fn eis_aseries(f: &Basic, n: i64, args0: &[Basic], x: &Basic, logx: Option<&Basic>) -> R {
+    if !matches!(args0[0].head(), Head::Infinity | Head::NegativeInfinity) {
+        return Err(default(f, args0));
+    }
+    let z: &Basic = &f.args()[0];
+    let inverse: Basic = d2(&Basic::one(), z)?;
+    let mut terms: Vec<Basic> = Vec::new();
+    for k in 0..n {
+        terms.push(m2(&factorial_of(k)?, &pw(&inverse, &int(k + 1))?)?);
+    }
+    let o: Basic = order_in(&d2(&Basic::one(), &pw(z, &int(n + 1))?)?, x)?;
+    helper_aseries(&terms, &o, x, n, logx)
+}
+
+// PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:atan._eval_aseries, acot._eval_aseries
+fn atan_acot_aseries(f: &Basic, is_acot: bool, n: i64, args0: &[Basic], x: &Basic, logx: Option<&Basic>) -> R {
+    if !matches!(args0[0].head(), Head::Infinity | Head::NegativeInfinity) {
+        return Err(default(f, args0));
+    }
+    let inverse: Basic = crate::functions::apply_function(Function::Atan, &[pw(&f.args()[0], &int(-1))?])?;
+    let e: Basic = if is_acot {
+        inverse
+    } else {
+        crate::core::add::add(&[d2(&Basic::pi(), &int(2))?, m2(&int(-1), &inverse)?])?
+    };
+    nseries(&e, x, n, logx)
 }
 
 // PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:loggamma._eval_aseries

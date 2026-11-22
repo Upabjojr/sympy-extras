@@ -618,6 +618,21 @@ pub fn series_rule(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Ba
         "LogGamma" => loggamma_rule(f, x, n, logx),
         "Expint" => expint_rule(f, x, n, logx),
         "EiNode" => ei_rule(f, x, n, logx),
+        "Eis" => {
+            // PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_eis._eval_nseries
+            let z: Basic = arg(f, 0);
+            if !yes(&limit0(&z, x)?, Predicate::zero) {
+                return Ok(None);
+            }
+            let rewritten: Basic = crate::functions::special::error_functions::helper_intractable(Function::Eis, &z)?;
+            Ok(Some(crate::core::series::eval_nseries(
+                &rewritten,
+                x,
+                n,
+                logx,
+                &Basic::zero(),
+            )?))
+        }
         "LiNode" => li_rule(f, n),
         "OffsetLiNode" => offset_li_rule(f, x, n, logx),
         "SingularityFunctionNode" => singularity_rule(f, x, n, logx, cdir),
