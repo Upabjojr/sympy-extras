@@ -96,6 +96,7 @@ from __future__ import annotations
 
 import cmath
 import itertools
+import math
 import random
 from fractions import Fraction
 from itertools import product
@@ -134,7 +135,7 @@ from sympy_extras.functions.elementary.complexes import Abs, Im, Re, Sign, abs_,
 from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
 from sympy_extras.functions.elementary.hyperbolic import (Acosh, Acoth, Acsch, Asech, Asinh, Atanh, Cosh, Coth, Csch,
                                                           Sech, Sinh, Tanh)
-from sympy_extras.functions.elementary.integers import Ceiling, Floor, Frac
+from sympy_extras.functions.elementary.integers import Ceiling, Floor, Frac, floor
 from sympy_extras.functions.elementary.miscellaneous import Max, Min
 from sympy_extras.functions.elementary.piecewise import ExprCondPair, Piecewise, piecewise_fold
 from sympy_extras.functions.elementary.trigonometric import (Asin, Atan, Cos, Cot, Csc, Sec, Sin, Tan, asin, cos,
@@ -192,6 +193,9 @@ _HYPERBOLIC: Final[tuple[type[Expr], ...]] = (Sinh, Cosh, Tanh, Coth, Sech, Csch
 _INVERSE_HYPERBOLIC: Final[tuple[type[Expr], ...]] = (Asinh, Acosh, Atanh, Acoth, Asech, Acsch)
 #: the nodes with kinks: their branches change at the zeros of arguments
 _KINKS: Final[tuple[type[Expr], ...]] = (Abs, Sign, Heaviside, Max, Min, Piecewise)
+#: the most integer values of the argument of a floor, ceiling or frac
+#: at which a range is cut
+_MAX_LEVELS: Final = 64
 
 _COUNTER: Final = itertools.count()
 
@@ -250,6 +254,12 @@ def _ops(e: Basic) -> int:
 def _is(b: Boolean) -> bool:
     """Whether a relation evaluated to ``true``."""
     return isinstance(b, BooleanTrue)
+
+
+def _whole_periods(a: Expr, b: Expr) -> bool:
+    """Whether ``b - a`` is a positive integer multiple of ``2*pi``."""
+    from .residues import _periods
+    return a.is_number and b.is_number and _periods(a, b) is not None
 
 
 def _has_trigonometric(f: Expr) -> bool:
@@ -1232,6 +1242,9 @@ class _Integrator:
         if constant != 1:
             found = self.integrate(rest, x, a, b, depth, fallback, mapped)
             return None if found is None else found.scaled(constant)
+        found = self._split_integer_parts(f, x, a, b, depth)
+        if found is not None:
+            return found
         if not mapped:
             # before the powers are split into their factors and the range
             # is mapped, which hide the binomial
@@ -1288,6 +1301,13 @@ class _Integrator:
             self._quick_antiderivative, self._canonical,
             self._regularized_termwise,
             self._mean_value, self._elliptic, self._trigonometric]
+        if _has_trigonometric(f) and _whole_periods(a, b):
+            # a rational function of sin and cos over whole periods by the
+            # residues inside the unit circle, before the range is cut into
+            # quarter periods: 1/(a + cos(x)) over (0, 2*pi) under a > 1
+            # spent the whole limit on the quarters and came back
+            # unevaluated, where the residue is 2*pi/sqrt(a**2 - 1)
+            strategies.insert(strategies.index(self._mean_value), self._residues)
         strategies += [self._logarithmic_substitution, self._parameter_exponentials]
         if not mapped and depth == 0:
             # the substitutions on the integral as given only: inside a
@@ -1303,7 +1323,7 @@ class _Integrator:
         rational = bool(f.is_rational_function(x))
         strategies += [self._residues] if rational else []
         strategies += [self._mapped, self._inversion]
-        strategies += [] if rational else [self._residues]
+        strategies += [] if rational or self._residues in strategies else [self._residues]
         strategies += [self._contours, self._algebraic]
         if a == -oo and b == oo and f.has(*_HYPERBOLIC):
             # the rectangular contour gives pi**3/4 for x**2/cosh(x) where
@@ -1344,6 +1364,97 @@ class _Integrator:
         return None
 
     # -- splitting ----------------------------------------------------------
+
+    def _split_integer_parts(self, f: Expr, x: Symbol, a: Expr, b: Expr,
+                             depth: int) -> Optional[ConditionalValue]:
+        """``floor``, ``ceiling`` and ``frac`` of real functions ``u`` of
+        ``x`` over a finite range with numeric ends: the range is cut at
+        the points where ``u`` takes an integer value
+        (:meth:`_integer_crossings`), and on each piece the integer part is
+        the constant it takes at the midpoint (``floor(x)`` over ``(0,
+        7/2)`` is ``0 + 1 + 2 + 3/2``); ``None`` when there is no such
+        function or a crossing cannot be found."""
+        nodes = sorted((node for node in f.atoms(Floor, Ceiling, Frac) if node.has(x)), key=str)
+        if not nodes or a in (-oo, oo) or b in (-oo, oo) or not a.is_number or not b.is_number:
+            return None
+        points: list[Expr] = []
+        for node in nodes:
+            u = as_expr(node.args[0])
+            if u.free_symbols != {x}:
+                return None
+            found = self._integer_crossings(u, x, a, b)
+            if found is None:
+                return None
+            points.extend(found)
+        placed = self._points_in(_distinct(points), a, b) if points else []
+        if placed is None:
+            return None
+        bounds = [a] + placed + [b]
+        total = ConditionalValue(S.Zero)
+        for lo, hi in zip(bounds[:-1], bounds[1:]):
+            middle = (lo + hi) / 2
+            piece = f
+            for node in nodes:
+                u = as_expr(node.args[0])
+                # u takes no integer value inside the piece, so its integer
+                # part there is the one at the midpoint, where the value is
+                # not an integer and its floor is not a question of rounding
+                level = floor(_subs(u, x, middle))
+                if not isinstance(level, Integer):
+                    return None
+                replacement: Expr
+                if isinstance(node, Floor):
+                    replacement = level
+                elif isinstance(node, Ceiling):
+                    replacement = level + 1
+                else:
+                    replacement = u - level
+                piece = _replaced(piece, as_expr(node), replacement)
+            if piece.has(Floor, Ceiling, Frac) and any(
+                    node.has(x) for node in piece.atoms(Floor, Ceiling, Frac)):
+                return None
+            value = self.integrate(piece, x, lo, hi, depth + 1)
+            if value is None or value.value.has(zoo, nan):
+                return None
+            total = total.add(value)
+        return total
+
+    def _integer_crossings(self, u: Expr, x: Symbol, a: Expr, b: Expr) -> Optional[list[Expr]]:
+        """The points of ``(a, b)`` where the real function ``u`` of ``x``
+        alone, continuous on ``[a, b]``, takes an integer value: the levels
+        between the least and the greatest value of ``u``, at the ends and
+        the zeros of ``u'`` (so that no level is missed between two samples),
+        each solved for; ``None`` when a zero cannot be found, ``u`` is not
+        real there or there are too many levels."""
+        singular = self._singular_placement(u, x, a, b)
+        if singular is None or singular[0] or singular[1]:
+            return None
+        derivative = u.diff(x)
+        critical: list[Expr] = []
+        if derivative.has(x):
+            zeros = self._zeros(derivative, x, a, b)
+            if zeros is None:
+                return None
+            critical = zeros
+        values: list[float] = []
+        for point in [a, b] + critical:
+            value = reliable_value(_subs(u, x, point), 30)
+            number = None if value is None else numeric_value(value, 60)
+            if number is None or abs(number.imag) > 1e-20 * (1 + abs(number.real)):
+                return None
+            values.append(float(number.real))
+        # a level counted once too often only costs a solution outside the
+        # range; one missed would leave a jump inside a piece
+        lowest, highest = math.ceil(min(values) - 1e-9), math.floor(max(values) + 1e-9)
+        if highest - lowest > _MAX_LEVELS:
+            return None
+        points: list[Expr] = []
+        for level in range(lowest, highest + 1):
+            zeros = self._zeros(u - level, x, a, b)
+            if zeros is None:
+                return None
+            points.extend(zeros)
+        return points
 
     def _points_in(self, points: Sequence[Expr], a: Expr, b: Expr) -> Optional[list[Expr]]:
         """The points which lie inside ``(a, b)``, sorted; ``None`` when a
