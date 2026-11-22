@@ -201,8 +201,8 @@ def test_equalities_between_elementary_functions_are_proved() -> None:
     assert ask(Eq(log(x * y), log(x) + log(y)), [x > 0, y > 0]) is True
     assert ask(Eq(asin(x), atan(x / sqrt(1 - x**2))), [x > -1, x < 1]) is True
     assert ask(Eq(atan(x) + atan(1 / x), pi / 2), x > 0) is True
-    assert ask(Eq(atan(x) + atan(1 / x), pi / 2), x < 0) is False or \
-        ask(Eq(atan(x) + atan(1 / x), pi / 2), x < 0) is None
+    # for x < 0 both arctangents are negative (the sum is -pi/2)
+    assert ask(Eq(atan(x) + atan(1 / x), pi / 2), x < 0) is False
     # inequalities between identical sides
     assert ask(sin(x)**2 + cos(x)**2 >= 1, x > 0) is True
     assert ask(sin(x)**2 + cos(x)**2 > 1, x > 0) is False

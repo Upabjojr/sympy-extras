@@ -3774,6 +3774,19 @@ remove public functions. Breaking changes are listed here when they happen.
   `leading_derivatives` no longer returns one root either: it raises
   `NotImplementedError` for an equation which is not linear in a highest
   derivative (`reduce_order` still reduces one branch, explicitly).
+- The positive handler of `acos` (ported from SymPy, used by the core's
+  `ask` and by `sympy_extras.assumptions`) answered True on the closed
+  interval `[-1, 1]`, but `acos(1) = 0`:
+  `ask(Q.positive(acos(x)), Q.nonpositive(x - 1) & Q.nonnegative(x + 1))`
+  and `ask(acos(x) > 0, (x >= -1) & (x <= 1))` are now None (True on
+  `[-1, 1)`, False at `x = 1` and where `acos(x)` is not real; SymPy 1.14
+  has the same bug). The neighbouring handlers had the same
+  kind of endpoint gap: `atan(x)` is positive for an infinite positive
+  `x` (`atan(oo) = pi/2`, SymPy answers False), `asin(x)` is not positive
+  at `x = 0` nor off `[-1, 1]`, `log(x)` is not positive at `x = 1`.
+  New handlers: `atan(x)` is negative exactly when `x` is (extended)
+  negative and real when `x` is extended real, so
+  `ask(Eq(atan(1/x) + atan(x), pi/2), x < 0)` is False.
 - `sympy_extras.assumptions.solve` over the reals drops a candidate which
   is real only where its imaginary part vanishes when the condition fails
   there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`
