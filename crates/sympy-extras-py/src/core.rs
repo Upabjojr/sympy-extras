@@ -6336,6 +6336,46 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             };
             found.unwrap_or_else(none)
         }
+        "definite" => {
+            // (verify, value, f, x, a, b, Tuple(assumptions), samples, Tuple(inside)) -> True | False | NONE;
+            // (quadrature, f, x, a, b, Tuple(inside)) -> Tuple(re, im) as rationals of the floats, or NONE;
+            // (converges, f, x, a, b, Tuple(assumptions)) -> bool; (crossings, g, t) -> Tuple;
+            // (regions, value, Tuple(parameters)) -> Tuple
+            use sympy_extras_core::integrals::definite as df;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let truth = |b: bool| {
+                if b {
+                    Basic::atom(Head::BooleanTrue)
+                } else {
+                    Basic::atom(Head::BooleanFalse)
+                }
+            };
+            let float = |v: f64| -> Basic {
+                match sympy_extras_core::numbers::Rat::try_from(v) {
+                    Ok(r) => Basic::from_rational(r),
+                    Err(_) => sympy_extras_core::core::Symbol::new("NONE", &[]).0,
+                }
+            };
+            match a[0].to_string().as_str() {
+                "verify" => {
+                    let samples: usize = a[7].to_string().parse().unwrap_or(2);
+                    match df::verify_numerically(&a[1], &a[2], &a[3], &a[4], &a[5], a[6].args(), samples, a[8].args())
+                        .map_err(e)?
+                    {
+                        None => none(),
+                        Some(v) => truth(v),
+                    }
+                }
+                "quadrature" => match df::quadrature(&a[1], &a[2], &a[3], &a[4], a[5].args()).map_err(e)? {
+                    None => none(),
+                    Some((re, im)) => tuple(vec![float(re), float(im)]),
+                },
+                "converges" => truth(df::quadrature_converges(&a[1], &a[2], &a[3], &a[4], a[5].args()).map_err(e)?),
+                "crossings" => tuple(df::axis_crossings(&a[1], &a[2]).map_err(e)?),
+                _ => tuple(df::branch_regions(&a[1], a[2].args()).map_err(e)?),
+            }
+        }
         "validated" => {
             // (f, x, a, b, digits) -> Tuple(midpoint, radius) of the enclosure, or NONE
             use sympy_extras_core::integrals::validated as vd;
