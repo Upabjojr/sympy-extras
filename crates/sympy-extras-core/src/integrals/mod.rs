@@ -27,3 +27,4 @@ pub mod slater;
 pub mod tables;
 pub mod trager;
 pub mod trigonometric;
+pub mod validated;

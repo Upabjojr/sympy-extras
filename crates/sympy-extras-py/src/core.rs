@@ -6336,6 +6336,19 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             };
             found.unwrap_or_else(none)
         }
+        "validated" => {
+            // (f, x, a, b, digits) -> Tuple(midpoint, radius) of the enclosure, or NONE
+            use sympy_extras_core::integrals::validated as vd;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let digits: usize = a[4].to_string().parse().unwrap_or(15);
+            match vd::validated_integral(&a[0], &a[1], &a[2], &a[3], digits).map_err(e)? {
+                None => none(),
+                Some((mid, radius)) => Basic::new(
+                    Head::Tuple,
+                    vec![Basic::from_rational(mid), Basic::from_rational(radius)],
+                ),
+            }
+        }
         "asymptotic" => {
             // (integral, f, x, a, b, t, order, uniform); (watson, phi, x, t, order); (laplace, phi, h, x, a, b, t, order);
             // (stationary | uniform, phi, h, x, a, b, t, kind); (steepest, phi, h, x, t);

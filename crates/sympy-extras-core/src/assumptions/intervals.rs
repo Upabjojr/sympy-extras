@@ -48,6 +48,13 @@ pub struct PrecisionGuard {
 }
 
 impl PrecisionGuard {
+    /// The precision set to exactly `bits` while the guard lives (mpmath's
+    /// `iv.dps = ...` restored in a `finally`).
+    pub fn set(bits: usize) -> PrecisionGuard {
+        let previous: usize = iv_prec();
+        IV_PREC.with(|p| p.set(bits));
+        PrecisionGuard { previous }
+    }
     pub fn raise_to(bits: usize) -> PrecisionGuard {
         let previous: usize = iv_prec();
         IV_PREC.with(|p| p.set(bits.max(previous)));
