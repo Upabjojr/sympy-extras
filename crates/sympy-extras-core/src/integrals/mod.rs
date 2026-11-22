@@ -20,6 +20,7 @@ pub mod meijerint;
 pub mod mellin;
 pub mod quadrature;
 pub mod radicals;
+pub mod recognize;
 pub mod rewriting;
 pub mod risch;
 pub mod slater;

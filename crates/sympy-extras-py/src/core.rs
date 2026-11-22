@@ -6324,6 +6324,18 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "recognize" => {
+            // (constant, e, digits) | (integral, f, x, a, b, digits) -> the closed form or NONE (DEFAULT_CONSTANTS)
+            use sympy_extras_core::integrals::recognize as rg;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let constants: Vec<Basic> = rg::default_constants().map_err(e)?;
+            let n = |b: &Basic| -> usize { b.to_string().parse().unwrap_or(30) };
+            let found = match a[0].to_string().as_str() {
+                "constant" => rg::recognize_constant(&a[1], &constants, n(&a[2])).map_err(e)?,
+                _ => rg::recognize_integral(&a[1], &a[2], &a[3], &a[4], &constants, n(&a[5])).map_err(e)?,
+            };
+            found.unwrap_or_else(none)
+        }
         "asymptotic" => {
             // (integral, f, x, a, b, t, order, uniform); (watson, phi, x, t, order); (laplace, phi, h, x, a, b, t, order);
             // (stationary | uniform, phi, h, x, a, b, t, kind); (steepest, phi, h, x, t);

@@ -67,17 +67,28 @@ pub fn to_fixed(x: &Real, prec: usize) -> IBig {
 /// mpmath's `pslq(x, maxcoeff=maxcoeff, maxsteps=maxsteps)` at the working
 /// precision `prec` (bits): an integer relation of the values, or `None`.
 pub fn pslq(values: &[Real], prec: usize, maxcoeff: i64, maxsteps: usize) -> Option<Vec<i64>> {
+    pslq_tol(values, prec, maxcoeff, maxsteps, None)
+}
+
+/// [`pslq`] with mpmath's `tol` (the default `2**(-0.75*prec)` without it).
+pub fn pslq_tol(
+    values: &[Real],
+    prec: usize,
+    maxcoeff: i64,
+    maxsteps: usize,
+    tolerance: Option<&Real>,
+) -> Option<Vec<i64>> {
     let n: usize = values.len();
     if n < 2 || prec < 53 {
         return None;
     }
     let target: usize = (prec as f64 * 0.75) as usize;
     let prec: usize = prec + 60;
-    // tol = 2**-target as a fixed-point number
-    let tol: IBig = if prec >= target {
-        IBig::ONE << (prec - target)
-    } else {
-        IBig::ZERO
+    // tol = 2**-target (or the tolerance given) as a fixed-point number
+    let tol: IBig = match tolerance {
+        Some(t) => to_fixed(t, prec),
+        None if prec >= target => IBig::ONE << (prec - target),
+        None => IBig::ZERO,
     };
     if tol == IBig::ZERO {
         return None;
