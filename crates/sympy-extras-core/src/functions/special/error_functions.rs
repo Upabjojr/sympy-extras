@@ -1097,3 +1097,47 @@ fn default_conjugate(e: &Basic) -> PolyResult<Option<Basic>> {
     }
     Ok(None)
 }
+
+// ---------------------------------------------------------------------
+// the helpers which make erf, Ei and li tractable for the Gruntz algorithm
+
+/// `_erfs(z) = (1 - erf(z))*exp(z**2)`, evaluated: `1` at zero (`erfs`).
+pub fn erfs(z: &Basic) -> PolyResult<Basic> {
+    if is(z, Predicate::zero) == Some(true) {
+        return Ok(Basic::one());
+    }
+    Ok(node(Function::Erfs, vec![z.clone()]))
+}
+
+/// `_eis(z) = exp(-z)*Ei(z)`: the node (`eis`).
+pub fn eis(z: &Basic) -> PolyResult<Basic> {
+    Ok(node(Function::Eis, vec![z.clone()]))
+}
+
+/// The derivatives of the helpers: `-2/sqrt(pi) + 2*z*_erfs(z)` and
+/// `1/z - _eis(z)` (`fdiff`).
+pub fn helper_fdiff(f: Function, e: &Basic) -> PolyResult<Basic> {
+    let z: &Basic = &e.args()[0];
+    match f {
+        Function::Erfs => add(&[
+            div(&int(-2), &pow(&Basic::pi(), &Basic::half())?)?,
+            mul(&[mul(&[int(2), z.clone()])?, erfs(z)?])?,
+        ]),
+        _ => sub(&div(&Basic::one(), z)?, &eis(z)?),
+    }
+}
+
+/// SymPy's `_eval_rewrite_as_intractable` of the helpers:
+/// `(1 - erf(z))*exp(z**2)` and `exp(-z)*Ei(z)`.
+pub fn helper_intractable(f: Function, z: &Basic) -> PolyResult<Basic> {
+    match f {
+        Function::Erfs => {
+            let erf: Basic = crate::functions::apply_function(Function::Erf, std::slice::from_ref(z))?;
+            mul(&[sub(&Basic::one(), &erf)?, exp(&pow(z, &int(2))?)?])
+        }
+        _ => {
+            let ei: Basic = crate::functions::apply_function(Function::Ei, std::slice::from_ref(z))?;
+            mul(&[exp(&minus(z)?)?, ei])
+        }
+    }
+}

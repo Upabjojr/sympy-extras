@@ -267,6 +267,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Hankel1" => Basic::new(Head::Function(Function::Hankel1), args()?),
         "Hankel2" => Basic::new(Head::Function(Function::Hankel2), args()?),
         "BesselIs" => Basic::new(Head::Function(Function::BesselIs), args()?),
+        "Erfs" => Basic::new(Head::Function(Function::Erfs), args()?),
+        "Eis" => Basic::new(Head::Function(Function::Eis), args()?),
         "BesselKs" => Basic::new(Head::Function(Function::BesselKs), args()?),
         "SphericalJ" => Basic::new(Head::Function(Function::SphericalJ), args()?),
         "SphericalY" => Basic::new(Head::Function(Function::SphericalY), args()?),
@@ -719,7 +721,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::LogIntegral
                 | Function::OffsetLogIntegral
                 | Function::FresnelS
-                | Function::FresnelC => "error_functions",
+                | Function::FresnelC
+                | Function::Erfs
+                | Function::Eis => "error_functions",
                 Function::SingularityFunction => "singularity_functions",
                 Function::Ynm | Function::Znm => "spherical_harmonics",
                 Function::Legendre
@@ -787,6 +791,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_integral_function(*f)
+                || matches!(f, Function::Erfs | Function::Eis)
             {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)

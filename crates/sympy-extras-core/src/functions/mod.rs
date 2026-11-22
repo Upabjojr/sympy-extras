@@ -108,6 +108,7 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
             crate::core::modulo::modulo_fdiff(e, argindex)
         }
         Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
+        g @ (Function::Erfs | Function::Eis) => special::error_functions::helper_fdiff(g, e),
         Function::AppellF1 => special::hyper::appellf1_fdiff(e, argindex),
         g @ (Function::BesselJ
         | Function::BesselY
@@ -375,6 +376,8 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
             unreachable!("the polar functions are applied above")
         }
         g @ (Function::Floor | Function::Ceiling | Function::Frac) => elementary::integers::rounding(g, x),
+        Function::Erfs => special::error_functions::erfs(x),
+        Function::Eis => special::error_functions::eis(x),
         Function::Erf
         | Function::Erfc
         | Function::Erfi

@@ -29,7 +29,14 @@ def outcome(f: Callable[[], object]) -> str:
         return type(e).__name__
 
 
+from sympy_extras.functions import Ei, erf, erfc, erfi, expint, li  # noqa: E402
+
 CASES: list[tuple[Basic, Basic]] = [
+    # the helpers _erfs and _eis of the Gruntz algorithm
+    (erf(x), oo), (erf(x), -oo), (x*exp(x**2)*erfc(x), oo), (exp(x**2)*erfc(x)*x**3 - x**2/sqrt(3), oo),
+    (erfi(x)*exp(-x**2)*x, oo), (Ei(x)*exp(-x)*x, oo), (Ei(x)/exp(x), oo), (li(x)*log(x)/x, oo),
+    (x*exp(x)*expint(2, x), oo), (exp(x)*expint(1, x)*x, oo), (erf(x) - 1, oo), ((erf(x) - 1)*exp(x**2)*x, oo),
+    (atan(x) - 1, oo), (x*(atan(x) - 3*atan(Integer(1))*2/3), oo),
     (sin(x)/x, Integer(0)), (1/x, Integer(0)), (x*log(x), Integer(0)), (x**x, Integer(0)), (exp(1/x), Integer(0)),
     ((1 + 1/x)**x, oo), (log(x)/x, oo), (exp(x)/x**10, oo), (x*sin(1/x), Integer(0)), ((1 - cos(x))/x**2, Integer(0)),
     (atan(x), oo), (exp(-x)*x**5, oo), (sqrt(x**2 + x) - x, oo), (tanh(x), oo), (log(1 + x)/x, Integer(0)),

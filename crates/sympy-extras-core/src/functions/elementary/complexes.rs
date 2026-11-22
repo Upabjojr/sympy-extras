@@ -221,6 +221,8 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::RiemannXi
         | Function::Stieltjes
         | Function::Mod
+        | Function::Erfs
+        | Function::Eis
         | Function::KroneckerDelta
         | Function::LeviCivita
         | Function::Catalan
@@ -668,6 +670,8 @@ fn function_real_imag(
         | Function::RiemannXi
         | Function::Stieltjes
         | Function::Mod
+        | Function::Erfs
+        | Function::Eis
         | Function::KroneckerDelta
         | Function::LeviCivita
         | Function::Catalan
