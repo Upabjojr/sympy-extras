@@ -3744,6 +3744,23 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- Issue #72, the equations which are not polynomial in their leading
+  derivative (`sympy_extras.solvers.lie` and its SymPy face): they were
+  solved for it and the first root kept, so that `symmetries` returned the
+  symmetries of one branch and `check_symmetry` accepted them (all nine
+  quadratic generators, `y -> y + c` among them, for
+  `(y*y' + x)*(y' - 1)/y'`, `(exp(y') - 1)*(exp(y') - y)` or
+  `(sqrt(y') - 1)*(sqrt(y') - y)`). A denominator containing the leading
+  derivative is now cleared (the numerator has the same invariance
+  condition); an equation which is a polynomial in a root `y'**(1/L)` or
+  in an exponential `exp(y'/L)` of it is written in a new symbol `w` and
+  reduces the invariance conditions by pseudo-division as the polynomial
+  ones, the remainder vanishing identically in `w` (and in `y'`) for every
+  branch; any other one (`sin(y') - x`, `log(y') - y`) raises
+  `NotImplementedError` instead of giving the symmetries of one branch.
+  `leading_derivatives` no longer returns one root either: it raises
+  `NotImplementedError` for an equation which is not linear in a highest
+  derivative (`reduce_order` still reduces one branch, explicitly).
 - `sympy_extras.assumptions.solve` over the reals drops a candidate which
   is real only where its imaginary part vanishes when the condition fails
   there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`
