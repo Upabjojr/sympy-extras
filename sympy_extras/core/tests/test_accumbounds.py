@@ -16,11 +16,17 @@ TEMPLATES = ['sin(q)', 'cos(q)', 'tan(q)', 'cot(q)', 'exp(q)', 'log(q)', 'atan(q
              'Abs(q)', 'sqrt(q)', '2**q', 'q + 4', '3*q', 'q - 1/2', '-q', 'frac(q)']
 
 
+# an even negative power of bounds with zero inside: from the smaller endpoint value up; SymPy goes
+# through 1/bounds, the whole line, and has (0, oo) (sympy/sympy#31275, V222)
+TIGHTER = {('AccumBounds(-1, 1)', 'q**(-2)'): 'AccumBounds(1, oo)',
+           ('AccumBounds(-pi, pi/4)', 'q**(-2)'): 'AccumBounds(pi**(-2), oo)'}
+
+
 def test_functions_of_bounds_match_sympy() -> None:
     for b in BOUNDS:
         for text in TEMPLATES:
             template = s.sympify(text)
-            want = str(template.subs(q, b))
+            want = TIGHTER.get((str(b), text), str(template.subs(q, b)))
             got = str(to_sympy(expr_from_sympy(template).subs(Q, expr_from_sympy(b)), evaluate=False))
             assert got == want, (b, text)
 
@@ -59,3 +65,15 @@ def test_evalf_of_a_function_of_bounds() -> None:
     e = b - atan(b)
     assert str(e.evalf(30)) == 'AccumBounds(0, oo) - atan(AccumBounds(0, oo))'
     assert str((-atan(b)).evalf(30)) == str((-s.atan(AB(0, s.oo))).evalf(30)) == '-atan(AccumBounds(0, oo))'
+
+
+def test_even_negative_power_of_bounds_with_zero_inside() -> None:
+    # sympy/sympy#31275, V222: the values of a**(-2) on [-1, 3] without 0 are [1/9, oo)
+    from sympy_extras.core.accumbounds import accum_bounds
+    from sympy_extras.core.numbers import Integer, Rational, oo
+    assert accum_bounds(-1, 3)**(-2) == accum_bounds(Rational(1, 9), oo)
+    assert accum_bounds(-2, 1)**(-4) == accum_bounds(Rational(1, 16), oo)
+    assert accum_bounds(-oo, 1)**(-2) == accum_bounds(Integer(0), oo)
+    assert accum_bounds(0, 3)**(-2) == accum_bounds(Rational(1, 9), oo)
+    # an odd power takes every value but those near zero: the whole line stays
+    assert accum_bounds(-1, 2)**(-3) == accum_bounds(-oo, oo)
