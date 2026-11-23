@@ -78,3 +78,24 @@ def test_nsimplify_matches_sympy() -> None:
             if ours != str(sympy.nsimplify(e, constants)):
                 different.append((str(e), ours, str(sympy.nsimplify(e, constants))))
     assert not different, different[:3]
+
+
+def test_radsimp_of_a_power_three_halves() -> None:
+    # sympy/sympy#31275, V233: 1/sqrt(y)**3 is sqrt(y)/y**2; SymPy's sqrt(y**3)/y**3 has the other sign
+    # at y = -1
+    from sympy_extras.core import I, Integer, Rational
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import sqrt
+    from sympy_extras.simplify.radsimp import radsimp
+    x, y = Symbol('x'), Symbol('y')
+    e = sqrt(x)/sqrt(y)**3
+    result = radsimp(e)
+    assert str(result) == 'sqrt(x)*sqrt(y)/y**2'
+    for values in ({x: Integer(1), y: Integer(-1)}, {x: Integer(2), y: Integer(-3) + I/2}):
+        left, right = to_complex(e.subs(values)), to_complex(result.subs(values))
+        assert abs(left - right) < 1e-12, values
+    for f in (1/(1 + y**Rational(3, 2)), 1/(x + y**Rational(5, 2)), 1/(y**Rational(3, 2) + sqrt(x))):
+        simpler = radsimp(f)
+        for values in ({x: Integer(3), y: Integer(-2)}, {x: Integer(5), y: Integer(7)}):
+            left, right = to_complex(f.subs(values)), to_complex(simpler.subs(values))
+            assert abs(left - right) < 1e-12, (f, simpler)

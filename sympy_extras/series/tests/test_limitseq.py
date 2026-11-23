@@ -117,3 +117,19 @@ def test_sums() -> None:
 
 def test_exponential() -> None:
     assert limit_seq((1 + 1/n)**n, n) == E
+
+
+def test_difference_delta_of_a_sum_with_the_index_in_the_summand() -> None:
+    # sympy/sympy#31275, V213: Sum(1/k, (k, 1, n), (m, 1, n)) is n*harmonic(n), with the difference
+    # harmonic(n) + 1; SymPy takes the new terms of the outer limit only, with the inner sum at n
+    from sympy_extras.functions import harmonic
+    e = sum_(1/k, (k, 1, n), (m, 1, n))
+    found = dd(e, n)
+    for N in (1, 2, 5):
+        assert found.subs(n, N).doit() == harmonic(N) + 1
+    cases = [sum_(n/k, (k, 1, n)), sum_(k*m, (k, 1, m), (m, 1, n)), sum_(k, (k, n, 2*n)), sum_(n*k, (k, 1, 5)),
+             sum_(k**2, (k, 1, 3*n + 1))]
+    for e in cases:
+        found = dd(e, n)
+        for N in (1, 2, 5):
+            assert cancel(found.subs(n, N).doit() - (e.subs(n, N + 1).doit() - e.subs(n, N).doit())) == 0, e

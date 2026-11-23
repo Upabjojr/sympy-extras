@@ -21,7 +21,8 @@ from sympy_extras.concrete.expr_with_limits import Sum
 from sympy_extras.core import (Derivative, Expr, Function, I, Integer, O, Rational, S, Symbol, add, mul, oo, pi,
                                sqrt)
 from sympy_extras.core.function import expand
-from sympy_extras.functions import acos, acosh, airyai, asin, asinh, atan, cos, erf, exp, factorial, gamma, log, sin
+from sympy_extras.functions import (acos, acosh, acsch, airyai, asech, asin, asinh, atan, cos, erf, exp, factorial,
+                                    gamma, log, sin)
 from sympy_extras.polys.polytools import cancel
 from sympy_extras.series.formal import (FormalPowerSeries, FormalPowerSeriesCompose, FormalPowerSeriesInverse,
                                         FormalPowerSeriesProduct, Formula, bell_incomplete, coeff_of, exp_re, fps,
@@ -285,10 +286,12 @@ def test_fps__asymptotic() -> None:
     assert _same(_truncated(fps(atan(x), x, -oo, full=True)),
                  -1/(5*x**5) + 1/(3*x**3) - 1/x - pi/2 + O(1/x**6, (x, oo)))
     e = log(1 + x)
-    assert fps(e, x, oo) != (-1/(5*x**5) - 1/(4*x**4) + 1/(3*x**3) - 1/(2*x**2) + 1/x - log(1/x)
-                             + O(1/x**6, (x, oo)))
-    assert fps(e, x, -oo) != (-1/(5*x**5) - 1/(4*x**4) + 1/(3*x**3) - 1/(2*x**2) + 1/x + I*pi - log(-1/x)
-                              + O(1/x**6, (x, oo)))
+    # SymPy's test compares the series object with != (always true) and has -1/(5*x**5), the wrong
+    # sign (sympy/sympy#31275, V207): log(1 + x) = log(x) + sum((-1)**(k + 1)/(k*x**k))
+    assert _same(_truncated(fps(e, x, oo)), 1/(5*x**5) - 1/(4*x**4) + 1/(3*x**3) - 1/(2*x**2) + 1/x - log(1/x)
+                 + O(1/x**6, (x, oo)))
+    assert _same(_truncated(fps(e, x, -oo)), 1/(5*x**5) - 1/(4*x**4) + 1/(3*x**3) - 1/(2*x**2) + 1/x + I*pi
+                 - log(-1/x) + O(1/x**6, (x, oo)))
 
 
 def test_fps__fractional() -> None:
@@ -313,8 +316,12 @@ def test_fps__fractional() -> None:
 def test_fps__logarithmic_singularity() -> None:
     e = log(1 + 1/x)
     expected = -log(x) + x - x**2/2 + x**3/3 - x**4/4 + x**5/5 + O(x**6)
-    assert fps(e, x) != expected
-    assert fps(e, x, rational=False) != expected
+    # compared as truncated series (SymPy's test has !=, always true: sympy/sympy#31275, V208)
+    assert _same(_truncated(fps(e, x)), expected)
+    assert _same(_truncated(fps(e, x, rational=False)), expected)
+    # the coefficients after the logarithm of asech and acsch (SymPy halves them: V209)
+    assert _same(_truncated(fps(asech(x), x), 8), log(2) - log(x) - x**2/4 - 3*x**4/32 - 5*x**6/96 + O(x**8))
+    assert _same(_truncated(fps(acsch(x), x), 8), log(2) - log(x) + x**2/4 - 3*x**4/32 + 5*x**6/96 + O(x**8))
 
 
 def test_fps_symbolic() -> None:
@@ -328,8 +335,17 @@ def test_fps_symbolic() -> None:
                  (x - 2)**n*log(3) + (x - 2)**(n + 1)/3 - (x - 2)**(n + 2)/18 + (x - 2)**(n + 3)/81
                  - (x - 2)**(n + 4)/324 + (x - 2)**(n + 5)/1215 + O((x - 2)**(n + 6), (x, 2)))
     assert _same(_truncated(fps(x**(n - 2)*cos(x), x)), x**(n - 2) - x**n/2 + x**(n + 2)/24 + O(x**(n + 4), x))
-    assert _same(_truncated(fps(x**(n - 2)*sin(x) + x**n*exp(x), x)),
-                 x**(n - 1) + x**(n + 1) + x**(n + 2)/2 + x**n + x**(n + 4)/24 + x**(n + 5)/60 + O(x**(n + 6), x))
+    # the two terms have their coefficients on different powers of x (x**(k + n - 2) and
+    # x**(k + n)); SymPy adds them place by place and its test has the wrong series, without
+    # 5*x**(n + 1)/6 and 7*x**(n + 3)/40 (sympy/sympy#31275, V210)
+    assert _same(_truncated(fps(x**(n - 2)*sin(x) + x**n*exp(x), x), 8),
+                 x**(n - 1) + x**n + 5*x**(n + 1)/6 + x**(n + 2)/2 + 7*x**(n + 3)/40 + x**(n + 4)/24
+                 + 41*x**(n + 5)/5040 + O(x**(n + 6), x))
+    assert _same(_truncated(fps(x**n*exp(x) + x**(n - 2)*sin(x), x), 8),
+                 x**(n - 1) + x**n + 5*x**(n + 1)/6 + x**(n + 2)/2 + 7*x**(n + 3)/40 + x**(n + 4)/24
+                 + 41*x**(n + 5)/5040 + O(x**(n + 6), x))
+    assert _same(_truncated(_series(fps(x**n*exp(x), x) + fps(x**(n - 2)*sin(x), x)), 6),
+                 x**(n - 1) + x**n + 5*x**(n + 1)/6 + x**(n + 2)/2 + 7*x**(n + 3)/40 + O(x**(n + 4), x))
     assert _same(_truncated(fps(x**n*atan(x), x, oo)),
                  -x**(n - 5)/5 + x**(n - 3)/3 + x**n*(pi/2 - 1/x) + O((1/x)**(-n)/x**6, (x, oo)))
     assert _same(_truncated(fps(x**(n/2)*cos(x), x)),

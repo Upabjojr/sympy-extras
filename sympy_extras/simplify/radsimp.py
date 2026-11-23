@@ -648,7 +648,15 @@ def radsimp(expr: ExprLike, symbolic: bool = True, max_terms: int = 4) -> Expr:
                 other: list[Expr] = []
                 for i in factors_of(m):
                     if _ispow2(i, symbolic, log2=True) and isinstance(i, Pow):
-                        p2.append(i.base if i.exp == Rational(1, 2) else pow(i.base, mul(Integer(2), i.exp)))
+                        ie = i.exp
+                        whole = ie.p // ie.q if isinstance(ie, Rational) else 0
+                        if isinstance(ie, Rational) and whole != 0 and 2 * (ie.p - whole * ie.q) <= ie.q:
+                            # b**(3/2) is b*sqrt(b) for every b, not sqrt(b**3) (SymPy's reading, wrong
+                            # at b = -1: sympy/sympy#31275, V233): the integer part of the exponent is
+                            # no radical
+                            other.append(pow(i.base, Integer(whole)))
+                            ie = add(ie, Integer(-whole))
+                        p2.append(i.base if ie == Rational(1, 2) else pow(i.base, mul(Integer(2), ie)))
                     elif i == I_unit():
                         p2.append(Integer(-1))
                     else:
