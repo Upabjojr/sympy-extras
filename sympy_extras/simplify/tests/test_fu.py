@@ -56,3 +56,34 @@ def test_fu_matches_sympy_on_identities() -> None:
         sympy.cos(sx) - sympy.cos(sy), sympy.sqrt(3) * sympy.cos(sx) / 2 + sympy.sin(sx) / 2]
     for e in cases:
         assert str(to_sympy(F.fu(expr_from_sympy(e)), evaluate=False)) == str(SF.fu(e)), e
+
+
+def test_TR12i_keeps_the_value() -> None:
+    # sympy/sympy#31275, V228 and V229: SymPy writes the denominators left over as tan(a) + tan(b) - 1
+    # (for tan(a)*tan(b) - 1), drops the rest of a power of tan(a) + tan(b), and tells two denominators
+    # apart by the sum of the arguments only (these cases differ from SymPy's results, which are wrong)
+    from sympy_extras.core import Float, Rational, Symbol
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import sqrt, tan
+    a, b, c = Symbol('a'), Symbol('b'), Symbol('c')
+    ta, tb, tc = tan(a), tan(b), tan(c)
+    first = (ta + tb)/(-ta*tb + 1)**2*(-3*ta - 3*tc)/(2*(ta*tc - 1))
+    assert str(F.TR12i(first.expand())) == '-3*tan(a + b)*tan(a + c)/(2*(tan(a)*tan(b) - 1))'
+    second = (((ta + tb)*(a + 1)).expand())**2/(ta*tb - 1)
+    assert str(F.TR12i(second)) == '-(a + 1)**2*(tan(a) + tan(b))*tan(a + b)'
+    assert F.TR12i((ta + tb)/(1 - ta*tb)) == tan(a + b)
+    cases = [first, first.expand(), second, (ta + tb)**3/(1 - ta*tb)**2, (ta + tb)*(ta + tc)/(1 - ta*tb),
+             (ta + tb)/((1 - ta*tb)*(1 - ta*tc)), (ta + tb)/(3 - 3*ta*tb)**2,
+             (tan(2*a) + tb)/((1 - tan(2*a)*tb)*(1 - ta*tan(a + b))),
+             (ta + tan(a + b))/((1 - tan(2*a)*tb)*(1 - ta*tan(a + b)))]
+    for e in cases:
+        result = F.TR12i(e)
+        assert result != e, e
+        for values in ({a: Float('0.3'), b: Float('0.7'), c: Float('-0.4')},
+                       {a: Float('1.1'), b: Float('-0.2'), c: Float('0.5')}):
+            left, right = to_complex(e.subs(values)), to_complex(result.subs(values))
+            assert abs(left - right) < 1e-9*(1 + abs(left)), (e, result)
+    # nothing to combine: a sum of tangents without its denominator (a KeyError in SymPy), a
+    # denominator under a square root whose cofactor is not known to be positive
+    for e in ((ta + tc)/(1 - ta*tb), (ta + tb)/sqrt(c*(1 - ta*tb)), (ta + tb)**Rational(1, 2)/(1 - ta*tb)):
+        assert F.TR12i(e) == e

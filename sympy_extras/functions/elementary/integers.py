@@ -38,7 +38,7 @@ import mpmath
 
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.assumptions import facts_of
-from sympy_extras.core.expr import Expr, ExprLike, to_expr
+from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
 from sympy_extras.core.function import Derivative, DefinedFunction
 from sympy_extras.core.mul import mul
 from sympy_extras.core.numbers import (ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, Number,
@@ -84,6 +84,47 @@ def _numerical_integer_part(e: Expr, direction: int) -> Optional[tuple[int, int]
                 parts.append(int(mpmath.floor(component) if direction < 0 else mpmath.ceil(component)))
         results.append((parts[0], parts[1]))
     return results[0] if results[0] == results[1] else None
+
+
+#: the working precision (bits) at which a part near an integer is settled
+_MAX_ROUNDING_BITS = 8192
+
+
+def _numeric_integer_part(arg: Expr, prec: int, direction: int) -> Optional[mpmath.mpc]:
+    """The floor (``direction = -1``) or ceiling (``1``) of the value of the
+    number ``arg``, for ``evalf``: a part closer to an integer than half the
+    working precision is proved to be that integer or evaluated again with
+    twice the bits, up to :data:`_MAX_ROUNDING_BITS` (the value at that
+    precision decides then). SymPy rounds the value at the precision asked
+    for: ``floor(log(8)/log(2) - exp(-1000), evaluate=False).evalf()`` is
+    ``3.0`` there, the floor is 2 (sympy/sympy#31275, V57)."""
+    from sympy_extras._numeric import proved_zero
+    from sympy_extras.core.evalf import numeric_value
+    known_zero = (arg.is_imaginary is True, arg.is_extended_real is True)
+    exact = isinstance(arg, (Rational, Float))
+    bits = prec
+    tried_proof = False
+    while True:
+        value = numeric_value(arg, bits)
+        if value is None:
+            return None
+        with mpmath.workprec(bits):
+            components = (mpmath.re(value), mpmath.im(value))
+            if not all(mpmath.isfinite(c) for c in components):
+                return None
+            # (a part which is exactly 0 is so by the structure of the number)
+            near = [not zero and c != 0 and abs(c - mpmath.nint(c)) <= mpmath.ldexp(max(1, abs(c)), -(bits // 2))
+                    for c, zero in zip(components, known_zero)]
+            if exact or not any(near) or bits >= _MAX_ROUNDING_BITS:
+                rounded = [mpmath.mpf(0) if zero else (mpmath.floor(c) if direction < 0 else mpmath.ceil(c))
+                           for c, zero in zip(components, known_zero)]
+                return mpmath.mpc(rounded[0], rounded[1])
+            if not tried_proof and (known_zero[1] or components[1] == 0):
+                tried_proof = True
+                nearest = int(mpmath.nint(components[0]))
+                if proved_zero(add(arg, Integer(-nearest))):
+                    return mpmath.mpc(nearest)
+        bits *= 2
 
 
 def _is_lt(a: Expr, b: Expr) -> Optional[bool]:
@@ -254,6 +295,9 @@ class Floor(DefinedFunction):
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.floor(mpmath.re(values[0])), mpmath.floor(mpmath.im(values[0])))
 
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        return _numeric_integer_part(as_expr(self.args[0]), prec, -1)
+
     def _eval_facts(self) -> dict[str, bool]:
         facts = _round_facts(self.args[0])
         a = facts_of(self.args[0])
@@ -280,6 +324,9 @@ class Ceiling(DefinedFunction):
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
         return mpmath.mpc(mpmath.ceil(mpmath.re(values[0])), mpmath.ceil(mpmath.im(values[0])))
+
+    def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
+        return _numeric_integer_part(as_expr(self.args[0]), prec, 1)
 
     def _eval_facts(self) -> dict[str, bool]:
         facts = _round_facts(self.args[0])

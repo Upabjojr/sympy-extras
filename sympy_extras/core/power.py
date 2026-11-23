@@ -152,7 +152,7 @@ class Pow(Expr):
         from .function import expand_mul, expand_multinomial
         from .order import order
         from .series import _less
-        from .symbol import Symbol as _Symbol, Wild
+        from .symbol import Dummy, Symbol as _Symbol, Wild
         from sympy_extras.functions.elementary.exponential import exp, log, Log
         from sympy_extras.functions.combinatorial.factorials import factorial, ff
         from sympy_extras.functions.elementary.complexes import im
@@ -181,7 +181,12 @@ class Pow(Expr):
                 exp_series = add(exp_series, term)
             exp_series = add(exp_series, order(pow(t, Integer(n)), x))
             return powsimp(exp_series, deep=True, combine='exp')
-        me = powdenest(self, force=True).trigsimp()
+        # SymPy denests with force=True, which takes every symbol for positive: re(a) becomes a, im(a)
+        # zero and sqrt(a**2) a, so that the series of (x + re(a))**2 is a**2 + 2*a*x + x**2 and that
+        # of sqrt(a**2 + x) starts with a. Only the variable of the expansion is positive here (the
+        # expansion is at 0+)
+        positive_x = Dummy(x.name, positive=True)
+        me = as_expr_basic(powdenest(as_expr_basic(self.subs(x, positive_x))).subs(positive_x, x)).trigsimp()
         b, e = me.as_base_exp()
         if e.has(nan, oo, mul(Integer(-1), oo), zoo):
             raise PoleError()
@@ -198,10 +203,23 @@ class Pow(Expr):
                 raise ValueError()
             _, m = b.leadterm(x)
         except (ValueError, NotImplementedError, PoleError):
-            b = b._eval_nseries(x, max(2, n), logx, cdir).removeO()
+            base = b
+            b = base._eval_nseries(x, max(2, n), logx, cdir).removeO()
             if b.has(nan, ComplexInfinity):
                 raise NotImplementedError()
             _, m = b.leadterm(x)
+            # The series of the base stands for the base from here on: it
+            # must be known to the relative order n - m*e that the binomial
+            # series uses, x**(n - m*e + m) in all. SymPy keeps the series
+            # to O(x**n), and 1/Abs(sin(x)) is 1/x + x/6 + x**3/36 + O(x**4)
+            # there (so is every series in a symbol which is not positive,
+            # where sqrt(sin(x)**2) is first made that)
+            needed = add(Integer(n), mul(Integer(-1), m, e), m)
+            if needed.is_number and needed.is_real is True and _less(Integer(max(2, n)), needed):
+                b = base._eval_nseries(x, _ceiling_int(needed), logx, cdir).removeO()
+                if b.has(nan, ComplexInfinity):
+                    raise NotImplementedError()
+                _, m = b.leadterm(x)
         if e.has(Log):
             from sympy_extras.simplify.simplify import logcombine
             e = logcombine(e).cancel()
@@ -210,6 +228,13 @@ class Pow(Expr):
                 logarithmic = exp(mul(e, log(b)))
                 via_log = logarithmic._eval_nseries(x, n, logx, cdir)
                 if via_log == logarithmic:
+                    return me
+                if via_log.is_Order and add(mul(m, e), Integer(-n)).is_nonnegative is not True:
+                    # not SymPy's: exp(e*log(b)) with an exponent going to
+                    # -oo is taken to be smaller than every power, which
+                    # holds for exp(-1/x) and not for x**a = exp(a*log(x)):
+                    # the series of x**a + 1 for a positive symbol a came out
+                    # as 1 + O(x**2), that of x**a as O(x**n)
                     return me
                 return via_log
         f = b.as_leading_term(x, logx=logx)
@@ -718,6 +743,9 @@ def _power_of_product(base: Mul, exp: Expr) -> Optional[Expr]:
                 return unevaluated_mul(pow(number_from_fraction(Fraction(n, d)), Integer(exp.p)),
                                        pow(add(Integer(1), mul(unit, I)), Integer(exp.p)))
     coefficient, rest = base.as_coeff_Mul()
+    if coefficient.is_finite_number and coefficient._sign() == 0:
+        # an unevaluated 0*3: the zero must not be lost (sqrt(0*3) is not sqrt(3))
+        return None
     # SymPy's _eval_expand_power_base: the positive and the polar factors
     # come out of the power
     positive = [f for f in factors_of(rest) if f.is_positive is True or f.is_polar is True]

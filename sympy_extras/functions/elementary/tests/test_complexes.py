@@ -66,6 +66,10 @@ def test_atan2_matches_sympy() -> None:
     for a in values:
         for b in values:
             ours, theirs = str(to_sympy(atan2(a, b), evaluate=False)), str(sympy.atan2(to_sympy(a), to_sympy(b)))
+            if (a, b) == (I, -oo):
+                # sympy/sympy#31275 (V84): the limit is pi, SymPy's Heaviside(0) = 1/2 gives 0
+                assert (ours, theirs) == ('pi', '0')
+                continue
             if ours != theirs and not ('Heaviside' in theirs or 'Piecewise' in theirs):
                 different.append((str((a, b)), ours + ' vs ' + theirs))
     assert not different, different

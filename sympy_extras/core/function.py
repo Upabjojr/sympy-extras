@@ -1150,10 +1150,21 @@ class Subs(Expr):
             if not isinstance(old, Symbol):
                 return None
             return Subs(self._expr, self._variables + (old,), pt + [new])
-        expr = self._expr._subs(old, new)
+        variables = self._variables
+        body = self._expr
+        captured = [var for var in variables if var in new.free_symbols]
+        if captured and body.has(old):
+            # the new expression has a bound variable: SymPy substitutes all
+            # the same and the variable captures it, Subs(x, y, 2).subs(x, y)
+            # becomes Subs(y, y, 2), which is 2 instead of y
+            # (sympy/sympy#31275, V59). The bound variables are renamed first
+            renaming: dict[Basic, Basic] = {var: Dummy(var.name) for var in captured}
+            variables = tuple(_as_symbol(renaming.get(var, var)) for var in variables)
+            body = as_expr(body.xreplace(renaming))
+        expr = body._subs(old, new)
         assert isinstance(expr, Expr)
         points = [p._subs(old, new) for p in pt]
-        return Subs(expr, self._variables, [p for p in points if isinstance(p, Expr)])
+        return Subs(expr, variables, [p for p in points if isinstance(p, Expr)])
 
     def _rebuild(self, args: tuple[Basic, ...]) -> Basic:
         expr, variables, point = args

@@ -137,3 +137,23 @@ def test_simplify_of_hyper_bessel_meijerg_nodes_matches_sympy() -> None:
              meijerg([a], [], [a], [], z)]
     for e in cases:
         assert str(to_sympy(simplify(expr_from_sympy(e)), evaluate=False)) == str(sympy.simplify(e)), e
+
+
+def test_simplify_keeps_a_sign_over_a_pole() -> None:
+    # sympy/sympy#31275, V66: sign(r + 3)/Abs(r + 3)**(3/5) is 0/0 at r = -3
+    # and tends to +oo and -oo there; SymPy's simplify gives it the value 0
+    # (the case of sign rewritten as a Piecewise and folded)
+    from sympy_extras.core import Rational, Symbol, nan
+    from sympy_extras.core.relational import Eq
+    from sympy_extras.functions import Abs, sign
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    r = Symbol('r', real=True)
+    f = 2*sign(r + 3)/(5*Abs(r + 3)**Rational(3, 5))
+    assert f.subs(r, -3) == nan
+    simplified = simplify(f)
+    assert not simplified.has(Piecewise) and simplified.subs(r, -3) == nan
+    assert not Eq(f, 0).simplify().has(Piecewise)
+    for value in (Rational(-29, 10), Rational(-31, 10), 2):
+        assert abs(complex((simplified - f).subs(r, value).evalf())) < 1e-12
+    # without a pole the sign goes as before
+    assert simplify(sign(r)*Abs(r)) == r

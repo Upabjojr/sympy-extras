@@ -91,3 +91,25 @@ def test_powdenest_logcombine_expand_log_match_sympy(seed: int) -> None:
                        str(sympy.expand_log(expression, force=True)))]
             different += [(name, str(expression), o, t) for name, o, t in checks if o != t]
     assert not different, different[:3]
+
+
+def test_powdenest_of_an_exponential_of_a_sum_of_logarithms() -> None:
+    # sympy/sympy#31275, V232: exp(y*(log(a) + log(b))) is a**y*b**y, and (a*b)**y (SymPy's result)
+    # only when the imaginary part of the sum of the logarithms is in (-pi, pi]
+    from sympy_extras.core import Integer, Rational, Symbol
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import exp, log
+    from sympy_extras.simplify.powsimp import powdenest
+    a, b, y = Symbol('a'), Symbol('b'), Symbol('y')
+    p, q, r = Symbol('p', positive=True), Symbol('q', positive=True), Symbol('r', real=True)
+    e = exp(y*(log(a) + log(b)))
+    assert powdenest(e) == a**y*b**y
+    values = {a: Integer(-1), b: Integer(-1), y: Rational(1, 2)}
+    assert abs(to_complex(e.subs(values)) + 1) < 1e-12 and abs(to_complex(powdenest(e).subs(values)) + 1) < 1e-12
+    # valid, and kept: an integer exponent, positive arguments, one logarithm and real terms
+    assert powdenest(exp(3*(log(a) + log(b)))) == a**3*b**3
+    assert powdenest(exp(y*(log(p) + log(q)))) == (p*q)**y
+    assert powdenest(exp(y*(log(a) + log(p)))) == (a*p)**y
+    assert powdenest(exp(y*(log(a) + r))) == (a*exp(r))**y
+    assert powdenest(exp(3*y*log(a))) == a**(3*y)
+    assert powdenest(e, force=True) == (a*b)**y

@@ -376,6 +376,10 @@ def _integral_function_rules() -> dict[RuleKey, Rule]:
             inner = z.args[0]
             assert isinstance(inner, Expr)
             return li(inner)
+        if z.is_extended_real is not True:
+            # li(exp(z)) is Ei(log(exp(z))), which is Ei(z) for -pi < im(z)
+            # <= pi only (SymPy rewrites Ei(2*log(x)) as li(x**2) for any x)
+            return None
         return li(exp(z))
 
     def ei_integral(args: tuple[Expr, ...]) -> Optional[Expr]:

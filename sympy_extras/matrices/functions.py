@@ -52,11 +52,11 @@ References
 """
 from __future__ import annotations
 
-from typing import Final, Optional, Sequence, TypeVar
+from typing import Callable, Final, Optional, Sequence, TypeVar
 
 from sympy_extras.core.add import add
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
-from sympy_extras.core.numbers import Integer, Rational, number_from_fraction
+from sympy_extras.core.numbers import ComplexInfinity, Infinity, Integer, NaN, NegativeInfinity, Rational, number_from_fraction
 from sympy_extras.core.power import pow, sqrt
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.functions import cos, exp, sin
@@ -67,7 +67,7 @@ from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
 from .eigen import (_Field, _FunctionField, _GaussianField, _RationalField, _characteristic_factors, _coefficients, _column,
                     _extension, _fresh_symbol, _roots_in_radicals, _shifted)
-from .linalg import _PolynomialLift, _complex_lift
+from .linalg import _PolynomialLift, _complex_lift, _square, inverse, normal
 
 __all__ = ['MatrixComponents', 'matrix_components', 'matrix_function', 'matrix_exp', 'matrix_power']
 
@@ -164,11 +164,36 @@ def _explicit_values(group: MatrixComponents) -> list[Expr]:
     return values
 
 
+def _spectral_sum(M: ExprMatrix, symbol: Symbol, derivative: Callable[[int, Expr], Expr]) -> ExprMatrix:
+    """The sum over the eigenvalues of ``derivative(j, eigenvalue)`` times
+    the component matrices. A component which is zero (the eigenvalue has
+    a smaller index than its multiplicity) asks nothing of the function;
+    ``ValueError`` when a derivative which is needed is not finite."""
+    n = M.rows
+    zero: Expr = Integer(0)
+    total = [zero] * (n*n)
+    for group in matrix_components(M, symbol):
+        values = _explicit_values(group)
+        for j, component in enumerate(group.components):
+            if all(e == zero for e in component.entries):
+                continue
+            for value in values:
+                scalar = derivative(j, value)
+                if scalar.has(NaN, ComplexInfinity, Infinity, NegativeInfinity):
+                    raise ValueError('the function is not defined on the spectrum of the matrix: its derivative of order %d '
+                                     'at the eigenvalue %s is %s' % (j, value, scalar))
+                matrix = component.subs(symbol, value)
+                total = [a + scalar*b for a, b in zip(total, matrix.entries)]
+    return ExprMatrix(n, n, [e.expand() for e in total])
+
+
 def matrix_function(M: ExprMatrix, f: ExprLike, x: Symbol) -> ExprMatrix:
     """``f(M)`` for the function ``f`` given as an expression in ``x``:
     the sum over the eigenvalues of the derivatives of ``f`` there times
     the component matrices. ``NotImplementedError`` when the eigenvalues
-    are not expressed in radicals.
+    are not expressed in radicals, ``ValueError`` when ``f`` or one of
+    the derivatives which are needed is not defined at an eigenvalue
+    (``1/x`` for a singular matrix, ``sqrt(x)`` for a nilpotent one).
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.functions import sqrt
@@ -181,24 +206,18 @@ def matrix_function(M: ExprMatrix, f: ExprLike, x: Symbol) -> ExprMatrix:
     ExprMatrix([[1, -1], [0, 1]])
     """
     function = to_expr(f)
-    n = M.rows
     symbol = _fresh_symbol(M)
     used = {s.name for s in function.free_symbols if isinstance(s, Symbol)}
     while symbol.name in used:
         symbol = Symbol(symbol.name + '_')
-    zero: Expr = Integer(0)
-    total = [zero] * (n*n)
-    for group in matrix_components(M, symbol):
-        values = _explicit_values(group)
-        derivative = function
-        for j, component in enumerate(group.components):
-            if j:
-                derivative = derivative.diff(x)
-            for value in values:
-                scalar = derivative.subs(x, value)
-                matrix = component.subs(symbol, value)
-                total = [a + scalar*b for a, b in zip(total, matrix.entries)]
-    return ExprMatrix(n, n, [e.expand() for e in total])
+    derivatives = [function]
+
+    def derivative(j: int, value: Expr) -> Expr:
+        while len(derivatives) <= j:
+            derivatives.append(derivatives[-1].diff(x))
+        return derivatives[j].subs(x, value)
+
+    return _spectral_sum(M, symbol, derivative)
 
 
 def _real_exponential(group: MatrixComponents, t: Expr) -> Optional[list[Expr]]:
@@ -269,10 +288,15 @@ def matrix_exp(M: ExprMatrix, t: ExprLike = 1) -> ExprMatrix:
 
 
 def matrix_power(M: ExprMatrix, n: ExprLike) -> ExprMatrix:
-    """``M**n`` for a symbolic exponent ``n``, as a closed form in ``n``
-    (valid for the integers ``n >= 0`` when ``M`` is invertible; with the
-    eigenvalue zero, for ``n`` at least its multiplicity, the powers
-    ``0**n`` being left as they are).
+    """``M**n``. For an integer ``n`` the product itself, the power of
+    the inverse when ``n`` is negative (``ValueError`` for a singular
+    matrix). For a symbolic exponent ``n`` a closed form in ``n`` (valid
+    for the integers ``n >= 0`` when ``M`` is invertible; with the
+    eigenvalue zero the powers ``0**n`` and ``0**(n - j)`` are left as
+    they are, which is right for the integers ``n`` not smaller than the
+    index of that eigenvalue). For another number (``1/2``) the value of
+    the function ``x**n`` on the matrix, ``ValueError`` when it is not
+    defined at an eigenvalue.
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.matrices import ExprMatrix
@@ -280,11 +304,35 @@ def matrix_power(M: ExprMatrix, n: ExprLike) -> ExprMatrix:
     >>> n = Symbol('n')
     >>> matrix_power(ExprMatrix.from_rows([[1, 1], [0, 1]]), n), matrix_power(ExprMatrix.from_rows([[3, 0], [0, 2]]), n)
     (ExprMatrix([[1, n], [0, 1]]), ExprMatrix([[3**n, 0], [0, 2**n]]))
+    >>> matrix_power(ExprMatrix.from_rows([[1, 2], [3, 4]]), -2)
+    ExprMatrix([[11/2, -5/2], [-15/4, 7/4]])
+    >>> matrix_power(ExprMatrix.from_rows([[0, 1], [0, 0]]), n)
+    ExprMatrix([[0**n, 0**(n - 1)*n], [0, 0**n]])
     """
     exponent = to_expr(n)
-    variable = Symbol('_base')
-    used = {s.name for s in exponent.free_symbols if isinstance(s, Symbol)} | {
-        s.name for e in M.entries for s in e.free_symbols if isinstance(s, Symbol)}
-    while variable.name in used:
-        variable = Symbol(variable.name + '_')
-    return matrix_function(M, pow(variable, exponent), variable)
+    size = _square(M)
+    if isinstance(exponent, Integer):
+        k = int(exponent)
+        base = M if k >= 0 else inverse(M)
+        result = ExprMatrix.eye(size)
+        k = abs(k)
+        while k:
+            if k & 1:
+                result = (result * base).applyfunc(normal)
+            k >>= 1
+            if k:
+                base = (base * base).applyfunc(normal)
+        return result
+    symbol = _fresh_symbol(M)
+    used = {s.name for s in exponent.free_symbols if isinstance(s, Symbol)}
+    while symbol.name in used:
+        symbol = Symbol(symbol.name + '_')
+
+    def derivative(j: int, value: Expr) -> Expr:
+        # the derivative of order j of x**n: n (n - 1) ... (n - j + 1) x**(n - j)
+        falling: Expr = Integer(1)
+        for i in range(j):
+            falling = falling * (exponent - i)
+        return falling * pow(value, exponent - j)
+
+    return _spectral_sum(M, symbol, derivative)

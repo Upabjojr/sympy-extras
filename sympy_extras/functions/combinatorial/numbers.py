@@ -837,31 +837,34 @@ class Mobius(_NumberTheoretic):
     def eval(cls, *args: Expr) -> Optional[Expr]:
         from sympy_extras.core.mul import Mul
         from sympy_extras.core.relational import lt
-        from sympy_extras.core.logic import false, true
+        from sympy_extras.core.logic import true
         [n] = args
         _check_positive_integer(n)
         if n.is_prime is True:
             return Integer(-1)
         if n == Integer(1):
             return Integer(1)
-        result: Optional[Expr] = None
+        # SymPy multiplies the signs of the numeric factors and forgets the
+        # symbolic ones (mobius(3*n) is -1 there, wrong at n = 2 and n = 3),
+        # and takes m**e with e > 1 for a square without excluding m = 1
+        # (mobius(n**2) is 0 there, wrong at n = 1): only a certain square
+        # factor decides the value of a product with symbols.
+        whole = _integer(n)
+        if whole is not None:
+            factors = _factors(whole)
+            if any(v > 1 for v in factors.values()):
+                return Integer(0)
+            return Integer(-1) if len(factors) % 2 else Integer(1)
         for factor in (n.args if isinstance(n, Mul) else (n,)):
             m, e = factor.as_base_exp()
             if not (m.is_integer is True and m.is_positive is True and e.is_integer is True and e.is_positive is True):
                 return None
-            relation = lt(Integer(1), e)
-            if relation == true:
-                result = Integer(0)
-                continue
             value = _integer(m)
-            if value is not None:
-                factors = _factors(value)
-                if any(v > 1 for v in factors.values()):
-                    result = Integer(0)
-                elif relation == false:
-                    sign: Expr = Integer(-1) if len(factors) % 2 else Integer(1)
-                    result = sign if result is None else mul(result, sign)
-        return result
+            if value is not None and any(v > 1 for v in _factors(value).values()):
+                return Integer(0)
+            if lt(Integer(1), e) == true and (m.is_prime is True or lt(Integer(1), m) == true):
+                return Integer(0)
+        return None
 
 
 # PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:primepi

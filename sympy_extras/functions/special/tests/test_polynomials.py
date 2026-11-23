@@ -5,11 +5,12 @@ from __future__ import annotations
 import itertools
 from typing import Callable
 
+import mpmath
 import pytest
 import sympy
 
 from sympy_extras._typing_sympy import as_expr as sympy_expr
-from sympy_extras.core import I, Integer, Rational, Symbol, oo
+from sympy_extras.core import I, Integer, Rational, Symbol, oo, zoo
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import assoc_laguerre, chebyshevt, chebyshevu, conjugate, hermite, laguerre, legendre
@@ -32,6 +33,14 @@ def same(ours: Expr, theirs: sympy.Basic) -> bool:
     return str(to_sympy(ours, evaluate=False)) == str(theirs)
 
 
+def kept_at_infinity(ours: Expr, theirs: sympy.Basic) -> bool:
+    """sympy/sympy#31275 (V108): SymPy gives ``f(n, oo) = oo`` (``(-1)**n*oo`` for ``laguerre``) for any
+    symbolic order, the order 0 for which the polynomial is 1 included; the node is kept here unless the
+    order is known to be positive."""
+    text, expected = str(ours), str(theirs)
+    return (', oo)' in text or ', -oo)' in text) and 'oo' in expected and 'oo)' not in expected
+
+
 def test_values_match_sympy() -> None:
     orders: list[Expr] = [Integer(k) for k in range(-4, 8)] + [n, -n, m, -m, -n - 1, -m - 2, s]
     points: list[Expr] = [x, -x, x + 1, 2*y, Integer(0), Integer(1), Integer(-1), Rational(1, 2), oo, -oo, I]
@@ -45,6 +54,11 @@ def test_values_match_sympy() -> None:
                 with pytest.raises(ValueError):
                     f(order, z)
                 continue
+            if z in (oo, -oo) and kept_at_infinity(f(order, z), theirs):
+                assert order.is_positive is not True, (f.__name__, order, z)
+                continue
+            if f is laguerre and z == -oo and str(theirs) == 'nan' and ', -oo)' in str(f(order, z)):
+                continue  # exp(x)*laguerre(-n - 1, -x) at -oo is 0*oo for SymPy; the node is kept here
             if not same(f(order, z), theirs):
                 different.append((f.__name__, str(order), str(z), str(f(order, z)), str(theirs)))
     for k in range(5):
@@ -58,6 +72,44 @@ def test_values_match_sympy() -> None:
         if not same(ours, theirs):
             different.append(('assoc_laguerre', 'm', str(z), str(ours), str(theirs)))
     assert not different, different[:20]
+
+
+def test_symbolic_order_at_infinity() -> None:
+    # sympy/sympy#31275 (V108): oo for a positive order only; the polynomials of order 0 are 1
+    from sympy_extras.functions import hermite_prob
+    positive, k = Symbol('p', positive=True), Symbol('k', integer=True, positive=True)
+    for f in (legendre, chebyshevt, chebyshevu, hermite, hermite_prob):
+        assert f(positive, oo) == oo and f(k, oo) == oo, f
+        assert ', oo)' in str(f(s, oo)) and ', oo)' in str(f(n, oo)), f
+        assert f(Integer(0), oo) == 1, f
+    assert laguerre(k, oo) == (-1)**k*oo and laguerre(k, -oo) == oo and laguerre(positive, -oo) == oo
+    assert ', oo)' in str(laguerre(positive, oo)) and ', oo)' in str(laguerre(s, oo))
+    assert ', -oo)' in str(laguerre(s, -oo)) and laguerre(Integer(0), oo) == 1
+
+
+def test_gegenbauer_at_minus_one() -> None:
+    # sympy/sympy#31275 (V107): the pole at x = -1 for re(a) > 1/2 is that of the noninteger orders;
+    # C_n^a(-1) = (-1)**n*gamma(2*a + n)/(gamma(2*a)*n!) for the polynomials
+    from sympy_extras.functions import Gegenbauer, gegenbauer
+    k, q = Symbol('k', integer=True, nonnegative=True), Symbol('q', noninteger=True)
+    three_quarters = Rational(3, 4)
+    assert gegenbauer(s, three_quarters, Integer(-1)) == Gegenbauer(s, three_quarters, Integer(-1))
+    assert gegenbauer(q, three_quarters, Integer(-1)) == zoo
+    value = gegenbauer(k, three_quarters, Integer(-1))
+    for order, expected in ((2, Rational(15, 8)), (3, Rational(-35, 16))):
+        assert gegenbauer(Integer(order), three_quarters, Integer(-1)) == expected
+        assert abs(complex(value.subs(k, Integer(order)).evalf(20)) - complex(expected.evalf(20))) < 1e-15
+        assert abs(mpmath.gegenbauer(order, 0.75, -1) - float(expected.p)/expected.q) < 1e-12
+
+
+def test_hermite_prob_at_zero() -> None:
+    # sympy/sympy#31275 (V110): He_n(0) = 2**(n/2)*sqrt(pi)/gamma((1 - n)/2); SymPy has no 2**(n/2)
+    from sympy_extras.functions import hermite_prob
+    value = hermite_prob(s, Integer(0))
+    for order in range(7):
+        assert abs(complex(value.subs(s, Integer(order)).evalf(20)) - complex(hermite_prob(Integer(order), Integer(0)))) < 1e-15
+    at = complex(value.subs(s, Rational(7, 10)).evalf(20))
+    assert abs(at - complex(mpmath.hermite(0.7, 0)*mpmath.mpf(2)**-0.35)) < 1e-12
 
 
 def test_derivatives_conjugates_numbers() -> None:
@@ -88,6 +140,12 @@ def test_jacobi_gegenbauer_assoc_legendre_hermite_prob_match_sympy() -> None:
                 ours()
             return
         value = ours()
+        if kept_at_infinity(value, expected):
+            return
+        if 'zoo' in str(expected) and ('gegenbauer(' in str(value) or '(-1)**' in str(value)) and value != zoo:
+            return  # sympy/sympy#31275 (V107), see test_gegenbauer_at_minus_one
+        if name == 'hermite_prob' and 'sqrt(pi)/gamma' in str(expected) and '2**' in str(value):
+            return  # sympy/sympy#31275 (V110), see test_hermite_prob_at_zero
         if not same(value, expected):
             different.append((name, str(value), str(expected)))
 

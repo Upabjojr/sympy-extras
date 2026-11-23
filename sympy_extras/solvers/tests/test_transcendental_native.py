@@ -172,3 +172,17 @@ def test_lambert_native() -> None:
     assert isinstance(two, FiniteSet) and len(two.args) == 2
     for v in two.args:
         assert isinstance(v, Basic) and v.has(LambertW)
+
+
+def test_root_kernel_vanishing_in_a_denominator() -> None:
+    # the kernel of a root is nonnegative, not positive: its negative
+    # powers are not defined at the zero of the radicand, which the
+    # cleared relation used to include (sympy/sympy#31275, V252:
+    # u**5 - u**2 + 1 > 0 for every u > 0, so that the answer is x > 0)
+    assert solve_transcendental(sqrt(x) + 1/cbrt(x) > 1, x) == interval(0, oo, True, True)
+    assert solve_transcendental(1/sqrt(x) > 1, x) == interval(0, 1, True, True)
+    assert solve_transcendental(1/sqrt(x) > -1, x) == interval(0, oo, True, True)
+    assert solve_transcendental(sqrt(x) + 1/x >= 1, x) == interval(0, oo, True, True)
+    assert solve_transcendental(1/sqrt(x - 1) >= 1, x) == interval(1, 2, True, False)
+    # a root in the numerator keeps its endpoint
+    assert solve_transcendental(sqrt(x) < 1, x) == interval(0, 1, False, True)
