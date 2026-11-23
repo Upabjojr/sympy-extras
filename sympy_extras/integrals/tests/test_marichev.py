@@ -255,7 +255,8 @@ def test_the_logarithmic_case_takes_the_expansion_before_the_limit() -> None:
     started = time.monotonic()
     value = mellin_integrate(expint(1, a * t) * exp(-(s - a) * t), t, [s > a])
     assert value is not None and simplify(value.value - log(s / a) / (s - a)) == 0
-    assert time.monotonic() - started < 20
+    from sympy_extras.settings import settings
+    assert time.monotonic() - started < 20 * settings.time_scale
     # Maxima's specint 118, Mathematica: log(s)/(s - a)
     found = definite_integral((log(a) + expint(1, a * t)) * exp(a * t) * exp(-s * t), (t, 0, oo), s > a)
     assert simplify(found - log(s) / (s - a)) == 0

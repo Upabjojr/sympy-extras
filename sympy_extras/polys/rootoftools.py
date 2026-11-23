@@ -426,6 +426,12 @@ class RootSum(Expr):
     def args(self) -> tuple[Basic, ...]:
         return (self._polynomial, self._function, self._variable)
 
+    def _eval_facts(self) -> dict[str, bool]:
+        # a sum of values of a commutative function, as in SymPy (the
+        # printers place a term not known to commute after the others)
+        commutative = self._function.expr.is_commutative
+        return {} if commutative is None else {'commutative': commutative}
+
     @property
     def expr(self) -> Expr:
         """The polynomial, in the bound variable."""
