@@ -6,7 +6,10 @@ Numbers are integers or decimals (``Integer``, ``Float``; ``1/2`` is the
 quotient of two integers, ``Rational(1, 2)``); names are the constants
 (``pi``, ``E``, ``I``, ``oo``, ...), the functions (``sin(x)``,
 ``log(x, 2)``, ``besselj(n, x)``: SymPy's names) and otherwise symbols, or
-undefined functions when called (``f(x)``); the operators are ``+``,
+undefined functions when called (``f(x)``), except the other names which
+SymPy calls (``Eq(x, y)``, ``Derivative(f(x), x)``, ``O(x)``, ``S(1)``,
+``diff(x**2, x)``) and the names of the Booleans and of the sets (``true``,
+``Reals``), which are outside the grammar; the operators are ``+``,
 ``-``, ``*``, ``/``, ``**`` (right associative, binding tighter than a
 unary sign: ``-x**2`` is ``-(x**2)``), with parentheses and calls.
 Anything else is :class:`ParseUnsupported`: ``sympify`` then asks the
@@ -29,6 +32,7 @@ import importlib
 import re
 from typing import Callable, Optional, Union
 
+from ._foreign_names import SYMPY_CALLABLE_NAMES, SYMPY_CONSTANT_NAMES
 from .basic import Basic
 from .expr import Expr
 # imported by sympify inside its function (the core is loaded by then)
@@ -161,6 +165,8 @@ class _Parser:
                                       'EulerGamma': EulerGamma, 'Catalan': Catalan, 'GoldenRatio': GoldenRatio,
                                       'TribonacciConstant': TribonacciConstant}
         found = constants.get(text)
+        if found is None and text in SYMPY_CONSTANT_NAMES:
+            raise ParseUnsupported('%s in %r' % (text, self.text))  # true, Reals: not symbols of that name
         return found if found is not None else Symbol(text)
 
     def function(self, text: str, args: list[Expr]) -> Expr:
@@ -187,6 +193,11 @@ class _Parser:
                 return Pow(args[0], Rational(1, int(args[1])))
         f = _function_of(text, self.evaluate, len(args))
         if f is None:
+            if text in SYMPY_CALLABLE_NAMES:
+                # Eq(x, y), Derivative(f(x), x), O(x), S(1), diff(x**2, x): a class or
+                # a function of SymPy which this parser has not, not an undefined
+                # function of that name
+                raise ParseUnsupported('%s(...) in %r' % (text, self.text))
             return as_expr_checked(Function(text)(*args), self.text)
         return as_expr_checked(f(*args), self.text)
 

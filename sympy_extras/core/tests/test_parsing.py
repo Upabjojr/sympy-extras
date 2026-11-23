@@ -8,7 +8,8 @@ import pytest
 import sympy
 from sympy.parsing.sympy_parser import parse_expr
 
-from sympy_extras.core import (Add, And, Basic, Eq, Equivalent, Expr, Float, Ge, Gt, I, Implies, Integer, Le, Lt, Mod, Mul, Ne, Not,
+from sympy_extras.core import (Add, And, Basic, Derivative, Eq, Equivalent, Expr, Float, Function, Ge, Gt, I, Implies,
+    Integer, Le, Lt, Mod, Mul, Ne, Not, Order, sympify,
     Or, Pow, Rational, Relational, Symbol, Xor, as_expr, pow, srepr, sstr)
 from sympy_extras.core.numbers import ImaginaryUnit
 from sympy_extras.core.parsing import ParseUnsupported, parse
@@ -208,3 +209,23 @@ def test_printed_booleans_and_relations_keep_their_truth_value() -> None:
                 names: dict[str, sympy.Basic] = {n: sympy.true if v else sympy.false for n, v in booleans.items()}
                 names.update({n: sympy.Integer(v) for n, v in numbers.items()})
                 assert bool(parse_expr(text, local_dict=names)) == _truth(tree, booleans, numbers), (text, flags, numbers)
+
+
+def test_names_of_sympy_are_not_undefined_functions() -> None:
+    # Eq(x, y), Derivative(...), O(x), S(1), diff(...) were read as undefined functions of
+    # those names and true, Reals as symbols: they are outside the grammar (for the bridge)
+    for text in ['Eq(x, y)', 'Derivative(x**2, x)', 'O(x)', 'S(1)/2', 'Float(1.5)', 'diff(x**2, x)', 'And(x, y)',
+                 'AccumBounds(-1, 1)', 'Integral(x, x)', 'Mod(x, y, z)', 'true', 'x + Reals', 'N(pi)']:
+        with pytest.raises(ParseUnsupported):
+            parse(text)
+        with pytest.raises(ParseUnsupported):
+            parse(text, evaluate=False)
+    # the other names are symbols and undefined functions, as before
+    x = Symbol('x')
+    assert parse('F(x) + gamma + S') == Function('F')(x) + Symbol('gamma') + Symbol('S')
+    # and with the bridge the printed forms read back
+    y = Symbol('y')
+    printed: list[Basic] = [Eq(x, y), Lt(x + 1, 2*y), And(Lt(x, y), Ne(x, 1)), Or(x, Xor(y, Not(x))),
+                            Derivative(Function("f")(x), x, x), Order(x**2, x), Implies(x, y), Mod(x, 3) + 1]
+    for e in printed:
+        assert sympify(sstr(e)) == e, sstr(e)

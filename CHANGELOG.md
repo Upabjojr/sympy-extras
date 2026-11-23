@@ -3755,7 +3755,16 @@ remove public functions. Breaking changes are listed here when they happen.
 - `sympy_extras.core.parsing.parse`: `Mod(x, 3)` is the modulo (it was
   read as an undefined function named `Mod`, so that a printed `Mod` did
   not read back); with `evaluate=False`, `sqrt`, `cbrt` and `root` build
-  the unevaluated power (`sqrt(4)` stayed `2`).
+  the unevaluated power (`sqrt(4)` stayed `2`). The names which SymPy
+  calls and the parser has not (`Eq(x, y)`, `Derivative(f(x), x)`,
+  `O(x)`, `S(1)`, `Float(1.5)`, `diff(x**2, x)`, ...: the list
+  `sympy_extras.core._foreign_names`) and the names `true`, `false`,
+  `Reals`, ... are `ParseUnsupported` instead of undefined functions and
+  symbols of those names: `sympify('Eq(x, y)')` was `Function('Eq')(x,
+  y)` and is now the equation, read by the bridge (a `SympifyError`
+  without one), so that the printed relations, Booleans, derivatives and
+  order terms read back. **Changed behaviour**: `sympify('N(t)')` follows
+  SymPy (`t`) instead of giving an undefined function `N`.
 - `sympy_extras.core.pow`: the power of an unevaluated product with a
   zero coefficient lost the zero (`pow(Mul(0, 3), 1/2)` was `sqrt(3)`);
   it stays unevaluated.
