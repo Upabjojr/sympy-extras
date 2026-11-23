@@ -346,7 +346,9 @@ class Re(DefinedFunction):
         if s.is_extended_real or a.is_extended_real:
             return re(diff(a, s))
         if s.is_imaginary or a.is_imaginary:
-            return mul(MINUS_ONE, I, im(diff(a, s)))
+            # with s = I*t: d/ds re(a) = -I*d/dt re(a) = -I*re(I*a') = I*im(a')
+            # (SymPy has -I*im(a'), the wrong sign)
+            return mul(I, im(diff(a, s)))
         return Derivative(self, s)
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
@@ -833,9 +835,18 @@ class Atan2(DefinedFunction):
             if x.is_number:
                 # SymPy: Piecewise((pi, re(x) < 0), (0, Ne(x, 0)), (nan, True)),
                 # evaluated when its conditions are decided
+                # ... except on the negative imaginary axis, where
+                # x/sqrt(x**2) is -1 and the defining logarithm gives pi
+                # (SymPy returns 0 for atan2(0, -2*I))
                 negative = re(x).is_extended_negative
                 if negative is True:
                     return pi
+                if re(x).is_zero is True:
+                    below = im(x).is_extended_negative
+                    if below is True:
+                        return pi
+                    if below is None:
+                        return None
                 if negative is False:
                     if x.is_zero is False:
                         return ZERO

@@ -186,7 +186,7 @@ def trig_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: 
     integer there), ``at_multiple(n, lt)`` the leading term from the one
     ``lt`` of ``arg - shift(n)``."""
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     k = multiple(x0)
     if k.is_integer is True:
         lt = add(arg, mul(Integer(-1), shift(k))).as_leading_term(x)
@@ -353,6 +353,20 @@ def acot_taylor_term(n: int, x: Expr) -> Expr:
     return _div(mul(Integer((-1) ** ((n + 1) // 2)), pow(x, Integer(n))), Integer(n))
 
 
+def _value_at_zero(arg: Expr, x: Symbol) -> Expr:
+    """The value of ``arg`` at ``x = 0``; where the substitution gives
+    ``nan`` (``sin(x)/x``) and the leading term is a constant, that
+    constant. SymPy goes on with ``f(constant)`` there, which is not the
+    leading term at a branch point: ``acos(sin(x)/x)`` is
+    ``sqrt(3)*sqrt(x**2)/3``, not ``acos(1) = 0``."""
+    x0 = arg.subs(x, Integer(0)).cancel()
+    if isinstance(x0, NaN):
+        leading = arg.as_leading_term(x)
+        if not leading.has(x) and leading.is_finite is True:
+            return leading
+    return x0
+
+
 def _is_number(e: Expr, value: int) -> bool:
     return e.is_Number and e == value
 
@@ -361,7 +375,7 @@ def _is_number(e: Expr, value: int) -> bool:
 def asin_acos_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr, is_acos: bool) -> Expr:
     from sympy_extras.functions.elementary.complexes import im
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if isinstance(x0, NaN):
         return node._rebuilt([arg.as_leading_term(x)])
     if not is_acos and x0.is_zero is True:
@@ -440,7 +454,7 @@ def atan_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: 
     from sympy_extras.core.numbers import I
     from sympy_extras.functions.elementary.complexes import im, re
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if isinstance(x0, NaN):
         return node._rebuilt([arg.as_leading_term(x)])
     if x0.is_zero is True:
@@ -496,7 +510,7 @@ def acot_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: 
     from sympy_extras.core.numbers import I
     from sympy_extras.functions.elementary.complexes import im, re
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if isinstance(x0, NaN):
         return node._rebuilt([arg.as_leading_term(x)])
     if isinstance(x0, ComplexInfinity):
@@ -636,7 +650,7 @@ def acsc_taylor_term(n: int, x: Expr) -> Expr:
 def asec_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
     from sympy_extras.functions.elementary.complexes import im
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if isinstance(x0, NaN):
         return node._rebuilt([arg.as_leading_term(x)])
     if _is_number(x0, 1):
@@ -686,7 +700,7 @@ def asec_nseries(node: Application, x: Symbol, n: int, logx: Optional[Expr], cdi
 def acsc_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
     from sympy_extras.functions.elementary.complexes import im
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if isinstance(x0, NaN):
         return node._rebuilt([arg.as_leading_term(x)])
     if x0 in (Integer(-1), Integer(1), Integer(0)):
@@ -808,7 +822,7 @@ def asinh_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir:
     from sympy_extras.core.numbers import I
     from sympy_extras.functions.elementary.complexes import im, re
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if x0.is_zero is True:
         return arg.as_leading_term(x)
     if isinstance(x0, NaN):
@@ -858,8 +872,12 @@ def acosh_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir:
     from sympy_extras.core.numbers import I
     from sympy_extras.functions.elementary.complexes import im
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
-    if x0 in (Integer(-1), Integer(0), Integer(1), zoo):
+    x0 = _value_at_zero(arg, x)
+    if _is_number(x0, 1):
+        # acosh(1 + u) = sqrt(2*u) + ... (the logarithmic form does not
+        # always have a leading term: acosh(sin(x)/x))
+        return _sqrt(Integer(2)) * _sqrt((arg - Integer(1)).as_leading_term(x))
+    if x0 in (Integer(-1), Integer(0), zoo):
         return _log_lt(node, x, logx, cdir, False)
     if isinstance(x0, NaN):
         return _nan_leading_term(node, x)
@@ -902,7 +920,7 @@ def atanh_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir:
     from sympy_extras.core.numbers import I
     from sympy_extras.functions.elementary.complexes import im
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if x0.is_zero is True:
         return arg.as_leading_term(x)
     if isinstance(x0, NaN):
@@ -952,7 +970,7 @@ def acoth_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir:
     from sympy_extras.core.numbers import I
     from sympy_extras.functions.elementary.complexes import im
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if isinstance(x0, ComplexInfinity):
         return (Integer(1) / arg).as_leading_term(x)
     if isinstance(x0, NaN):
@@ -1002,8 +1020,11 @@ def asech_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir:
     from sympy_extras.core.numbers import I
     from sympy_extras.functions.elementary.complexes import im
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
-    if x0 in (Integer(-1), Integer(0), Integer(1), zoo):
+    x0 = _value_at_zero(arg, x)
+    if _is_number(x0, 1):
+        # asech(1 - u) = acosh(1 + u + ...) = sqrt(2*u) + ...
+        return _sqrt(Integer(2)) * _sqrt((Integer(1) - arg).as_leading_term(x))
+    if x0 in (Integer(-1), Integer(0), zoo):
         return _log_lt(node, x, logx, cdir, False)
     if isinstance(x0, NaN):
         return _nan_leading_term(node, x)
@@ -1048,7 +1069,7 @@ def acsch_leading_term(node: Application, x: Symbol, logx: Optional[Expr], cdir:
     from sympy_extras.core.numbers import I
     from sympy_extras.functions.elementary.complexes import im, re
     arg = node.args[0]
-    x0 = arg.subs(x, Integer(0)).cancel()
+    x0 = _value_at_zero(arg, x)
     if x0 in (-I, I, Integer(0)):
         return _log_lt(node, x, logx, cdir, False)
     if isinstance(x0, NaN):
