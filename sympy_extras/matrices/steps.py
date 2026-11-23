@@ -23,7 +23,10 @@ matrix); a :class:`Step` pairs it with the matrix it produces. The
 arithmetic is exact, in the field of the entries (rational functions of
 symbols, ``I``, square roots of rationals), and a pivot is an entry
 which is not identically zero: the steps are those for generic values
-of the symbols.
+of the symbols. A matrix with floats is eliminated exactly, each float
+being the rational number it stores, and the factors and the matrices of
+the steps are written as floats (see "Floating point entries" in
+``docs/matrices.md``): a pivot is never a rounding error.
 
 Examples
 ========
@@ -71,7 +74,8 @@ from sympy_extras.core.numbers import Integer, Rational
 
 from .dense import ExprMatrix
 from .eigen import _Field, _FunctionField, _GaussianField, _RationalField
-from .linalg import _PolynomialLift, _complex_lift, _kernels, _square, normal
+from .linalg import (_PolynomialLift, _complex_lift, _kernels, _square, approximate, approximate_matrix, exact_matrix,
+                     float_precision, normal)
 
 __all__ = ['RowOperation', 'Step', 'DeterminantSteps', 'echelon_steps', 'rref_steps', 'inverse_steps', 'solve_steps',
            'determinant_steps', 'format_steps']
@@ -224,6 +228,25 @@ def _elimination(M: ExprMatrix) -> _Elimination:
     return _Worker(_RationalField())
 
 
+def _as_floats(steps: Sequence[Step], digits: int) -> list[Step]:
+    """The steps of an exact elimination with their numbers as floats."""
+    return [Step(RowOperation(step.operation.kind, step.operation.target, step.operation.source,
+                              approximate(step.operation.factor, digits)), approximate_matrix(step.matrix, digits))
+            for step in steps]
+
+
+def _steps(M: ExprMatrix, reduced: bool, columns: int) -> list[Step]:
+    """The exact steps for the matrix, whose floats are the rational
+    numbers they store."""
+    exact = exact_matrix(M)
+    return _elimination(exact).steps(exact, reduced, columns)
+
+
+def _presented(M: ExprMatrix, steps: list[Step]) -> list[Step]:
+    digits = float_precision([M])
+    return steps if digits is None else _as_floats(steps, digits)
+
+
 def echelon_steps(M: ExprMatrix) -> list[Step]:
     """The steps of the forward elimination to a row echelon form (row
     exchanges and additions of multiples of the pivot rows to the rows
@@ -236,7 +259,7 @@ def echelon_steps(M: ExprMatrix) -> list[Step]:
     >>> echelon_steps(ExprMatrix.from_rows([[2, 1], [4, a]]))
     [Step(R2 <- R2 - (2)*R1, ExprMatrix([[2, 1], [0, a - 2]]))]
     """
-    return _elimination(M).steps(M, False, M.cols)
+    return _presented(M, _steps(M, False, M.cols))
 
 
 def rref_steps(M: ExprMatrix) -> list[Step]:
@@ -251,7 +274,7 @@ def rref_steps(M: ExprMatrix) -> list[Step]:
     Step(R2 <- R2 - R1, ExprMatrix([[1, 2], [0, 1]]))
     Step(R1 <- R1 - (2)*R2, ExprMatrix([[1, 0], [0, 1]]))
     """
-    return _elimination(M).steps(M, True, M.cols)
+    return _presented(M, _steps(M, True, M.cols))
 
 
 def inverse_steps(M: ExprMatrix) -> list[Step]:
@@ -268,11 +291,11 @@ def inverse_steps(M: ExprMatrix) -> list[Step]:
     """
     n = _square(M)
     augmented = M.col_insert(n, ExprMatrix.eye(n))
-    steps = _elimination(augmented).steps(augmented, True, n)
-    final = steps[-1].matrix if steps else augmented
+    steps = _steps(augmented, True, n)
+    final = steps[-1].matrix if steps else exact_matrix(augmented)
     if any(final[i, j] != (1 if i == j else 0) for i in range(n) for j in range(n)):
         raise ValueError('the matrix is singular')
-    return steps
+    return _presented(M, steps)
 
 
 def solve_steps(A: ExprMatrix, B: ExprMatrix) -> list[Step]:
@@ -289,7 +312,7 @@ def solve_steps(A: ExprMatrix, B: ExprMatrix) -> list[Step]:
     if A.rows != B.rows:
         raise ValueError('%d equations and %d right-hand sides' % (A.rows, B.rows))
     augmented = A.col_insert(A.cols, B)
-    return _elimination(augmented).steps(augmented, True, A.cols)
+    return _presented(augmented, _steps(augmented, True, A.cols))
 
 
 def determinant_steps(M: ExprMatrix) -> DeterminantSteps:
@@ -305,12 +328,18 @@ def determinant_steps(M: ExprMatrix) -> DeterminantSteps:
     ((Step(R2 <- R2 - (a)*R1, ExprMatrix([[1, a], [0, 1 - a**2]])),), 1 - a**2)
     """
     n = _square(M)
-    steps = echelon_steps(M)
-    final = steps[-1].matrix if steps else M
+    steps = _steps(M, False, M.cols)
+    final = steps[-1].matrix if steps else exact_matrix(M)
     exchanges = sum(1 for step in steps if step.operation.kind == 'swap')
     diagonal = [final[i, i] for i in range(n)]
     sign: Expr = Integer(-1) if exchanges % 2 else Integer(1)
-    return DeterminantSteps(steps, exchanges, diagonal, normal(mul(sign, *diagonal)))
+    value = normal(mul(sign, *diagonal))
+    digits = float_precision([M])
+    if digits is not None:
+        # the value is the exact determinant correctly rounded, not the product of the rounded diagonal
+        return DeterminantSteps(_as_floats(steps, digits), exchanges, [approximate(d, digits) for d in diagonal],
+                                approximate(value, digits))
+    return DeterminantSteps(steps, exchanges, diagonal, value)
 
 
 def format_steps(M: ExprMatrix, steps: Sequence[Step]) -> str:

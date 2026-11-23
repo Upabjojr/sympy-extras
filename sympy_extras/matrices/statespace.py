@@ -66,7 +66,7 @@ from sympy_extras.simplify.radsimp import fraction
 
 from .dense import ExprMatrix
 from .eigen import _coefficients
-from .linalg import _square, inverse, normal, rank, rref
+from .linalg import (_square, approximate_matrix, exact_matrix, float_precision, inverse, normal, rank, rref)
 
 __all__ = ['controllability_matrix', 'observability_matrix', 'is_controllable', 'is_observable', 'transfer_function',
            'pole_placement', 'realization', 'controllable_decomposition', 'observable_decomposition', 'minimal_realization']
@@ -88,6 +88,10 @@ def controllability_matrix(A: ExprMatrix, B: ExprMatrix) -> ExprMatrix:
     n = _square(A)
     if B.rows != n:
         raise ValueError('B has %d rows for a state of dimension %d' % (B.rows, n))
+    digits = float_precision([A, B])
+    if digits is not None:
+        # the powers of the matrix as stored, not rounded one by one
+        return approximate_matrix(controllability_matrix(exact_matrix(A), exact_matrix(B)), digits)
     blocks = [B]
     for _ in range(n - 1):
         blocks.append((A*blocks[-1]).applyfunc(normal))
@@ -112,13 +116,13 @@ def is_controllable(A: ExprMatrix, B: ExprMatrix) -> bool:
     >>> is_controllable(A, ExprMatrix.column([1, 1])), is_controllable(A, ExprMatrix.column([1, 0]))
     (True, False)
     """
-    return rank(controllability_matrix(A, B)) == A.rows
+    return rank(controllability_matrix(exact_matrix(A), exact_matrix(B))) == A.rows
 
 
 def is_observable(A: ExprMatrix, C: ExprMatrix) -> bool:
     """Whether the pair ``(A, C)`` is observable (for generic values of
     the symbols)."""
-    return rank(observability_matrix(A, C)) == A.rows
+    return rank(observability_matrix(exact_matrix(A), exact_matrix(C))) == A.rows
 
 
 def transfer_function(A: ExprMatrix, B: ExprMatrix, C: ExprMatrix, s: Symbol, D: Optional[ExprMatrix] = None) -> ExprMatrix:
@@ -137,6 +141,11 @@ def transfer_function(A: ExprMatrix, B: ExprMatrix, C: ExprMatrix, s: Symbol, D:
         raise ValueError('shapes: A %s, B %s, C %s' % (A.shape, B.shape, C.shape))
     if any(e.has(s) for M in (A, B, C) for e in M.entries):
         raise ValueError('%s occurs in the matrices of the system' % (s,))
+    given = [A, B, C] if D is None else [A, B, C, D]
+    digits = float_precision(given)
+    if digits is not None:
+        return approximate_matrix(transfer_function(exact_matrix(A), exact_matrix(B), exact_matrix(C), s,
+                                                    None if D is None else exact_matrix(D)), digits)
     if n == 0:
         result = ExprMatrix.zeros(C.rows, B.cols)
     else:
@@ -165,6 +174,13 @@ def pole_placement(A: ExprMatrix, B: ExprMatrix, target: Union[ExprLike, Sequenc
     n = _square(A)
     if B.shape != (n, 1):
         raise ValueError('pole placement by the formula of Ackermann is for one input: B has the shape %s' % (B.shape,))
+    wanted = ExprMatrix(1, 1, [to_expr(target)]) if isinstance(target, (Expr, int, float, Fraction)) \
+        else ExprMatrix(1, len(target), [to_expr(pole) for pole in target])
+    digits = float_precision([A, B, wanted])
+    if digits is not None:
+        exact_target: Union[Expr, list[Expr]] = exact_matrix(wanted)[0, 0] \
+            if isinstance(target, (Expr, int, float, Fraction)) else list(exact_matrix(wanted).entries)
+        return approximate_matrix(pole_placement(exact_matrix(A), exact_matrix(B), exact_target, s), digits)
     coefficients: list[Expr]
     if isinstance(target, (Expr, int, float, Fraction)):
         if s is None:
@@ -208,6 +224,11 @@ def realization(G: ExprLike, s: Symbol) -> tuple[ExprMatrix, ExprMatrix, ExprMat
     >>> realization(2*s/(s + 1), s)
     (ExprMatrix([[-1]]), ExprMatrix([[1]]), ExprMatrix([[-2]]), ExprMatrix([[2]]))
     """
+    given = ExprMatrix(1, 1, [to_expr(G)])
+    digits = float_precision([given])
+    if digits is not None:
+        A0, B0, C0, D0 = realization(exact_matrix(given)[0, 0], s)
+        return approximate_matrix(A0, digits), B0, approximate_matrix(C0, digits), approximate_matrix(D0, digits)
     numerator, denominator = fraction(normal(to_expr(G)))
     top = [Integer(0)] if expand(numerator) == 0 else _coefficients(expand(numerator), s)
     bottom = _coefficients(expand(denominator), s)
@@ -257,6 +278,10 @@ def controllable_decomposition(A: ExprMatrix, B: ExprMatrix) -> tuple[ExprMatrix
     >>> A1, B1, r
     (ExprMatrix([[1, 1], [0, 2]]), ExprMatrix([[1], [0]]), 1)
     """
+    digits = float_precision([A, B])
+    if digits is not None:
+        T0, A0, B0, r0 = controllable_decomposition(exact_matrix(A), exact_matrix(B))
+        return approximate_matrix(T0, digits), approximate_matrix(A0, digits), approximate_matrix(B0, digits), r0
     T, r = _completed_basis(controllability_matrix(A, B))
     inverted = inverse(T)
     return T, (inverted*A*T).applyfunc(normal), (inverted*B).applyfunc(normal), r
@@ -269,6 +294,10 @@ def observable_decomposition(A: ExprMatrix, C: ExprMatrix) -> tuple[ExprMatrix, 
     ``A1 = T**-1 A T = [[Ao, 0], [*, Au]]``, ``C1 = C T = [Co, 0]``
 
     with ``(Ao, Co)`` observable of order ``r``."""
+    digits = float_precision([A, C])
+    if digits is not None:
+        T0, A0, C0, r0 = observable_decomposition(exact_matrix(A), exact_matrix(C))
+        return approximate_matrix(T0, digits), approximate_matrix(A0, digits), approximate_matrix(C0, digits), r0
     S, _, _, r = controllable_decomposition(A.transpose(), C.transpose())
     # the dual change of basis: T = (S^T)**-1
     T = inverse(S.transpose())
@@ -288,6 +317,10 @@ def minimal_realization(A: ExprMatrix, B: ExprMatrix, C: ExprMatrix) -> tuple[Ex
     """
     if C.cols != A.rows:
         raise ValueError('C has %d columns for a state of dimension %d' % (C.cols, A.rows))
+    digits = float_precision([A, B, C])
+    if digits is not None:
+        Am, Bm, Cm = minimal_realization(exact_matrix(A), exact_matrix(B), exact_matrix(C))
+        return approximate_matrix(Am, digits), approximate_matrix(Bm, digits), approximate_matrix(Cm, digits)
     T, A1, B1, r = controllable_decomposition(A, B)
     C1 = (C*T).applyfunc(normal)
     Ac = ExprMatrix(r, r, [A1[i, j] for i in range(r) for j in range(r)])

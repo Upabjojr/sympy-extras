@@ -91,7 +91,7 @@ from sympy_extras.core.add import Add, add
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.mul import mul
 from sympy_extras.core.function import expand
-from sympy_extras.core.numbers import ImaginaryUnit, Integer, number_from_fraction
+from sympy_extras.core.numbers import Float, ImaginaryUnit, Integer, Rational, number_from_fraction
 from sympy_extras.core.power import Pow, pow, sqrt
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
@@ -166,7 +166,75 @@ def _isolated_roots(factor: Expr, x: Symbol) -> Optional[list[Expr]]:
     coefficients are rational numbers, the radical forms otherwise."""
     if factor.free_symbols == {x} and not factor.has(ImaginaryUnit):
         return all_roots(factor, x, radicals=False)
-    return _roots_in_radicals(factor, x)
+    found = _roots_in_radicals(factor, x)
+    if found is None and factor.free_symbols == {x}:
+        return _gaussian_roots(factor, x)
+    return found
+
+
+_Gaussian = tuple[Fraction, Fraction]
+
+
+def _gaussian_value(coefficients: Sequence[_Gaussian], point: _Gaussian) -> Fraction:
+    """The square of the absolute value of the polynomial at the point
+    (Horner's rule on pairs of rational numbers)."""
+    re, im = Fraction(0), Fraction(0)
+    for a, b in coefficients:
+        re, im = re*point[0] - im*point[1] + a, re*point[1] + im*point[0] + b
+    return re*re + im*im
+
+
+def _gaussian_roots(factor: Expr, x: Symbol) -> Optional[list[Expr]]:
+    """The roots of a factor with coefficients in ``QQ(I)`` which is
+    irreducible there and not real, of any degree, as isolated roots of
+    its norm ``factor*conjugate(factor)``, a polynomial with rational
+    coefficients; ``None`` when they are not told apart.
+
+    The factor and its conjugate have no common root, so every root of
+    the norm is a root of exactly one of them: the one whose value at a
+    rational approximation of the root is smaller by more than half of
+    the digits of the approximation (the other value is not zero).
+    """
+    pairs: list[_Gaussian] = []
+    for c in _coefficients(expand(factor), x):
+        re, im = c.as_real_imag()
+        if not isinstance(re, Rational) or not isinstance(im, Rational):
+            return None
+        pairs.append((Fraction(re.p, re.q), Fraction(im.p, im.q)))
+    conjugate = [(a, -b) for a, b in pairs]
+    degree = len(pairs) - 1
+    I = ImaginaryUnit()
+    conjugated = add(*[mul(number_from_fraction(a) + number_from_fraction(b)*I, pow(x, Integer(degree - k)))
+                       for k, (a, b) in enumerate(conjugate)])
+    norm = expand(factor*conjugated)
+    if norm.has(ImaginaryUnit):
+        return None
+    candidates: list[Expr] = []
+    for root in all_roots(norm, x, radicals=False):
+        if root not in candidates:
+            candidates.append(root)
+    chosen: list[Expr] = []
+    for root in candidates:
+        verdict: Optional[bool] = None
+        for digits in (30, 60, 120, 240):
+            re, im = root.evalf(digits).as_real_imag()
+            if not isinstance(re, (Float, Rational)) or not isinstance(im, (Float, Rational)):
+                return None
+            point = (re.as_fraction() if isinstance(re, Float) else Fraction(re.p, re.q),
+                     im.as_fraction() if isinstance(im, Float) else Fraction(im.p, im.q))
+            mine, other = _gaussian_value(pairs, point), _gaussian_value(conjugate, point)
+            scale = Fraction(10)**digits        # the squares: half of the digits apart
+            if mine*scale < other:
+                verdict = True
+                break
+            if other*scale < mine:
+                verdict = False
+                break
+        if verdict is None:
+            return None
+        if verdict:
+            chosen.append(root)
+    return chosen if len(chosen) == degree else None
 
 
 def _numerical_order(value: Expr) -> tuple[float, float]:
@@ -206,7 +274,9 @@ class Eigenspace:
         numerical value at any precision: isolated roots
         (:class:`~sympy_extras.polys.complexrootof.ComplexRootOf`) when
         its coefficients are rational numbers, the radical forms of
-        :meth:`values` otherwise."""
+        :meth:`values` otherwise, and for a factor with ``I`` in its
+        coefficients which has none (a degree above 2) the isolated roots
+        of its norm which are its own."""
         return _isolated_roots(self.factor, self.symbol)
 
     def __repr__(self) -> str:

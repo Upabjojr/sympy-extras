@@ -397,12 +397,35 @@ The eigenvalues of a matrix of floats do not need radicals: they are the
 roots of the irreducible factors of the exact characteristic polynomial,
 isolated exactly (`polys.complexrootof`) at any degree, in increasing
 order of the real parts. `eigenspaces` and `jordan_chains` return the
-exact structure. The modules `steps`, `normalforms`, `pencils`,
-`riccati`, `statespace`, `markov` and `equations` do not take floats
-this way yet (`steps` and `normalforms` raise `NotImplementedError`,
-the others were not reviewed): apply
-`linalg.exact_matrix` first and `linalg.approximate_matrix` to the
-result.
+exact structure. A characteristic factor with `I` in its coefficients
+(a complex matrix of floats) has its roots among the isolated roots of
+its norm, at any degree.
+
+The modules `steps`, `normalforms`, `pencils`, `riccati`, `statespace`,
+`markov` and `equations` follow the same rule: the pivots of the steps
+of an elimination, the invariant factors and similarity, the
+multiplicities of the eigenvalues of a pencil, controllability and the
+order of a minimal realisation, the solvability of a matrix equation and
+the set of solutions of a Riccati equation are those of the matrices as
+stored.
+
+```python
+>>> from sympy_extras.matrices.statespace import is_controllable
+>>> from sympy_extras.matrices.markov import MarkovChain
+>>> S = ExprMatrix.from_rows([[Float(0.1), Float(0.2)], [Float(0.3), Float(0.6)]])
+>>> is_controllable(S, ExprMatrix.column([Float(0.1), Float(0.3)]))
+False
+>>> MarkovChain(ExprMatrix.from_rows([[Float(0.1), Float(0.9)], [Float(0.3), Float(0.7)]])).stationary_distribution()
+ExprMatrix([[0.250000000000000, 0.750000000000000]])
+
+```
+
+(The controllability matrix of the first pair has the rank 2 when its
+products are rounded.) One convention is added for `MarkovChain`: the
+floats nearest to probabilities have a sum which is 1 only up to
+rounding, so a row whose sum is 1 at the precision of the floats is
+divided by its exact sum; a row whose rounded sum is not 1 is a
+`ValueError`, as for exact entries.
 
 ## Decompositions
 
