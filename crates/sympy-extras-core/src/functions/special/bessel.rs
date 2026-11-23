@@ -448,6 +448,125 @@ fn sin_cos_pi(nu: &Complex, wp: usize) -> Option<(Complex, Complex)> {
     Some((&(&a - &b) / &(&two * &i), &(&a + &b) / &two))
 }
 
+fn complex_real_of(r: Real, wp: usize) -> Complex {
+    crate::core::evalf::complex_real(r, wp)
+}
+
+fn modulus_f64(z: &Complex) -> f64 {
+    let (re, im) = parts(z);
+    re.to_f64().value().hypot(im.to_f64().value())
+}
+
+fn raise_to(v: &Complex, wp: usize) -> Complex {
+    let (re, im) = parts(v);
+    complex(re.with_precision(wp).value(), im.with_precision(wp).value())
+}
+
+/// The modulus beyond which the asymptotic series of `besselk` reaches
+/// `prec` bits: its smallest term is about `exp(-2|z|)`.
+fn asymptotic_threshold(prec: usize) -> f64 {
+    (prec as f64 + 20.0) * std::f64::consts::LN_2 / 2.0 + 2.0
+}
+
+/// `sqrt(pi/(2z))*exp(-z)*2F0(nu + 1/2, 1/2 - nu; ; -1/(2z))`, the
+/// asymptotic series summed to its smallest term (`Re(z) > 0`).
+fn besselk_asymptotic(nu: &Complex, z: &Complex, wp: usize) -> Option<Complex> {
+    let pi: Complex = numeric_value(&Basic::pi(), wp)?;
+    let one: Complex = c_int(1, wp);
+    let half: Complex = &one / &c_int(2, wp);
+    let (a, b) = (nu + &half, &half - nu);
+    let w: Complex = &(-&one) / &(&c_int(2, wp) * z);
+    let mut term: Complex = one.clone();
+    let mut total: Complex = one.clone();
+    let mut previous: f64 = f64::INFINITY;
+    let tolerance: f64 = 2f64.powi(-(wp as i32).min(1000));
+    for k in 0..(4 * wp) {
+        let kk: Complex = c_int(k as i64, wp);
+        term = &(&(&(&term * &(&a + &kk)) * &(&b + &kk)) * &w) / &(&kk + &one);
+        let size: f64 = modulus_f64(&term);
+        if size > previous {
+            // the series diverges from here: the sum to the smallest term
+            break;
+        }
+        total = &total + &term;
+        previous = size;
+        if size <= tolerance * modulus_f64(&total) {
+            break;
+        }
+    }
+    let root: Complex = crate::core::evalf::complex_sqrt(&(&pi / &(&c_int(2, wp) * z)), wp);
+    Some(&(&root * &(-z).exp()) * &total)
+}
+
+/// The terms `a_k(nu)/w**k`, `a_k = prod((4nu**2 - (2j - 1)**2), j <= k)/(k!*8**k)`,
+/// up to the smallest (the asymptotic series of the Bessel functions);
+/// `signs` alternates them.
+fn hankel_terms(nu: &Complex, w: &Complex, alternating: bool, wp: usize) -> Vec<Complex> {
+    let one: Complex = c_int(1, wp);
+    let mu: Complex = &c_int(4, wp) * &(nu * nu);
+    let mut terms: Vec<Complex> = vec![one.clone()];
+    let mut term: Complex = one.clone();
+    let mut previous: f64 = f64::INFINITY;
+    let tolerance: f64 = 2f64.powi(-(wp as i32).min(1000));
+    let inverse: Complex = &one / w;
+    for k in 1..(4 * wp as i64) {
+        let odd: Complex = c_int((2 * k - 1) * (2 * k - 1), wp);
+        let scale: Real = real_int(&Int::ONE, wp) / real_int(&Int::from(8 * k), wp);
+        term = &(&(&term * &(&mu - &odd)) * &inverse) * &complex_real_of(scale, wp);
+        if alternating {
+            term = -&term;
+        }
+        let size: f64 = modulus_f64(&term);
+        if size > previous {
+            break;
+        }
+        terms.push(term.clone());
+        previous = size;
+        if size <= tolerance {
+            break;
+        }
+    }
+    terms
+}
+
+/// `besselj`, `bessely` and `besseli` of a large argument (`Re(z) > 0`)
+/// by their asymptotic expansions.
+fn bessel_asymptotic(f: Function, nu: &Complex, z: &Complex, wp: usize) -> Option<Complex> {
+    let pi: Complex = numeric_value(&Basic::pi(), wp)?;
+    let two: Complex = c_int(2, wp);
+    if f == Function::BesselI {
+        let terms: Vec<Complex> = hankel_terms(nu, z, true, wp);
+        let mut total: Complex = c_int(0, wp);
+        for t in &terms {
+            total = &total + t;
+        }
+        let root: Complex = crate::core::evalf::complex_sqrt(&(&(&two * &pi) * z), wp);
+        return Some(&(&z.exp() / &root) * &total);
+    }
+    // P = sum((-1)**k a_{2k}/z**{2k}), Q = sum((-1)**k a_{2k+1}/z**{2k+1})
+    let terms: Vec<Complex> = hankel_terms(nu, z, false, wp);
+    let (mut p, mut q) = (c_int(0, wp), c_int(0, wp));
+    for (k, t) in terms.iter().enumerate() {
+        let sign: bool = (k / 2) % 2 == 1;
+        let signed: Complex = if sign { -t } else { t.clone() };
+        if k % 2 == 0 {
+            p = &p + &signed;
+        } else {
+            q = &q + &signed;
+        }
+    }
+    let omega: Complex = &(z - &(&(nu * &pi) / &two)) - &(&pi / &c_int(4, wp));
+    let i: Complex = complex(real_int(&Int::ZERO, wp), real_int(&Int::ONE, wp));
+    let (e1, e2) = ((&omega * &i).exp(), (-&(&omega * &i)).exp());
+    let cos: Complex = &(&e1 + &e2) / &two;
+    let sin: Complex = &(&e1 - &e2) / &(&two * &i);
+    let root: Complex = crate::core::evalf::complex_sqrt(&(&two / &(&pi * z)), wp);
+    Some(match f {
+        Function::BesselJ => &root * &(&(&p * &cos) - &(&q * &sin)),
+        _ => &root * &(&(&p * &sin) + &(&q * &cos)),
+    })
+}
+
 /// The value of a Bessel head at the values of its order and argument;
 /// `None` where it is not ported or undefined.
 pub fn bessel_value(f: Function, values: &[Complex], prec: usize) -> Option<Complex> {
@@ -463,19 +582,62 @@ pub fn bessel_value(f: Function, values: &[Complex], prec: usize) -> Option<Comp
     let positive_real: bool = is_real(&z) && parts(&z).0 > Real::ZERO;
     let real_regular: bool = is_real(&nu) && is_real(&z) && (positive_real || is_integer_value(&nu));
     match f {
+        Function::BesselJ | Function::BesselY | Function::BesselI
+            if parts(&z).0 > Real::ZERO && modulus_f64(&z) > asymptotic_threshold(prec) =>
+        {
+            // the Hankel expansions for a large argument (mpmath's
+            // hypercomb of 2F0 forms): the series of the regular functions
+            // cancels or grows exponentially there
+            let value: Complex = bessel_asymptotic(f, &nu, &z, wp)?;
+            let real: bool = real_regular && positive_real;
+            Some(finish(&value, prec, real))
+        }
         Function::BesselJ => Some(finish(&regular(&nu, &z, -1, wp)?, prec, real_regular)),
         Function::BesselI => Some(finish(&regular(&nu, &z, 1, wp)?, prec, real_regular)),
+        Function::BesselK if parts(&z).0 > Real::ZERO && modulus_f64(&z) > asymptotic_threshold(prec) => {
+            // mpmath's 2F0 form for a large argument: the difference of the
+            // regular functions cancels exponentially large terms
+            Some(finish(
+                &besselk_asymptotic(&nu, &z, wp)?,
+                prec,
+                real_regular && positive_real,
+            ))
+        }
         Function::BesselY | Function::BesselK | Function::Hankel1 | Function::Hankel2 => {
             if is_integer_value(&nu) {
-                return None; // mpmath's limit at an integer order is not ported
+                // the limit in the order at an integer, as mpmath's
+                // hypercomb takes it: the order perturbed by 2**-(prec + 20)
+                // at more than twice the precision, which the cancellation
+                // of the difference of order 1/h leaves exact to about
+                // 2**-(prec + 20) (the functions are analytic in the order)
+                let wide: usize = 2 * prec + 120;
+                let h: Real = real_int(&Int::ONE, wide) / real_int(&(Int::ONE << (prec + 20)), wide);
+                let (re, im) = parts(&nu);
+                let shifted: Complex = complex(re.with_precision(wide).value() + h, im.with_precision(wide).value());
+                let (zr, zi) = parts(&z);
+                let z_wide: Complex = complex(zr.with_precision(wide).value(), zi.with_precision(wide).value());
+                let found: Complex = bessel_value(f, &[shifted, z_wide], wide)?;
+                let real: bool =
+                    is_real(&z) && parts(&z).0 > Real::ZERO && matches!(f, Function::BesselK | Function::BesselY);
+                let (fr, fi) = parts(&found);
+                let value: Complex = if real {
+                    complex(fr, real_int(&Int::ZERO, wide))
+                } else {
+                    complex(fr, fi)
+                };
+                return Some(finish(&value, prec, real));
             }
             let (s, c) = sin_cos_pi(&nu, wp)?;
             let minus_nu: Complex = -&nu;
             let real: bool = is_real(&nu) && positive_real;
             if f == Function::BesselK {
-                let pi: Complex = numeric_value(&Basic::pi(), wp)?;
-                let difference: Complex = &regular(&minus_nu, &z, 1, wp)? - &regular(&nu, &z, 1, wp)?;
-                let value: Complex = &(&(&pi / &c_int(2, wp)) * &difference) / &s;
+                // the cancellation of I_{-nu} - I_nu loses about 3|z| bits
+                let wk: usize = wp + (3.0 * modulus_f64(&z)).ceil() as usize;
+                let (nu_k, z_k) = (raise_to(&nu, wk), raise_to(&z, wk));
+                let (s, _) = sin_cos_pi(&nu_k, wk)?;
+                let pi: Complex = numeric_value(&Basic::pi(), wk)?;
+                let difference: Complex = &regular(&-&nu_k, &z_k, 1, wk)? - &regular(&nu_k, &z_k, 1, wk)?;
+                let value: Complex = &(&(&pi / &c_int(2, wk)) * &difference) / &s;
                 return Some(finish(&value, prec, real));
             }
             let j: Complex = regular(&nu, &z, -1, wp)?;

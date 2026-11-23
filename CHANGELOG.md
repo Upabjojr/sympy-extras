@@ -10,6 +10,33 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.integrals.definite`: rational functions of `sin` and
+  `cos` with parameters over whole periods (issue #53). The driver tries
+  the residues inside the unit circle before cutting the range into
+  quarter periods: `1/(c + cos(x))` over `(0, 2*pi)` under `c > 1` is
+  `2*pi/sqrt(c**2 - 1)`, `sin(x)**2/(c + cos(x))` is
+  `2*pi*(c - sqrt(c**2 - 1))`. Before, the quarter periods used up the
+  time limit and the integral came back unevaluated. With a single
+  parameter and no assumptions, `period_integral` splits the real line
+  where a pole can cross the unit circle and gives one case per interval
+  with a value: `1/(c + cos(x))` is `2*pi/sqrt(c**2 - 1)` for `c > 1` and
+  its opposite for `c < -1`, and the Poisson kernel
+  `1/(1 - 2*k*cos(x) + k**2)` is `2*pi/(1 - k**2)` for `-1 < k < 1` and
+  `2*pi/(k**2 - 1)` for `|k| > 1`. Where a pole stays on the circle the
+  integral diverges and gets no case. A real parameter whose sign decides
+  which pole is inside is split into `d > 0`, `d < 0` and `d = 0`
+  (`1/(c + d*cos(x))` under `c > Abs(d)`). Radicals in denominators are
+  rationalised, and a square root of a negative base is written through
+  the positive one.
+- `sympy_extras.integrals.definite`: `floor`, `ceiling` and `frac` of a
+  real function of the variable over a range with numeric ends. The range
+  is cut where the argument takes an integer value. The levels lie
+  between the extreme values at the ends and at the zeros of the
+  derivative. `floor(x)` over `(0, 7/2)` is `9/2`, `floor(x**2)` over
+  `(0, 2)` is `5 - sqrt(2) - sqrt(3)`, and `floor(3*sin(x))` over `(0, pi)`
+  is `2*pi - 2*asin(1/3) - 2*asin(2/3)`. All three came back unevaluated
+  before.
+
 - `sympy_extras.series.sequences`: native `RecursiveSeq` (a recurrence
   `y(n) = f(y(n - 1), ..., y(n - d))` with initial values, dummies
   `c_0, ...` by default; indexing, slicing, iteration, the cache of the
@@ -417,6 +444,25 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Changed
 
+- `check_ode_solution` (`sympy_extras.solvers.ode` and its SymPy face)
+  checks implicit solutions `Eq(F(x, y), G(x, y))` through their
+  derivatives before solving them: `y'` from the derivative of the
+  relation (and its derivatives for higher orders) is substituted into
+  the equation, the residual is evaluated first at points of the
+  relation (a wrong relation is `False` at once, with the numerical
+  checks on), then simplified, reduced modulo the relation when it
+  vanishes only there (`y' = y/x` for `y**2 = C1*x**2`). A relation which
+  the native `solve` gives up on (`y + sin(y) = x + C1`), or solves into
+  branches which `simplify` does not prove (LambertW, Cardano), was
+  `None`, right or wrong; such relations are now `True` or `False`, and
+  the check of a wrong implicit relation no longer runs into the time
+  limit.
+- `sympy_extras.integrals.residues.period_integral` no longer trusts a
+  pole position decided at one sample of a single parameter when the
+  assumptions let the parameter cross a value where a pole meets the
+  unit circle. The bug: `1/(2 + c*cos(x))` over `(0, 2*pi)` under `c > 0`
+  was `2*pi/sqrt(4 - c**2)` with no condition, wrong for `c >= 2`, where
+  the integral diverges. It is now that value for `0 < c < 2`.
 - The native series of `Ei` at infinity keeps the branch of a polar
   argument: `Ei(q*exp_polar(+-I*pi))` with `q -> +oo` expands as
   `+-I*pi` plus the series of `Ei(-q)` (SymPy 1.14 drops the `I*pi`,
@@ -3783,6 +3829,36 @@ remove public functions. Breaking changes are listed here when they happen.
     `Floor(log(8)/log(2) - exp(-1000)).evalf()` is 2, not 3;
   - `simplify` no longer gives the value 0 to `sign(u)*g` where `g` has a
     pole at `u = 0` (`sign(r + 3)/Abs(r + 3)**(3/5)` keeps its `sign`).
+- Issue #72, the equations which are not polynomial in their leading
+  derivative (`sympy_extras.solvers.lie` and its SymPy face): they were
+  solved for it and the first root kept, so that `symmetries` returned the
+  symmetries of one branch and `check_symmetry` accepted them (all nine
+  quadratic generators, `y -> y + c` among them, for
+  `(y*y' + x)*(y' - 1)/y'`, `(exp(y') - 1)*(exp(y') - y)` or
+  `(sqrt(y') - 1)*(sqrt(y') - y)`). A denominator containing the leading
+  derivative is now cleared (the numerator has the same invariance
+  condition); an equation which is a polynomial in a root `y'**(1/L)` or
+  in an exponential `exp(y'/L)` of it is written in a new symbol `w` and
+  reduces the invariance conditions by pseudo-division as the polynomial
+  ones, the remainder vanishing identically in `w` (and in `y'`) for every
+  branch; any other one (`sin(y') - x`, `log(y') - y`) raises
+  `NotImplementedError` instead of giving the symmetries of one branch.
+  `leading_derivatives` no longer returns one root either: it raises
+  `NotImplementedError` for an equation which is not linear in a highest
+  derivative (`reduce_order` still reduces one branch, explicitly).
+- The positive handler of `acos` (ported from SymPy, used by the core's
+  `ask` and by `sympy_extras.assumptions`) answered True on the closed
+  interval `[-1, 1]`, but `acos(1) = 0`:
+  `ask(Q.positive(acos(x)), Q.nonpositive(x - 1) & Q.nonnegative(x + 1))`
+  and `ask(acos(x) > 0, (x >= -1) & (x <= 1))` are now None (True on
+  `[-1, 1)`, False at `x = 1` and where `acos(x)` is not real; SymPy 1.14
+  has the same bug). The neighbouring handlers had the same
+  kind of endpoint gap: `atan(x)` is positive for an infinite positive
+  `x` (`atan(oo) = pi/2`, SymPy answers False), `asin(x)` is not positive
+  at `x = 0` nor off `[-1, 1]`, `log(x)` is not positive at `x = 1`.
+  New handlers: `atan(x)` is negative exactly when `x` is (extended)
+  negative and real when `x` is extended real, so
+  `ask(Eq(atan(1/x) + atan(x), pi/2), x < 0)` is False.
 - `sympy_extras.assumptions.solve` over the reals drops a candidate which
   is real only where its imaginary part vanishes when the condition fails
   there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`
@@ -3834,6 +3910,16 @@ remove public functions. Breaking changes are listed here when they happen.
     `re(z)*im(z) > pi/2` made `z` real, and `log(exp(z**2)) = z**2` was
     true under it (`z = 2 + I` is a counterexample); `Abs(z) < 1` no
     longer makes `z` real either.
+  - `ask` decides `Eq` and `Ne` between expressions of complex variables
+    by their real and imaginary parts (`as_real_imag`) in real variables
+    standing for `re(z)`, `im(z)` and `Abs(z)`, with `arg` and `atan2`
+    variables in `(-pi, pi]` and `pi` between rational bounds, under the
+    facts translated alike; and `Q.real(e)` is `False` when the
+    imaginary part of `e` is not zero there. `log(exp(z**2)) = z**2` is
+    now `False` under `re(z)*im(z) > pi/2` (it was `None`), and so is
+    `Q.real(z)`, consistent with `Eq(im(z), 0)`. The step runs only for a
+    variable whose parts are finite (`z` finite, or `re(z)` and `im(z)`,
+    or `Abs(z)`, in an inequality of the facts).
 
 - Bugs of SymPy recorded on issue #25 which the native ports had too:
   - the numerical facts of a number (`is_real`, `is_imaginary`, the

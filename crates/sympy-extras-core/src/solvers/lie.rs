@@ -519,82 +519,313 @@ fn degree_in(eq: &Basic, s: &Basic) -> PolyResult<i64> {
     Ok(terms.iter().map(|(m, _)| m[0] as i64).max().unwrap_or(0))
 }
 
-/// Every equation solved for its highest derivative, preferring one it is
-/// linear in (`_leading_derivatives`); with `polynomial`, an equation which
-/// is a polynomial of degree at least two in a highest derivative is not
-/// solved: the derivative is recorded under the index of the equation.
+/// The jet coordinates of the highest order occurring in `eq`, in the
+/// order they are tried (`_top_jets`).
+fn top_jets(jets: &JetSpace, eq: &Basic) -> Vec<Basic> {
+    let mut candidates: Vec<Jet> = jets.jets_in(eq);
+    candidates.sort_by(|a, b| (b.1.iter().sum::<u32>(), &b.1, b.0).cmp(&(a.1.iter().sum::<u32>(), &a.1, a.0)));
+    let top: u32 = candidates.first().map(|(_, j)| j.iter().sum()).unwrap_or(0);
+    candidates
+        .iter()
+        .filter(|(_, j)| j.iter().sum::<u32>() == top)
+        .map(|(a, j)| jets.jet(*a, j))
+        .collect()
+}
+
+fn together(e: &Basic) -> R {
+    crate::polys::rationaltools::together(e, false, true)
+}
+
+/// `eq` with its denominators cleared when a highest derivative occurs in
+/// one (`_cleared`).
+fn cleared(jets: &JetSpace, eq: &Basic) -> R {
+    let top: Vec<Basic> = top_jets(jets, eq);
+    if top.is_empty() || polynomial_terms(eq, &top)?.is_some() {
+        return Ok(eq.clone());
+    }
+    let c: Basic = numer(&together(eq)?)?;
+    if polynomial_terms(&c, &top)?.is_some() {
+        return Ok(c);
+    }
+    Ok(eq.clone())
+}
+
+/// An equation which is not solved for its leading derivative `s`: a
+/// polynomial in `gen`, which is `s` itself, or `w` with `s = w**root` or
+/// `w = exp(s/exponential)` (`_Modulus`).
+#[derive(Clone, Debug)]
+struct Modulus {
+    s: Basic,
+    gen: Basic,
+    root: i64,
+    exponential: i64,
+}
+
+impl Modulus {
+    /// `e` written in `gen` (`forward`).
+    fn forward(&self, e: &Basic) -> PolyResult<Option<Basic>> {
+        if self.root != 0 {
+            return root_substituted(e, &self.s, &self.gen, self.root);
+        }
+        if self.exponential != 0 {
+            return exp_substituted(e, &self.s, &self.gen, self.exponential);
+        }
+        Ok(Some(e.clone()))
+    }
+
+    /// The rule writing `gen` in the jet coordinates again (`back`).
+    fn back(&self) -> PolyResult<HashMap<Basic, Basic>> {
+        let mut rule: HashMap<Basic, Basic> = HashMap::new();
+        if self.root != 0 {
+            rule.insert(
+                self.gen.clone(),
+                pow(&self.s, &Basic::from_rational(crate::numbers::rat(1, self.root)))?,
+            );
+        } else if self.exponential != 0 {
+            rule.insert(
+                self.gen.clone(),
+                crate::functions::elementary::exponential::exp(&crate::core::mul::div(
+                    &self.s,
+                    &Basic::int(self.exponential),
+                )?)?,
+            );
+        }
+        Ok(rule)
+    }
+}
+
+fn rational_parts(e: &Basic) -> Option<(i64, i64)> {
+    let q = e.as_rational()?;
+    Some((
+        i64::try_from(crate::numbers::numer(q)).ok()?,
+        i64::try_from(crate::numbers::denom(q)).ok()?,
+    ))
+}
+
+/// The numerator of `e` with `s = w**L` (`_root_substituted`).
+fn root_substituted(e: &Basic, s: &Basic, w: &Basic, l: i64) -> PolyResult<Option<Basic>> {
+    let mut rule: HashMap<Basic, Basic> = HashMap::new();
+    rule.insert(s.clone(), pow(w, &Basic::int(l))?);
+    for power in e.atoms(Some(&|n: &Basic| n.is_pow())) {
+        if !power.free_symbols().contains(s) {
+            continue;
+        }
+        let exponent: &Basic = &power.args()[1];
+        if exponent.as_rational().is_some_and(|q| q.is_int()) {
+            continue;
+        }
+        let Some((p, q)) = rational_parts(exponent).filter(|_| power.args()[0] == *s) else {
+            return Ok(None);
+        };
+        if (p * l) % q != 0 {
+            return Ok(None);
+        }
+        rule.insert(power.clone(), pow(w, &Basic::int(p * l / q))?);
+    }
+    let result: Basic = numer(&together(&replaced(e, &rule)?)?)?;
+    if result.free_symbols().contains(s) {
+        return Ok(None);
+    }
+    Ok(Some(result))
+}
+
+/// The numerator of `e` with `exp(c s + b) = w**(c L) exp(b)`
+/// (`_exp_substituted`).
+fn exp_substituted(e: &Basic, s: &Basic, w: &Basic, l: i64) -> PolyResult<Option<Basic>> {
+    let mut rule: HashMap<Basic, Basic> = HashMap::new();
+    for power in e.atoms(Some(&|n: &Basic| n.is_function(crate::core::basic::Function::Exp))) {
+        if !power.free_symbols().contains(s) {
+            continue;
+        }
+        let Some((c, b)) = exp_argument(&power.args()[0], s)? else {
+            return Ok(None);
+        };
+        let (p, q) = rational_parts(&c).expect("a rational");
+        if (p * l) % q != 0 {
+            return Ok(None);
+        }
+        rule.insert(
+            power.clone(),
+            mul(&[
+                pow(w, &Basic::int(p * l / q))?,
+                crate::functions::elementary::exponential::exp(&b)?,
+            ])?,
+        );
+    }
+    Ok(Some(numer(&together(&replaced(e, &rule)?)?)?))
+}
+
+/// `(c, b)` with `arg = c*s + b` and `c` a nonzero rational number
+/// (`_exp_argument`).
+fn exp_argument(arg: &Basic, s: &Basic) -> PolyResult<Option<(Basic, Basic)>> {
+    let Some(terms) = polynomial_terms(arg, std::slice::from_ref(s))? else {
+        return Ok(None);
+    };
+    if terms.iter().any(|(m, _)| m[0] > 1) {
+        return Ok(None);
+    }
+    let get = |k: u32| {
+        terms
+            .iter()
+            .find(|(m, _)| m[0] == k)
+            .map(|(_, c)| c.clone())
+            .unwrap_or_else(Basic::zero)
+    };
+    let c: Basic = get(1);
+    if rational_parts(&c).is_none() || c == Basic::zero() {
+        return Ok(None);
+    }
+    Ok(Some((c, get(0))))
+}
+
+fn lcm_all(v: &[i64]) -> i64 {
+    fn gcd(a: i64, b: i64) -> i64 {
+        if b == 0 {
+            a.abs()
+        } else {
+            gcd(b, a % b)
+        }
+    }
+    v.iter().fold(1, |acc, x| acc / gcd(acc, *x) * x)
+}
+
+/// The modulus of an equation which is not linear in its leading
+/// derivative `s` (`_modulus`).
+fn modulus_of(eq: &Basic, s: &Basic) -> PolyResult<Option<Modulus>> {
+    if degree_in(eq, s)? >= 2 {
+        return Ok(Some(Modulus {
+            s: s.clone(),
+            gen: s.clone(),
+            root: 0,
+            exponential: 0,
+        }));
+    }
+    let mut roots: Vec<i64> = Vec::new();
+    let mut exponentials: Vec<i64> = Vec::new();
+    for power in eq.atoms(Some(&|n: &Basic| n.is_pow())) {
+        if power.args()[0] == *s {
+            if let Some((_, q)) = rational_parts(&power.args()[1]) {
+                if q != 1 {
+                    roots.push(q);
+                }
+            }
+        }
+    }
+    for power in eq.atoms(Some(&|n: &Basic| n.is_function(crate::core::basic::Function::Exp))) {
+        if power.free_symbols().contains(s) {
+            let Some((c, _)) = exp_argument(&power.args()[0], s)? else {
+                return Ok(None);
+            };
+            exponentials.push(rational_parts(&c).expect("a rational").1);
+        }
+    }
+    if !roots.is_empty() && !exponentials.is_empty() {
+        return Ok(None);
+    }
+    let w: Basic = crate::core::symbol::Dummy::new("w", &[]).0;
+    let modulus: Modulus = if !roots.is_empty() {
+        Modulus {
+            s: s.clone(),
+            gen: w.clone(),
+            root: lcm_all(&roots),
+            exponential: 0,
+        }
+    } else if !exponentials.is_empty() {
+        Modulus {
+            s: s.clone(),
+            gen: w.clone(),
+            root: 0,
+            exponential: lcm_all(&exponentials),
+        }
+    } else {
+        return Ok(None);
+    };
+    match modulus.forward(eq)? {
+        Some(written) if degree_in(&written, &w)? >= 1 => Ok(Some(modulus)),
+        _ => Ok(None),
+    }
+}
+
+/// Every equation solved for a highest derivative it is linear in
+/// (`_leading_derivatives`); with `moduli`, an equation which is a
+/// polynomial of degree at least two in a highest derivative, or in a root
+/// or an exponential of it, is not solved: its modulus is recorded under
+/// the index of the equation; with `branch`, an equation which is not
+/// linear is solved for one root; otherwise it raises
+/// `NotImplementedError`.
 fn leading_derivatives_of(
     jets: &JetSpace,
     eqs: &[Basic],
-    mut polynomial: Option<&mut Vec<(usize, Basic)>>,
+    mut moduli: Option<&mut Vec<(usize, Modulus)>>,
+    branch: bool,
 ) -> PolyResult<Vec<(Basic, Basic)>> {
     let mut solved: Vec<(Basic, Basic)> = Vec::new();
     for (index, eq) in eqs.iter().enumerate() {
-        let mut candidates: Vec<Jet> = jets.jets_in(eq);
-        candidates.sort_by(|a, b| (b.1.iter().sum::<u32>(), &b.1, b.0).cmp(&(a.1.iter().sum::<u32>(), &a.1, a.0)));
-        let top: u32 = candidates.first().map(|(_, j)| j.iter().sum()).unwrap_or(0);
+        let top: Vec<Basic> = top_jets(jets, eq);
         let mut found: bool = false;
-        for (a, j) in &candidates {
-            if j.iter().sum::<u32>() < top {
-                break;
-            }
-            let s: Basic = jets.jet(*a, j);
-            if solved.iter().any(|(k, _)| *k == s) {
+        for s in &top {
+            if solved.iter().any(|(k, _)| k == s) {
                 continue;
             }
-            let coefficient: Basic = diff1(eq, &s)?;
-            if diff1(&coefficient, &s)? == Basic::zero() {
+            let coefficient: Basic = diff1(eq, s)?;
+            if diff1(&coefficient, s)? == Basic::zero() {
                 let rest: Basic = sub(eq, &mul(&[coefficient.clone(), s.clone()])?)?;
                 let value: Basic = crate::core::mul::div(&crate::core::mul::neg(&rest)?, &coefficient)?;
-                solved.push((s, expand_power_exp(&value)?));
+                solved.push((s.clone(), expand_power_exp(&value)?));
                 found = true;
                 break;
             }
         }
-        if let (false, Some(poly)) = (found, polynomial.as_deref_mut()) {
-            for (a, j) in &candidates {
-                if j.iter().sum::<u32>() < top {
-                    break;
-                }
-                let s: Basic = jets.jet(*a, j);
-                if solved.iter().any(|(k, _)| *k == s) || poly.iter().any(|(_, v)| *v == s) {
+        if let (false, Some(found_moduli)) = (found, moduli.as_deref_mut()) {
+            let taken: Vec<Basic> = found_moduli.iter().map(|(_, m)| m.s.clone()).collect();
+            for s in &top {
+                if solved.iter().any(|(k, _)| k == s) || taken.contains(s) {
                     continue;
                 }
-                if degree_in(eq, &s)? >= 2 {
-                    poly.push((index, s));
+                if let Some(m) = modulus_of(eq, s)? {
+                    found_moduli.push((index, m));
                     found = true;
                     break;
                 }
             }
         }
-        if !found {
-            for (a, j) in &candidates {
-                let s: Basic = jets.jet(*a, j);
-                if solved.iter().any(|(k, _)| *k == s) {
+        if !found && branch {
+            for s in &top {
+                if solved.iter().any(|(k, _)| k == s) {
                     continue;
                 }
-                let roots: Vec<Basic> = solve_for(eq, &s)?;
+                let roots: Vec<Basic> = solve_for(eq, s)?;
                 if let Some(r) = roots.into_iter().next() {
-                    solved.push((s, r));
+                    solved.push((s.clone(), r));
                     found = true;
                     break;
                 }
             }
         }
         if !found {
-            return Err(not_ported(&format!(
-                "cannot solve {} for a leading derivative",
-                jets.from_jet(eq)?
-            )));
+            let shown: Basic = jets.from_jet(eq)?;
+            return Err(PolyError::NotImplemented(if moduli.is_none() {
+                format!(
+                    "{} is not linear in a leading derivative: solving it for one would keep one branch only",
+                    shown
+                )
+            } else {
+                format!(
+                    "{} is not linear in a leading derivative, nor a polynomial in one or in a root or an exponential of one: solving it would keep one branch only, and the symmetries of one branch need not be symmetries",
+                    shown
+                )
+            }));
         }
     }
     Ok(solved)
 }
 
-/// The highest derivative of every equation solved for
+/// The highest derivative of every equation solved for, one it is linear
+/// in once the denominators it occurs in are cleared
 /// (`leading_derivatives`).
 pub fn leading_derivatives(jets: &JetSpace, eqs: &[Basic]) -> PolyResult<Vec<(Basic, Basic)>> {
-    leading_derivatives_of(jets, eqs, None)
+    let cleared_eqs: Vec<Basic> = eqs.iter().map(|e| cleared(jets, e)).collect::<PolyResult<_>>()?;
+    leading_derivatives_of(jets, &cleared_eqs, None, false)
 }
 
 /// The numerator of `e` with the solved leading derivatives substituted
@@ -654,48 +885,97 @@ fn pseudo_remainder(g: &Basic, f: &BTreeMap<u32, Basic>, s: &Basic) -> PolyResul
 }
 
 /// The invariance conditions (`_condition`): `pr X` applied to every
-/// equation, on its solutions; an equation which is a polynomial of degree
-/// at least two in its leading derivative is not solved for it, the
-/// conditions are reduced modulo it, so that all its branches count.
-fn condition(jets: &JetSpace, eqs: &[Basic], symmetry: &Symmetry) -> PolyResult<Vec<Basic>> {
-    let mut polynomial: Vec<(usize, Basic)> = Vec::new();
-    let leading: Vec<(Basic, Basic)> = leading_derivatives_of(jets, eqs, Some(&mut polynomial))?;
-    let mut moduli: Vec<(Basic, BTreeMap<u32, Basic>)> = Vec::new();
-    for (index, s) in &polynomial {
-        let Some(terms) = polynomial_terms(&eliminated(jets, &eqs[*index], &leading)?, std::slice::from_ref(s))? else {
+/// equation, on its solutions, and the moduli they are reduced by. A
+/// denominator containing a leading derivative is cleared first; the
+/// leading derivatives an equation is linear in are eliminated by
+/// substitution; an equation which is a polynomial of degree at least two
+/// in its leading derivative, or in a root or an exponential of it, is not
+/// solved for it: the conditions are reduced modulo it, so that all its
+/// branches count.
+fn condition(jets: &JetSpace, eqs: &[Basic], symmetry: &Symmetry) -> PolyResult<(Vec<Basic>, Vec<Modulus>)> {
+    let eqs: Vec<Basic> = eqs.iter().map(|e| cleared(jets, e)).collect::<PolyResult<_>>()?;
+    let mut found: Vec<(usize, Modulus)> = Vec::new();
+    let leading: Vec<(Basic, Basic)> = leading_derivatives_of(jets, &eqs, Some(&mut found), false)?;
+    let mut moduli: Vec<(Modulus, BTreeMap<u32, Basic>)> = Vec::new();
+    let unwritable = |eq: &Basic, s: &Basic| -> PolyResult<PolyError> {
+        Ok(PolyError::NotImplemented(format!(
+            "cannot write {} in a root or an exponential of {}",
+            jets.from_jet(eq)?,
+            s
+        )))
+    };
+    for (index, modulus) in &found {
+        let written: Option<Basic> = modulus.forward(&eliminated(jets, &eqs[*index], &leading)?)?;
+        let terms = match &written {
+            None => None,
+            Some(w) => polynomial_terms(w, std::slice::from_ref(&modulus.gen))?,
+        };
+        let Some(terms) = terms else {
+            if modulus.gen != modulus.s {
+                return Err(unwritable(&eqs[*index], &modulus.s)?);
+            }
             continue;
         };
         let coefficients: BTreeMap<u32, Basic> = terms.into_iter().map(|(m, c)| (m[0], c)).collect();
         if coefficients.keys().max().is_some_and(|d| *d >= 1) {
-            moduli.push((s.clone(), coefficients));
+            moduli.push((modulus.clone(), coefficients));
+        } else if modulus.gen != modulus.s {
+            return Err(unwritable(&eqs[*index], &modulus.s)?);
         }
     }
     let mut result: Vec<Basic> = Vec::new();
-    for eq in eqs {
+    for eq in &eqs {
         let mut c: Basic = eliminated(jets, &symmetry.apply(eq)?, &leading)?;
-        for (s, f) in &moduli {
-            if let Some(remainder) = pseudo_remainder(&c, f, s)? {
-                c = remainder;
+        for (modulus, f) in &moduli {
+            let written: Option<Basic> = modulus.forward(&c)?;
+            let remainder: Option<Basic> = match &written {
+                None => None,
+                Some(w) => pseudo_remainder(w, f, &modulus.gen)?,
+            };
+            if let Some(r) = remainder {
+                c = r;
+            } else if modulus.gen != modulus.s {
+                // a condition left in the jet coordinates would be reduced
+                // on one branch only
+                return Err(PolyError::NotImplemented(format!(
+                    "cannot write the invariance condition of {} in a root or an exponential of {}",
+                    jets.from_jet(eq)?,
+                    modulus.s
+                )));
             }
         }
         result.push(c);
     }
-    Ok(result)
+    Ok((result, moduli.into_iter().map(|(m, _)| m).collect()))
 }
 
-/// `pr X(Delta)` on the solutions of the equations, as numerators
+/// `pr X(Delta)` on the solutions of the equations, as numerators, the
+/// generators of the moduli written in the jet coordinates again
 /// (`infinitesimal_condition`).
 pub fn infinitesimal_condition(equations: &[Basic], functions: &[Basic], symmetry: &[Basic]) -> PolyResult<Vec<Basic>> {
     let (jets, eqs) = prepare(equations, functions)?;
     let p: usize = jets.p();
     let s: Symmetry = Symmetry::new(&jets, symmetry[..p].to_vec(), symmetry[p..].to_vec())?;
-    condition(&jets, &eqs, &s)
+    let (mut conditions, moduli) = condition(&jets, &eqs, &s)?;
+    for modulus in &moduli {
+        let back: HashMap<Basic, Basic> = modulus.back()?;
+        if !back.is_empty() {
+            conditions = conditions
+                .iter()
+                .map(|c| replaced(c, &back))
+                .collect::<PolyResult<_>>()?;
+        }
+    }
+    Ok(conditions)
 }
 
 /// Whether the vector field (the `xi` then the `eta`) is a point
 /// symmetry of the equations (`check_symmetry`).
 pub fn check_symmetry(equations: &[Basic], functions: &[Basic], symmetry: &[Basic]) -> PolyResult<bool> {
-    for c in infinitesimal_condition(equations, functions, symmetry)? {
+    let (jets, eqs) = prepare(equations, functions)?;
+    let p: usize = jets.p();
+    let s: Symmetry = Symmetry::new(&jets, symmetry[..p].to_vec(), symmetry[p..].to_vec())?;
+    for c in condition(&jets, &eqs, &s)?.0 {
         if c != Basic::zero()
             && crate::simplify::simplify::simplify(&c, &crate::simplify::simplify::Options::default())? != Basic::zero()
         {
@@ -883,10 +1163,11 @@ fn ansatz(jets: &JetSpace, degree: u32, basis: &[Basic]) -> PolyResult<Ansatz> {
 }
 
 fn linear_equations(jets: &Rc<JetSpace>, eqs: &[Basic], a: &Ansatz) -> PolyResult<Vec<Basic>> {
-    let conditions: Vec<Basic> = condition(jets, eqs, &Symmetry::new(jets, a.xi.clone(), a.eta.clone())?)?;
+    let (conditions, moduli) = condition(jets, eqs, &Symmetry::new(jets, a.xi.clone(), a.eta.clone())?)?;
     let mut linear: Vec<Basic> = Vec::new();
     for c in conditions {
         let mut variables: BTreeSet<Basic> = jets.x.iter().chain(&jets.u).cloned().collect();
+        variables.extend(moduli.iter().map(|m| m.gen.clone()));
         for (aa, j) in jets.jets_in(&c) {
             variables.insert(jets.jet(aa, &j));
         }
@@ -957,16 +1238,25 @@ pub fn determining_system(
     unknowns.extend((0..jets.q()).map(|a| undefined(&format!("eta{}", a), &base)));
     let xi: Vec<Basic> = unknowns[..jets.p()].to_vec();
     let eta: Vec<Basic> = unknowns[jets.p()..].to_vec();
-    let conditions: Vec<Basic> = condition(&jets, &eqs, &Symmetry::new(&jets, xi, eta)?)?;
+    let (conditions, moduli) = condition(&jets, &eqs, &Symmetry::new(&jets, xi, eta)?)?;
+    let mut extra: Vec<Basic> = Vec::new();
+    for m in &moduli {
+        if m.gen != m.s && !extra.contains(&m.gen) {
+            extra.push(m.gen.clone());
+        }
+    }
+    extra.sort_by_cached_key(crate::core::sorting::sort_key);
     let mut system: Vec<Basic> = Vec::new();
     for c in conditions {
         let c: Basic = expand(&canonical_derivatives(&c)?)?;
-        let gens: Vec<Basic> = jets
+        let mut gens: Vec<Basic> = jets
             .jets_in(&c)
             .into_iter()
             .filter(|(_, j)| j.iter().sum::<u32>() > 0)
             .map(|(a, j)| jets.jet(a, &j))
             .collect();
+        let free = c.free_symbols();
+        gens.extend(extra.iter().filter(|g| free.contains(g)).cloned());
         if gens.is_empty() {
             if c != Basic::zero() {
                 system.push(c);

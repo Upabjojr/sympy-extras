@@ -69,9 +69,15 @@ def test_leading_derivatives() -> None:
     jets = JetSpace([u])
     u_xx, u_t = jets.jet(0, (2, 0)), jets.jet(0, (0, 1))
     assert leading_derivatives(jets, [jets.to_jet(heat)]) == {u_xx: u_t}
-    # a quadratic is solved natively, the first root as SymPy's solve orders them
-    solved = leading_derivatives(jets, [u_xx**2 - u_t])
-    assert solved[u_xx]**2 == u_t and solved[u_xx].could_extract_minus_sign()
+    # issue #72: a quadratic is not solved, one root would be one branch
+    try:
+        leading_derivatives(jets, [u_xx**2 - u_t])
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError("expected NotImplementedError")
+    # a denominator is cleared first
+    assert leading_derivatives(jets, [1/u_xx - u_t]) == {u_xx: 1/u_t}
 
 
 def test_known_symmetry_algebras() -> None:
@@ -172,3 +178,46 @@ def test_all_branches_of_an_equation_nonlinear_in_the_derivative() -> None:
     # Kamke 1.527: a cubic in y', no nan components
     cubic = y.diff(x)**3 - x*y**4*y.diff(x) - y**5
     assert [(X.xi, X.eta) for X in symmetries(cubic, y, 2)] == [((x,), (-3*Y/2,))]
+
+
+def test_all_branches_of_an_equation_not_polynomial_in_the_derivative() -> None:
+    # issue #72: an equation which is not polynomial in y' was solved for
+    # its first root, and the symmetries of that branch came out (all nine
+    # quadratic ones, y -> y + c among them) and were accepted
+    jets = JetSpace([y])
+    Y = jets.u[0]
+    p = y.diff(x)
+    translation = Symmetry(jets, [0], [1])
+    # a denominator: (y y' + x)(y' - 1)/y'
+    rational = (y*p + x)*(p - 1)/p
+    assert [(X.xi, X.eta) for X in symmetries(rational, y, 2)] == [((x,), (Y,))]
+    assert not check_symmetry(rational, y, translation)
+    # a polynomial in exp(y'): y' = 2 pi i k or y' = log(y) + 2 pi i k
+    for eq in [(exp(p) - 1)*(exp(p) - y), exp(2*p) - (1 + y)*exp(p) + y]:
+        assert [(X.xi, X.eta) for X in symmetries(eq, y, 2)] == [((Integer(1),), (Integer(0),))]
+        assert not check_symmetry(eq, y, translation)
+        assert check_symmetry(eq, y, Symmetry(jets, [1], [0]))
+    # a polynomial in sqrt(y'): y' = 1 or y' = y**2
+    radical = (p**Rational(1, 2) - 1)*(p**Rational(1, 2) - y)
+    assert [(X.xi, X.eta) for X in symmetries(radical, y, 2)] == [((Integer(1),), (Integer(0),))]
+    assert not check_symmetry(radical, y, translation)
+    # one branch: sqrt(y') = -y is y' = y**2, a Riccati equation
+    found = symmetries(p**Rational(1, 2) + y, y, 2)
+    assert len(found) == 4 and all(check_symmetry(p**Rational(1, 2) + y, y, X) for X in found)
+    assert check_symmetry(p**Rational(1, 2) + y, y, Symmetry(jets, [x**2], [-2*x*Y - 1]))
+    # exp(y') = x: y' = log(x) + 2 pi i k
+    found = symmetries(exp(p) - x, y, 2)
+    assert len(found) == 2 and all(check_symmetry(exp(p) - x, y, X) for X in found)
+    assert check_symmetry(exp(p) - x, y, Symmetry(jets, [x], [x + Y]))
+    assert infinitesimal_condition(exp(p) - y, y, Symmetry(jets, [0], [1])) == [Integer(-1)]
+    system, _, _ = determining_system(exp(p) - y, y)
+    assert len(system) == 3
+    # sin(y') = x: neither, refused rather than solved for one branch
+    for call in (lambda: symmetries(sin(p) - x, y, 1),
+                 lambda: check_symmetry(sin(p) - x, y, translation)):
+        try:
+            call()
+        except NotImplementedError:
+            pass
+        else:
+            raise AssertionError("expected NotImplementedError")

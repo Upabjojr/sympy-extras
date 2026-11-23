@@ -1,8 +1,8 @@
 //! Port of `sympy_extras/simplify/simplify.py`: [`simplify`],
 //! [`logcombine`], [`posify`], [`collect_abs`], [`inversecombine`] and
 //! [`kroneckersimp`]; `nsimplify` needs `Float`, which the Rust core does
-//! not have, and `besselsimp`, `nc_simplify` and the simplification of
-//! sums and products are not ported.
+//! not have, and `nc_simplify` and the simplification of sums and
+//! products are not ported; [`besselsimp`] is.
 
 #![allow(clippy::mutable_key_type)]
 
@@ -488,10 +488,12 @@ fn eval_simplify(e: &Basic, o: &Options) -> PolyResult<Option<Basic>> {
             use super::hyperexpand::{hyperexpand, Rewrite};
             return Ok(Some(hyperexpand(e, false, Rewrite::Default, None)?));
         }
-        Head::Piecewise => return Err(crate::error::not_ported("simplify of a Piecewise (piecewise_simplify)")),
-        Head::Function(f) if crate::functions::special::bessel::is_bessel(*f) => {
-            return Err(crate::error::not_ported("simplify of a Bessel function (besselsimp)"))
+        Head::Piecewise => {
+            return Ok(Some(crate::functions::elementary::piecewise::piecewise_simplify(
+                e, o.doit,
+            )?))
         }
+        Head::Function(f) if crate::functions::special::bessel::is_bessel(*f) => return Ok(Some(besselsimp(e)?)),
         Head::Function(Function::Log) => {
             let mut new: Basic = log(&simplify(&arg(e), o)?)?;
             if o.inverse {
@@ -529,15 +531,32 @@ fn simplified_arg(a: &Basic, o: &Options) -> PolyResult<Basic> {
         return Ok(Basic::new(Head::Tuple, args));
     }
     if crate::core::logic::is_boolean(a) {
+        // Basic.simplify of a Boolean: the native simplify_boolean, the
+        // arguments simplified when it raises NotImplementedError
         if a.args().is_empty() {
             return Ok(a.clone());
         }
-        return Err(crate::error::not_ported(
-            "simplify of a Boolean argument (simplify_boolean)",
-        ));
+        match crate::logic::boolsimp::simplify_boolean_default(a, 1.7) {
+            Ok(v) => return Ok(v),
+            Err(crate::error::PolyError::NotImplemented(m)) if !m.starts_with(crate::error::NOT_PORTED_PREFIX) => {}
+            Err(e) => return Err(e),
+        }
+        let args: Vec<Basic> = a
+            .args()
+            .iter()
+            .map(|x| simplified_arg(x, &Options::default()))
+            .collect::<PolyResult<_>>()?;
+        if args.iter().zip(a.args()).all(|(new, old)| new == old) {
+            return Ok(a.clone());
+        }
+        return crate::core::function::rebuild_evaluated(a, args);
     }
     if matches!(a.head(), Head::ExprCondPair) {
-        return Err(crate::error::not_ported("simplify of a Piecewise (piecewise_simplify)"));
+        // the expression and the condition of a piece
+        return Ok(crate::functions::elementary::piecewise::expr_cond_pair(
+            &simplify(&a.args()[0], o)?,
+            &crate::functions::elementary::piecewise::simplify_condition(&a.args()[1])?,
+        ));
     }
     simplify(a, o)
 }
@@ -628,10 +647,25 @@ pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
     if has_f(&e, Function::Sign) {
         e = crate::core::rewriting::rewrite(&e, &[], "Abs", &crate::core::rewriting::RewriteHints::default())?;
     }
-    if has_head(&e, &|n| matches!(n.head(), Head::Piecewise)) {
-        e = done(&crate::functions::elementary::piecewise::piecewise_fold(&e, None)?)?;
-        if has_head(&e, &|n| matches!(n.head(), Head::Piecewise)) {
-            return Err(crate::error::not_ported("simplify of a Piecewise (piecewise_simplify)"));
+    let has_pw = |x: &Basic| has_head(x, &|n| matches!(n.head(), Head::Piecewise));
+    if has_pw(&e) {
+        use crate::functions::elementary::piecewise::{piecewise_fold, piecewise_simplify};
+        e = done(&piecewise_fold(&e, Some(true))?)?;
+        if has_pw(&e) {
+            e = piecewise_fold(&e, Some(true))?;
+            if has_f(&e, Function::KroneckerDelta) {
+                e = kroneckersimp(&e)?;
+            }
+            if has_pw(&e) {
+                // SymPy's piecewise_simplify: the folded expression is a Piecewise
+                if matches!(e.head(), Head::Piecewise) {
+                    e = piecewise_simplify(&e, false)?;
+                }
+                if has_pw(&e) {
+                    let factored: Basic = crate::core::exprtools::factor_terms(&e, false, false, false, true)?;
+                    return shorter(vec![e, factored], measure);
+                }
+            }
         }
     }
     if has_head(&e, &|n| {
@@ -649,7 +683,7 @@ pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
         &e,
         &|n| matches!(n.head(), Head::Function(f) if crate::functions::special::bessel::is_bessel(*f)),
     ) {
-        return Err(crate::error::not_ported("simplify of a Bessel function (besselsimp)"));
+        e = besselsimp(&e)?;
     }
     let mut trig_hyper: Vec<Function> = super::fu::TRIG.to_vec();
     trig_hyper.extend(super::fu::HYPER);
@@ -725,4 +759,169 @@ pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
         e = original;
     }
     done(&e)
+}
+
+// ---------------------------------------------------------------------
+// besselsimp
+
+type BesselMaker<'a> = dyn Fn(&Basic, &Basic) -> PolyResult<Basic> + 'a;
+
+fn bessel(f: Function) -> impl Fn(&Basic, &Basic) -> PolyResult<Basic> {
+    move |nu: &Basic, z: &Basic| crate::functions::apply_function(f, &[nu.clone(), z.clone()])
+}
+
+/// `to(nu, z)` when a factor of `z` is one of `factors`, `fro(nu, z)`
+/// otherwise (besselsimp's `replacer`).
+fn replacer(fro: Function, to: &BesselMaker<'_>, factors: &[Basic], nu: &Basic, z: &Basic) -> PolyResult<Basic> {
+    let zfactors: Vec<Basic> = if z.is_mul() { z.args().to_vec() } else { vec![z.clone()] };
+    if zfactors.iter().any(|f| factors.contains(f)) {
+        return to(nu, z);
+    }
+    bessel(fro)(nu, z)
+}
+
+fn replace_bessel(t: &Basic, f: Function, g: &BesselMaker<'_>) -> PolyResult<Basic> {
+    crate::core::function::replace_where(t, &|n| n.is_function(f), &|n| g(&n.args()[0], &n.args()[1]))
+}
+
+/// Bessel functions simplified: the factors `I` and `-1` of the arguments
+/// taken out, the half-integer orders written with trigonometric
+/// functions, the integer orders expanded, and the recurrence used to
+/// remove the lowest orders; the result factored when it changed
+/// (`besselsimp`).
+pub fn besselsimp(expr: &Basic) -> PolyResult<Basic> {
+    use crate::core::mul::{div, mul};
+    use crate::functions::elementary::polar::{exp_polar, unpolarify};
+    let m2 = |a: &Basic, b: &Basic| mul(&[a.clone(), b.clone()]);
+    let a2 = |a: &Basic, b: &Basic| crate::core::add::add(&[a.clone(), b.clone()]);
+    let i: Basic = Basic::atom(Head::ImaginaryUnit);
+    let pi: Basic = Basic::pi();
+    let ipi: Basic = m2(&i, &pi)?;
+    let mipi: Basic = m2(&crate::core::mul::neg(&i)?, &pi)?;
+    let hints = crate::core::function::Hints {
+        log: false,
+        func: true,
+        ..crate::core::function::Hints::DEFAULT
+    };
+    let rewrite = |e: &Basic, target: &str| {
+        crate::core::rewriting::rewrite(e, &[], target, &crate::core::rewriting::RewriteHints::default())
+    };
+    let orig: Basic = expr.clone();
+    let mut e: Basic = expr.clone();
+    let ifactors: Vec<Basic> = vec![
+        i.clone(),
+        exp_polar(&div(&ipi, &Basic::int(2))?)?,
+        exp_polar(&div(&mipi, &Basic::int(2))?)?,
+    ];
+    let j_to_i = |nu: &Basic, z: &Basic| rewrite(&bessel(Function::BesselJ)(nu, z)?, "besseli");
+    let i_to_j = |nu: &Basic, z: &Basic| rewrite(&bessel(Function::BesselI)(nu, z)?, "besselj");
+    e = replace_bessel(&e, Function::BesselJ, &|nu: &Basic, z: &Basic| {
+        replacer(Function::BesselJ, &j_to_i, &ifactors, nu, z)
+    })?;
+    e = replace_bessel(&e, Function::BesselI, &|nu: &Basic, z: &Basic| {
+        replacer(Function::BesselI, &i_to_j, &ifactors, nu, z)
+    })?;
+    let minusfactors: Vec<Basic> = vec![Basic::int(-1), exp_polar(&ipi)?];
+    let tominus = |f: Function| {
+        let ipi = ipi.clone();
+        let mipi = mipi.clone();
+        move |nu: &Basic, z: &Basic| -> PolyResult<Basic> {
+            let factor: Basic = crate::functions::elementary::exponential::exp(&m2(&ipi, nu)?)?;
+            m2(&factor, &bessel(f)(nu, &m2(&exp_polar(&mipi)?, z)?)?)
+        }
+    };
+    let j_minus = tominus(Function::BesselJ);
+    let i_minus = tominus(Function::BesselI);
+    e = replace_bessel(&e, Function::BesselJ, &|nu: &Basic, z: &Basic| {
+        replacer(Function::BesselJ, &j_minus, &minusfactors, nu, z)
+    })?;
+    e = replace_bessel(&e, Function::BesselI, &|nu: &Basic, z: &Basic| {
+        replacer(Function::BesselI, &i_minus, &minusfactors, nu, z)
+    })?;
+    let z0: Basic = Dummy::new("z", &[]).0;
+    let expander = |f: Function| {
+        let z0 = z0.clone();
+        move |nu: &Basic, z: &Basic| -> PolyResult<Basic> {
+            if crate::core::modulo::modulo(nu, &Basic::one())? == Basic::half() {
+                let mut rewritten: Basic = rewrite(&bessel(f)(nu, &z0)?, "besselj")?;
+                rewritten = rewrite(&rewritten, "jn")?;
+                rewritten = crate::core::function::expand_with(&rewritten, true, hints)?;
+                let simpler: Basic = simplify(
+                    &super::trigsimp::trigsimp(&unpolarify(&rewritten, false)?, super::trigsimp::Method::Matching)?,
+                    &Options::default(),
+                )?;
+                return crate::core::subs::subs(&simpler, &z0, z);
+            }
+            if nu
+                .as_rational()
+                .is_some_and(|q| q.is_int() && *q > crate::numbers::rat(1, 1))
+            {
+                return crate::core::function::expand_with(&bessel(f)(nu, z)?, true, hints);
+            }
+            bessel(f)(nu, z)
+        }
+    };
+    for f in [
+        Function::BesselJ,
+        Function::BesselY,
+        Function::BesselI,
+        Function::BesselK,
+    ] {
+        e = replace_bessel(&e, f, &expander(f))?;
+    }
+    let use_recursion = |f: Function, t: Basic| -> PolyResult<Basic> {
+        let mut t: Basic = t;
+        loop {
+            let mut found: Vec<Basic> = Vec::new();
+            for n in t.preorder() {
+                if n.is_function(f) && !found.contains(&n) {
+                    found.push(n);
+                }
+            }
+            let keys: Vec<Basic> = found
+                .iter()
+                .map(|b| crate::functions::elementary::complexes::re(&b.args()[0]))
+                .collect::<PolyResult<_>>()?;
+            if found.len() > 1 && !keys.iter().all(crate::core::expr::is_comparable) {
+                return Ok(t);
+            }
+            let mut ordered_found: Vec<(f64, Basic)> = Vec::new();
+            for (k, b) in keys.iter().zip(found) {
+                let value: f64 = crate::core::evalf::numeric_value(k, 64)
+                    .map(|v| crate::core::evalf::parts(&v).0.to_f64().value())
+                    .unwrap_or(0.0);
+                ordered_found.push((value, b));
+            }
+            if ordered_found.len() > 1 {
+                ordered_found.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+            }
+            let mut changed: bool = false;
+            for (_, ba) in &ordered_found {
+                let (a, x) = (&ba.args()[0], &ba.args()[1]);
+                let bap1: Basic = bessel(f)(&a2(a, &Basic::one())?, x)?;
+                let bap2: Basic = bessel(f)(&a2(a, &Basic::int(2))?, x)?;
+                if t.has(&bap1) && t.has(&bap2) {
+                    let two_a1: Basic = m2(&Basic::int(2), &a2(a, &Basic::one())?)?;
+                    let new: Basic = crate::core::add::sub(&m2(&div(&two_a1, x)?, &bap1)?, &bap2)?;
+                    t = crate::core::subs::subs(&t, ba, &new)?;
+                    changed = true;
+                    break;
+                }
+            }
+            if !changed {
+                return Ok(t);
+            }
+        }
+    };
+    let has = |e: &Basic, f: Function| e.preorder().iter().any(|n| n.is_function(f));
+    if has(&e, Function::BesselJ) {
+        e = use_recursion(Function::BesselJ, e)?;
+    }
+    if has(&e, Function::BesselY) {
+        e = use_recursion(Function::BesselY, e)?;
+    }
+    if e != orig {
+        e = crate::polys::polytools::factor(&e, &[], false, true)?;
+    }
+    Ok(e)
 }

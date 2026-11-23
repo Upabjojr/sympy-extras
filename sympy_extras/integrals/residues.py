@@ -122,7 +122,7 @@ from sympy_extras.core.evalf import numeric_value
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.function import Application, count_ops, expand, expand_trig
 from sympy_extras.core.limits import Limit, limit
-from sympy_extras.core.logic import Boolean, BooleanFalse, BooleanTrue, and_, to_boolean
+from sympy_extras.core.logic import Boolean, BooleanFalse, BooleanTrue, and_, or_, to_boolean, true
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import (ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, Rational,
                                        oo, pi)
@@ -133,13 +133,15 @@ from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.functions.combinatorial.factorials import factorial
 from sympy_extras.functions.elementary.complexes import Im, Re, abs_, arg, im, re
 from sympy_extras.functions.elementary.exponential import Exp, Log, exp, log
+from sympy_extras.functions.elementary.piecewise import piecewise
 from sympy_extras.functions.elementary.trigonometric import Cos, Cot, Csc, Sec, Sin, Tan, cos, sin
 from sympy_extras.polys.complexrootof import all_roots
 from sympy_extras.polys.polyerrors import BasePolynomialError
 from sympy_extras.polys.polyroots import roots
-from sympy_extras.polys.polytools import Poly, cancel, factor
+from sympy_extras.polys.polytools import Poly, cancel, discriminant, factor, gcd, sqf_list
 from sympy_extras.sets.sets import Reals
 from sympy_extras.settings import settings
+from sympy_extras.simplify.radsimp import radsimp
 from sympy_extras.simplify.simplify import simplify
 from .conditions import ConditionalValue, sample_values
 
@@ -817,6 +819,30 @@ def _tidy(value: Expr, assumptions: Assumptions) -> Expr:
     simpler = attempt(lambda: simplify(cancel(current)), budget, native=True)
     if simpler is not None and _size(simpler) <= _size(result):
         result = simpler
+    if result.has(I):
+        # the half-integer powers of a base negative under the assumptions
+        # written through the positive one (2*I*pi/sqrt(r**2 - 1) is
+        # 2*pi/sqrt(1 - r**2) for -1 < r < 1)
+        rule: dict[Basic, Basic] = {}
+        for node in result.atoms(Pow):
+            if isinstance(node, Pow) and isinstance(node.exp, Rational) and node.exp.q == 2 \
+                    and node.base.free_symbols and ask(lt(node.base, 0), assumptions) is True:
+                rule[node] = mul(pow(I, Integer(node.exp.p)), pow(mul(Integer(-1), node.base), node.exp))
+        if rule:
+            rewritten = _replace(result, rule)
+            current = rewritten
+            simpler = attempt(lambda: simplify(current), budget, native=True)
+            result = simpler if simpler is not None and _size(simpler) <= _size(rewritten) else rewritten
+    if any(isinstance(node, Pow) and isinstance(node.exp, Rational) and not isinstance(node.exp, Integer)
+           and node.base.free_symbols for node in result.atoms(Pow)):
+        # radicals of the parameters in a denominator rationalised first:
+        # the residues of sin(x)**2/(a + cos(x)) summed to a quotient of
+        # polynomials in sqrt(a**2 - 1) which simplify alone keeps, and
+        # which is 2*pi*(a - sqrt(a**2 - 1))
+        current = result
+        rationalised = attempt(lambda: simplify(radsimp(current)), budget, native=True)
+        if rationalised is not None and _size(rationalised) < _size(result):
+            result = rationalised
     if result.has(I) and not reals and not parameters:
         current = result
         simpler = attempt(lambda: simplify(expand(current, complex=True)), budget, native=True)
@@ -1212,24 +1238,241 @@ def period_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     """``Integral(f, (x, a, b))`` over ``k`` periods, ``b - a = 2*pi*k``,
     for a rational function of ``sin(x)`` and ``cos(x)`` (also of
     multiple angles), through ``z = exp(I*x)`` and the residues inside
-    the unit circle.
+    the unit circle. A pole whose place against the unit circle depends
+    on the sign of a real parameter which the assumptions leave open
+    splits the computation into the cases of that sign (``b > 0``, ``b <
+    0`` and ``b = 0``), joined when they agree; the value then holds for
+    the real values of the parameter.
 
     Examples
     ========
 
     >>> from sympy_extras.core import symbols, Symbol, pi
-    >>> from sympy_extras.functions import cos
+    >>> from sympy_extras.functions import cos, abs_
     >>> from sympy_extras.integrals.residues import period_integral
-    >>> x = symbols('x')
+    >>> x, b, c = symbols('x b c')
     >>> a = Symbol('a', positive=True)
     >>> period_integral(1/(1 - 2*a*cos(x) + a**2), x, 0, 2*pi, a < 1)
     ConditionalValue(2*pi/(1 - a**2))
+    >>> period_integral(1/(c + b*cos(x)), x, 0, 2*pi, [c > abs_(b), b > -1, b < 1])
+    ConditionalValue(2*pi/sqrt(-b**2 + c**2))
     """
     e, lower, upper = to_expr(f), to_expr(a), to_expr(b)
     k = _periods(lower, upper)
     if k is None or not e.has(*_TRIGONOMETRIC):
         return None
-    z = _fresh('z')
+    return _period_cases(e, x, lower, upper, k, assumptions, 2)
+
+
+def _period_cases(e: Expr, x: Symbol, lower: Expr, upper: Expr, k: int, assumptions: Assumptions,
+                  splits: int) -> Optional[ConditionalValue]:
+    """:func:`period_integral` under the assumptions, with at most
+    ``splits`` parameters split by their signs."""
+    found, undecided = _period_value(e, x, lower, upper, k, assumptions)
+    if found is not None or splits == 0:
+        return found
+    for s in undecided:
+        if ask(s > 0, assumptions) is not None or ask(s < 0, assumptions) is not None:
+            continue
+        # the parameters in turn: under a > Abs(b) the sign of a is not
+        # decided either, and its case a < 0, which never holds, fails
+        split = _sign_cases(e, x, lower, upper, k, assumptions, splits, s)
+        if split is not None:
+            return split
+    parameters = _sorted_symbols(e.free_symbols - {x})
+    if len(parameters) == 1 and parameters[0] in undecided:
+        return _interval_cases(e, x, lower, upper, k, assumptions, parameters[0])
+    return None
+
+
+def _interval_cases(e: Expr, x: Symbol, lower: Expr, upper: Expr, k: int, assumptions: Assumptions,
+                    s: Symbol) -> Optional[ConditionalValue]:
+    """The integral in the cases of the only parameter ``s``, taken real:
+    the real line cut at the values where a pole may cross the unit circle
+    (:func:`_crossings`), the value computed on each interval and at each
+    cut, and the neighbouring cases with equal values joined
+    (``1/(a + cos(x))`` is ``2*pi/sqrt(a**2 - 1)`` for ``a > 1`` and its
+    opposite for ``a < -1``; for ``-1 <= a <= 1`` a pole lies on the circle,
+    the integral diverges and no case is written). ``None`` when no case
+    has a value."""
+    points = _crossings(e, x, s)
+    if points is None:
+        return None
+    # the pieces in order: (lower end, upper end, value), a point being a
+    # piece whose ends are equal, None where nothing was found
+    pieces: list[tuple[Expr, Expr, Optional[Expr]]] = []
+    ends: list[Expr] = [S.NegativeInfinity] + points + [oo]
+    for i in range(len(ends) - 1):
+        lo, hi = ends[i], ends[i + 1]
+        if i > 0:
+            pieces.append((lo, lo, _value_at(e, x, lower, upper, k, assumptions, s, lo)))
+        interval: list[Boolean] = [] if lo == S.NegativeInfinity else [gt(s, lo)]
+        interval += [] if hi == oo else [lt(s, hi)]
+        value: Optional[Expr] = None
+        if ask(and_(*interval), assumptions) is not False:
+            found, _ = _period_value(e, x, lower, upper, k, _with_facts(assumptions, interval))
+            if found is not None and isinstance(found.condition, BooleanTrue):
+                value = found.value
+        pieces.append((lo, hi, value))
+    # neighbouring pieces with equal values joined: a cut joins the
+    # interval before it when the interval's value takes the cut's value
+    # there, an interval joins the segment before it when their values are
+    # equal (or the segment is a cut whose value the interval's takes)
+    joined: list[tuple[Expr, bool, Expr, bool, Expr]] = []
+    adjacent = False
+    for lo, hi, value in pieces:
+        if value is None:
+            adjacent = False
+            continue
+        if adjacent:
+            start, start_closed, end, end_closed, current = joined[-1]
+            if lo == hi:
+                at_cut = _replace(current, {s: lo})
+                if not _is_bad(at_cut) and _same(at_cut, value, _with_facts(assumptions, [Eq(s, lo)])):
+                    joined[-1] = (start, start_closed, lo, True, current)
+                    continue
+            elif start == end:
+                at_cut = _replace(value, {s: lo})
+                if not _is_bad(at_cut) and _same(at_cut, current, _with_facts(assumptions, [Eq(s, lo)])):
+                    joined[-1] = (start, True, hi, False, value)
+                    continue
+            elif end_closed:
+                interval = [gt(s, lo)] if hi == oo else [gt(s, lo), lt(s, hi)]
+                if _same(value, current, _with_facts(assumptions, interval)):
+                    joined[-1] = (start, start_closed, hi, False, current)
+                    continue
+        joined.append((lo, lo == hi, hi, lo == hi, value))
+        adjacent = True
+    if not joined:
+        return None
+    cases: list[tuple[Expr, Boolean]] = []
+    for start, start_closed, end, end_closed, value in joined:
+        if start == end:
+            cases.append((value, Eq(s, start)))
+            continue
+        bounds: list[Boolean] = []
+        if start != S.NegativeInfinity:
+            bounds.append(s >= start if start_closed else gt(s, start))
+        if end != oo:
+            bounds.append(s <= end if end_closed else lt(s, end))
+        cases.append((value, and_(*bounds)))
+    if len(cases) == 1:
+        return ConditionalValue(cases[0][0], cases[0][1])
+    return ConditionalValue(piecewise(*cases), or_(*[c for _, c in cases]))
+
+
+def _value_at(e: Expr, x: Symbol, lower: Expr, upper: Expr, k: int, assumptions: Assumptions,
+              s: Symbol, point: Expr) -> Optional[Expr]:
+    """The integral at ``s = point``; ``None`` when it has no value found
+    (a pole on the circle) or the problem is not defined there."""
+    if ask(Eq(s, point), assumptions) is False:
+        return None
+    at_point = _replace(e, {s: point})
+    if _is_bad(at_point):
+        return None
+    if not at_point.has(x):
+        return mul(at_point, add(upper, mul(Integer(-1), lower)))
+    found, _ = _period_value(at_point, x, lower, upper, k, assumptions)
+    if found is None or not isinstance(found.condition, BooleanTrue):
+        return None
+    return found.value
+
+
+def _with_facts(assumptions: Assumptions, facts: Sequence[Boolean]) -> list[Boolean]:
+    """The assumptions with more facts."""
+    items: list[Boolean]
+    if assumptions is None:
+        items = []
+    elif isinstance(assumptions, (Basic, bool)):
+        items = [to_boolean(assumptions)]
+    else:
+        items = [to_boolean(item) for item in assumptions]
+    return items + list(facts)
+
+
+def _sign_cases(e: Expr, x: Symbol, lower: Expr, upper: Expr, k: int, assumptions: Assumptions,
+                splits: int, s: Symbol) -> Optional[ConditionalValue]:
+    """The integral in the cases ``s > 0``, ``s < 0`` and ``s = 0`` of the
+    real parameter ``s``, joined when they agree; ``None`` when a case
+    fails. The case ``s = 0`` is left out when the problem is not defined
+    there."""
+    cases: list[tuple[Expr, Boolean]] = []
+    for condition, sign in ((gt(s, 0), 1), (lt(s, 0), -1)):
+        if ask(condition, assumptions) is False:
+            continue
+        value = _period_cases(e, x, lower, upper, k, _with_fact(assumptions, s, condition, sign), splits - 1)
+        if value is None or not isinstance(value.condition, BooleanTrue):
+            return None
+        cases.append((value.value, condition))
+    complete = True
+    at_zero = _replace(e, {s: S.Zero})
+    if ask(Eq(s, 0), assumptions) is False:
+        pass
+    elif not at_zero.has(x):
+        if _is_bad(at_zero):
+            # the problem is not defined at s = 0: no case there
+            complete = False
+        else:
+            cases.append((mul(at_zero, add(upper, mul(Integer(-1), lower))), Eq(s, 0)))
+    else:
+        value = _period_cases(at_zero, x, lower, upper, k, assumptions, splits - 1)
+        if value is None or not isinstance(value.condition, BooleanTrue):
+            return None
+        cases.append((value.value, Eq(s, 0)))
+    if not cases:
+        return None
+    # the cases cover every real value of s (or every one where the
+    # problem is defined); a parameter not known to be real gets that
+    # condition
+    covered: Boolean = true if complete else ne(s, 0)
+    if not (s.is_extended_real or ask(element(s, Reals), assumptions)):
+        covered = and_(covered, element(s, Reals))
+    first = cases[0][0]
+    # every case's value is the first one's, at s = 0 with s substituted
+    if all(_same(value, _replace(first, {s: S.Zero}) if isinstance(c, Eq) else first,
+                 _with_fact(assumptions, s, c, 1)) for value, c in cases[1:]):
+        return ConditionalValue(first, covered)
+    return ConditionalValue(piecewise(*cases), covered)
+
+
+def _with_fact(assumptions: Assumptions, s: Symbol, fact: Boolean, sign: int) -> list[Boolean]:
+    """The assumptions with the sign ``fact`` of ``s`` added, and ``Abs(s)``
+    in them written ``sign*s`` (``a > Abs(b)`` is ``a > b`` in the case
+    ``b > 0``, a form the decisions about the poles read)."""
+    items: list[Boolean]
+    if assumptions is None:
+        items = []
+    elif isinstance(assumptions, (Basic, bool)):
+        items = [to_boolean(assumptions)]
+    else:
+        items = [to_boolean(item) for item in assumptions]
+    rule: dict[Basic, Basic] = {abs_(s): mul(Integer(sign), s)}
+    return [_replace_boolean(item, rule) for item in items] + [fact]
+
+
+def _same(value: Expr, other: Expr, assumptions: Assumptions) -> bool:
+    """Whether the two values are equal, by ``simplify`` with the
+    parameters the assumptions make positive, negative or real taken as
+    such (``2*pi/sqrt(a**2)`` is ``2*pi/a`` for ``a > 0``)."""
+    rule: dict[Basic, Basic] = {}
+    for p in _sorted_symbols(value.free_symbols | other.free_symbols):
+        if p.is_positive or p.is_negative:
+            continue
+        if ask(p > 0, assumptions) is True:
+            rule[p] = Dummy(p.name, positive=True)
+        elif ask(p < 0, assumptions) is True:
+            rule[p] = Dummy(p.name, negative=True)
+        elif p.is_extended_real or ask(element(p, Reals), assumptions):
+            rule[p] = Dummy(p.name, real=True)
+    difference = _replace(add(value, mul(Integer(-1), other)), rule)
+    budget = None if settings.timeout is None else settings.timeout / 8
+    simplified = attempt(lambda: simplify(difference), budget, native=True)
+    return simplified is not None and simplified == 0
+
+
+def _period_fraction(e: Expr, x: Symbol, z: Symbol) -> Optional[_Fraction]:
+    """The integrand over a period as a rational function of ``z = exp(I*x)``,
+    ``dx = dz/(I*z)`` included; ``None`` when it is not one."""
     g = expand_trig(e.rewrite(Cos).rewrite(Sin))
     for node in g.atoms(*_TRIGONOMETRIC):
         if node.has(x) and not (isinstance(node, (Sin, Cos)) and node.args[0] == x):
@@ -1240,25 +1483,167 @@ def period_integral(f: ExprLike, x: Symbol, a: ExprLike, b: ExprLike,
     substituted = mul(_replace(g, rule), pow(mul(I, z), Integer(-1)))
     if substituted.has(x):
         return None
-    fraction = rational_function(substituted, z)
+    return rational_function(substituted, z)
+
+
+def _period_value(e: Expr, x: Symbol, lower: Expr, upper: Expr, k: int,
+                  assumptions: Assumptions) -> tuple[Optional[ConditionalValue], list[Symbol]]:
+    """The value over ``k`` periods; with ``None``, the parameters of the
+    poles whose place against the unit circle was undecided."""
+    z = _fresh('z')
+    fraction = _period_fraction(e, x, z)
     if fraction is None:
-        return None
+        return None, []
     found = poles(fraction.denominator)
     if found is None:
-        return None
+        return None, []
     locator = _Locator(assumptions)
     total: Expr = S.Zero
     for pole in found:
         inside = locator.inside_unit_circle(pole)
         if inside is None:
-            return None
+            return None, _sorted_symbols(pole.point.free_symbols)
         if inside:
             value = _residue(fraction, pole, S.One, z)
             if value is None:
-                return None
+                return None, []
             total = add(total, value)
+    parameters = _sorted_symbols(e.free_symbols - {x})
+    if locator.sampled and len(parameters) == 1:
+        # a place decided at a sample holds where the poles do not cross
+        # the unit circle: the assumptions must keep the parameter on one
+        # side of every value where one may (the bug: 1/(2 + a*cos(x))
+        # under a > 0 was 2*pi/sqrt(4 - a**2), decided at a sample below
+        # 2 and checked at two more, and wrong for a > 2, where a pole is
+        # on the circle)
+        s = parameters[0]
+        crossings = _crossings(e, x, s)
+        if crossings is None:
+            return None, []
+        for c in crossings:
+            if ask(gt(s, c), assumptions) is None and ask(lt(s, c), assumptions) is None:
+                return None, [s]
     value = mul(Integer(2), pi, I, Integer(k), total)
-    return _checked(ConditionalValue(_tidy(value, assumptions)), e, x, lower, upper, assumptions, locator)
+    return _checked(ConditionalValue(_tidy(value, assumptions)), e, x, lower, upper, assumptions, locator), []
+
+
+#: the most values of a parameter at which a pole may cross the unit
+#: circle for which the cases are written
+_MAX_CROSSINGS: Final = 6
+
+
+def _crossings(e: Expr, x: Symbol, s: Symbol) -> Optional[list[Expr]]:
+    """The real values of the parameter ``s`` (the only one) at which a
+    pole in ``z = exp(I*x)`` of the rational function ``e`` of ``sin(x)``
+    and ``cos(x)`` may meet the unit circle, sorted; ``None`` when they are
+    not found in radicals. A pole on the circle is a real zero ``x`` of the
+    denominator, a real zero ``t`` of its form in ``t = tan(x/2)`` (or
+    ``x = pi``, a fall of its degree); the real zeros of a square-free
+    polynomial with real coefficients appear and disappear where two of
+    them meet or one goes to infinity: at the real roots of the content,
+    of the leading coefficients and of the discriminants of the
+    square-free factors of the denominator in ``t`` (a superset of the
+    crossings)."""
+    g = expand_trig(e.rewrite(Cos).rewrite(Sin))
+    t = _fresh('t', real=True)
+    square = add(Integer(1), pow(t, Integer(2)))
+    rule: dict[Basic, Basic] = {sin(x): mul(Integer(2), t, pow(square, Integer(-1))),
+                                cos(x): mul(add(Integer(1), mul(Integer(-1), pow(t, Integer(2)))),
+                                            pow(square, Integer(-1)))}
+    substituted = _replace(g, rule)
+    if substituted.has(x) or substituted.free_symbols - {t, s}:
+        return None
+    reduced = attempt(lambda: cancel(substituted), _budget(), native=True)
+    if reduced is None:
+        return None
+    denominator = reduced.as_numer_denom()[1]
+    factors: list[Expr] = []
+    try:
+        content, parts = sqf_list(denominator, t)
+        factors.append(content)
+        for part, _ in parts:
+            polynomial = Poly(part, t)
+            factors.append(polynomial.LC())
+            if polynomial.degree() >= 2:
+                factors.append(discriminant(part, t))
+    except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
+        return None
+    # and where a pole in z goes to 0 or to infinity (the pole 1/r of the
+    # Poisson kernel at r = 0), from the coefficients in z, whose real
+    # roots are those of their real and imaginary parts
+    fraction = _period_fraction(e, x, _fresh('z'))
+    if fraction is None:
+        return None
+    for coefficient in (fraction.denominator.coefficients[0], fraction.denominator.coefficients[-1]):
+        components = _real_and_imaginary(coefficient, s)
+        if components is None:
+            return None
+        factors.extend(components)
+    points: list[tuple[float, Expr]] = []
+    for factor_ in factors:
+        product = expand(factor_)
+        if product == 0 or not product.has(s):
+            continue
+        try:
+            polynomial = Poly(product, s)
+            found = roots(polynomial)
+        except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
+            return None
+        if not isinstance(found, dict) or sum(found.values()) != polynomial.degree():
+            return None
+        for root in found:
+            if root.free_symbols or root.is_extended_real is False:
+                continue
+            value = numeric_value(root, 120)
+            if value is None:
+                return None
+            if root.is_extended_real is not True and abs(value.imag) > mpmath.mpf(10)**(-30):
+                continue
+            if root.is_extended_real is not True and value.imag != 0:
+                # a real root which evaluates with a rounding error in the
+                # imaginary part, or a complex one close to the line
+                return None
+            if all(root != other for _, other in points):
+                points.append((float(value.real), root))
+    if len(points) > _MAX_CROSSINGS:
+        return None
+    return [root for _, root in sorted(points, key=lambda item: item[0])]
+
+
+def _real_and_imaginary(c: Expr, s: Symbol) -> Optional[list[Expr]]:
+    """Polynomials in ``s`` whose common real roots are the real roots of
+    the polynomial ``c`` with Gaussian rational coefficients: its real and
+    imaginary parts for real ``s`` (``I`` written as a symbol ``w`` and
+    reduced by ``w**2 = -1``), their greatest common divisor when both are
+    nonzero; ``None`` when ``c`` is not such a polynomial."""
+    w = _fresh('w')
+    written = expand(_replace(c, {I: w}))
+    if written.free_symbols - {s, w}:
+        return None
+    if not written.has(w):
+        return [written]
+    try:
+        coefficients = Poly(written, w).all_coeffs()
+    except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
+        return None
+    real: Expr = S.Zero
+    imaginary: Expr = S.Zero
+    for k, coefficient in enumerate(reversed(coefficients)):
+        sign = Integer(-1 if k % 4 in (2, 3) else 1)
+        if k % 2 == 0:
+            real = add(real, mul(sign, coefficient))
+        else:
+            imaginary = add(imaginary, mul(sign, coefficient))
+    real, imaginary = expand(real), expand(imaginary)
+    if real == 0 or imaginary == 0:
+        return [add(real, imaginary)]
+    if not real.has(s) or not imaginary.has(s):
+        # a nonzero constant part: no real root
+        return []
+    try:
+        return [gcd(real, imaginary, s)]
+    except (BasePolynomialError, NotImplementedError, ValueError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------

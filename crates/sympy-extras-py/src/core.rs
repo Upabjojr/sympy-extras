@@ -267,6 +267,8 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Hankel1" => Basic::new(Head::Function(Function::Hankel1), args()?),
         "Hankel2" => Basic::new(Head::Function(Function::Hankel2), args()?),
         "BesselIs" => Basic::new(Head::Function(Function::BesselIs), args()?),
+        "Erfs" => Basic::new(Head::Function(Function::Erfs), args()?),
+        "Eis" => Basic::new(Head::Function(Function::Eis), args()?),
         "BesselKs" => Basic::new(Head::Function(Function::BesselKs), args()?),
         "SphericalJ" => Basic::new(Head::Function(Function::SphericalJ), args()?),
         "SphericalY" => Basic::new(Head::Function(Function::SphericalY), args()?),
@@ -719,7 +721,9 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 | Function::LogIntegral
                 | Function::OffsetLogIntegral
                 | Function::FresnelS
-                | Function::FresnelC => "error_functions",
+                | Function::FresnelC
+                | Function::Erfs
+                | Function::Eis => "error_functions",
                 Function::SingularityFunction => "singularity_functions",
                 Function::Ynm | Function::Znm => "spherical_harmonics",
                 Function::Legendre
@@ -787,6 +791,7 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                 || sympy_extras_core::functions::special::beta_functions::is_beta_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_error_function(*f)
                 || sympy_extras_core::functions::special::error_functions::is_integral_function(*f)
+                || matches!(f, Function::Erfs | Function::Eis)
             {
                 "special"
             } else if sympy_extras_core::functions::combinatorial::factorials::is_combinatorial(*f)
@@ -2585,6 +2590,9 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         }
         "piecewise" => {
             sympy_extras_core::functions::elementary::piecewise::piecewise_of_pairs(a.to_vec()).map_err(e)?
+        }
+        "piecewise_simplify" => {
+            sympy_extras_core::functions::elementary::piecewise::piecewise_simplify(&a[0], true).map_err(e)?
         }
         "piecewise_fold" | "piecewise_fold_none" | "piecewise_fold_false" => {
             let evaluate: Option<bool> = match name {
@@ -6314,6 +6322,301 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     let steps = mi::integral_steps(&a[1], &a[2]).map_err(e)?;
                     sympy_extras_core::core::symbol::Symbol::new(&mi::rule_names(&steps), &[]).0
                 }
+            }
+        }
+        "recognize" => {
+            // (constant, e, digits) | (integral, f, x, a, b, digits) -> the closed form or NONE (DEFAULT_CONSTANTS)
+            use sympy_extras_core::integrals::recognize as rg;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let constants: Vec<Basic> = rg::default_constants().map_err(e)?;
+            let n = |b: &Basic| -> usize { b.to_string().parse().unwrap_or(30) };
+            let found = match a[0].to_string().as_str() {
+                "constant" => rg::recognize_constant(&a[1], &constants, n(&a[2])).map_err(e)?,
+                _ => rg::recognize_integral(&a[1], &a[2], &a[3], &a[4], &constants, n(&a[5])).map_err(e)?,
+            };
+            found.unwrap_or_else(none)
+        }
+        "definite" => {
+            // (verify, value, f, x, a, b, Tuple(assumptions), samples, Tuple(inside)) -> True | False | NONE;
+            // (quadrature, f, x, a, b, Tuple(inside)) -> Tuple(re, im) as rationals of the floats, or NONE;
+            // (converges, f, x, a, b, Tuple(assumptions)) -> bool; (crossings, g, t) -> Tuple;
+            // (regions, value, Tuple(parameters)) -> Tuple
+            use sympy_extras_core::integrals::definite as df;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let truth = |b: bool| {
+                if b {
+                    Basic::atom(Head::BooleanTrue)
+                } else {
+                    Basic::atom(Head::BooleanFalse)
+                }
+            };
+            let truth_of = |b: &Basic| matches!(b.head(), Head::BooleanTrue);
+            let float = |v: f64| -> Basic {
+                match sympy_extras_core::numbers::Rat::try_from(v) {
+                    Ok(r) => Basic::from_rational(r),
+                    Err(_) => sympy_extras_core::core::Symbol::new("NONE", &[]).0,
+                }
+            };
+            match a[0].to_string().as_str() {
+                "verify" => {
+                    let samples: usize = a[7].to_string().parse().unwrap_or(2);
+                    match df::verify_numerically(&a[1], &a[2], &a[3], &a[4], &a[5], a[6].args(), samples, a[8].args())
+                        .map_err(e)?
+                    {
+                        None => none(),
+                        Some(v) => truth(v),
+                    }
+                }
+                "quadrature" => match df::quadrature(&a[1], &a[2], &a[3], &a[4], a[5].args()).map_err(e)? {
+                    None => none(),
+                    Some((re, im)) => tuple(vec![float(re), float(im)]),
+                },
+                "converges" => truth(df::quadrature_converges(&a[1], &a[2], &a[3], &a[4], a[5].args()).map_err(e)?),
+                "crossings" => tuple(df::axis_crossings(&a[1], &a[2]).map_err(e)?),
+                "integral" => {
+                    // (integral, f, x, a, b, Tuple(assumptions), Tuple(options as symbols)):
+                    // options among piecewise|none, recognize, principal_value, finite_part,
+                    // regularize, no_special_values
+                    let flags: Vec<String> = a[6].args().iter().map(|s| s.to_string()).collect();
+                    let has = |name: &str| flags.iter().any(|f| f == name);
+                    let options = df::Options {
+                        piecewise: !has("none"),
+                        recognize: has("recognize"),
+                        principal_value: has("principal_value"),
+                        finite_part: has("finite_part"),
+                        regularize: has("regularize"),
+                        special_values: !has("no_special_values"),
+                        ..df::Options::default()
+                    };
+                    df::definite_integral(&a[1], &a[2], &a[3], &a[4], a[5].args(), &options).map_err(e)?
+                }
+                "conditional" => {
+                    // (conditional, f, x, a, b, Tuple(assumptions)) -> Tuple(value, condition) or NONE
+                    match df::conditional_integral(&a[1], &a[2], &a[3], &a[4], a[5].args(), false, false, false)
+                        .map_err(e)?
+                    {
+                        None => none(),
+                        Some(c) => tuple(vec![c.value, c.condition]),
+                    }
+                }
+                "helper" => {
+                    // (helper, name, args...): the module-level helpers of the integrator
+                    let b: &[Basic] = &a[2..];
+                    let opt = |r: Option<Basic>| r.unwrap_or_else(none);
+                    let ints = |v: Vec<(Basic, i32)>| {
+                        tuple(
+                            v.into_iter()
+                                .map(|(c, p)| tuple(vec![c, Basic::int(p as i64)]))
+                                .collect(),
+                        )
+                    };
+                    let n = |x: &Basic| -> i64 { x.to_string().parse().unwrap_or(0) };
+                    match a[1].to_string().as_str() {
+                        "positions" => ints(df::positions(&b[0], &b[1], &b[2], truth_of(&b[3])).map_err(e)?),
+                        "merged" => df::merged_disjunction(&b[0]).map_err(e)?,
+                        "strict" => df::strict_where_undefined(&b[0], &b[1]).map_err(e)?,
+                        "odd_roots" => df::real_odd_roots(&b[0]).map_err(e)?,
+                        "nowhere" => truth(df::holds_nowhere(&b[0], b[1].args(), b[2].args()).map_err(e)?),
+                        "outside" => {
+                            truth(df::holds_outside(&b[0], &b[1], &b[2], &b[3], &b[4], &b[5], b[6].args()).map_err(e)?)
+                        }
+                        "real_for_real" => truth(df::real_for_real_parameters(&b[0]).map_err(e)?),
+                        "complex_for_real" => truth(df::complex_for_real_parameters(&b[0]).map_err(e)?),
+                        "arcsine" => df::arcsine_substitution(&b[0], &b[1], &b[2]).map_err(e)?,
+                        "factored" => match df::factored(&b[0], &b[1]).map_err(e)? {
+                            None => none(),
+                            Some((c, fs, sq)) => tuple(vec![
+                                c,
+                                tuple(fs.into_iter().map(|(f, m)| tuple(vec![f, m])).collect()),
+                                truth(sq),
+                            ]),
+                        },
+                        "squares" => df::trigonometric_squares(&b[0]).map_err(e)?,
+                        "combined" => df::combined_exponentials(&b[0], b.get(1)).map_err(e)?,
+                        "sums_to_products" => df::sums_to_products(&b[0], &b[1]).map_err(e)?,
+                        "forms" => tuple(df::forms(&b[0], &b[1], b[2].args()).map_err(e)?),
+                        "generator" => opt(df::exponential_generator(&b[0], &b[1], truth_of(&b[2])).map_err(e)?),
+                        "trig_zeros" => opt(df::trigonometric_zeros(&b[0], &b[1], &b[2], &b[3])
+                            .map_err(e)?
+                            .map(tuple)),
+                        "singular" => opt(df::singular_points(&b[0], &b[1], &b[2], &b[3]).map_err(e)?.map(tuple)),
+                        "candidates" => opt(df::candidate_points(&b[0], &b[1], &b[2], &b[3]).map_err(e)?.map(tuple)),
+                        "flattened" => df::flattened_powers(&b[0], &b[1], &b[2], &b[3]).map_err(e)?,
+                        "algebraic" => truth(df::algebraic(&b[0], &b[1]).map_err(e)?),
+                        "radical_base" => opt(df::radical_base(&b[0], &b[1])
+                            .map_err(e)?
+                            .map(|(q, k)| tuple(vec![q, Basic::int(k)]))),
+                        "denest" => df::denest(&b[0], b[1].args()).map_err(e)?,
+                        "signed_nodes" => tuple(df::signed_nodes(&b[0], &b[1])),
+                        "log_inside" => truth(df::logarithm_inside(&b[0], &b[1]).map_err(e)?),
+                        "zeta_one" => df::zeta_about_one(&b[0], &b[1]).map_err(e)?,
+                        "finite_at" => truth(df::finite_at(&b[0], &b[1], &b[2]).map_err(e)?),
+                        "powers_of_logs" => df::powers_of_logarithms(&b[0], &b[1]).map_err(e)?,
+                        "log_powers_only" => truth(df::log_powers_only(&b[0], &b[1]).map_err(e)?),
+                        "hermite" => df::hermite_as_kummer(&b[0], b[1].args()).map_err(e)?,
+                        "quarter" => opt(df::quarter(&b[0]).map_err(e)?.map(Basic::int)),
+                        "tangent" => df::tangent_of(&b[0]).map_err(e)?,
+                        "endpoint" => opt(df::endpoint(&b[0], &b[1], &b[2], &b[3].to_string()).map_err(e)?),
+                        "from_integrate" => match df::from_integrate(&b[0], &b[1]) {
+                            None => none(),
+                            Some(c) => tuple(vec![c.value, c.condition]),
+                        },
+                        "even" => truth(df::even(&b[0])),
+                        _ => {
+                            let _ = n;
+                            return Err(e(sympy_extras_core::error::not_ported("unknown helper")));
+                        }
+                    }
+                }
+                _ => tuple(df::branch_regions(&a[1], a[2].args()).map_err(e)?),
+            }
+        }
+        "validated" => {
+            // (f, x, a, b, digits) -> Tuple(midpoint, radius) of the enclosure, or NONE
+            use sympy_extras_core::integrals::validated as vd;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let digits: usize = a[4].to_string().parse().unwrap_or(15);
+            match vd::validated_integral(&a[0], &a[1], &a[2], &a[3], digits).map_err(e)? {
+                None => none(),
+                Some((mid, radius)) => Basic::new(
+                    Head::Tuple,
+                    vec![Basic::from_rational(mid), Basic::from_rational(radius)],
+                ),
+            }
+        }
+        "asymptotic" => {
+            // (integral, f, x, a, b, t, order, uniform); (watson, phi, x, t, order); (laplace, phi, h, x, a, b, t, order);
+            // (stationary | uniform, phi, h, x, a, b, t, kind); (steepest, phi, h, x, t);
+            // (exponential_part | oscillatory_part, f, x, t) -> Tuple; NONE for None
+            use sympy_extras_core::integrals::asymptotic as asy;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let sym = |s: &str| sympy_extras_core::core::Symbol::new(s, &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let n = |b: &Basic| -> i64 { b.to_string().parse().unwrap_or(1) };
+            let opt = |r: Option<Basic>| r.unwrap_or_else(none);
+            match a[0].to_string().as_str() {
+                "integral" => opt(asy::asymptotic_integral(
+                    &a[1],
+                    &a[2],
+                    &a[3],
+                    &a[4],
+                    &a[5],
+                    n(&a[6]),
+                    &[],
+                    a[7].to_string() == "True",
+                )
+                .map_err(e)?),
+                "watson" => opt(asy::watson_lemma(&a[1], &a[2], &a[3], n(&a[4]) as usize).map_err(e)?),
+                "laplace" => {
+                    opt(asy::laplace_method(&a[1], &a[2], &a[3], &a[4], &a[5], &a[6], n(&a[7]), &[]).map_err(e)?)
+                }
+                "stationary" => {
+                    opt(
+                        asy::stationary_phase(&a[1], &a[2], &a[3], &a[4], &a[5], &a[6], &a[7].to_string(), &[])
+                            .map_err(e)?,
+                    )
+                }
+                "uniform" => {
+                    opt(
+                        asy::uniform_expansion(&a[1], &a[2], &a[3], &a[4], &a[5], &a[6], &a[7].to_string(), &[])
+                            .map_err(e)?,
+                    )
+                }
+                "steepest" => opt(asy::steepest_descent(&a[1], &a[2], &a[3], &a[4], &[]).map_err(e)?),
+                "exponential_part" => match asy::exponential_part(&a[1], &a[2], &a[3]).map_err(e)? {
+                    Some((p, h)) => tuple(vec![p, h]),
+                    None => none(),
+                },
+                _ => match asy::oscillatory_part(&a[1], &a[2], &a[3]).map_err(e)? {
+                    Some((p, h, k)) => tuple(vec![p, h, sym(k)]),
+                    None => none(),
+                },
+            }
+        }
+        "antiderivative" => {
+            // (integral | pv | fp, f, x, a, b) -> the value or NONE; (antiderivative, f, x); (singularities, f, x)
+            // and (discontinuities, F, x, a, b) -> Tuple or NONE; (shape, f, x) -> Tuple(elementary, quick, by_parts);
+            // (select, F, x, a, b); (generic, F, x); (continuous, F, x, p); (limit, F, x, p, dir);
+            // (cancelled, F, x); (real_logs, F, x)
+            use sympy_extras_core::integrals::antiderivative as ad;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let b = sympy_extras_core::core::logic::boolean;
+            let value = |r: Option<sympy_extras_core::integrals::conditions::ConditionalValue>| match r {
+                Some(c) => c.value,
+                None => none(),
+            };
+            match a[0].to_string().as_str() {
+                "integral" => {
+                    value(ad::antiderivative_integral(&a[1], &a[2], &a[3], &a[4], &[], false, None, None).map_err(e)?)
+                }
+                "pv" => value(ad::principal_value_integral(&a[1], &a[2], &a[3], &a[4], &[], None).map_err(e)?),
+                "fp" => value(ad::finite_part_integral(&a[1], &a[2], &a[3], &a[4], &[], None).map_err(e)?),
+                "antiderivative" => ad::antiderivative(&a[1], &a[2], &[], false)
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "singularities" => ad::singularities(&a[1], &a[2], &[], None)
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "discontinuities" => ad::discontinuities(&a[1], &a[2], &a[3], &a[4], &[])
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "shape" => tuple(vec![
+                    b(ad::elementary_polynomial(&a[1], &a[2]).map_err(e)?),
+                    b(ad::quick_shape(&a[1], &a[2]).map_err(e)?),
+                    b(ad::by_parts_shape(&a[1], &a[2]).map_err(e)?),
+                ]),
+                "select" => ad::select_branch(&a[1], &a[2], &a[3], &a[4], &[])
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "generic" => ad::generic_antiderivative(&a[1], &a[2]).map_err(e)?,
+                "continuous" => b(ad::continuous_at(&a[1], &a[2], &a[3], &[]).map_err(e)?),
+                "limit" => ad::one_sided_limit(&a[1], &a[2], &a[3], &a[4].to_string(), &[])
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "cancelled" => ad::cancelled_logarithms(&a[1], &a[2]).map_err(e)?,
+                _ => ad::real_logarithms(&a[1], &a[2]).map_err(e)?,
+            }
+        }
+        "deltafunctions" => {
+            // (integrate, f, x) -> the value or NONE; (expand, d, x); (change_mul, node, x) -> Tuple(delta | NONE, rest | NONE)
+            use sympy_extras_core::integrals::deltafunctions as df;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            match a[0].to_string().as_str() {
+                "integrate" => df::deltaintegrate(&a[1], &a[2]).map_err(e)?.unwrap_or_else(none),
+                "expand" => df::expand_diracdelta(&a[1], &a[2]).map_err(e)?,
+                _ => {
+                    let (d, r) = df::change_mul(&a[1], &a[2]).map_err(e)?;
+                    Basic::new(Head::Tuple, vec![d.unwrap_or_else(none), r.unwrap_or_else(none)])
+                }
+            }
+        }
+        "brackets" => {
+            // (mellin | ramanujan | brackets, f, x, s) -> Tuple(transform, lower, upper) or NONE;
+            // (taylor, f, x) -> Tuple(coefficient, index, period, offset) or NONE;
+            // (formal, f, x) -> Tuple(formula, index, start, independent) or NONE
+            use sympy_extras_core::integrals::brackets as br;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let transform = |t: Option<sympy_extras_core::integrals::mellin::MellinTransform>| match t {
+                Some(t) => tuple(vec![t.transform, t.strip.0, t.strip.1]),
+                None => none(),
+            };
+            match a[0].to_string().as_str() {
+                "mellin" => transform(br::mellin_transform_series(&a[1], &a[2], &a[3], &[]).map_err(e)?),
+                "ramanujan" => transform(br::ramanujan_master_theorem(&a[1], &a[2], &a[3]).map_err(e)?),
+                "brackets" => transform(br::method_of_brackets(&a[1], &a[2], &a[3], &[]).map_err(e)?),
+                "taylor" => match br::taylor_coefficient(&a[1], &a[2]).map_err(e)? {
+                    Some(c) => tuple(vec![c.coefficient, c.index, Basic::int(c.period), c.offset]),
+                    None => none(),
+                },
+                _ => match br::formal_series_terms(&a[1], &a[2]).map_err(e)? {
+                    Some(t) => tuple(vec![t.formula, t.index, t.start, t.independent]),
+                    None => none(),
+                },
             }
         }
         "indefinite" => {

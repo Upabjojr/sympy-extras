@@ -20,22 +20,22 @@ from __future__ import annotations
 
 import random
 from fractions import Fraction
-from typing import Iterable, Optional, Union
+from typing import Final, Iterable, Optional, Union
 
 from sympy_extras.core.add import Add
 from sympy_extras.core.ask import Q, ask as _core_ask
 from sympy_extras.core.assume import AppliedPredicate
 from sympy_extras.core.basic import Basic, preorder_traversal
-from sympy_extras.core.expr import Expr, as_expr
+from sympy_extras.core.expr import Expr, as_expr, to_expr
 from sympy_extras.core.function import Application
 from sympy_extras.core.logic import (ITE, And, Boolean, BooleanAtom, BooleanFalse, BooleanLike, BooleanTrue,
     Equivalent, Implies, Not, Or, Xor, and_, not_, or_, to_boolean)
 from sympy_extras.core.mul import Mul
 from sympy_extras.core.numbers import E, Rational, number_from_fraction, pi
 from sympy_extras.core.power import Pow
-from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, ne
-from sympy_extras.core.symbol import Symbol
-from sympy_extras.functions.elementary.complexes import Abs
+from sympy_extras.core.relational import Eq, Ge, Gt, Le, Lt, Ne, Relational, eq, ne
+from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.complexes import Abs, Arg, Atan2, Im, Re
 from sympy_extras.functions.elementary.exponential import Exp, Log
 from sympy_extras.functions.elementary.hyperbolic import Acosh, Asinh, Atanh, Cosh, Sinh, Tanh
 from sympy_extras.functions.elementary.integers import Ceiling, Floor
@@ -172,6 +172,10 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
         # SymPy's ``ask(Q.real(sqrt(a - 2)), Q.positive(a))`` is True: the
         # reality of roots and logarithms is decided here instead
         value = _realness(membership, facts)
+        if value is None and _real_by_parts(membership, facts) is False:
+            # the imaginary part is not zero: Q.real(z) under
+            # re(z)*im(z) > pi/2 (sympy-extras#74)
+            value = False
         if value is not None:
             return value
         if _fragile(membership):
@@ -186,6 +190,11 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
         if isinstance(done, BooleanAtom):
             return isinstance(done, BooleanTrue)
     value = _cad_ask(atom, facts)
+    if value is None and isinstance(atom, (Eq, Ne)):
+        # complex variables: the real and the imaginary parts apart
+        zero = _zero_by_parts(atom.lhs - atom.rhs, facts)
+        if zero is not None:
+            value = zero if isinstance(atom, Eq) else not zero
     if value is None and isinstance(atom, Relational):
         # the two sides equal as elementary functions: a proof
         value = _structure_ask(atom, facts)
@@ -196,6 +205,170 @@ def _evaluate_atom(atom: Boolean, facts: Facts) -> Truth:
     if value is None:
         value = _bounded_cad_ask(atom, facts)
     return value
+
+
+#: a rational enclosure of pi for the decompositions, in which pi is a
+#: variable: 3.14159 < pi < 3.14160
+_PI_BOUNDS: Final = (Rational(314159, 100000), Rational(314160, 100000))
+
+
+class _ComplexParts:
+    """The real and the imaginary parts of an expression of complex
+    variables, written in real variables, with the facts translated.
+
+    Every complex variable ``z`` becomes two real variables standing for
+    ``re(z)`` and ``im(z)`` (and one for ``Abs(z)``, with its square), in
+    the expression and in the facts; the arguments ``arg(w)`` and
+    ``atan2(b, a)`` become variables in ``(-pi, pi]``; ``pi`` a variable
+    between the bounds of ``_PI_BOUNDS``. The true values satisfy the
+    constraints, so a relation which holds (or fails) for every value
+    allowed by the translated facts holds (or fails) for the true ones.
+    Facts which still have a complex variable after the translation are
+    dropped, which only weakens them.
+    """
+
+    __slots__ = ('re', 'im', 'facts')
+
+    def __init__(self, re_part: Expr, im_part: Expr, facts: Facts) -> None:
+        self.re: Final[Expr] = re_part
+        self.im: Final[Expr] = im_part
+        self.facts: Final[Facts] = facts
+
+
+def _finite_parts(z: Symbol, facts: Facts) -> bool:
+    """Whether ``re(z)`` and ``im(z)`` are finite real numbers: ``z`` is
+    finite, or both (or ``Abs(z)``) appear in an inequality of the facts,
+    whose sides are real numbers."""
+    if z.is_finite:
+        return True
+    found: set[Basic] = set()
+    for c in facts.conjuncts:
+        if isinstance(c, (Gt, Lt, Ge, Le)):
+            for node in preorder_traversal(c):
+                if isinstance(node, (Re, Im, Abs)) and node.args[0] == z:
+                    found.add(node)
+    return Abs(z) in found or (Re(z) in found and Im(z) in found)
+
+
+def _complex_parts(e: Expr, facts: Facts) -> Optional[_ComplexParts]:
+    """The parts of ``e`` in real variables (see :class:`_ComplexParts`),
+    or ``None`` when ``e`` has no complex variable, a complex variable
+    whose parts may be infinite, or something which is not translated."""
+    symbols = _symbols(e)
+    complex_ = _sorted_symbols(s for s in symbols if s not in facts.real and not s.is_real)
+    if not complex_ or not all(_finite_parts(z, facts) for z in complex_):
+        return None
+    re_part, im_part = e.as_real_imag()
+    rule: dict[Basic, Basic] = {}
+    for s in _sorted_symbols(symbols - set(complex_)):
+        rule[Re(s)] = s
+        rule[Im(s)] = to_expr(0)
+    variables: list[Symbol] = []
+    constraints: list[Boolean] = []
+    nodes: set[Basic] = set()
+    for c in [re_part, im_part, *facts.conjuncts]:
+        nodes.update(preorder_traversal(c))
+    for z in complex_:
+        x, y = Dummy('re_' + z.name, real=True), Dummy('im_' + z.name, real=True)
+        rule[Re(z)], rule[Im(z)] = x, y
+        variables.extend([x, y])
+        if Abs(z) in nodes:
+            r = Dummy('abs_' + z.name, real=True)
+            rule[Abs(z)] = r
+            variables.append(r)
+            constraints.extend([r >= 0, eq(r**2, x**2 + y**2)])
+    p = Dummy('pi', real=True)
+    angles: list[Symbol] = []
+    requirements: list[Expr] = []
+    for node in sorted(nodes, key=str):
+        if isinstance(node, Arg) and node.args[0].is_zero is False:
+            t = Dummy('t', real=True)
+            rule[node] = t
+            angles.append(t)
+        elif isinstance(node, Atan2):
+            b, a = node.args
+            b_, a_ = b._xreplace_evaluated(rule), a._xreplace_evaluated(rule)
+            if not (isinstance(a_, Expr) and isinstance(b_, Expr)) or set(complex_) & (a_.free_symbols | b_.free_symbols):
+                continue
+            t = Dummy('t', real=True)
+            rule[node] = t
+            angles.append(t)
+            # atan2(0, 0) is not an angle
+            requirements.append(a_**2 + b_**2)
+    if angles or pi in nodes:
+        rule[pi] = p
+        variables.append(p)
+        constraints.extend([p > _PI_BOUNDS[0], p < _PI_BOUNDS[1]])
+    for angle in angles:
+        variables.append(angle)
+        constraints.extend([angle > -p, angle <= p])
+    re_new, im_new = re_part._xreplace_evaluated(rule), im_part._xreplace_evaluated(rule)
+    if not (isinstance(re_new, Expr) and isinstance(im_new, Expr)):
+        return None
+    if set(complex_) & (re_new.free_symbols | im_new.free_symbols):
+        return None
+    kept: list[Boolean] = []
+    for c in facts.conjuncts:
+        translated = to_boolean(c._xreplace_evaluated(rule))
+        if not (set(complex_) & translated.free_symbols):
+            kept.append(translated)
+    try:
+        extended = Facts(kept + constraints + [element(v, Reals) for v in variables])
+    except (ValueError, TypeError):
+        return None
+    for q in requirements:
+        if not _nonzero(q, extended):
+            return None
+    return _ComplexParts(re_new, im_new, extended)
+
+
+def _zero_by_parts(difference: Expr, facts: Facts) -> Truth:
+    """Whether a difference of expressions of complex variables is zero,
+    by its real and imaginary parts: ``False`` when one of them is not
+    zero on the region of the facts, ``True`` when both are zero, ``None``
+    otherwise. ``log(exp(z**2)) - z**2`` has the imaginary part
+    ``arg(exp(z**2)) - 2*re(z)*im(z)``, which is not zero under
+    ``re(z)*im(z) > pi/2`` (sympy-extras#74)."""
+    parts = _complex_parts(difference, facts)
+    if parts is None:
+        return None
+    im_zero = _zero_part(parts.im, parts.facts)
+    if im_zero is False:
+        return False
+    re_zero = _zero_part(parts.re, parts.facts)
+    if re_zero is False:
+        return False
+    if im_zero is True and re_zero is True:
+        return True
+    return None
+
+
+def _real_by_parts(e: Expr, facts: Facts) -> Truth:
+    """``False`` when the imaginary part of ``e`` is not zero on the
+    region of the facts, ``None`` otherwise (a real number has the
+    imaginary part zero; the converse needs ``e`` finite)."""
+    parts = _complex_parts(e, facts)
+    if parts is None:
+        return None
+    if _zero_part(parts.im, parts.facts) is False:
+        return False
+    return None
+
+
+#: the budget of a part which is not polynomial in the real variables
+_PARTS_SECONDS = 2.0
+
+
+def _zero_part(part: Expr, facts: Facts) -> Truth:
+    """Whether a part in real variables is zero on the region of the
+    facts: by the CAD when it is polynomial (complete there, and quick
+    when the answer is ``None``), else by the whole of ``_evaluate`` with
+    a budget of its own."""
+    formula = normalize(eq(part, 0))
+    if facts.is_polynomial(formula):
+        return _cad_ask(formula, facts)
+    from sympy_extras._timeout import attempt
+    return attempt(lambda: _evaluate(formula, facts), _PARTS_SECONDS, native=True)
 
 
 #: the budget of the structure theorem inside ``ask``, and its depth: the

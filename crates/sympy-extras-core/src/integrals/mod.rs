@@ -1,12 +1,18 @@
 //! Integration, ported from `sympy_extras.integrals`.
 
 pub mod algebraic;
+pub mod antiderivative;
+pub mod asymptotic;
+pub mod brackets;
 pub mod conditions;
 pub mod curves;
+pub mod definite;
+pub mod deltafunctions;
 pub mod dirichlet;
 pub mod elliptic;
 pub mod evalf;
 pub mod exponential;
+pub mod extrapolation;
 pub mod heurisch;
 pub mod indefinite;
 pub mod integral;
@@ -14,11 +20,15 @@ pub mod manualintegrate;
 pub mod marichev;
 pub mod meijerint;
 pub mod mellin;
+pub mod parametric;
 pub mod quadrature;
 pub mod radicals;
+pub mod recognize;
 pub mod rewriting;
 pub mod risch;
 pub mod slater;
 pub mod tables;
 pub mod trager;
+pub mod transformations;
 pub mod trigonometric;
+pub mod validated;

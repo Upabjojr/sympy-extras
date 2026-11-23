@@ -495,6 +495,12 @@ fn real(e: &Basic, a: &Basic) -> R {
         } else {
             None
         }),
+        // not in SymPy's handlers: atan maps the extended reals onto [-pi/2, pi/2]
+        Some(Function::Atan) => Ok(if is_yes(askq("extended_real", &e.args()[0], a)?) {
+            Some(true)
+        } else {
+            None
+        }),
         Some(Function::Log) => askq("positive", &e.args()[0], a),
         _ => Ok(None),
     }
@@ -744,6 +750,11 @@ fn negative(e: &Basic, a: &Basic) -> R {
     if is_number(e) {
         return Ok(sign_of_number(e, false));
     }
+    if func(e) == Some(Function::Atan) {
+        // not in SymPy: atan is odd and increasing, the mirror of the
+        // positive handler
+        return askq("extended_negative", &e.args()[0], a);
+    }
     if e.is_add() {
         let r: Truth = askq("real", e, a)?;
         if r != Some(true) {
@@ -879,6 +890,12 @@ fn zero(e: &Basic, a: &Basic) -> R {
     Ok(fand(&[fnot(askq("nonzero", e, a)?), askq("real", e, a)?]))
 }
 
+/// Whether `x` is known to be real with `x > 1` or `x < -1`
+/// (`_outside_unit_interval`).
+fn outside_unit_interval(x: &Basic, a: &Basic) -> PolyResult<bool> {
+    Ok(is_yes(askq("positive", &sub_one(x)?, a)?) || is_yes(askq("negative", &add_one(x)?, a)?))
+}
+
 fn positive(e: &Basic, a: &Basic) -> R {
     if matches!(e.head(), Head::ImaginaryUnit) {
         return Ok(Some(false));
@@ -955,7 +972,8 @@ fn positive(e: &Basic, a: &Basic) -> R {
             if is_yes(askq("positive", &sub_one(arg)?, a)?) {
                 return Ok(Some(true));
             }
-            if is_yes(askq("negative", &sub_one(arg)?, a)?) {
+            if is_yes(askq("nonpositive", &sub_one(arg)?, a)?) {
+                // log(1) = 0
                 return Ok(Some(false));
             }
             Ok(None)
@@ -971,7 +989,8 @@ fn positive(e: &Basic, a: &Basic) -> R {
             )
         }
         Some(Function::Abs) => askq("nonzero", e, a),
-        Some(Function::Atan) => askq("positive", &e.args()[0], a),
+        // extended_positive, not positive: atan(oo) = pi/2
+        Some(Function::Atan) => askq("extended_positive", &e.args()[0], a),
         Some(Function::Asin) => {
             let arg: &Basic = &e.args()[0];
             if is_yes(ask_in(
@@ -981,25 +1000,30 @@ fn positive(e: &Basic, a: &Basic) -> R {
                 return Ok(Some(true));
             }
             if is_yes(ask_in(
-                &and_(&[qa("negative", arg)?, qa("nonnegative", &add_one(arg)?)?]),
+                &and_(&[qa("nonpositive", arg)?, qa("nonnegative", &add_one(arg)?)?]),
                 a,
             )?) {
+                return Ok(Some(false));
+            }
+            if outside_unit_interval(arg, a)? {
+                // asin of a real number off [-1, 1] is not real
                 return Ok(Some(false));
             }
             Ok(None)
         }
         Some(Function::Acos) => {
+            // acos is positive on [-1, 1) but acos(1) = 0
             let arg: &Basic = &e.args()[0];
-            Ok(
-                if is_yes(ask_in(
-                    &and_(&[qa("nonpositive", &sub_one(arg)?)?, qa("nonnegative", &add_one(arg)?)?]),
-                    a,
-                )?) {
-                    Some(true)
-                } else {
-                    None
-                },
-            )
+            if is_yes(ask_in(
+                &and_(&[qa("negative", &sub_one(arg)?)?, qa("nonnegative", &add_one(arg)?)?]),
+                a,
+            )?) {
+                return Ok(Some(true));
+            }
+            if is_yes(askq("zero", &sub_one(arg)?, a)?) || outside_unit_interval(arg, a)? {
+                return Ok(Some(false));
+            }
+            Ok(None)
         }
         Some(Function::Acot) => askq("real", &e.args()[0], a),
         _ => Ok(None),
