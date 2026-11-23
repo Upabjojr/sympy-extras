@@ -302,6 +302,9 @@ class Hyper(Expr):
             return False
         if R == oo:
             return True
+        if isinstance(R, Piecewise):
+            from sympy_extras.logic.boolsimp import simplify_boolean, simplify_univariate
+            return simplify_univariate(simplify_boolean(statement(R)))
         return statement(R)
 
     # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper.radius_of_convergence

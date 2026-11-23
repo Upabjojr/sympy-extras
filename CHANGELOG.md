@@ -3792,7 +3792,12 @@ remove public functions. Breaking changes are listed here when they happen.
     numerator ends the series (`hyper((-1, 1, 2), (-4,), z)` is a
     polynomial: `oo`, not 0), with cases (`Piecewise`) for the integer
     parameters of unknown sign, and `convergence_statement` by those
-    cases (V104, V105); the leading term and the series of
+    cases, simplified (V104, V105): the sums evaluated through a
+    hypergeometric series state their condition in that form
+    (`n > -1` for SymPy's `(n > 0) | ((n <= 0) & (n > -1))` in the sum of
+    `binomial(n, i)`), and `Sum(x**i/factorial(i), (i, 0, n))` has the
+    condition `n > -2` (SymPy's formula is `exp(x)` at `n = -2`, where
+    the sum is 0); the leading term and the series of
     `SingularityFunction` at its point follow the side (V106).
   - `gegenbauer(n, a, -1)` for `re(a) > 1/2` is `zoo` for a noninteger
     order only (the value for a nonnegative integer one, unevaluated

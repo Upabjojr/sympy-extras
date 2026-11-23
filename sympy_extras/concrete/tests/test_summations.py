@@ -28,19 +28,37 @@ CASES = [(i**2, (i, 1, n)), (i**3, (i, 0, n)), (x**i, (i, 0, n)), (2**i, (i, 1, 
          (1/i**(x + 1), (i, 1, oo)), (1/(i + 1)**2, (i, 0, oo))]
 
 
+def same(ours: object, theirs: object) -> bool:
+    """The same result as SymPy's, or one which differs by the form of a condition on the integer
+    ``n`` only: the convergence statement of a hypergeometric series with an integer parameter is by
+    the cases of its radius here (sympy/sympy#31275, V104 and V105: a series which ends converges
+    everywhere, one which divides by zero nowhere) and simplified (``n > -1`` for SymPy's
+    ``(n > 0) | ((n <= 0) & (n > -1))``); the values at the integers are compared then. Where the
+    series of the tail divides by zero (``n <= -2`` in ``hyper((1,), (n + 2,), x)``) the sum is left
+    alone here: SymPy's formula for ``Sum(x**i/factorial(i), (i, 0, n))`` is ``exp(x)`` at
+    ``n = -2``, where the sum is ``-x**(-1)/factorial(-1) = 0``."""
+    if str(ours) == str(theirs):
+        return True
+    for value in range(-3, 4):
+        mine, other = sympy.sympify(ours).subs(n, value), sympy.sympify(theirs).subs(n, value)
+        if str(mine) != str(other) and not (value <= -2 and mine.has(sympy.Sum) and not other.has(sympy.Sum)):
+            return False
+    return True
+
+
 def test_summation_matches_sympy() -> None:
     for f, lim in CASES:
         v, a, b = lim
         var = from_sympy(v)
         assert isinstance(var, Symbol)
         ours = summation(expr_from_sympy(f), (var, expr_from_sympy(sympy.sympify(a)), expr_from_sympy(sympy.sympify(b))))
-        assert str(to_sympy(ours, evaluate=False)) == str(sympy.summation(f, lim)), (f, lim)
+        assert same(to_sympy(ours, evaluate=False), sympy.summation(f, lim)), (f, lim)
 
 
 def test_sum_doit_matches_sympy() -> None:
     for f, lim in CASES[:12]:
         s = sympy.Sum(f, lim)
-        assert str(to_sympy(expr_from_sympy(s).doit(), evaluate=False)) == str(s.doit()), s
+        assert same(to_sympy(expr_from_sympy(s).doit(), evaluate=False), s.doit()), s
 
 
 def test_hypergeometric_sums_match_sympy() -> None:
@@ -61,8 +79,10 @@ def test_hypergeometric_sums_match_sympy() -> None:
         limits = (var, expr_from_sympy(sympy.sympify(lo)), expr_from_sympy(sympy.sympify(hi)))
         ours = eval_sum_hyper(expr_from_sympy(f), limits)
         theirs = sympy_eval_sum_hyper(f, (v, lo, hi))
-        assert (None if ours is None else str(to_sympy(ours, evaluate=False))) == (None if theirs is None else str(theirs))
-        assert str(to_sympy(summation(expr_from_sympy(f), limits), evaluate=False)) == str(sympy.summation(f, (v, lo, hi)))
+        assert (ours is None) == (theirs is None), f
+        if ours is not None:
+            assert same(to_sympy(ours, evaluate=False), theirs), f
+        assert same(to_sympy(summation(expr_from_sympy(f), limits), evaluate=False), sympy.summation(f, (v, lo, hi))), f
 
 
 def test_convergence_statement_matches_sympy() -> None:
@@ -74,7 +94,13 @@ def test_convergence_statement_matches_sympy() -> None:
         if not isinstance(ours, Hyper):
             continue
         c = ours.convergence_statement
-        assert (str(c) if isinstance(c, bool) else str(to_sympy(c, evaluate=False))) == str(h.convergence_statement), h
+        assert same(c if isinstance(c, bool) else to_sympy(c, evaluate=False), h.convergence_statement), h
+    # the cases of an integer parameter, simplified
+    native_n = from_sympy(n)
+    assert isinstance(native_n, Symbol)
+    square = Hyper([-native_n, -native_n], [1], 1)
+    assert str(square.convergence_statement) == 'n > -1/2'
+    assert Hyper([-1, 1, 2], [-4], expr_from_sympy(z)).convergence_statement is True
 
 
 def test_residue_sums_match_sympy() -> None:
