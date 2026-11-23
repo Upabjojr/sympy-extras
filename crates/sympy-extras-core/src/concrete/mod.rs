@@ -2,12 +2,15 @@
 
 pub mod convergence;
 pub mod delta;
+pub mod dirichlet;
 pub mod eulersums;
 pub mod evalf;
 pub mod expr_with_limits;
 pub mod gosper;
 pub mod guess;
+pub mod karr;
 pub mod pisigma;
 pub mod products;
+pub mod rational;
 pub mod summations;
 pub mod ztransform;

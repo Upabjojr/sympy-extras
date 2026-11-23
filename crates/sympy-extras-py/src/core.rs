@@ -6369,6 +6369,46 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     .unwrap_or_else(none),
             }
         }
+        "karr" => {
+            // (karr_sum | karr_term | summation, f, k, a | NONE, b | NONE, auto | noauto,
+            // special | nospecial) -> an expression or NONE
+            use sympy_extras_core::concrete::karr as kr;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let (f, k) = (&a[1], &a[2]);
+            let bounds: Option<(&Basic, &Basic)> = if a[3] == none() { None } else { Some((&a[3], &a[4])) };
+            let auto: bool = a[5].to_string() == "auto";
+            let special: bool = a[6].to_string() == "special";
+            match a[0].to_string().as_str() {
+                "summation" => {
+                    let (lo, hi) = bounds.expect("summation takes bounds");
+                    kr::summation(f, &[(k.clone(), lo.clone(), hi.clone())], &[], auto, special).map_err(e)?
+                }
+                "karr_term" => kr::karr_term(f, k, &[], auto, special).map_err(e)?.unwrap_or_else(none),
+                _ => kr::karr_sum(f, k, bounds, &[], auto, special)
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+            }
+        }
+        "rational" => {
+            // (abramov_decomposition, f, k) -> Tuple(g, h); (rational_sum, f, k, a, b, special | nospecial);
+            // (dirichlet_series, term, n, lower, special | nospecial) -> Tuple(value, condition) or NONE
+            use sympy_extras_core::concrete::{dirichlet as dl, rational as ra};
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            match a[0].to_string().as_str() {
+                "abramov_decomposition" => {
+                    let d = ra::abramov_decomposition(&a[1], &a[2]).map_err(e)?;
+                    tuple(vec![d.g, d.h])
+                }
+                "rational_sum" => {
+                    ra::rational_sum(&a[1], &a[2], &a[3], &a[4], a[5].to_string() == "special").map_err(e)?
+                }
+                _ => match dl::dirichlet_series(&a[1], &a[2], &a[3], a[4].to_string() == "special").map_err(e)? {
+                    None => none(),
+                    Some((value, condition)) => tuple(vec![value, condition]),
+                },
+            }
+        }
         "residues" => {
             // (name, f, x, a, b, Tuple(assumptions), half|full) -> Tuple(value, condition) or NONE;
             // the functions of integrals/residues, integrals/contours and integrals/periodic
