@@ -3790,6 +3790,49 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- Bugs shared with SymPy, found by checking the items V112-V152 and
+  V193-V234 of sympy/sympy#31275 against the native code (the ports had
+  them too; each has a regression test):
+  - `simplify.fu.TR12i` (V228, V229): the denominators `tan(a)*tan(b) - 1`
+    no numerator used were written back as `tan(a) + tan(b) - 1`, a power
+    `(tan(a) + tan(b))**p` gave one tangent of the sum and lost the other
+    `p - 1` factors, two denominators with the same sum of arguments were
+    mixed up, and a sum of tangents without its denominator was a
+    `KeyError` in SymPy.
+  - the rewriting of `RisingFactorial(x, k)` and `FallingFactorial(x, k)`
+    in gamma functions (V230) has the reflected branch
+    `(-1)**k*gamma(1 - x)/gamma(1 - x - k)` only for an integer `k`, for
+    which it holds; `gammasimp(rf(x + n, k)*binomial(n, k))` has no wrong
+    `Piecewise` branch any more.
+  - `simplify.powsimp.powdenest` (V232): `exp(y*(log(a) + log(b)))` is
+    `a**y*b**y`, not `(a*b)**y` (wrong at `a = b = -1`, `y = 1/2`); the
+    power is taken out of the exponential only for an integer exponent or
+    when the imaginary part of the logarithms is in `(-pi, pi]`.
+  - `simplify.radsimp.radsimp` (V233): `1/sqrt(y)**3` is `sqrt(y)/y**2`,
+    not `sqrt(y**3)/y**3` (the other sign at `y = -1`).
+  - `series.formal.fps`: the sum of two series on different powers
+    (`x**(n - 2)*sin(x) + x**n*exp(x)`, V210; `FormalPowerSeries.__add__`
+    too) added the coefficients place by place; the coefficients after a
+    logarithmic term of a series in `x**2` were halved (`fps(asech(x))`
+    had `-3*x**4/64` for `-3*x**4/32`, V209); and `fps(x*asech(x))`,
+    `fps(asech(sqrt(x)))` were the series of `asech(x)`.
+  - `series.limitseq.difference_delta` of a `Sum` whose summand or lower
+    limit contains the index (V213): `Sum(1/k, (k, 1, n), (m, 1, n))` has
+    the difference `harmonic(n) + 1`, not `harmonic(n)`.
+  - the series of `Abs` of a complex argument (V215) is that of
+    `sqrt(re**2 + im**2)`, not `sign(...)` times the argument, so that
+    `limit((Abs(x + y) - Abs(x - y))/(2*x), x, 0)` is `re(y)/Abs(y)` for a
+    symbol `y` of no assumption (V211; `sign(y)` for a real `y` as before).
+  - the series of a power no longer takes the parameters for positive
+    (SymPy denests with `force=True`): `((x + re(a))**2).series(x)` was
+    `a**2 + 2*a*x + x**2`, `((x + im(a))**3).series(x, 0, 3)` was
+    `O(x**3)`.
+  - `AccumBounds(-1, 3)**(-2)` is `AccumBounds(1/9, oo)`, not `(0, oo)`
+    (V222; sound before, tighter now).
+  - the ported tests which could not fail or pinned a wrong value are
+    corrected: `test_formal.py` (V207, V208, V210), `test_prde.py` (V135,
+    V136).
+
 - Issue #72, the equations which are not polynomial in their leading
   derivative (`sympy_extras.solvers.lie` and its SymPy face): they were
   solved for it and the first root kept, so that `symmetries` returned the

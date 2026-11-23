@@ -152,7 +152,7 @@ class Pow(Expr):
         from .function import expand_mul, expand_multinomial
         from .order import order
         from .series import _less
-        from .symbol import Symbol as _Symbol, Wild
+        from .symbol import Dummy, Symbol as _Symbol, Wild
         from sympy_extras.functions.elementary.exponential import exp, log, Log
         from sympy_extras.functions.combinatorial.factorials import factorial, ff
         from sympy_extras.functions.elementary.complexes import im
@@ -181,7 +181,12 @@ class Pow(Expr):
                 exp_series = add(exp_series, term)
             exp_series = add(exp_series, order(pow(t, Integer(n)), x))
             return powsimp(exp_series, deep=True, combine='exp')
-        me = powdenest(self, force=True).trigsimp()
+        # SymPy denests with force=True, which takes every symbol for positive: re(a) becomes a, im(a)
+        # zero and sqrt(a**2) a, so that the series of (x + re(a))**2 is a**2 + 2*a*x + x**2 and that
+        # of sqrt(a**2 + x) starts with a. Only the variable of the expansion is positive here (the
+        # expansion is at 0+)
+        positive_x = Dummy(x.name, positive=True)
+        me = as_expr_basic(powdenest(as_expr_basic(self.subs(x, positive_x))).subs(positive_x, x)).trigsimp()
         b, e = me.as_base_exp()
         if e.has(nan, oo, mul(Integer(-1), oo), zoo):
             raise PoleError()

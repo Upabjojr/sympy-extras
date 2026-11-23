@@ -437,6 +437,11 @@ def ab_pow(self: AccumBounds, other: Expr) -> Expr:
                     return accum_bounds(self.max**other, oo)
                 if _is_zero(self.max):
                     return accum_bounds(self.min**other, oo)
+                if self.min.is_extended_negative is True and self.max.is_extended_positive is True:
+                    # zero inside: the values are those of the two sides, from the smaller of the
+                    # endpoint values up (SymPy goes through 1/self, the whole line, and gets
+                    # (0, oo): for (-1, 3)**(-2) the bounds are (1/9, oo); sympy/sympy#31275, V222)
+                    return accum_bounds(_min(self.min**other, self.max**other), oo)
                 return (1 / self)**(-other)
             return accum_bounds(Integer(0), _max(self.min**other, self.max**other))
         if other.p < 0:

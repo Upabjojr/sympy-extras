@@ -77,12 +77,18 @@ def test_rewrite_gamma_matches_sympy() -> None:
     n, k = s.symbols('n k', integer=True)
     m = s.Symbol('m', negative=True)
     cases: list[sympy.Expr] = [
-        s.factorial(n) / s.factorial(n - 3), s.binomial(n, k), s.rf(x, k), s.ff(x, 3), s.rf(m, y)**2, s.ff(p, k),
+        s.factorial(n) / s.factorial(n - 3), s.binomial(n, k), s.rf(x, k), s.ff(x, 3), s.rf(m, k)**2, s.ff(p, k),
         s.factorial2(n)**2, s.subfactorial(x), s.catalan(n), s.beta(x, p), s.rf(k, k)**2 + s.factorial(k)]
     for e in cases:
         for piecewise in (True, False):
             ours = to_sympy(expr_from_sympy(e).rewrite(Gamma, piecewise=piecewise), evaluate=False)
             assert str(ours) == str(e.rewrite(s.gamma, piecewise=piecewise)), (e, piecewise)
+    # the reflected form of a rising factorial holds at the integers k only: for a general y SymPy
+    # gives (-1)**(2*y)*gamma(1 - m)**2/gamma(-m - y + 1)**2, wrong (sympy/sympy#31275, V230)
+    general = to_sympy(expr_from_sympy(s.rf(m, y)**2).rewrite(Gamma), evaluate=False)
+    assert str(general) == 'gamma(m + y)**2/gamma(m)**2'
+    at = {m: s.Rational(-33, 10), y: s.Rational(1, 2)}
+    assert abs(complex(s.N(general.subs(at))) - complex(s.N(s.rf(at[m], at[y])))**2) < 1e-12
 
 
 def test_expand_complex_matches_sympy() -> None:

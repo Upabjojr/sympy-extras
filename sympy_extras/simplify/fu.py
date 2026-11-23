@@ -903,7 +903,28 @@ def TR12(rv: ExprLike, first: bool = True) -> Expr:
 
 # PORTED FROM SYMPY: sympy/simplify/fu.py:TR12i
 def TR12i(rv: ExprLike) -> Expr:
-    """``(tan(a) + tan(b))/(1 - tan(a)*tan(b))`` as ``tan(a + b)``."""
+    """``(tan(a) + tan(b))/(1 - tan(a)*tan(b))`` as ``tan(a + b)``.
+
+    Three steps differ from SymPy's, which gives wrong results there
+    (sympy/sympy#31275, V228 and V229): the factors ``tan(a)*tan(b) - 1``
+    of the denominator no numerator has used are put back as they were
+    (SymPy writes ``tan(a) + tan(b) - 1``); a power ``(tan(a) + tan(b))**p``
+    of the numerator gives one factor to the tangent of the sum and keeps
+    the other ``p - 1`` (SymPy drops them); and the denominators are told
+    apart by their product of tangents rather than by the sum of the
+    arguments, which two different denominators may share. A power of a
+    denominator with an exponent which is not an integer is split only
+    when its cofactor is positive.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import tan
+    >>> from sympy_extras.simplify.fu import TR12i
+    >>> a, b = Symbol('a'), Symbol('b')
+    >>> TR12i((tan(a) + tan(b))/(1 - tan(a)*tan(b)))
+    tan(a + b)
+    >>> TR12i((tan(a) + tan(b))**2/(tan(a)*tan(b) - 1))
+    -(tan(a) + tan(b))*tan(a + b)
+    """
     from sympy_extras.polys.polytools import factor
 
     def ok_d(di: Expr) -> Optional[tuple[Expr, Expr]]:
@@ -936,7 +957,7 @@ def TR12i(rv: ExprLike) -> Expr:
             m = ok_d(di)
             if m:
                 g, t = m
-                dok[add(*[_arg(_expr(x)) for x in t.args])] = Integer(1)
+                dok[t] = add(dok.get(t, Integer(0)), Integer(1))
                 d_args[i] = g
             elif isinstance(di, Add):
                 fd = factor(di)
@@ -945,10 +966,12 @@ def TR12i(rv: ExprLike) -> Expr:
                     d_args[i] = Integer(1)
             elif isinstance(di, Pow) and (di.exp.is_integer is True or di.base.is_positive is True):
                 m = ok_d(di.base)
-                if m:
+                if m and (di.exp.is_integer is True or m[0].is_positive is True):
                     g, t = m
-                    dok[add(*[_arg(_expr(x)) for x in t.args])] = di.exp
+                    dok[t] = add(dok.get(t, Integer(0)), di.exp)
                     d_args[i] = pow(g, di.exp)
+                elif m:
+                    pass
                 else:
                     fd = factor(di)
                     if isinstance(fd, Mul):
@@ -978,7 +1001,7 @@ def TR12i(rv: ExprLike) -> Expr:
                     if isinstance(ni, Pow) and (ni.exp.is_integer is True or ni.base.is_positive is True):
                         m = ok_n(ni.base)
                         if m:
-                            n_args[i] = Integer(1)
+                            n_args[i] = pow(ni.base, add(ni.exp, Integer(-1)))
                         else:
                             fn = factor(ni)
                             if isinstance(fn, Mul):
@@ -991,20 +1014,23 @@ def TR12i(rv: ExprLike) -> Expr:
                         continue
             else:
                 n_args[i] = Integer(1)
+            key = mul(m[0], m[1])
+            if key not in dok:
+                # no denominator ``tan(a)*tan(b) - 1`` for this sum: the factor stays as it is
+                n_args[i] = ni
+                i += 1
+                continue
             hit = True
-            s_ = add(*[_arg(t) for t in m])
-            ed = dok[s_]
-            newed = ed.extract_additively(Integer(1))
-            if newed is not None:
-                if not (isinstance(newed, Number) and newed == 0):
-                    dok[s_] = newed
-                else:
-                    dok.pop(s_)
-            n_args[i] = mul(n_args[i], _neg(tan(s_)))
+            newed = add(dok[key], Integer(-1))
+            if isinstance(newed, Number) and newed == 0:
+                dok.pop(key)
+            else:
+                dok[key] = newed
+            n_args[i] = mul(n_args[i], _neg(tan(add(*[_arg(t) for t in m]))))
             i += 1
+        # the denominators which are left, as they were
+        denominator = mul(*[pow(add(k, Integer(-1)), ex) for k, ex in dok.items()])
         if hit:
-            denominator = mul(*[pow(add(add(*[tan(_expr(a)) for a in (k.args if isinstance(k, Add) else (k,))]),
-                                        Integer(-1)), ex) for k, ex in dok.items()])
             return mul(mul(*n_args), _inv(mul(*d_args)), _inv(denominator))
         return e
 

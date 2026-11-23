@@ -77,6 +77,10 @@ def _rising(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional
     x, k = args
     positive = mul(gamma(add(x, k)), _inv(gamma(x)))
     other = mul(mul(pow(MINUS_ONE, k), gamma(add(ONE, neg(x)))), _inv(gamma(add(neg(k), neg(x), ONE))))
+    if k.is_integer is not True:
+        # the reflected form is the rising factorial only at the integers k (their quotient is
+        # sin(pi*(x + k))/((-1)**k*sin(pi*x))); SymPy gives it for every k (sympy/sympy#31275, V230)
+        return positive
     if not hints.piecewise:
         return other if le(x, Integer(0)) == true else positive
     return piecewise((positive, gt(x, Integer(0))), (other, true))
@@ -89,6 +93,9 @@ def _falling(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optiona
     x, k = args
     nonnegative = mul(gamma(add(x, ONE)), _inv(gamma(add(x, neg(k), ONE))))
     other = mul(mul(pow(MINUS_ONE, k), gamma(add(k, neg(x)))), _inv(gamma(neg(x))))
+    if k.is_integer is not True:
+        # as in _rising: the reflected form holds at the integers k only
+        return nonnegative
     if not hints.piecewise:
         return other if lt(x, Integer(0)) == true else nonnegative
     return piecewise((nonnegative, ge(x, Integer(0))), (other, true))

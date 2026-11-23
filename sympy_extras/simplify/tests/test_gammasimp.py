@@ -58,3 +58,27 @@ def test_gammasimp_fractional_shift_differing_by_integers() -> None:
         '(2*z - 3)*(2*z - 1)*(2*z + 1)*(2*z + 3)*(2*z + 5)/32'
     # a single gamma function is not rewritten
     assert gammasimp(gamma(z - Rational(1, 2))) == gamma(z - Rational(1, 2))
+
+
+def test_rising_factorial_of_a_general_k_has_no_reflected_branch() -> None:
+    # sympy/sympy#31275, V230: (-1)**k*gamma(1 - x)/gamma(1 - x - k) is rf(x, k) at the integers k
+    # only; SymPy's rewrite gives it as the branch x <= 0 for every k
+    import mpmath
+    from sympy_extras.core import Rational, Symbol
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import RisingFactorial, FallingFactorial, binomial, ff, gamma, rf
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    from sympy_extras.functions.special.gamma_functions import Gamma
+    z, n, k = Symbol('x'), Symbol('n'), Symbol('k')
+    result = gammasimp(rf(z + n, k)*binomial(n, k))
+    assert not result.has(Piecewise)
+    assert result == gamma(n + 1)*gamma(k + n + z)/(gamma(k + 1)*gamma(n + z)*gamma(-k + n + 1))
+    values = {z: Rational(-33, 10), n: Rational(11, 10), k: Rational(1, 2)}
+    expected = mpmath.rf(-2.2, 0.5)*mpmath.binomial(1.1, 0.5)   # -1.5067...
+    assert abs(to_complex(result.subs(values)) - complex(expected)) < 1e-12
+    assert gammasimp(ff(z, k)) == gamma(z + 1)/gamma(z - k + 1)
+    assert RisingFactorial(z, k).rewrite(Gamma) == gamma(z + k)/gamma(z)
+    assert FallingFactorial(z, k).rewrite(Gamma) == gamma(z + 1)/gamma(z - k + 1)
+    # at an integer k the two branches stay
+    j = Symbol('j', integer=True)
+    assert RisingFactorial(z, j).rewrite(Gamma).has(Piecewise) and FallingFactorial(z, j).rewrite(Gamma).has(Piecewise)

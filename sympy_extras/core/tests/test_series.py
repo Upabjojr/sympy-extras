@@ -459,3 +459,34 @@ def test_is_meromorphic_of_special_functions_matches_sympy() -> None:
                     assert want is None or got == want, (e, a, got, want)
                     checked += 1
     assert checked == 12 * 7 * 6 * 3
+
+
+def test_series_of_a_power_keeps_the_parameters_as_they_are() -> None:
+    # SymPy denests the power with force=True before it expands it, which takes every symbol for
+    # positive: re(a) becomes a, im(a) zero, Abs(a) and sqrt(a**2) a (found with sympy/sympy#31275,
+    # V215). SymPy 1.14: ((x + re(a))**2).series(x, 0, 3) is a**2 + 2*a*x + x**2
+    from sympy_extras.core import Integer, Rational
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import abs_, im, re, sqrt
+    a = Symbol('a')
+    assert ((X + re(a))**2).series(X, 0, 3) == X**2 + 2*X*re(a) + re(a)**2
+    assert ((X + im(a))**3).series(X, 0, 2).removeO() == im(a)**3 + 3*X*im(a)**2
+    assert ((X + abs_(a))**2).series(X, 0, 3) == X**2 + 2*X*abs_(a) + abs_(a)**2
+    root = sqrt(a**2 + X).series(X, 0, 2).removeO()
+    assert abs(to_complex(root.subs({a: Integer(-2), X: Rational(1, 1000)})) - 2.00025) < 1e-6   # sqrt(4.001)
+
+
+def test_series_of_the_absolute_value_of_a_complex_argument() -> None:
+    # sympy/sympy#31275, V215: sign(1 - a)*(x - a) is Abs(x - a) for a real a only; SymPy gives it
+    # for every a (at a = 2 + I, x = 11/10: -0.07 + 1.34*I for 1.34536...)
+    from sympy_extras.core import I, Integer, Rational
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import abs_, sign, sqrt
+    a, r = Symbol('a'), Symbol('r', real=True)
+    found = abs_(X - a).series(X, 1, 3).removeO()
+    value = to_complex(found.subs({a: Integer(2) + I, X: Rational(11, 10)}))
+    assert abs(value - abs(1.1 - (2 + 1j))) < 1e-3 and abs(value.imag) < 1e-12
+    assert abs_(X - I).series(X, 1, 2).removeO() == sqrt(2) + sqrt(2)*(X - 1)/2
+    # a real argument as before
+    assert abs_(X - r).series(X, 1, 3) == -r*sign(1 - r) + (X - 1)*sign(1 - r) + sign(1 - r)
+    assert abs_(X).series(X, 0, 3) == X

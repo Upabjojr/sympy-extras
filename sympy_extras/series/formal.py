@@ -572,7 +572,10 @@ def _apply_scale(sol: Solutions, scale: Expr) -> Solutions:
 
 
 def _apply_integrate(sol: Solutions, x: Symbol, k: Symbol) -> Solutions:
-    return [(res / ((cond + 1) * (cond.as_coeff_Add()[1].coeff(k))), cond + 1) for res, cond in sol]
+    # the term res*x**cond integrated is res*x**(cond + 1)/(cond + 1). SymPy divides by the
+    # coefficient of k in cond as well, which halves every coefficient of a series in x**2 after
+    # its singular terms: fps(asech(x)) has -3*x**4/64 for -3*x**4/32 (sympy/sympy#31275, V209)
+    return [(res / (cond + 1), cond + 1) for res, cond in sol]
 
 
 def _as_int(e: Expr) -> Optional[int]:
@@ -646,8 +649,18 @@ def _rsolve_hypergeometric(f: Expr, x: Symbol, P: Expr, Q: Expr, k: Symbol, m: E
             sol = _apply_integrate(sol, x, k)
             sol = _apply_shift(sol, Integer(i))
             ind = _integrate(ind, x)
-            ind = ind + _limit0(old_f - ind, x)  # the constant of integration
-            mp = mp + 1
+            constant = _limit0(old_f / x**i - ind, x)  # the constant of integration
+            if constant.is_finite is not True:
+                return None
+            ind = expand((ind + constant) * x**i)
+            mp = mp + 1 + i
+            # the series so far is that of old_f, the function after the transformations c and a of
+            # this call: they are undone as below for the regular case. SymPy returns here without
+            # undoing them, so that fps(x*asech(x)) and fps(asech(sqrt(x))) are the series of
+            # asech(x) (found with sympy/sympy#31275, V209)
+            sol = _apply_scale(_apply_shift(sol, shift), scale)
+            ind = expand(ind * x**shift).subs(x, x**(1 / scale))
+            mp = (mp + shift) / scale
             return sol, ind, mp
         if not _is_zero(r):
             ind = ind + r * x**(i + shift)
@@ -904,6 +917,30 @@ def _as_formula_seq(s: Basic) -> SeqFormula:
     return s
 
 
+def _shifted(ak: SeqFormula, shift: int) -> SeqFormula:
+    """The coefficients ``ak`` moved ``shift`` places up: ``a(k - shift)``
+    from ``start + shift`` on."""
+    if shift == 0:
+        return ak
+    k = ak.variables[0]
+    return SeqFormula(ak.formula.subs(k, k - shift), (k, ak.start + shift, ak.stop))
+
+
+def _power_shift(xk: SeqFormula, common: SeqFormula, x: Symbol) -> Optional[int]:
+    """The integer ``j`` with ``xk(k) == common(k + j)`` for the powers
+    ``x**(k + c)`` of two series, ``None`` when they do not differ by an
+    integer power of ``x``."""
+    if xk == common:
+        return 0
+    from sympy_extras.simplify.powsimp import powsimp
+    k = Dummy('k')
+    ratio = powsimp(xk.coeff(k) / common.coeff(k))
+    if ratio == 1:
+        return 0
+    base, exponent = ratio.as_base_exp()
+    return _as_int(exponent) if base == x else None
+
+
 # PORTED FROM SYMPY: sympy/series/formal.py:_compute_fps
 def _compute_fps(f: Expr, x: Symbol, x0: Expr, dir: Expr, hyper: bool, order: int, rational: bool,
                  full: bool) -> Optional[SeriesTerms]:
@@ -951,17 +988,30 @@ def _compute_fps(f: Expr, x: Symbol, x0: Expr, dir: Expr, hyper: bool, order: in
                     found = True
                     xk_found = res[1]
                 assert xk_found is not None
-                if _lt(ak_seq.start, res[0].start):
-                    seq: SeqBase = ak_seq
-                    s, e = ak_seq.start, res[0].start
+                # the coefficients of two terms are added on the same powers of x only: with a
+                # symbolic factor x**n of one term and x**(n - 2) of another the coefficients of
+                # one are moved first (SymPy adds them as they are and gets a wrong series:
+                # sympy/sympy#31275, V210)
+                new_ak = res[0]
+                shift = _power_shift(res[1], xk_found, x)
+                if shift is None:
+                    return None
+                if shift < 0:
+                    ak_seq = _shifted(_as_formula_seq(ak_seq), -shift)
+                    xk_found = res[1]
                 else:
-                    seq = res[0]
-                    s, e = res[0].start, ak_seq.start
+                    new_ak = _shifted(new_ak, shift)
+                if _lt(ak_seq.start, new_ak.start):
+                    seq: SeqBase = ak_seq
+                    s, e = ak_seq.start, new_ak.start
+                else:
+                    seq = new_ak
+                    s, e = new_ak.start, ak_seq.start
                 si, ei = _as_int(s), _as_int(e)
                 if si is None or ei is None:
                     return None
                 save = add(*[a * b for a, b in zip(seq[0:ei - si], xk_found[si:ei])])
-                ak_seq = ak_seq + res[0]
+                ak_seq = ak_seq + new_ak
                 sum_ind = sum_ind + res[2] + save
             else:
                 sum_ind = sum_ind + t
@@ -1463,13 +1513,20 @@ class FormalPowerSeries(SeriesBase):
             f = self._function + o.function.subs(y, x)
             if self._x not in f.free_symbols:
                 return f
-            ak = self._ak + o.ak
-            if _lt(o.ak.start, self._ak.start):
-                seq: SeqFormula = o.ak
-                s, e = o.ak.start, self._ak.start
+            # on the same powers of x only (see _compute_fps)
+            shift = _power_shift(_as_formula_seq(o.xk.subs(y, x)), self._xk, x)
+            if shift is None or shift < 0:
+                if shift is not None and y == x:
+                    return o.__add__(self)
+                return add(self, o)
+            other_ak = _shifted(o.ak, shift)
+            ak = self._ak + other_ak
+            if _lt(other_ak.start, self._ak.start):
+                seq: SeqFormula = other_ak
+                s, e = other_ak.start, self._ak.start
             else:
                 seq = self._ak
-                s, e = self._ak.start, o.ak.start
+                s, e = self._ak.start, other_ak.start
             si, ei = _as_int(s), _as_int(e)
             if si is None or ei is None:
                 raise ValueError("the series start at points which are not integers")

@@ -129,3 +129,18 @@ def test_one_sided_limit_of_a_positive_variable() -> None:
     # the same from the right of a variable without assumptions
     w = Symbol('w')
     assert limit(sqrt(w - 1)/sqrt(1 - w), w, one, '-') == I
+
+
+def test_limit_with_the_absolute_value_of_a_complex_parameter() -> None:
+    # sympy/sympy#31275, V211: the limit is re(y)/Abs(y); SymPy's sign(y) is it for a real y only
+    # (at y = 1 + 2*I: 1/sqrt(5), and sign(y) is not real)
+    from sympy_extras.core import I, Integer
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import abs_, sign
+    y, r = Symbol('y'), Symbol('r', real=True)
+    e = (abs_(X + y) - abs_(X - y))/(2*X)
+    found = limit(e, X, 0)
+    assert abs(to_complex(found.subs(y, Integer(1) + 2*I)) - 5**-0.5) < 1e-12
+    assert abs(to_complex(found.subs(y, Integer(-3) + I/2)) - (-3/abs(-3 + 0.5j))) < 1e-12
+    assert limit(e.subs(y, r), X, 0) == sign(r)
+    assert limit(e.subs(y, I), X, 0) == 0

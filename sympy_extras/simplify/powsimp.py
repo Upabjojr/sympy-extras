@@ -104,6 +104,15 @@ def multiplicity(p: Rational, n: Rational) -> int:
     return like - cross
 
 
+def _principal_sum(e: Expr) -> bool:
+    """Whether the imaginary part of ``e`` is certainly in ``(-pi, pi]``:
+    a real expression, a logarithm, or a sum of real terms and at most one
+    logarithm."""
+    terms = [t for t in e.args if isinstance(t, Expr)] if isinstance(e, Add) else [e]
+    others = [t for t in terms if t.is_extended_real is not True]
+    return not others or (len(others) == 1 and _is_log(others[0]))
+
+
 # PORTED FROM SYMPY: sympy/simplify/powsimp.py:_denest_pow
 def _denest_pow(eq: Expr) -> Expr:
     """``(b**e1)**e2`` denested where valid (SymPy's ``_eval_power`` of
@@ -130,7 +139,23 @@ def _denest_pow(eq: Expr) -> Expr:
             else:
                 other.append(ei)
         from .simplify import logcombine
-        return pow(exp(logcombine(mul(*logs))), mul(*other))
+        exponent = mul(*other)
+        # exp(c*L) is exp(L)**c when c is an integer or the imaginary part of L is in (-pi, pi]: one
+        # logarithm plus real terms. SymPy takes any sum of logarithms, so that exp(y*(log(a) + log(b)))
+        # becomes (a*b)**y, wrong at a = b = -1, y = 1/2 (sympy/sympy#31275, V232)
+        if exponent.is_integer is True or all(entry.is_extended_real is True for entry in logs) or (
+                len(logs) == 1 and _principal_sum(logs[0])):
+            return pow(exp(logcombine(mul(*logs))), exponent)
+        if len(logs) == 1:
+            terms = [t for t in logs[0].args if isinstance(t, Expr)]
+            if isinstance(logs[0], Add) and all(_principal_sum(t) for t in terms):
+                # exp(c*(L1 + L2)) is exp(L1)**c*exp(L2)**c
+                return mul(*[pow(exp(t), exponent) for t in terms])
+            return eq
+        for position, entry in enumerate(logs):
+            if _principal_sum(entry):
+                return pow(exp(logcombine(entry)), mul(exponent, *(logs[:position] + logs[position + 1:])))
+        return eq
     _, be = b.as_base_exp()
     if _is_one(be) and not (isinstance(b, Mul) or (isinstance(b, Rational) and b.q != 1) or b.is_positive is True):
         return eq

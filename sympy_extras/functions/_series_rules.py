@@ -95,8 +95,22 @@ def _lambertw(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> O
 # PORTED FROM SYMPY: sympy/functions/elementary/complexes.py:Abs._eval_nseries
 def _abs(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Optional[Expr]:
     from sympy_extras.core.function import expand
-    from sympy_extras.functions.elementary.complexes import sign
+    from sympy_extras.core.symbol import Dummy
+    from sympy_extras.core.traversal import preorder_traversal
+    from sympy_extras.functions.elementary.complexes import Abs, sign
     from sympy_extras.functions.elementary.exponential import log
+    # sign(direction)*series is the absolute value of a real argument only. Of a complex one
+    # (Abs(x - a) with a symbol a of no assumption) it is sqrt(re**2 + im**2), on real x: SymPy
+    # gives the first form for every argument, and so sign(y) for the limit of
+    # (Abs(x + y) - Abs(x - y))/(2*x) at 0, which is re(y)/Abs(y) (sympy/sympy#31275, V211, V215)
+    real_x = Dummy('x', real=True)
+    on_real = _e(_arg(f).subs(x, real_x))
+    if on_real.is_extended_real is not True:
+        from sympy_extras.functions.elementary.complexes import Im, Re, im, re
+        modulus = (re(on_real)**2 + im(on_real)**2)**Rational(1, 2)
+        parts_known = not any(isinstance(node, (Re, Im)) and node.has(real_x) for node in preorder_traversal(modulus))
+        if parts_known and not modulus.has(Abs):
+            return _e(_ns(modulus, real_x, n, logx).subs(real_x, x))
     direction = _arg(f).leadterm(x)[0]
     if logx is not None and direction.has(log(x)):
         direction = _e(direction.subs(log(x), logx))
