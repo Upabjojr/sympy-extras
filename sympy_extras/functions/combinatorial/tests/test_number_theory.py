@@ -14,7 +14,7 @@ from sympy_extras.core import Integer, Rational, Symbol, oo
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.numbers import Float
-from sympy_extras.functions import (E1, Eijk, divisor_sigma, identity_function, jacobi_symbol, kronecker_symbol,
+from sympy_extras.functions import (E1, Eijk, Mobius, divisor_sigma, identity_function, jacobi_symbol, kronecker_symbol,
                                     legendre_symbol, ln, mobius, primenu, primeomega, primepi, reduced_totient, totient,
                                     udivisor_sigma)
 
@@ -53,14 +53,33 @@ def test_unary_functions_match_sympy() -> None:
     different: list[tuple[str, ...]] = []
     values: list[Expr] = [Integer(i) for i in range(-2, 40)] + [Integer(1024), Integer(720720), n, p, Rational(1, 2), x,
                                                                p**2, n**2, 6*p, Integer(30)*n]
+    # sympy/sympy#31275 (V75) and its neighbours: SymPy's mobius of a product with symbols is wrong
+    # at p = 1 or n = 1 (mobius(n**2) = 0) and forgets the symbolic factors (mobius(6*p) = 1)
+    symbolic_products = [str(v) for v in values[-3:]]
     for a in values:
         sa = sympy_value(a)
         for ours_f, theirs_f in UNARY:
+            if ours_f is mobius and str(a) in symbolic_products:
+                assert ours_f(a) == Mobius(a), a
+                continue
             compare(ours_f.__name__, lambda: ours_f(a), lambda: theirs_f(sa), different)
     for a in values[:20] + [oo, -oo, Float('10.5'), Rational(31, 2), x]:
         sa = sympy_value(a)
         compare('primepi', lambda: primepi(a), lambda: sympy.primepi(sa), different)
     assert not different, different[:20]
+
+
+def test_mobius_of_products_with_symbols() -> None:
+    # sympy/sympy#31275 (V75): mu(1) = 1, so n**2 is not a square factor for a positive integer n
+    # which may be 1; and a symbolic factor may share a prime with the others (mobius(3*n) at n = 3)
+    q = Symbol('q', integer=True, positive=True)
+    j = Symbol('j', integer=True, positive=True)
+    for e in (q**2, q**(j + 1), 3*q, 6*q, 3*q**2, 2*Integer(3)**j):
+        assert mobius(e) == Mobius(e), e
+    assert mobius(q**2).subs(q, Integer(1)) == 1 and mobius(3*q).subs(q, Integer(3)) == 0
+    assert mobius(4*q) == 0 and mobius(Integer(3)**(j + 1)) == 0 and mobius(12*q**2) == 0
+    assert mobius((q + 1)**2) == 0 and mobius((q + 1)**(j + 1)) == 0 and mobius(p**2) == 0
+    assert [mobius(Integer(k)) for k in (1, 2, 4, 6, 30, 12)] == [1, -1, 0, 1, -1, 0]
 
 
 def test_sigma_and_symbols_match_sympy() -> None:
