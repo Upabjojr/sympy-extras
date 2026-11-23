@@ -25,7 +25,12 @@ repeated; the numbers are evaluated by
 base may be zero and the exponent is positive is not ported: SymPy
 answers ``ask(Q.real(sqrt(x)), Q.real(x))`` and
 ``ask(Q.real(sqrt(-1 - x**2)), Q.real(x))`` with ``True`` (both are
-imaginary at ``x = -1``), a SymPy bug (issue #25). The relational step
+imaginary at ``x = -1``), a SymPy bug (issue #25). The rules which
+SymPy's test suite pins wrongly (sympy/sympy#31275, V5-V31) are corrected
+too, each with a comment at its place: a function of an argument which
+may be infinite is not known to be complex or real (``Abs(oo)``), an
+imaginary sum may cancel, ``Q.nonzero`` of a power asks for a real power,
+``acos(1)`` is not positive and ``acot`` is odd. The relational step
 of SymPy's ``ask`` (``lra_satask``, linear real arithmetic over the
 relations of the assumptions) is not ported, except for its most frequent case: a sign
 predicate of ``e`` decided by an assumed one of ``f`` when ``e/f`` is a
@@ -38,9 +43,9 @@ Examples
 >>> from sympy_extras.core import Q, Symbol, sqrt, ask
 >>> from sympy_extras.functions import log, Abs, re
 >>> x, k = Symbol('x'), Symbol('k')
->>> ask(Q.real(re(k) + 1)), ask(Q.positive(log(x)), Q.positive(x) & Q.negative(x - 1))
+>>> ask(Q.real(re(k) + 1), Q.complex(k)), ask(Q.positive(log(x)), Q.positive(x) & Q.negative(x - 1))
 (True, False)
->>> ask(Q.real(Abs(x) - 1)), ask(Q.real(sqrt(x)), Q.real(x))
+>>> ask(Q.real(Abs(x) - 1), Q.complex(x)), ask(Q.real(sqrt(x)), Q.real(x))
 (True, None)
 
 References
@@ -359,8 +364,14 @@ def _zero_factor(factors: list[Expr], assumptions: Boolean) -> Truth:
 
 # PORTED FROM SYMPY: sympy/assumptions/handlers/sets.py (RealPredicate)
 def _real(e: Expr, assumptions: Boolean) -> Truth:
-    if isinstance(e, (Abs, Exp1, Float, GoldenRatioType, Im, Pi, Rational, Re, TribonacciConstantType)):
+    if isinstance(e, (Exp1, Float, GoldenRatioType, Pi, Rational, TribonacciConstantType)):
         return True
+    if isinstance(e, (Abs, Im, Re)):
+        # SymPy answers True whatever the argument: Abs(oo), re(oo) are oo,
+        # which is not real (sympy/sympy#31275, V7, V8, V28)
+        if _ask(_q('complex', _arg(e)), assumptions):
+            return True
+        return None
     if isinstance(e, (ImaginaryUnit, Infinity, NegativeInfinity)):
         return False
     if isinstance(e, Add):
@@ -428,9 +439,10 @@ def _real_pow(e: Pow, assumptions: Boolean) -> Truth:
                 return not odd
             return None
     if _ask(_q('imaginary', exp), assumptions):
-        imlog = _ask(_q('imaginary', log(base)), assumptions)
-        if imlog is not None:
-            return imlog
+        # SymPy answers False when log(base) is not imaginary: 5**x is -1
+        # at the imaginary x = I*pi/log(5)
+        if _ask(_q('imaginary', log(base)), assumptions):
+            return True
     if _ask(_q('real', base), assumptions):
         if _ask(_q('real', exp), assumptions):
             zero = _ask(_q('zero', base), assumptions)
@@ -455,23 +467,46 @@ def _real_pow(e: Pow, assumptions: Boolean) -> Truth:
 def _extended_real(e: Expr, assumptions: Boolean) -> Truth:
     if isinstance(e, (Infinity, NegativeInfinity)):
         return True
-    if isinstance(e, (Add, Mul, Pow)):
+    if isinstance(e, (Add, Mul)):
         return _closed_group(e, assumptions, 'extended_real')
+    if isinstance(e, Pow):
+        # not a closed group as in SymPy: (-1)**(1/2) is I
+        if _ask(_q('real', e), assumptions):
+            return True
+        if _ask(and_(_q('extended_positive', e.base), _q('extended_real', e.exp)), assumptions):
+            return True
+        return None
     return None
 
 
 # PORTED FROM SYMPY: sympy/assumptions/handlers/sets.py (ComplexPredicate)
 def _complex(e: Expr, assumptions: Boolean) -> Truth:
-    if isinstance(e, (Abs, Cos, Exp, Im, ImaginaryUnit, Log, Number, NumberSymbol, Re, Sin)):
+    if isinstance(e, (ImaginaryUnit, Number, NumberSymbol)):
         if isinstance(e, (Infinity, NegativeInfinity, NaN)):
             return False
         return True
+    # SymPy answers True for the functions below whatever the argument, and
+    # for a power of complex numbers: exp(oo), Abs(oo), re(oo) are oo, log(0)
+    # and 0**(-1) are zoo, none of them complex (sympy/sympy#31275, V5-V8)
+    if isinstance(e, (Abs, Cos, Exp, Im, Re, Sin)) and len(e.args) == 1:
+        if _ask(_q('complex', _arg(e)), assumptions):
+            return True
+        return None
+    if isinstance(e, Log) and len(e.args) == 1:
+        if _ask(_q('complex', _arg(e)), assumptions) and _ask(_q('zero', _arg(e)), assumptions) is False:
+            return True
+        return None
     if isinstance(e, (Add, Mul)):
         return _closed_group(e, assumptions, 'complex')
     if isinstance(e, Pow):
         if e.base == Exp1():
-            return True
-        return _closed_group(e, assumptions, 'complex')
+            if _ask(_q('complex', e.exp), assumptions):
+                return True
+            return None
+        if _ask(_q('complex', e.base), assumptions) and _ask(_q('complex', e.exp), assumptions):
+            if _ask(_q('zero', e.base), assumptions) is False or _ask(_q('positive', e.exp), assumptions):
+                return True
+        return None
     return None
 
 
@@ -487,20 +522,32 @@ def _imaginary(e: Expr, assumptions: Boolean) -> Truth:
     if isinstance(e, Add):
         if e.is_number:
             return _imaginary_number(e)
-        reals = 0
+        reals: list[Expr] = []
+        imaginaries: list[Expr] = []
         for a in e.args:
             arg = _e(a)
             if _ask(_q('imaginary', arg), assumptions):
-                pass
+                imaginaries.append(arg)
             elif _ask(_q('real', arg), assumptions):
-                reals += 1
+                reals.append(arg)
             else:
                 return None
-        if reals == 0:
-            return True
-        if reals in (1, len(e.args)):
-            # two reals could sum 0 thus giving an imaginary
+        if not imaginaries:
             return False
+        # SymPy answers True without real terms and False with one: imaginary
+        # terms may cancel (I - I is 0, not imaginary) and the real term may
+        # be zero (sympy/sympy#31275, V17-V21)
+        same_side = len(imaginaries) == 1 or all(
+            _ask(_q('positive', -I * t), assumptions) for t in imaginaries) or all(
+            _ask(_q('negative', -I * t), assumptions) for t in imaginaries)
+        if not reals:
+            return True if same_side else None
+        if len(reals) == 1:
+            zero = _ask(_q('zero', reals[0]), assumptions)
+            if zero is False:
+                return False
+            if zero is True and same_side:
+                return True
         return None
     if isinstance(e, Mul):
         if e.is_number:
@@ -508,13 +555,13 @@ def _imaginary(e: Expr, assumptions: Boolean) -> Truth:
         result = False
         real_factors: list[Expr] = []
         for a in e.args:
-            arg = _e(a)
-            if _ask(_q('imaginary', arg), assumptions):
+            factor = _e(a)
+            if _ask(_q('imaginary', factor), assumptions):
                 result = not result
-            elif not _ask(_q('real', arg), assumptions):
+            elif not _ask(_q('real', factor), assumptions):
                 return None
             else:
-                real_factors.append(arg)
+                real_factors.append(factor)
         if result:
             # as for Q.real: 0 = x*y at x = 0 is not imaginary (issue #25)
             zero = _zero_factor(real_factors, assumptions)
@@ -558,7 +605,9 @@ def _imaginary_pow(e: Pow, assumptions: Boolean) -> Truth:
         if _ask(_q('integer', exp), assumptions):
             return _ask(_q('odd', exp), assumptions)
     if _ask(_q('imaginary', exp), assumptions):
-        if _ask(_q('imaginary', log(base)), assumptions) is not None:
+        # SymPy answers False when log(base) is not imaginary either: 5**x
+        # is I at the imaginary x = I*pi/(2*log(5))
+        if _ask(_q('imaginary', log(base)), assumptions):
             return False
     if _ask(and_(_q('real', base), _q('real', exp)), assumptions):
         if _ask(_q('positive', base), assumptions):
@@ -566,11 +615,17 @@ def _imaginary_pow(e: Pow, assumptions: Boolean) -> Truth:
         rat = _ask(_q('rational', exp), assumptions)
         if not rat:
             return rat
-        if _ask(_q('integer', exp), assumptions):
+        integer = _ask(_q('integer', exp), assumptions)
+        if integer:
             return False
         half = _ask(_q('integer', 2 * exp), assumptions)
         if half:
-            return _ask(_q('negative', base), assumptions)
+            negative = _ask(_q('negative', base), assumptions)
+            if integer is False or negative is False:
+                return negative
+            # SymPy answers True for a negative base without asking whether
+            # the exponent is an integer (sympy/sympy#31275, V24)
+            return None
         return half
     return None
 
@@ -672,7 +727,13 @@ def _nonzero(e: Expr, assumptions: Boolean) -> Truth:
             return result
         return True
     if isinstance(e, Pow):
-        return _ask(_q('nonzero', e.base), assumptions)
+        # Q.nonzero is real and not zero. SymPy answers with the base alone:
+        # 5**(I*n) is real at n = 0 only, I**2 is -1 (sympy/sympy#31275, V26, V27)
+        if _ask(_q('nonzero', e.base), assumptions):
+            return _ask(_q('real', e), assumptions)
+        if _ask(_q('zero', e.base), assumptions) and _ask(_q('positive', e.exp), assumptions):
+            return False
+        return None
     if isinstance(e, Abs):
         return _ask(_q('nonzero', _arg(e)), assumptions)
     if _ask_global(_q('real', e)) is False:
@@ -783,13 +844,21 @@ def _positive(e: Expr, assumptions: Boolean) -> Truth:
         # acos is positive on [-1, 1) but acos(1) = 0: SymPy's handler
         # answers True on the closed interval [-1, 1]
         arg = _arg(e)
+        # (sympy/sympy#31275, V30)
         if _ask(and_(_q('negative', arg - 1), _q('nonnegative', arg + 1)), assumptions):
             return True
         if _ask(_q('zero', arg - 1), assumptions) or _outside_unit_interval(arg, assumptions):
             return False
         return None
     if isinstance(e, Acot):
-        return _ask(_q('real', _arg(e)), assumptions)
+        # acot is odd, acot(-1) is -pi/4: SymPy answers True for every real
+        # argument (sympy/sympy#31275, V31)
+        arg = _arg(e)
+        if _ask(_q('nonnegative', arg), assumptions):
+            return True
+        if _ask(_q('negative', arg), assumptions):
+            return False
+        return None
     return None
 
 

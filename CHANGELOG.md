@@ -3833,6 +3833,45 @@ remove public functions. Breaking changes are listed here when they happen.
     corrected: `test_formal.py` (V207, V208, V210), `test_prde.py` (V135,
     V136).
 
+- Bugs shared with SymPy, from the review of its test suite
+  (sympy/sympy#31275, items V1-V69), fixed in the native code:
+  - the core's `ask` (`sympy_extras.assumptions.handlers`, `satask`):
+    `Q.complex` and `Q.real` of `exp(x)`, `Abs(x)`, `re(x)`, `im(x)`,
+    `sin(x)`, `cos(x)`, `log(x)` are `None` for a symbol which may be
+    infinite (`Abs(oo)` is `oo`) and `True` for a complex one (`log`: a
+    nonzero one); `Q.complex(x**y)` for complex `x`, `y` needs a nonzero
+    base or a positive exponent (`0**(-1)` is `zoo`);
+    `Q.extended_real(x**y)` is no closed group (`(-1)**(1/2)`);
+    `Q.imaginary` of a sum is `None` when the imaginary terms may cancel
+    or the one real term may be zero (`x + I` for a real or an imaginary
+    `x`); `Q.imaginary(x**y)` for a negative `x` and `Q.integer(2*y)` is
+    `None` unless `y` is known not to be an integer; `Q.real` and
+    `Q.imaginary` of `b**x` for an imaginary `x` no longer answer `False`
+    from `log(b)` not being imaginary; `Q.nonzero(b**x)` asks for a real
+    power (`5**(I*n)`); `Q.positive(acos(x))` on `[-1, 1]` is `None`
+    (`acos(1) = 0`), `Q.positive(acot(x))` follows the sign of `x`
+    (`acot(-1) = -pi/4`); the facts of the SAT step state
+    `Q.extended_nonnegative(Abs(x))` (nonnegative for a complex `x`) and
+    `Q.zero(x**y)` implies `Q.zero(x)` only for finite `x`, `y`
+    (`2**(-oo)`, `oo**(-1)`). `ask(Q.real(Abs(x)))`, `ask(Q.real(re(x)))`
+    without assumptions are now `None`: say `Q.complex(x)`;
+  - `AccumBounds(-1, 3)**(-2)` is `AccumBounds(1/9, oo)`, not
+    `AccumBounds(0, oo)` (a negative even power of bounds around 0);
+  - `summation` and `Sum.doit` of a reversed infinite sum follow Karr's
+    convention with the sign: `Sum(1/(x**2 + 1), (x, oo, 0))` is
+    `1/2 - pi/(2*tanh(pi))` (it was the opposite), also in
+    `eval_sum_residue` and the zeta sums;
+  - `deltasummation`: the solution of the delta must lie on the lattice of
+    the index, `Sum(KroneckerDelta(x, 1/2), (x, -oo, oo))` is 0 and the
+    sum of `KroneckerDelta(x, y)` has `Contains(y, Integers)` in its
+    condition when `y` is not known to be an integer;
+  - `Subs(x, y, 2).subs(x, y)` renames the bound variable instead of
+    letting it capture the new `y` (`doit` gave 2 instead of `y`);
+  - `Floor(...).evalf()` and `Ceiling(...).evalf()` settle an argument next
+    to an integer with more precision (up to 8192 bits) or by a proof:
+    `Floor(log(8)/log(2) - exp(-1000)).evalf()` is 2, not 3;
+  - `simplify` no longer gives the value 0 to `sign(u)*g` where `g` has a
+    pole at `u = 0` (`sign(r + 3)/Abs(r + 3)**(3/5)` keeps its `sign`).
 - Issue #72, the equations which are not polynomial in their leading
   derivative (`sympy_extras.solvers.lie` and its SymPy face): they were
   solved for it and the first root kept, so that `symmetries` returned the

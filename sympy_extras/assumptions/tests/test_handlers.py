@@ -9,8 +9,8 @@ from sympy_extras.functions.elementary.exponential import ExpPolar
 
 def test_real_and_imaginary() -> None:
     x, k = Symbol('x'), Symbol('k')
-    assert ask(Q.real(re(k) + 1)) is True
-    assert ask(Q.real(Abs(x) - 1)) is True
+    assert ask(Q.real(re(k) + 1), Q.complex(k)) is True
+    assert ask(Q.real(Abs(x) - 1), Q.complex(x)) is True
     assert ask(Q.real(I * x), Q.real(x) & Q.nonzero(x)) is False
     assert ask(Q.imaginary(I * x), Q.real(x) & Q.nonzero(x)) is True
     assert ask(Q.real(log(x)), Q.positive(x)) is True
@@ -142,3 +142,71 @@ def test_hidden_zero_has_no_sign() -> None:
     e = zero * (-12 * r + 8 * r / (4 * r + 9) + 16)
     assert ask(Q.positive(e)) is False and ask(Q.negative(e)) is False
     assert ask(Q.positive(zero)) is False and ask(Q.nonzero(zero)) is False
+
+
+def test_sympy_issue_31275_functions_of_a_possibly_infinite_argument() -> None:
+    # V5-V8, V28: SymPy answers True. exp(oo), Abs(oo) and re(oo) are oo,
+    # log(0) and 0**(-1) are zoo: not complex, not real
+    from sympy_extras.functions import cos, im, sin
+    x, y = Symbol('x'), Symbol('y')
+    for f in (exp(x), Abs(x), re(x), im(x), sin(x), cos(x), log(x)):
+        assert ask(Q.complex(f)) is None, f
+    for f in (exp(x), Abs(x), re(x), im(x), sin(x), cos(x)):
+        assert ask(Q.complex(f), Q.complex(x)) is True, f
+    assert ask(Q.complex(log(x)), Q.complex(x)) is None
+    assert ask(Q.complex(log(x)), Q.positive(x)) is True
+    for f in (Abs(x), re(x), im(x)):
+        assert ask(Q.real(f)) is None, f
+        assert ask(Q.real(f), Q.complex(x)) is True, f
+    assert ask(Q.finite(Abs(x))) is None
+    assert ask(Q.nonnegative(Abs(x))) is None
+    assert ask(Q.extended_nonnegative(Abs(x))) is True
+    assert ask(Q.nonnegative(Abs(x)), Q.complex(x)) is True
+    assert ask(Q.complex(x**y), Q.complex(x) & Q.complex(y)) is None
+    assert ask(Q.complex(x**y), Q.nonzero(x) & Q.complex(y)) is True
+    assert ask(Q.complex(x**y), Q.complex(x) & Q.positive(y)) is True
+    # (-1)**(1/2) is I
+    assert ask(Q.extended_real(x**y), Q.extended_real(x) & Q.extended_real(y)) is None
+    assert ask(Q.extended_real(x**y), Q.positive(x) & Q.real(y)) is True
+
+
+def test_sympy_issue_31275_imaginary_sums_and_powers() -> None:
+    # V17-V21: SymPy answers False with one real term (it may be 0) and True
+    # without real terms (I - I is 0, which is not imaginary)
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    assert ask(Q.imaginary(x + I), Q.real(x)) is None
+    assert ask(Q.imaginary(x + I), Q.imaginary(x)) is None
+    assert ask(Q.imaginary(x + y), Q.imaginary(x) & Q.imaginary(y)) is None
+    assert ask(Q.imaginary(x + y), Q.imaginary(x) & Q.real(y)) is None
+    assert ask(Q.imaginary(x + y + z), Q.real(x) & Q.imaginary(y) & Q.imaginary(z)) is None
+    assert ask(Q.imaginary(x + I), Q.nonzero(x)) is False
+    assert ask(Q.imaginary(x + y), Q.imaginary(x) & Q.zero(y)) is True
+    assert ask(Q.imaginary(x + y), Q.real(x) & Q.real(y)) is False
+    assert ask(Q.imaginary(I*x + I*y), Q.positive(x) & Q.positive(y)) is True
+    # V24: Q.integer(2*y) allows an integer y, and then x**y is real
+    assert ask(Q.imaginary(x**y), Q.negative(x) & Q.rational(y) & Q.integer(2*y)) is None
+    assert ask(Q.imaginary(x**y), Q.negative(x) & Q.integer(2*y) & ~Q.integer(y)) is True
+    assert ask(Q.imaginary(x**y), Q.negative(x) & Q.integer(y)) is False
+    # 5**x at the imaginary x = I*pi/log(5) is -1, at half of it I
+    assert ask(Q.real(5**x), Q.imaginary(x)) is None
+    assert ask(Q.imaginary(5**x), Q.imaginary(x)) is None
+    assert ask(Q.real(I**x), Q.imaginary(x)) is True
+    assert ask(Q.imaginary(I**x), Q.imaginary(x)) is False
+
+
+def test_sympy_issue_31275_nonzero_power_and_inverse_functions() -> None:
+    from sympy_extras.core import Pow
+    from sympy_extras.functions import acot
+    x, y, n = Symbol('x'), Symbol('y'), Symbol('n')
+    # V26, V27: Q.nonzero is real and not zero; 5**(I*n) is 1 at n = 0 and
+    # not real at the other integers (SymPy: False)
+    assert ask(Q.nonzero(Pow(5, 2*I*n*pi)), Q.integer(n)) is None
+    assert ask(Q.nonzero(Pow(5, I*n)), Q.integer(n)) is None
+    assert ask(Q.nonzero(x**2), Q.nonzero(x)) is True
+    assert ask(Q.nonzero(x**y), Q.positive(x) & Q.real(y)) is True
+    assert ask(Q.nonzero(x**y), Q.zero(x) & Q.positive(y)) is False
+    # V31: acot is odd, acot(-1) = -pi/4 (SymPy: True for every real x)
+    assert acot(Integer(-1)) == -pi/4 and acot(Integer(0)) == pi/2
+    assert ask(Q.positive(acot(x)), Q.real(x)) is None
+    assert ask(Q.positive(acot(x)), Q.nonnegative(x)) is True
+    assert ask(Q.positive(acot(x)), Q.negative(x)) is False

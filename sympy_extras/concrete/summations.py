@@ -152,7 +152,14 @@ def eval_sum(f: Expr, limits: Limits) -> Optional[Expr]:
     if a == b:
         return _e(f.subs(i, a))
     if a.is_comparable and b.is_comparable and _is_true(a > b):
-        return eval_sum(f, (i, b + ONE, a - ONE))
+        # Karr's convention: the sum over (i, a, b) with a > b is minus the
+        # sum over (i, b + 1, a - 1). SymPy forgets the sign here, where the
+        # reversed infinite sums arrive: Sum(2**(-x), (x, oo, 0)) was 1
+        # instead of -1 (sympy/sympy#31275, V46)
+        if a - b == ONE:
+            return ZERO
+        reversed_sum = eval_sum(f, (i, b + ONE, a - ONE))
+        return None if reversed_sum is None else -reversed_sum
     if isinstance(f, Piecewise):
         if not any(i in pair.cond.free_symbols for pair in f.args):
             newargs: list[tuple[Expr, Boolean]] = []
@@ -718,7 +725,11 @@ def eval_sum_residue(f: Expr, limits: Limits) -> Optional[Expr]:
     from .gosper import _UPoly
     i, a, b = limits
     if a.is_comparable and b.is_comparable and _is_true(a > b):
-        return eval_sum_residue(f, (i, b + ONE, a - ONE))
+        # Karr's convention, with the sign (see eval_sum)
+        if a - b == ONE:
+            return ZERO
+        reversed_sum = eval_sum_residue(f, (i, b + ONE, a - ONE))
+        return None if reversed_sum is None else -reversed_sum
 
     def is_even_function(numer: _UPoly, denom: _UPoly) -> bool:
         nm = [k for k, c in enumerate(numer.c) if c != 0]
@@ -852,8 +863,10 @@ def _eval_zeta_function(s: Sum, f: Expr, limits: Limits) -> Optional[Expr]:
     from sympy_extras.sets.fancysets import Naturals0
     from sympy_extras.sets.sets import contains
     i, a, b = limits
+    sign: Expr = ONE
     if a.is_comparable and b.is_comparable and _is_true(a > b):
-        return _eval_zeta_function(s, f, (i, b + ONE, a - ONE))
+        # Karr's convention, with the sign (see eval_sum)
+        a, b, sign = b + ONE, a - ONE, -ONE
     if not isinstance(b, Infinity):
         return None
     w, y, z = Wild('w', exclude=[i]), Wild('y', exclude=[i]), Wild('z', exclude=[i])
@@ -863,7 +876,7 @@ def _eval_zeta_function(s: Sum, f: Expr, limits: Limits) -> Optional[Expr]:
     rw, ry, rz = _e(result[w]), _e(result[y]), _e(result[z])
     coeff = 1 / rw**rz
     q = ry / rw + a
-    return piecewise((coeff * zeta(rz, q), and_(not_(contains(-q, Naturals0)), re(rz) > ONE)), (s, true))
+    return piecewise((sign * coeff * zeta(rz, q), and_(not_(contains(-q, Naturals0)), re(rz) > ONE)), (s, true))
 
 
 # PORTED FROM SYMPY: sympy/concrete/summations.py:Sum.doit

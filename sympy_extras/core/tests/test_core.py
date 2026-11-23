@@ -915,6 +915,10 @@ def test_subs_of_subs_and_as_independent_match_sympy() -> None:
     for e in [sympy.Subs(g(sx), sx, 0), sympy.Subs(sympy.Derivative(g(sx), sx), sx, sy), sympy.Subs(g(sx)*sy, sx, sy + 1),
               sympy.Subs(g(sx, sy), (sx, sy), (1, sz))]:
         for old, new in [(sx, sz), (sx, 1/sx), (sy, 2), (sy, sx), (sz, sx + 1), (sx, sy)]:
+            if old in e.expr.free_symbols and set(e.variables) & sympy.sympify(new).free_symbols:
+                # SymPy lets the bound variable capture the new expression
+                # (sympy/sympy#31275, V59): test_subs_does_not_capture_a_bound_variable_of_subs
+                continue
             got = expr_from_sympy(e).subs(expr_from_sympy(old), expr_from_sympy(sympy.sympify(new)))
             assert str(to_sympy(got, evaluate=False)) == str(e.subs(old, new)), (e, old, new)
     s = sympy.Subs(sympy.Derivative(g(sx), sx), sx, 0)
@@ -1067,3 +1071,17 @@ def test_srepr_keeps_exclusions_and_function_assumptions() -> None:
     assert srepr(f(x)) == "Function('f', real=True)(Symbol('x'))"
     assert srepr(Function('f')(x)) == "Function('f')(Symbol('x'))"
     assert f(x) != Function('f')(x)
+
+
+def test_subs_does_not_capture_a_bound_variable_of_subs() -> None:
+    # sympy/sympy#31275, V59: Subs(x, y, 2) does not depend on y, it is x;
+    # SymPy's Subs(x, y, 2).subs(x, y) is Subs(y, y, 2), which is 2
+    from sympy_extras.core import Subs
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    assert Subs(x, y, 2).subs(x, y).doit() == y
+    assert Subs(x + y, y, 2).subs(x, y).doit() == y + 2
+    assert Subs(x + y, y, 2).subs(x, y**2 + z).doit() == y**2 + z + 2
+    assert Subs(x + y, y, 2).doit().subs(x, y) == Subs(x + y, y, 2).subs(x, y).doit()
+    # nothing to capture: the bound variable is kept
+    assert Subs(x + y, y, 2).subs(x, z) == Subs(z + y, y, 2)
+    assert Subs(z + y, y, x).subs(x, y) == Subs(z + y, y, y)

@@ -77,3 +77,20 @@ def test_even_negative_power_of_bounds_with_zero_inside() -> None:
     assert accum_bounds(0, 3)**(-2) == accum_bounds(Rational(1, 9), oo)
     # an odd power takes every value but those near zero: the whole line stays
     assert accum_bounds(-1, 2)**(-3) == accum_bounds(-oo, oo)
+
+
+def test_negative_even_power_around_zero() -> None:
+    # sympy/sympy#31275, V34: on [-1, 3] without 0 the infimum of x**(-2) is
+    # 1/9, at x = 3; SymPy answers AccumBounds(0, oo)
+    from sympy_extras.core import Integer, Rational, oo
+    from sympy_extras.core.accumbounds import accum_bounds
+    assert accum_bounds(-1, 3)**(-2) == accum_bounds(Rational(1, 9), oo)
+    assert accum_bounds(-2, 3)**(-4) == accum_bounds(Rational(1, 81), oo)
+    assert accum_bounds(-3, 1)**(-2) == accum_bounds(Rational(1, 9), oo)
+    assert accum_bounds(0, 3)**(-2) == accum_bounds(Rational(1, 9), oo)
+    assert accum_bounds(-oo, oo)**(-2) == accum_bounds(0, oo)
+    assert accum_bounds(-1, 3)**(-3) == accum_bounds(-oo, oo)
+    # the values on a grid lie in the bounds, and reach the lower one
+    values = [Rational(k, 100)**(-2) for k in range(-100, 301) if k != 0]
+    assert Rational(1, 9) in values and Integer(1) in values
+    assert all((v - Rational(1, 9)).is_nonnegative is True for v in values)

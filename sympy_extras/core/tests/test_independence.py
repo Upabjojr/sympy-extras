@@ -3338,7 +3338,7 @@ import sys
 from sympy_extras.core import Q, Symbol, ask, sqrt, I
 from sympy_extras.functions import log, re, Abs
 x, k, n = Symbol('x'), Symbol('k'), Symbol('n')
-assert ask(Q.real(re(k) + 1)) is True and ask(Q.real(Abs(x) - 1)) is True
+assert ask(Q.real(re(k) + 1), Q.complex(k)) is True and ask(Q.real(Abs(x) - 1), Q.complex(x)) is True
 assert ask(Q.positive(log(x)), Q.positive(x) & Q.negative(x - 1)) is False
 assert ask(Q.real(sqrt(x)), Q.real(x)) is None   # SymPy's True is a bug (x = -1)
 assert ask(Q.nonzero(x), Q.positive(x) | Q.negative(x)) is True
