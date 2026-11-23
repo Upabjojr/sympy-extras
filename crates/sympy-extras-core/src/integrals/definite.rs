@@ -4321,11 +4321,17 @@ impl Integrator {
         Err(crate::error::not_ported("integrals/series (series_integral)"))
     }
 
-    fn laplace(&self, f: &Basic, _x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
+    fn laplace(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
         if depth > 1 || *a != Basic::zero() || *b != oo() || !has_any_function(f, &[Function::Exp]) {
             return Ok(None);
         }
-        Err(crate::error::not_ported("integrals/laplace (laplace_integral)"))
+        self.finish(crate::integrals::laplace::laplace_integral(
+            f,
+            x,
+            a,
+            b,
+            &self.assumptions,
+        )?)
     }
 
     fn contours(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
@@ -5027,7 +5033,7 @@ fn has_nan(e: &Basic) -> bool {
 pub fn definite_integral(f: &Basic, x: &Basic, a: &Basic, b: &Basic, assumptions: &[Basic], options: &Options) -> R {
     let unevaluated = || crate::integrals::integral::integral(f, x, Some((a, b)));
     let mut found: Option<ConditionalValue> = match &options.summability {
-        Some(_) => return Err(crate::error::not_ported("integrals/summability (summable_integral)")),
+        Some(method) => crate::integrals::summability::summable_integral(f, x, a, b, method, assumptions)?,
         None => conditional_integral(
             f,
             x,

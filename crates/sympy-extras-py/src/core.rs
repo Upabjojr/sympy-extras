@@ -6339,9 +6339,12 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
         "residues" => {
             // (name, f, x, a, b, Tuple(assumptions), half|full) -> Tuple(value, condition) or NONE;
             // the functions of integrals/residues, integrals/contours and integrals/periodic
+            // and of integrals/laplace and integrals/summability (the last argument the method)
             // (to_laurent and laurent_coefficient give an expression or NONE, `a` being the
             // symbol z or the power m)
-            use sympy_extras_core::integrals::{contours as ct, periodic as pd, residues as rs};
+            use sympy_extras_core::integrals::{
+                contours as ct, laplace as lp, periodic as pd, residues as rs, summability as sm,
+            };
             let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
             let assumptions: &[Basic] = a[5].args();
             let half: bool = a[6].to_string() == "half";
@@ -6350,6 +6353,15 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 Some(c) => Basic::new(Head::Tuple, vec![c.value, c.condition]),
             };
             match a[0].to_string().as_str() {
+                "laplace_rules" => value(lp::laplace_rules(&a[1], &a[2], &a[3], assumptions).map_err(e)?),
+                "laplace_integral" => value(lp::laplace_integral(&a[1], &a[2], &a[3], &a[4], assumptions).map_err(e)?),
+                "real_arguments" => lp::real_arguments(&a[1], assumptions).map_err(e)?,
+                "summable_integral" => {
+                    value(sm::summable_integral(&a[1], &a[2], &a[3], &a[4], &a[6].to_string(), assumptions).map_err(e)?)
+                }
+                "oscillatory_tail" => {
+                    value(sm::oscillatory_tail(&a[1], &a[2], &a[3], &a[6].to_string(), assumptions).map_err(e)?)
+                }
                 "to_laurent" => pd::to_laurent(&a[1], &a[2], &a[3]).map_err(e)?.unwrap_or_else(none),
                 "laurent_coefficient" => pd::laurent_coefficient(&a[1], &a[2], &a[3])
                     .map_err(e)?
@@ -6419,6 +6431,10 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         finite_part: has("finite_part"),
                         regularize: has("regularize"),
                         special_values: !has("no_special_values"),
+                        summability: a[6]
+                            .args()
+                            .iter()
+                            .find_map(|s| s.to_string().strip_prefix("summability=").map(|m| m.to_string())),
                         ..df::Options::default()
                     };
                     df::definite_integral(&a[1], &a[2], &a[3], &a[4], a[5].args(), &options).map_err(e)?

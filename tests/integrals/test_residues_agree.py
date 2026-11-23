@@ -1,6 +1,8 @@
 """The Rust ports of :mod:`sympy_extras.integrals.residues`,
-:mod:`~sympy_extras.integrals.contours` and
-:mod:`~sympy_extras.integrals.periodic` against the Python ones on the
+:mod:`~sympy_extras.integrals.contours`,
+:mod:`~sympy_extras.integrals.periodic`, :mod:`~sympy_extras.integrals.laplace`
+and :mod:`~sympy_extras.integrals.summability` (the last field of a case
+its method) against the Python ones on the
 calls of the Python tests of the modules (recorded as
 printed core expressions in ``residues_cases.json`` and read back by
 ``eval`` in the core's namespace, the integers exact; the symbols are
@@ -21,7 +23,7 @@ import sympy_extras.sets as sets
 from sympy_extras.assumptions.facts import element
 from sympy_extras.core import Integer, Symbol, Tuple
 from sympy_extras.core.relational import Eq, Ne
-from sympy_extras.integrals import contours, periodic, residues
+from sympy_extras.integrals import contours, laplace, periodic, residues, summability
 from sympy_extras.integrals.conditions import ConditionalValue
 from ..conftest import load
 
@@ -57,8 +59,18 @@ with open(os.path.join(os.path.dirname(__file__), 'residues_cases.json')) as _fh
     CASES: list[list[Any]] = json.load(_fh)
 
 
-def _python(name: str, f: Any, x: Any, a: Any, b: Any, assumptions: list[Any], half: bool) -> object:
+def _python(name: str, f: Any, x: Any, a: Any, b: Any, assumptions: list[Any], half: Any) -> object:
     given = assumptions or None
+    if name == 'laplace_rules':
+        return _out(laplace.laplace_rules(f, x, a, given))
+    if name == 'laplace_integral':
+        return _out(laplace.laplace_integral(f, x, a, b, given))
+    if name == 'real_arguments':
+        return laplace.real_arguments(f, given)
+    if name == 'summable_integral':
+        return _out(summability.summable_integral(f, x, a, b, str(half), given))
+    if name == 'oscillatory_tail':
+        return _out(summability.oscillatory_tail(f, x, a, str(half), given))
     if name == 'to_laurent':
         found = periodic.to_laurent(f, x, a)
         return 'NONE' if found is None else found
@@ -94,7 +106,7 @@ def test_residues(case: int) -> None:
     assumptions = list(read) if isinstance(read, (list, tuple)) else [read]
     try:
         found = _norm(rc.logic_call('residues', [Symbol(name), f, x, a, b, Tuple(*assumptions),
-                                                 Symbol('half' if half else 'full')]))
+                                                 Symbol(half if isinstance(half, str) else 'half' if half else 'full')]))
     except NotImplementedError as e:
         if 'not ported' in str(e):
             pytest.skip(str(e)[:100])
