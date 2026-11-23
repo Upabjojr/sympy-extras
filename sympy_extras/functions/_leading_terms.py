@@ -274,6 +274,28 @@ def _arg_rule(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
     raise PoleError('Cannot expand %s around 0' % (f,))
 
 
+def _abs(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
+    """The absolute value of the leading term of the argument, on the ray
+    of the direction (``x = cdir*t``, ``t > 0``): ``Abs(x**6 - x**5)`` is
+    ``x**5`` from the right. Not SymPy's: its ``Abs`` has no rule, so that
+    ``(1/Abs(x**5 + x**6)).series(x, 0, 3, dir='-')`` raises
+    NotImplementedError (sympy/sympy#31275)."""
+    from sympy_extras.core.accumbounds import AccumBounds
+    from sympy_extras.core.function import DefinedFunction, _generic_leading_term
+    from sympy_extras.core.symbol import Dummy
+    from sympy_extras.functions.elementary.complexes import abs_
+    t = Dummy('t', positive=True)
+    d = Integer(1) if cdir == 0 else cdir
+    lead = _lead(_arg(f), x, logx, cdir)
+    coefficient, _ = lead.as_coeff_exponent(x)
+    if x in coefficient.free_symbols or lead.has(AccumBounds, ComplexInfinity, Infinity, NegativeInfinity, NaN):
+        # no power of x (a logarithm) or no leading term at all (an
+        # oscillating argument, bounds): SymPy's rule of functions
+        assert isinstance(f, DefinedFunction)
+        return _generic_leading_term(f, x, logx)
+    return _e(abs_(_e(lead.subs(x, d * t))).subs(t, x / d))
+
+
 # PORTED FROM SYMPY: sympy/functions/elementary/integers.py:floor._eval_as_leading_term and ceiling._eval_as_leading_term
 def _round(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr, up: bool) -> Expr:
     from sympy_extras.core.accumbounds import AccumBounds
@@ -452,7 +474,7 @@ def rules() -> dict[str, Rule]:
         'CiNode': _even_integral, 'ChiNode': _even_integral,
         'FresnelS': lambda f, x, logx, cdir: _fresnel(f, x, logx, cdir, True),
         'FresnelC': lambda f, x, logx, cdir: _fresnel(f, x, logx, cdir, False),
-        'Arg': _arg_rule, 'Frac': _frac,
+        'Arg': _arg_rule, 'Abs': _abs, 'Frac': _frac,
         'Floor': lambda f, x, logx, cdir: _round(f, x, logx, cdir, False),
         'Ceiling': lambda f, x, logx, cdir: _round(f, x, logx, cdir, True),
         'BesselJ': lambda f, x, logx, cdir: _bessel_ji(f, x, logx, cdir, False),

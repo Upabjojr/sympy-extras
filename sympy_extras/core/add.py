@@ -104,7 +104,7 @@ class Add(AssocOp):
         >>> (x + 1 + 1/x**5).extract_leading_order([x])
         ((x**(-5), O(x**(-5))),)
         >>> (1 + x).extract_leading_order([x]), (x + x**2).extract_leading_order([x])
-        (((1, O(1)),), ((x, O(x)),))
+        (((1, O(1, x)),), ((x, O(x)),))
         """
         from .order import Order, order
         pts: Sequence[Expr] = point if point else [Integer(0)] * len(symbols)

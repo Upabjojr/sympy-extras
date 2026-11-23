@@ -591,8 +591,12 @@ def test_known_printing_and_round_trips_of_the_new_objects() -> None:
                  'Subs(Derivative(f(x), x), x, y)', 'Subs(x, x, 2)', 'Integral(x**2, (x, 0, 1))', 'Sum(x, (x, 1, 10))',
                  'Mod(7, 3)', 'Order(x + x**2)', 'UnevaluatedExpr(x)**2']:
         assert str(from_sympy(parse(text)).doit()) == str(parse(text).doit()), text
-    for text in ['f(2*x)', 'f(x**2)', 'f(x, 2*x)', 'Subs(f(x), x, y)', 'Mod(x, 3)', 'UnevaluatedExpr(x)', 'Order(x)']:
+    for text in ['f(2*x)', 'f(x**2)', 'f(x, 2*x)', 'Subs(f(x), x, y)', 'Mod(x, 3)', 'UnevaluatedExpr(x)']:
         assert str(_cv(text).diff(cx)) == str(parse(text).diff(sx)), text
+    # the same order, printed with the variable which its expression has not (SymPy prints O(1),
+    # which reads back as the order without variables: sympy/sympy#30844)
+    assert to_sympy(_cv('Order(x)').diff(cx)) == parse('Order(x)').diff(sx)
+    assert str(_cv('Order(x)').diff(cx)) == 'O(1, x)' and str(parse('Order(x)').diff(sx)) == 'O(1)'
     for text in ['EulerGamma', 'Catalan', 'GoldenRatio', 'TribonacciConstant', 'Mod(7, 3)', 'AlgebraicNumber(sqrt(2), [1, 1])',
                  'Integral(x**2, (x, 0, 1))']:
         assert str(C.as_expr(from_sympy(parse(text))).evalf()) == str(parse(text).evalf()), text

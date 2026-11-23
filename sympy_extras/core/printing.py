@@ -261,7 +261,10 @@ def srepr(e: Basic) -> str:
         given = ''.join(', %s=%r' % kv for kv in sorted(e.function.assumptions.items()))
         return "Function(%r%s)(%s)" % (e.name, given, ', '.join(srepr(a) for a in e.args))
     if isinstance(e, DefinedFunction):
-        return "%s(%s)" % (e.name, ', '.join(srepr(a) for a in e.args))
+        # the evaluating function (SymPy's name) for a node it returns, the
+        # class for a node it would evaluate: sin(Symbol('x')), Sin(Integer(0))
+        function_head = e.name if e.is_evaluated() else type(e).__name__
+        return "%s(%s)" % (function_head, ', '.join(srepr(a) for a in e.args))
     head = e._srepr_name()
     if head is not None:
         return "%s(%s)" % (head, ', '.join(srepr(a) for a in e.args))

@@ -3906,6 +3906,71 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- A second pass over the defects reported against SymPy (sympy/sympy#31275,
+  #31017, #30902, #30900, #30844) which the first pass left open:
+  - `sympify` reads `Integral`, `Sum`, `Product`, `Limit` and `Derivative`
+    natively, with SymPy's argument forms (`Integral(x**2, (x, 0, 1))`,
+    `Integral(f, x)`, `Sum(f, (k, 1, oo))`, `Limit(f, x, 0, '-')`,
+    `Limit(f, x, 0, dir='+-')`, `Derivative(f, x, 2)`,
+    `Derivative(f, (x, 2))`, the variable left out when the expression has
+    one symbol): without the bridge it raised `SympifyError`, "cannot
+    parse". **Behaviour change**: with the bridge loaded these strings
+    were read by SymPy and came back as its nodes (an `Integral` as a
+    wrapped foreign node); they are native nodes now, an integral in
+    several variables being the nested integrals
+    (`Integral(Integral(x*y, x), y)`). `(x, a)` of an integral, a symbolic
+    order of differentiation and a variable which is not a symbol stay
+    outside the native grammar (the bridge reads them).
+  - `Derivative(x, x, 2)` raised `TypeError: 'int' object is not
+    subscriptable`: the constructor takes SymPy's forms, a count after its
+    variable (`x, 2`) and a pair (`(x, 2)`); a count which follows no
+    variable is a `TypeError`, a negative order a `ValueError` (it was
+    stored).
+  - `str(O(1, x))` was `O(1)` (SymPy's too), which is another object: the
+    variable of an order whose expression does not have it is printed,
+    `O(1, x)`. **Behaviour change**: `sin(x).series(x, 0, 0)` prints
+    `O(1, x)`.
+  - `srepr` of a function node which its evaluating function does not
+    return printed the call which evaluates (`srepr(Sin(0))` was
+    `sin(Integer(0))`, which is `0`): it prints the class,
+    `Sin(Integer(0))`; the evaluated nodes are printed as before
+    (`DefinedFunction.is_evaluated`).
+  - `legendre(n, -x)`, `chebyshevt`, `chebyshevu`, `hermite`,
+    `hermite_prob`, `jacobi` and `gegenbauer` were reflected to
+    `(-1)**n*f(n, x)` for any symbolic `n` (SymPy's too): for an integer
+    `n` only, the functions of a noninteger degree have no parity.
+    **Behaviour change**: with a symbol `n` of no assumption the node
+    stays.
+  - `(1/Abs(x**5 + x**6)).series(x, 0, 3, dir='-')` raised
+    `NotImplementedError` (SymPy's too) and `Abs(...).as_leading_term(x)`
+    "Abs has no _eval_as_leading_term routine": `Abs` has a leading term,
+    the absolute value of the leading term of its argument on the ray of
+    the direction.
+  - a power of a negative number approached from a side of its cut which
+    the parameters decide took the upper side (SymPy's too:
+    `limit(sqrt(-1 + c*a), a, 0)` was `I` for every `c`, and
+    `limit(sqrt((-a**2 + x**2)/(1 - x**2)), a, 1, '-')` `I` for a complex
+    `x`, #31275 V212): the leading term and the series carry the factor
+    `exp(-2*pi*I*e*Heaviside(-im(direction), 0))`, as the series of `log`
+    does. **Behaviour change**: such limits and series contain a
+    `Heaviside` where the sign of the imaginary part of the direction is
+    not known; they are as before for a direction which is real or of a
+    known side.
+  - `combsimp(binomial(n, n - k))` was `binomial(n, k)` for integers of any
+    sign (#31275 V225, sympy/sympy#14612; `binomial(-3, -4)` is `0`,
+    `binomial(-3, 1)` is `-3`): binomials whose upper index is an integer
+    which may be negative and which are mirrored in the input are kept, and
+    one which comes back mirrored is turned again. For a nonnegative upper
+    index, and for the simplifications which mirror nothing, the results
+    are the same.
+  - the limit and the leading term of `hyper` with a parameter depending
+    on the variable (#31017 C5; `limit(hyper([x], [2], 1), x, 0)` raised
+    `NotImplementedError`): the value at the limits of the parameters
+    where the series converges locally uniformly in them.
+  - `hyperexpand(meijerg([], [], [0, 0], [], z))` stayed (SymPy's too): a
+    formula for `G^{2,0}_{0,2}(z | b1, b2)` with `b1 - b2` an integer,
+    `2*z**b*besselk(0, 2*sqrt(z))` and its shifts, in the table.
+
 - `Integral(x, x, 0, 1)` stored the Python numbers of its bounds as they
   were given, so that `str()` failed with `'int' object has no attribute
   '_sympystr'`: the constructor converts its function and its bounds

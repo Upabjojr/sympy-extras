@@ -212,10 +212,11 @@ def test_printed_booleans_and_relations_keep_their_truth_value() -> None:
 
 
 def test_names_of_sympy_are_not_undefined_functions() -> None:
-    # Eq(x, y), Derivative(...), O(x), S(1), diff(...) were read as undefined functions of
-    # those names and true, Reals as symbols: they are outside the grammar (for the bridge)
-    for text in ['Eq(x, y)', 'Derivative(x**2, x)', 'O(x)', 'S(1)/2', 'Float(1.5)', 'diff(x**2, x)', 'And(x, y)',
-                 'AccumBounds(-1, 1)', 'Integral(x, x)', 'Mod(x, y, z)', 'true', 'x + Reals', 'N(pi)']:
+    # Eq(x, y), O(x), S(1), diff(...) were read as undefined functions of those names and
+    # true, Reals as symbols: they are outside the grammar (for the bridge). Derivative(x**2, x)
+    # and Integral(x, x) were in this list: the parser reads them since (test_sympy_issues_second_pass)
+    for text in ['Eq(x, y)', 'O(x)', 'S(1)/2', 'Float(1.5)', 'diff(x**2, x)', 'And(x, y)',
+                 'AccumBounds(-1, 1)', 'Mod(x, y, z)', 'true', 'x + Reals', 'N(pi)']:
         with pytest.raises(ParseUnsupported):
             parse(text)
         with pytest.raises(ParseUnsupported):

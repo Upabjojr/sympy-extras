@@ -181,7 +181,10 @@ class Order(Expr):
 
     def _sympystr(self, printer: NodePrinter) -> str:
         if all(p.is_Number and p == 0 for _, p in self._limits):
-            if len(self._limits) <= 1:
+            # O(expr) is read back with the free symbols of expr as its
+            # variables: a variable which expr has not is printed, O(1, x)
+            # (SymPy prints O(1), which is another object: sympy/sympy#30844)
+            if len(self._limits) <= 1 and {s for s, _ in self._limits} == self._expr.free_symbols:
                 return 'O(%s)' % printer.doprint(self._expr)
             return 'O(%s, %s)' % (printer.doprint(self._expr), ', '.join(printer.doprint(s) for s, _ in self._limits))
         return 'O(%s, %s)' % (printer.doprint(self._expr),
