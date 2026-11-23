@@ -44,3 +44,15 @@ def test_the_other_operators_convert_python_numbers_too() -> None:
                     (Product(x, (x, 1, 2)), 'Product(x, (x, 1, 2))'), (Product(2, (x, 1, 2)), 'Product(2, (x, 1, 2))'),
                     (Limit(x, x, 0), "Limit(x, x, 0, dir='+')"), (Limit(1, x, 0), "Limit(1, x, 0, dir='+')")):
         assert _nodes_only(e) and str(e) == text
+
+
+def test_doit_evaluates_the_integrals_of_the_integrand() -> None:
+    # Integral(Integral(x*y, x), y).doit() stayed: the integrators do not look into the inner node
+    # (found with sympy/sympy#31017; SymPy's deep doit evaluates it)
+    y = Symbol('y')
+    nested = Integral(Integral(x*y, x), y).doit()
+    assert not nested.has(Integral) and nested.diff(y).diff(x) == x*y
+    assert Integral(Integral(x*y, x, 0, y), y, 0, 1).doit() == Rational(1, 8)
+    assert Integral(1 + Integral(2*x, x), x, 0, 3).doit() == 12
+    # an inner integral which is not found stays, and so does the outer one
+    assert Integral(Integral(x**x, x), y).doit().has(Integral)

@@ -230,3 +230,23 @@ def test_names_of_sympy_are_not_undefined_functions() -> None:
                             Derivative(Function("f")(x), x, x), Order(x**2, x), Implies(x, y), Mod(x, 3) + 1]
     for e in printed:
         assert sympify(sstr(e)) == e, sstr(e)
+
+
+def test_integral_with_one_bound_is_the_antiderivative_at_it() -> None:
+    # 'Integral(x**2, (x, a))' was outside the grammar: SymPy's antiderivative at a is the
+    # substitution in the indefinite integral, which the native nodes have
+    from sympy_extras.core import Subs
+    from sympy_extras.integrals.integral import Integral
+    x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
+    read = parse('Integral(x**2, (x, a))')
+    assert read == Subs(Integral(x**2, x), x, a) and read.free_symbols == {a}
+    assert read.doit() == a**3/3 == as_expr(sympify(str(sympy.Integral(sympy.Symbol('x')**2,
+                                                                     (sympy.Symbol('x'), sympy.Symbol('a'))).doit())))
+    assert parse('Integral(x*y, (x, a), (y, 0, 1))').doit() == a**2/4
+    assert sympify('Integral(x, (x, 3))').doit() == Rational(9, 2)
+    # what no native node has says why (it was "cannot parse" alone without the bridge)
+    for text, reason in [('Derivative(f(x), (x, n))', 'the variable (x, n) of a derivative'),
+                         ('Sum(k, k)', 'Sum requires values for lower and upper bounds'),
+                         ('Integral(x, (x, 1, 2, 3))', 'the limit (x, 1, 2, 3) of an integral')]:
+        with pytest.raises(ParseUnsupported, match=reason.replace('(', r'\(').replace(')', r'\)')):
+            parse(text)

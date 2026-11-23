@@ -183,12 +183,19 @@ class Integral(Expr):
         """The integral by
         :func:`~sympy_extras.integrals.indefinite.indefinite_integral` or
         :func:`~sympy_extras.integrals.definite.definite_integral` (itself
-        again when it is not found)."""
+        again when it is not found), the integrals of its integrand
+        evaluated first."""
+        function = self._function
+        if function.has(Integral):
+            # the integrals of the integrand first, as SymPy's deep doit:
+            # Integral(Integral(x*y, x), y).doit() stayed, the integrators
+            # do not look into a node
+            function = function.doit()
         if self._bounds is None:
             from .indefinite import indefinite_integral
-            return indefinite_integral(self._function, self._variable)
+            return indefinite_integral(function, self._variable)
         from .definite import definite_integral
-        return definite_integral(self._function, (self._variable, self._bounds[0], self._bounds[1]))
+        return definite_integral(function, (self._variable, self._bounds[0], self._bounds[1]))
 
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         return integral_nseries(self._function, self._variable, self._bounds, x, n, logx)

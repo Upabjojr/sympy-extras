@@ -74,13 +74,16 @@ def sympify(a: SympifyLike) -> Basic:
                 # the native parser; without evaluation SymPy's own (when
                 # registered) keeps its literal forms (x - 1 is x + (-1)*1)
                 return parse(a, evaluate)
-        except ParseUnsupported:
-            pass
+        except ParseUnsupported as unsupported:
+            reason = str(unsupported)
+        else:
+            reason = ''
         # outside the native grammar: the foreign system's parser, if any
         try:
             return bridge().parse(a, global_parameters.evaluate)
         except ForeignOperationUnavailable:
-            raise SympifyError("cannot parse %r" % (a,)) from None
+            # with what the native parser refused (it was "cannot parse" alone)
+            raise SympifyError("cannot parse %r%s" % (a, ': ' + reason if reason else '')) from None
         except (SyntaxError, ValueError, TypeError, NameError) as error:
             raise SympifyError("cannot parse %r: %s" % (a, error)) from None
     if isinstance(a, (tuple, list)):

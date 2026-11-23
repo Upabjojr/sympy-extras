@@ -14,9 +14,11 @@ unary sign: ``-x**2`` is ``-(x**2)``), with parentheses and calls. The
 unevaluated nodes ``Integral``, ``Sum``, ``Product``, ``Limit`` and
 ``Derivative`` are read with SymPy's argument forms (``(x, 0, 1)``,
 ``x, 2``, ``(x, 2)``, ``dir='-'``) as far as the native nodes have them: an
-integral in several variables is the nested integrals; ``(x, a)`` of an
-integral, a symbolic order of differentiation and a variable which is not
-a symbol are outside the grammar.
+integral in several variables is the nested integrals and ``(x, a)`` of an
+integral, the antiderivative at ``a``, is ``Subs(Integral(f, x), x, a)``; a
+symbolic order of differentiation, a sum or a product without bounds
+(SymPy refuses them too) and a variable which is not a symbol are outside
+the grammar.
 Anything else is :class:`ParseUnsupported`: ``sympify`` then asks the
 registered bridge, if any.
 
@@ -285,8 +287,13 @@ class _Parser:
             elif len(a.items) == 3:
                 result = as_expr_checked(build(result, self.the_symbol(a.items[0]), a.items[1], a.items[2]),
                                          self.text)
+            elif len(a.items) == 2:
+                # (x, a), the antiderivative at a: the substitution in the
+                # indefinite integral (the native node has not this form)
+                from .function import Subs
+                variable = self.the_symbol(a.items[0])
+                result = Subs(as_expr_checked(build(result, variable), self.text), variable, a.items[1])
             else:
-                # (x, a), the antiderivative at a: the native node has not this form
                 raise ParseUnsupported('the limit %s of an integral in %r' % (a.items, self.text))
         return result
 
