@@ -3931,6 +3931,10 @@ impl Integrator {
         let (coefficient, exponent) = match found {
             Ok(Some(found)) => found,
             Ok(None) => return Ok(None),
+            // a part which is not ported yet is no answer: it propagates
+            Err(crate::error::PolyError::NotImplemented(m)) if m.starts_with(crate::error::NOT_PORTED_PREFIX) => {
+                return Err(crate::error::PolyError::NotImplemented(m))
+            }
             Err(
                 crate::error::PolyError::Value(_)
                 | crate::error::PolyError::NotImplemented(_)
@@ -4307,7 +4311,7 @@ impl Integrator {
         self.finish(algebraic_integral(f, x, a, b, &self.assumptions)?)
     }
 
-    fn series(&self, f: &Basic, _x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
+    fn series(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
         if depth > 0 {
             return Ok(None);
         }
@@ -4318,7 +4322,14 @@ impl Integrator {
         } else if *b != Basic::one() && *b != oo() && !yes(b, Predicate::positive) {
             return Ok(None);
         }
-        Err(crate::error::not_ported("integrals/series (series_integral)"))
+        self.finish(crate::integrals::series::series_integral(
+            f,
+            x,
+            a,
+            b,
+            &self.assumptions,
+            None,
+        )?)
     }
 
     fn laplace(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {

@@ -44,6 +44,9 @@ fn beta_numbers(x: &Basic, y: &Basic) -> PolyResult<Option<Basic>> {
     {
         return Ok(Some(Basic::zero()));
     }
+    if at_pole(x, y)? == Some(true) {
+        return Ok(Some(Basic::zoo()));
+    }
     Ok(None)
 }
 
@@ -133,13 +136,44 @@ pub fn beta_conjugate(f: Function, e: &Basic) -> PolyResult<Basic> {
 }
 
 /// The facts (`_eval_facts`).
+fn nonpositive_integer(a: &Basic) -> Option<bool> {
+    if is(a, Predicate::integer) == Some(true) && is(a, Predicate::nonpositive) == Some(true) {
+        return Some(true);
+    }
+    if is(a, Predicate::integer) == Some(false) || is(a, Predicate::positive) == Some(true) {
+        return Some(false);
+    }
+    None
+}
+
+/// Whether `gamma(x)*gamma(y)/gamma(x + y)` is at a pole: an argument is
+/// a nonpositive integer and the sum is not (`_at_pole`).
+fn at_pole(x: &Basic, y: &Basic) -> PolyResult<Option<bool>> {
+    let poles: [Option<bool>; 2] = [nonpositive_integer(x), nonpositive_integer(y)];
+    if poles[0] == Some(false) && poles[1] == Some(false) {
+        return Ok(Some(false));
+    }
+    let cancelled: Option<bool> = nonpositive_integer(&add(&[x.clone(), y.clone()])?);
+    if poles.contains(&Some(true)) && cancelled == Some(false) {
+        return Ok(Some(true));
+    }
+    Ok(None)
+}
+
 pub fn beta_facts(f: Function, args: &[Basic]) -> FactList {
     let mut facts: FactList = FactList::new();
     facts.set(Predicate::commutative, true);
     let real: Vec<Option<bool>> = args.iter().map(|a| is(a, Predicate::real)).collect();
     if f == Function::Beta {
-        if real.iter().all(|v| *v == Some(true)) {
-            facts.set(Predicate::real, true);
+        let pole: Option<bool> = at_pole(&args[0], &args[args.len() - 1]).unwrap_or(None);
+        if pole == Some(true) {
+            facts.set(Predicate::real, false);
+            facts.set(Predicate::finite, false);
+        } else if real.iter().all(|v| *v == Some(true)) {
+            // a real number only away from the poles
+            if pole == Some(false) {
+                facts.set(Predicate::real, true);
+            }
         } else if real[0] == Some(false) || (real[0] == Some(true) && real[real.len() - 1] == Some(false)) {
             facts.set(Predicate::real, false);
         }

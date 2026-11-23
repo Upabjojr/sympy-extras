@@ -1000,6 +1000,39 @@ fn mrv(e: &Basic, x: &Basic) -> PolyResult<(SubsSet, Basic)> {
         let args: Vec<Basic> = found.iter().map(|(_, r)| ss.do_subs(r)).collect();
         return Ok((s, crate::core::function::rebuild_evaluated(&e, args)?));
     }
+    if matches!(e.head(), Head::Hyper | Head::MeijerG | Head::Piecewise) {
+        // a function of SymPy which is not an application of the core: its
+        // arguments which are not expressions (the parameter tuples) are
+        // free of x and kept
+        let is_expression =
+            |a: &Basic| !(crate::core::logic::is_boolean(a) || matches!(a.head(), Head::Tuple | Head::ExprCondPair));
+        let mut found: Vec<(SubsSet, Basic)> = Vec::new();
+        for argument in e.args() {
+            if is_expression(argument) {
+                found.push(mrv(argument, x)?);
+            } else if argument.has(x) {
+                return Err(PolyError::NotImplemented(format!(
+                    "Don't know how to calculate the mrv of '{}'",
+                    e
+                )));
+            } else {
+                found.push((SubsSet::default(), argument.clone()));
+            }
+        }
+        let nonempty: Vec<&SubsSet> = found.iter().filter(|(s, _)| !s.is_empty()).map(|(s, _)| s).collect();
+        if nonempty.len() != 1 {
+            return Err(PolyError::NotImplemented(
+                "MRV set computation for functions in several variables not implemented.".to_string(),
+            ));
+        }
+        let s: SubsSet = nonempty[0].clone();
+        let ss = SubsSet::default();
+        let args: Vec<Basic> = found
+            .iter()
+            .map(|(_, r)| if is_expression(r) { ss.do_subs(r) } else { r.clone() })
+            .collect();
+        return Ok((s, crate::core::function::rebuild_evaluated(&e, args)?));
+    }
     if matches!(e.head(), Head::Derivative) {
         return Err(PolyError::NotImplemented(
             "MRV set computation for derivatives not implemented yet.".to_string(),
@@ -1182,6 +1215,14 @@ fn shifted_variable(z: &Basic, z0: &Basic, dir: &str) -> Basic {
     Dummy::new("h", &[]).0
 }
 
+/// Whether `f` has a power of `w` whose exponent is not a number
+/// (`_has_symbolic_power`).
+fn has_symbolic_power(f: &Basic, w: &Basic) -> bool {
+    f.preorder()
+        .iter()
+        .any(|t| t.is_pow() && t.args()[0] == *w && !t.args()[1].free_symbols().is_empty())
+}
+
 fn mrv_leadterm(e: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
     if !e.has(x) {
         return Ok((e.clone(), Basic::zero()));
@@ -1202,6 +1243,12 @@ fn mrv_leadterm(e: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
     let f: Basic = crate::core::function::replace_where(&f0, &query, &value)?;
     let lt: (Basic, Basic) = match leadterm(&f, &w, Some(&logw), &Basic::zero()) {
         Ok(v) => v,
+        Err(err @ PolyError::NotImplemented(_)) if caught(&err, true, true, true) && has_symbolic_power(&f, &w) => {
+            // not SymPy's: the series below writes a power w**c with a
+            // symbolic c as exp(c*log(w)) and orders the terms by the other
+            // powers of w (sympy/sympy#31017, W7)
+            return Err(err);
+        }
         Err(err) if caught(&err, true, true, true) => {
             let n0: i64 = 1;
             let mut series: Basic = crate::core::order::order(&Basic::one(), &[])?;

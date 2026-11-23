@@ -328,7 +328,8 @@ fn bessel_terms(nu: &Basic, z: &Basic, n: i64, x: &Basic, base: i64) -> PolyResu
         }
         d2(numerator, &int(2))
     };
-    let lower: Basic = half(&s2(&m2(&int(2), nu)?, &Basic::one())?)?;
+    // (1/2 - nu)_k (DLMF 10.40.1-2; SymPy has (nu - 1/2)_k)
+    let lower: Basic = half(&s2(&Basic::one(), &m2(&int(2), nu)?)?)?;
     let upper: Basic = half(&a2(&m2(&int(2), nu)?, &Basic::one())?)?;
     let mut s: Vec<Basic> = Vec::new();
     for k in 0..n {

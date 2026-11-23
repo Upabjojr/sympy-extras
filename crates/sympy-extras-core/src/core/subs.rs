@@ -253,7 +253,29 @@ fn subs_subs(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Option<Basic>> {
         pt.push(new.clone());
         return Ok(Some(subs_node(expr, vs, pt)));
     }
-    let new_expr: Basic = subs_node_rec(expr, old, new)?;
+    let mut variables: Vec<Basic> = variables;
+    let mut body: Basic = expr.clone();
+    let free = new.free_symbols();
+    let captured: Vec<Basic> = variables.iter().filter(|v| free.contains(*v)).cloned().collect();
+    if !captured.is_empty() && body.has(old) {
+        // the new expression has a bound variable, which would capture it
+        // (Subs(x, y, 2).subs(x, y) is not Subs(y, y, 2); sympy/sympy#31275,
+        // V59): the bound variables are renamed first
+        let mut renaming = std::collections::HashMap::new();
+        for var in &captured {
+            let name: String = match var.head() {
+                Head::Symbol(d) | Head::Dummy(d, _) => d.name.clone(),
+                _ => var.to_string(),
+            };
+            renaming.insert(var.clone(), crate::core::symbol::Dummy::new(&name, &[]).0);
+        }
+        variables = variables
+            .iter()
+            .map(|v| renaming.get(v).cloned().unwrap_or_else(|| v.clone()))
+            .collect();
+        body = body.xreplace(&renaming);
+    }
+    let new_expr: Basic = subs_node_rec(&body, old, new)?;
     let mut points: Vec<Basic> = Vec::new();
     for p in &pt {
         points.push(subs_node_rec(p, old, new)?);

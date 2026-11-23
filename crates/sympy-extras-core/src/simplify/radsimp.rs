@@ -467,11 +467,24 @@ fn handle(x: &Basic, symbolic: bool, max_terms: usize) -> PolyResult<Basic> {
             let (mut p2, mut other): (Vec<Basic>, Vec<Basic>) = (Vec::new(), Vec::new());
             for i in factors_of(&m) {
                 if ispow2(&i, symbolic, true)? && i.is_pow() {
-                    let (b, ex) = (&i.args()[0], &i.args()[1]);
-                    p2.push(if *ex == Basic::half() {
+                    let (b, original) = (&i.args()[0], &i.args()[1]);
+                    let mut ex: Basic = original.clone();
+                    if let Some(r) = original.as_rational() {
+                        let (p, q) = (crate::numbers::numer(r), crate::numbers::denom(r));
+                        let whole: crate::numbers::Int = crate::numbers::div_floor(&p, &q);
+                        let two: crate::numbers::Int = crate::numbers::Int::from(2);
+                        if whole != crate::numbers::Int::ZERO && two * (p - whole.clone() * q.clone()) <= q {
+                            // b**(3/2) is b*sqrt(b) for every b, not sqrt(b**3)
+                            // (sympy/sympy#31275, V233): the integer part of the
+                            // exponent is no radical
+                            other.push(pow(b, &Basic::integer(whole.clone()))?);
+                            ex = crate::core::add::add(&[ex, Basic::integer(-whole)])?;
+                        }
+                    }
+                    p2.push(if ex == Basic::half() {
                         b.clone()
                     } else {
-                        pow(b, &mul(&[Basic::int(2), ex.clone()])?)?
+                        pow(b, &mul(&[Basic::int(2), ex])?)?
                     });
                 } else if i == i_unit {
                     p2.push(Basic::negative_one());

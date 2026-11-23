@@ -494,6 +494,14 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             | super::basic::Function::PeriodicArgument
             | super::basic::Function::PrincipalBranch,
         ) => crate::functions::elementary::polar::polar_value(e, prec),
+        Head::Function(g @ (super::basic::Function::Floor | super::basic::Function::Ceiling)) => {
+            let direction: i32 = if matches!(g, super::basic::Function::Floor) {
+                -1
+            } else {
+                1
+            };
+            crate::functions::elementary::integers::numeric_integer_part(&e.args()[0], wp, direction)
+        }
         Head::Function(f) => {
             let v: Complex = numeric_value(&e.args()[0], prec)?;
             let value: Complex = match f {

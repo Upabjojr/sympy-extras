@@ -178,9 +178,19 @@ pub fn print(e: &Basic, doprint: &dyn Fn(&Basic) -> String) -> String {
     }
 }
 
-/// `doit`: the integrators are not ported.
-pub fn doit(_e: &Basic) -> R {
-    Err(crate::error::not_ported(
-        "Integral.doit (integrals/indefinite, integrals/definite)",
-    ))
+/// The integral by `indefinite_integral` or `definite_integral` (itself
+/// again when it is not found) (`doit`).
+pub fn doit(e: &Basic) -> R {
+    let (f, x, bounds) = parts(e);
+    match bounds {
+        None => crate::integrals::indefinite::indefinite_integral(f, x, &[], true),
+        Some((a, b)) => crate::integrals::definite::definite_integral(
+            f,
+            x,
+            a,
+            b,
+            &[],
+            &crate::integrals::definite::Options::default(),
+        ),
+    }
 }

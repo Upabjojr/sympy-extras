@@ -208,7 +208,15 @@ pub fn eval_sum(f: &Basic, limits: &Limit) -> OptR {
         return Ok(Some(subs(f, i, a)?));
     }
     if a_gt_b(a, b)? {
-        return eval_sum(f, &(i.clone(), a2(b, &int(1))?, s2(a, &int(1))?));
+        // Karr's convention: minus the sum over (i, b + 1, a - 1)
+        // (sympy/sympy#31275, V46)
+        if s2(a, b)? == int(1) {
+            return Ok(Some(int(0)));
+        }
+        return match eval_sum(f, &(i.clone(), a2(b, &int(1))?, s2(a, &int(1))?))? {
+            Some(r) => Ok(Some(neg(&r)?)),
+            None => Ok(None),
+        };
     }
     if is_piecewise(f) && !pairs(f).iter().any(|(_, c)| c.free_symbols().contains(i)) {
         let mut newargs: Vec<(Basic, Basic)> = Vec::new();
@@ -911,7 +919,14 @@ pub fn eval_sum_residue(f: &Basic, limits: &Limit) -> OptR {
     use crate::concrete::gosper::UPoly;
     let (i, a, b) = limits;
     if a_gt_b(a, b)? {
-        return eval_sum_residue(f, &(i.clone(), a2(b, &int(1))?, s2(a, &int(1))?));
+        // Karr's convention, with the sign (see eval_sum)
+        if s2(a, b)? == int(1) {
+            return Ok(Some(int(0)));
+        }
+        return match eval_sum_residue(f, &(i.clone(), a2(b, &int(1))?, s2(a, &int(1))?))? {
+            Some(r) => Ok(Some(neg(&r)?)),
+            None => Ok(None),
+        };
     }
     let is_even_function = |numer: &UPoly, denom: &UPoly| -> bool {
         let nm: Vec<usize> = numer
@@ -1119,10 +1134,13 @@ pub(crate) fn dummy_with_inherited_properties(limits: &Limit) -> Option<Basic> {
 }
 
 fn eval_zeta_function(s: &Basic, f: &Basic, limits: &Limit) -> OptR {
-    let (i, a, b) = limits;
-    if a_gt_b(a, b)? {
-        return eval_zeta_function(s, f, &(i.clone(), a2(b, &int(1))?, s2(a, &int(1))?));
+    let (i, a0, b0) = limits;
+    let (mut a, mut b, mut sign): (Basic, Basic, Basic) = (a0.clone(), b0.clone(), int(1));
+    if a_gt_b(&a, &b)? {
+        // Karr's convention, with the sign (see eval_sum)
+        (a, b, sign) = (a2(b0, &int(1))?, s2(a0, &int(1))?, int(-1));
     }
+    let (a, b) = (&a, &b);
     if !is_oo(b) {
         return Ok(None);
     }
@@ -1147,7 +1165,7 @@ fn eval_zeta_function(s: &Basic, f: &Basic, limits: &Limit) -> OptR {
         crate::core::relational::gt(&crate::functions::elementary::complexes::re(&rz)?, &int(1))?,
     ]);
     Ok(Some(piecewise(&[
-        (m2(&coeff, &zeta)?, condition),
+        (m2(&m2(&sign, &coeff)?, &zeta)?, condition),
         (s.clone(), true_()),
     ])?))
 }

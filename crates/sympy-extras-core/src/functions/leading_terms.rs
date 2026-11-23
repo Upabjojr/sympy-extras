@@ -468,19 +468,44 @@ fn bessel_k(f: &Basic, x: &Basic, logx: Option<&Basic>) -> R {
     same(f, vec![nu, lead_])
 }
 
-fn singularity(f: &Basic, x: &Basic, cdir: &Basic) -> R {
+fn singularity(f: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) -> R {
     let (z, a, n) = (arg_of(f, 0), arg_of(f, 1), arg_of(f, 2));
     let shift: Basic = subs0(&s2(&z, &a)?, x)?;
     if yes(&n, Predicate::negative) {
         return Ok(int(0));
     }
-    if yes(&n, Predicate::zero) && yes(&shift, Predicate::zero) {
-        return Ok(int(if *cdir == int(-1) { 0 } else { 1 }));
+    if yes(&shift, Predicate::zero) {
+        // at the singular point the side decides: <d>**n is d**n where d
+        // is positive and 0 where it is negative
+        let d: Basic = s2(&z, &a)?;
+        if !singularity_side_positive(&d, x, cdir)? {
+            return Ok(int(0));
+        }
+        if yes(&n, Predicate::zero) {
+            return Ok(int(1));
+        }
+        return crate::core::series::as_leading_term(&pw(&d, &n)?, std::slice::from_ref(x), logx, cdir);
     }
     if yes(&shift, Predicate::positive) {
         return pw(&shift, &n);
     }
     Ok(int(0))
+}
+
+/// Whether `d`, which vanishes at `x = 0`, is positive on the side of
+/// `cdir` (`singularity_side_positive`).
+pub(crate) fn singularity_side_positive(d: &Basic, x: &Basic, cdir: &Basic) -> PolyResult<bool> {
+    let (mut coefficient, exponent) = match crate::core::series::leadterm(d, x, None, &Basic::zero()) {
+        Ok(found) => found,
+        Err(crate::error::PolyError::Value(_) | crate::error::PolyError::NotImplemented(_)) => {
+            return Ok(*cdir != int(-1));
+        }
+        Err(e) => return Err(e),
+    };
+    if *cdir == int(-1) {
+        coefficient = crate::core::mul::mul(&[coefficient, pw(&int(-1), &exponent)?])?;
+    }
+    Ok(!yes(&coefficient, Predicate::negative))
 }
 
 /// The ported rule of the class of `f`, `None` when it has none
@@ -517,7 +542,7 @@ pub fn leading_term_rule(f: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basi
         "BesselI" => bessel_ji(f, x, logx, cdir, true)?,
         "BesselY" => bessel_y(f, x, logx, cdir)?,
         "BesselK" => bessel_k(f, x, logx)?,
-        "SingularityFunctionNode" => singularity(f, x, cdir)?,
+        "SingularityFunctionNode" => singularity(f, x, logx, cdir)?,
         "Eis" => {
             // PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_eis._eval_as_leading_term
             let z: &Basic = &f.args()[0];

@@ -214,9 +214,8 @@ fn polygamma_eval(n: &Basic, z: &Basic) -> PolyResult<Basic> {
         return sub(&loggamma(z)?, &half_log);
     }
     if is_true(n, Predicate::zero) {
-        if matches!(z.head(), Head::NegativeInfinity) {
-            return Ok(Basic::oo());
-        }
+        // no value at -oo: digamma has a pole at every nonpositive integer
+        // and a zero between any two of them (SymPy returns oo)
         if let Some(imaginary) = extract_multiplicatively(z, &Basic::imaginary_unit())? {
             if matches!(imaginary.head(), Head::Infinity | Head::NegativeInfinity) {
                 return Ok(Basic::oo());

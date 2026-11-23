@@ -75,7 +75,19 @@ pub fn precedence(e: &Basic) -> i32 {
                 PREC_MUL
             }
         }
-        Head::Pow => PREC_POW,
+        Head::Pow => {
+            // 1/x and 1/sqrt(x) are printed as quotients: as a base, or in
+            // a denominator, they need their parentheses (1/(1/x), (1/x)**2)
+            let quotient: bool = e.args()[1].as_rational().is_some_and(|r| {
+                crate::numbers::numer(r) == crate::numbers::Int::from(-1)
+                    && [crate::numbers::Int::from(1), crate::numbers::Int::from(2)].contains(&crate::numbers::denom(r))
+            });
+            if quotient {
+                PREC_MUL
+            } else {
+                PREC_POW
+            }
+        }
         Head::Relational(op) => {
             if matches!(op, super::basic::RelOp::Eq | super::basic::RelOp::Ne) {
                 PREC_FUNC

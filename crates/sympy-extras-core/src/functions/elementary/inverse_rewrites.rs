@@ -296,12 +296,17 @@ fn atan2_atan(_: &Basic, args: &[Basic], _: &RewriteHints) -> Out {
     // the misc helpers: add(x, sqrt(...)) and mul(y, 1/(...)) as n-ary calls
     let value: X = n(2) * atan(X::of(y) / (X::of(x) + modulus));
     let re_x: Basic = apply_function(F::Re, std::slice::from_ref(x))?;
-    let pieces: Vec<(Basic, Basic)> = vec![
-        (value.0?, ne(y, &zero)?),
-        (Basic::pi(), lt(&re_x, &zero)?),
-        (zero.clone(), ne(x, &zero)?),
-        (Basic::atom(Head::NaN), true_()),
-    ];
+    let mut pieces: Vec<(Basic, Basic)> = vec![(value.0?, ne(y, &zero)?), (Basic::pi(), lt(&re_x, &zero)?)];
+    if crate::core::expr::is(x, crate::core::assumptions::Predicate::extended_real) != Some(true) {
+        // on the negative imaginary axis atan2(0, x) is pi (SymPy has 0)
+        let im_x: Basic = apply_function(F::Im, std::slice::from_ref(x))?;
+        pieces.push((
+            Basic::pi(),
+            crate::core::logic::and_(&[crate::core::relational::eq(&re_x, &zero)?, lt(&im_x, &zero)?]),
+        ));
+    }
+    pieces.push((zero.clone(), ne(x, &zero)?));
+    pieces.push((Basic::atom(Head::NaN), true_()));
     Ok(Some(crate::functions::elementary::piecewise::piecewise(&pieces)?))
 }
 

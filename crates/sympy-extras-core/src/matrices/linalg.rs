@@ -851,6 +851,18 @@ pub fn linear_solve(a: &ExprMatrix, b: &ExprMatrix) -> PolyResult<Option<LinearS
 
 /// The Moore–Penrose pseudoinverse by a full-rank factorisation
 /// (`pseudoinverse`).
+/// The conjugate transpose, the symbols being real: the transpose for a
+/// matrix without `I` (`conjugate_transpose`).
+pub fn conjugate_transpose(m: &ExprMatrix) -> PolyResult<ExprMatrix> {
+    let transposed: ExprMatrix = m.transpose();
+    let i: Basic = Basic::atom(crate::core::basic::Head::ImaginaryUnit);
+    if !transposed.has(&i) {
+        return Ok(transposed);
+    }
+    let rule: std::collections::HashMap<Basic, Basic> = [(i.clone(), crate::core::mul::neg(&i)?)].into_iter().collect();
+    transposed.xreplace(&rule).applyfunc(&normal)
+}
+
 pub fn pseudoinverse(m: &ExprMatrix) -> PolyResult<ExprMatrix> {
     let (reduced, pivots) = rref(m)?;
     let r: usize = pivots.len();
@@ -871,7 +883,7 @@ pub fn pseudoinverse(m: &ExprMatrix) -> PolyResult<ExprMatrix> {
         }
     }
     let c: ExprMatrix = ExprMatrix::new(r, m.cols, c_entries)?;
-    let (bt, ct) = (b.transpose(), c.transpose());
+    let (bt, ct) = (conjugate_transpose(&b)?, conjugate_transpose(&c)?);
     let product: ExprMatrix = ct
         .matmul(&inverse(&c.matmul(&ct)?)?)?
         .matmul(&inverse(&bt.matmul(&b)?)?)?

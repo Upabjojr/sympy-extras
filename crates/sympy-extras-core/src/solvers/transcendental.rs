@@ -529,7 +529,22 @@ fn clear(
             return Ok(atom.clone());
         };
         if positive_denominator(&denominator, variable, family)? {
-            return relation(op, &f, &Basic::zero());
+            let cleared_atom: Basic = relation(op, &f, &Basic::zero())?;
+            if family == Family::Root
+                && denominator.has(variable)
+                && crate::core::expr::is(
+                    &crate::core::subs::subs(&denominator, variable, &Basic::zero())?,
+                    Predicate::positive,
+                ) != Some(true)
+            {
+                // the kernel of a root is nonnegative, not positive: the
+                // relation is not defined where the denominator vanishes
+                return Ok(crate::core::logic::and_(&[
+                    cleared_atom,
+                    crate::core::relational::gt(variable, &Basic::zero())?,
+                ]));
+            }
+            return Ok(cleared_atom);
         }
         let Some(g) = polynomial(&denominator)? else {
             not_polynomial = true;

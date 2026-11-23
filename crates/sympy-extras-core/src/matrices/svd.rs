@@ -38,36 +38,52 @@ fn number(r: Rat) -> Basic {
     Basic::from_rational(r)
 }
 
-/// `float(e)`: `TypeError` when `e` is not a real number.
-fn float(e: &Basic) -> PolyResult<f64> {
-    let Some(z) = crate::core::evalf::numeric_value(e, 53) else {
-        return Err(PolyError::Type(format!("Cannot convert expression to float: {}", e)));
-    };
-    let (re, im) = crate::core::evalf::parts(&z);
-    if im != crate::core::evalf::Real::ZERO {
-        return Err(PolyError::Type("Cannot convert complex to float".to_string()));
+/// `M^* M`, the star being the conjugate transpose (`_gram`).
+fn gram(m: &ExprMatrix) -> PolyResult<ExprMatrix> {
+    let product: ExprMatrix = crate::matrices::linalg::conjugate_transpose(m)?.matmul(m)?;
+    if product.has(&Basic::atom(crate::core::basic::Head::ImaginaryUnit)) {
+        return product.applyfunc(&crate::matrices::linalg::normal);
     }
-    Ok(re.to_f64().value())
+    Ok(product)
 }
 
-fn gram(m: &ExprMatrix) -> PolyResult<ExprMatrix> {
-    m.transpose().matmul(m)
+/// The real part of the value, for the order: the roots of a polynomial
+/// with real roots are written through complex numbers (`_size`).
+fn size(e: &Basic) -> PolyResult<f64> {
+    let Some(z) = crate::core::evalf::numeric_value(e, 53) else {
+        return Err(PolyError::Type(format!("Cannot convert expression to complex: {}", e)));
+    };
+    Ok(crate::core::evalf::parts(&z).0.to_f64().value())
 }
 
 /// The singular values, decreasing when they are numbers
 /// (`singular_values`).
 pub fn singular_values(m: &ExprMatrix) -> PolyResult<Vec<Basic>> {
     let mut values: Vec<Basic> = Vec::new();
-    for (value, multiplicity) in eigenvalues(&gram(m)?)? {
-        let root: Basic = sqrt(&value)?;
-        for _ in 0..multiplicity {
-            values.push(root.clone());
+    let g: ExprMatrix = gram(m)?;
+    if g.entries.iter().all(|e| e.is_rational_class()) {
+        // the real forms of the roots (a cubic with three real roots)
+        let unknown: Basic = crate::matrices::eigen::fresh_symbol(&g);
+        for (factor, multiplicity) in crate::matrices::eigen::characteristic_factors(&g, &unknown)?.1 {
+            for root in real_roots(&factor, &unknown)? {
+                let value: Basic = sqrt(&root)?;
+                for _ in 0..multiplicity {
+                    values.push(value.clone());
+                }
+            }
+        }
+    } else {
+        for (value, multiplicity) in eigenvalues(&g)? {
+            let root: Basic = sqrt(&value)?;
+            for _ in 0..multiplicity {
+                values.push(root.clone());
+            }
         }
     }
     if values.iter().all(|v| v.free_symbols().is_empty()) {
         let mut keyed: Vec<(f64, Basic)> = values
             .iter()
-            .map(|v| Ok((float(v)?, v.clone())))
+            .map(|v| Ok((size(v)?, v.clone())))
             .collect::<PolyResult<_>>()?;
         keyed.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         values = keyed.into_iter().map(|(_, v)| v).collect();
@@ -185,7 +201,7 @@ pub fn svd(m: &ExprMatrix) -> PolyResult<(ExprMatrix, ExprMatrix, ExprMatrix)> {
     let pairs = singular_vectors(&RationalEntries::new(), &gram(m)?)?;
     let mut keyed: Vec<(f64, (Basic, ExprMatrix))> = pairs
         .into_iter()
-        .map(|p| Ok((float(&p.0)?, p)))
+        .map(|p| Ok((size(&p.0)?, p)))
         .collect::<PolyResult<_>>()?;
     keyed.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     let pairs: Vec<(Basic, ExprMatrix)> = keyed.into_iter().map(|(_, p)| p).collect();

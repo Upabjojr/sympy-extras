@@ -6409,6 +6409,151 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 },
             }
         }
+        "recurr" => {
+            // (name, coefficients | equation | r, n | y, solution | init | NONE, rhs, start, count):
+            // rsolve_polynomial, rsolve_hypergeometric, rsolve_dalembertian -> Tuple;
+            // gosper_form -> Tuple(z, a, b, c) as expressions; rsolve_linear -> an
+            // expression or NONE; is_recurrence_solution -> True | False
+            use sympy_extras_core::solvers::recurr as rr;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let small = |b: &Basic| -> i64 { b.to_string().parse().unwrap_or(0) };
+            match a[0].to_string().as_str() {
+                "rsolve_polynomial" => tuple(rr::rsolve_polynomial(a[1].args(), &a[2]).map_err(e)?),
+                "rsolve_hypergeometric" => tuple(rr::rsolve_hypergeometric(a[1].args(), &a[2]).map_err(e)?),
+                "rsolve_dalembertian" => tuple(rr::rsolve_dalembertian(a[1].args(), &a[2]).map_err(e)?),
+                "gosper_form" => {
+                    let (z, pa, pb, pc) = rr::gosper_form(&a[1], &a[2]).map_err(e)?;
+                    tuple(vec![
+                        z,
+                        pa.as_expr().map_err(e)?,
+                        pb.as_expr().map_err(e)?,
+                        pc.as_expr().map_err(e)?,
+                    ])
+                }
+                "is_recurrence_solution" => {
+                    let holds =
+                        rr::is_recurrence_solution(a[1].args(), &a[2], &a[3], &a[4], small(&a[5]), small(&a[6]))
+                            .map_err(e)?;
+                    if holds {
+                        sympy_extras_core::core::logic::true_()
+                    } else {
+                        sympy_extras_core::core::logic::false_()
+                    }
+                }
+                _ => {
+                    let init: Option<Vec<(Basic, Basic)>> = if a[3] == none() {
+                        None
+                    } else {
+                        Some(
+                            a[3].args()
+                                .iter()
+                                .map(|p| (p.args()[0].clone(), p.args()[1].clone()))
+                                .collect(),
+                        )
+                    };
+                    rr::rsolve_linear(&a[1], &a[2], init.as_deref())
+                        .map_err(e)?
+                        .unwrap_or_else(none)
+                }
+            }
+        }
+        "zeilberger" => {
+            // (zeilberger, term, n, k, NONE, max_order, min_order) -> Tuple(Tuple(a_j), R) | NONE;
+            // (wz_certificate, term, closed, n, k, _, _) -> R | NONE;
+            // (wz_prove, term, closed, n, k, n0, _) -> True | False | NONE;
+            // (zeilberger_sum, term, Tuple(k, lo, hi), n | NONE, NONE, max_order, special) -> expr | NONE
+            use sympy_extras_core::concrete::zeilberger as zb;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let small = |b: &Basic| -> i64 { b.to_string().parse().unwrap_or(0) };
+            match a[0].to_string().as_str() {
+                "zeilberger" => match zb::zeilberger(&a[1], &a[2], &a[3], small(&a[5]) as usize, small(&a[6]) as usize)
+                    .map_err(e)?
+                {
+                    Some(t) => tuple(vec![tuple(t.coefficients), t.certificate]),
+                    None => none(),
+                },
+                "wz_certificate" => zb::wz_certificate(&a[1], &a[2], &a[3], &a[4])
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "wz_prove" => match zb::wz_prove(&a[1], &a[2], &a[3], &a[4], small(&a[5])).map_err(e)? {
+                    Some(true) => sympy_extras_core::core::logic::true_(),
+                    Some(false) => sympy_extras_core::core::logic::false_(),
+                    None => none(),
+                },
+                _ => {
+                    let n: Option<&Basic> = if a[3] == none() { None } else { Some(&a[3]) };
+                    zb::zeilberger_sum(&a[1], a[2].args(), n, small(&a[5]) as usize, small(&a[6]) != 0)
+                        .map_err(e)?
+                        .unwrap_or_else(none)
+                }
+            }
+        }
+        "series_integral" => {
+            // (name, f, x, a, b, Tuple(assumptions), extra): sum_series (f = term, x = index, a = start)
+            // -> expr | NONE; fourier_expansion (extra compute | nocompute) -> Tuple(coefficient,
+            // basis, start, constant, condition) | NONE; fourier_integral, series_integral (extra
+            // the factor to expand | NONE) -> Tuple(value, condition) | NONE
+            use sympy_extras_core::integrals::series as se;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let assumptions: Vec<Basic> = a[5].args().to_vec();
+            let cv = |found: Option<sympy_extras_core::integrals::conditions::ConditionalValue>| match found {
+                Some(c) => tuple(vec![c.value, c.condition]),
+                None => none(),
+            };
+            let expand: Option<&Basic> = if a[6] == none() { None } else { Some(&a[6]) };
+            match a[0].to_string().as_str() {
+                "sum_series" => {
+                    let start: i64 = a[3].to_string().parse().unwrap_or(0);
+                    se::sum_series(&a[1], &a[2], start, &assumptions)
+                        .map_err(e)?
+                        .unwrap_or_else(none)
+                }
+                "fourier_expansion" => {
+                    let compute: bool = a[6].to_string() == "compute";
+                    match se::fourier_expansion(&a[1], &a[2], &a[3], &a[4], &assumptions, compute).map_err(e)? {
+                        Some(x) => tuple(vec![
+                            x.coefficient,
+                            x.basis,
+                            Basic::int(x.start),
+                            x.constant,
+                            x.condition,
+                        ]),
+                        None => none(),
+                    }
+                }
+                "fourier_integral" => {
+                    cv(se::fourier_integral(&a[1], &a[2], &a[3], &a[4], &assumptions, expand).map_err(e)?)
+                }
+                _ => cv(se::series_integral(&a[1], &a[2], &a[3], &a[4], &assumptions, expand).map_err(e)?),
+            }
+        }
+        "creative" => {
+            // (creative_telescoping, f, k, n, order, Tuple(extensions), _) -> Tuple(Tuple(c_i), g) | NONE;
+            // (definite_sum, f, Tuple(k, a, b), n | NONE, order, Tuple(extensions), special | nospecial)
+            // -> expr | NONE
+            use sympy_extras_core::concrete::creative as ct;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let order: usize = a[4].to_string().parse().unwrap_or(4);
+            let extensions: Vec<Basic> = a[5].args().to_vec();
+            match a[0].to_string().as_str() {
+                "creative_telescoping" => {
+                    match ct::creative_telescoping(&a[1], &a[2], &a[3], order, &extensions).map_err(e)? {
+                        Some(z) => tuple(vec![tuple(z.coefficients.clone()), z.certificate.clone()]),
+                        None => none(),
+                    }
+                }
+                _ => {
+                    let n: Option<&Basic> = if a[3] == none() { None } else { Some(&a[3]) };
+                    ct::definite_sum(&a[1], a[2].args(), n, order, &extensions, a[6].to_string() == "special")
+                        .map_err(e)?
+                        .unwrap_or_else(none)
+                }
+            }
+        }
         "residues" => {
             // (name, f, x, a, b, Tuple(assumptions), half|full) -> Tuple(value, condition) or NONE;
             // the functions of integrals/residues, integrals/contours and integrals/periodic
@@ -6818,6 +6963,11 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 |b: &Basic| -> Option<usize> { b.as_rational().and_then(|v| usize::try_from(v.numerator()).ok()) };
             let (max_order, max_degree) = (size(&a[2]), size(&a[3]));
             let margin: usize = size(&a[4]).unwrap_or(gs::MARGIN);
+            let n_symbol: Basic = if a.len() > 5 {
+                a[5].clone()
+            } else {
+                sympy_extras_core::core::Symbol::new("n", &[]).0
+            };
             let polynomial =
                 |p: &Vec<Int>| tuple(p.iter().map(|c| Basic::from_rational(Rat::from(c.clone()))).collect());
             let polynomials = |ps: &Vec<Vec<Int>>| tuple(ps.iter().map(polynomial).collect());
@@ -6834,7 +6984,7 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     .map_err(e)?
                     .map(|g| polynomials(&g.coefficients))
                     .unwrap_or_else(none),
-                _ => gs::guess_closed_form(&terms, max_order, max_degree, margin)
+                _ => gs::guess_closed_form(&terms, &n_symbol, max_order, max_degree, margin)
                     .map_err(e)?
                     .unwrap_or_else(none),
             }

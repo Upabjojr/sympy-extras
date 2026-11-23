@@ -167,24 +167,37 @@ fn symbol_names(e: &Basic) -> Vec<String> {
         .collect()
 }
 
-/// `f(M)` for an expression `f` in `x` (`matrix_function`).
-pub fn matrix_function(m: &ExprMatrix, function: &Basic, x: &Basic) -> PolyResult<ExprMatrix> {
+/// The sum over the eigenvalues of `derivative(j, eigenvalue)` times the
+/// component matrices; a zero component asks nothing of the function,
+/// and a derivative which is needed and not finite is a `ValueError`
+/// (`_spectral_sum`).
+fn spectral_sum(
+    m: &ExprMatrix,
+    sym: &Basic,
+    derivative: &mut dyn FnMut(usize, &Basic) -> PolyResult<Basic>,
+) -> PolyResult<ExprMatrix> {
     let n: usize = m.rows;
-    let mut sym: Basic = fresh_symbol(m);
-    let used: Vec<String> = symbol_names(function);
-    while used.contains(&sym.to_string()) {
-        sym = symbol(&format!("{}_", sym));
-    }
     let mut total: Vec<Basic> = vec![int(0); n * n];
-    for group in matrix_components(m, &sym)? {
+    for group in matrix_components(m, sym)? {
         let values: Vec<Basic> = explicit_values(&group)?;
-        let mut derivative: Basic = function.clone();
         for (j, component) in group.components.iter().enumerate() {
-            if j > 0 {
-                derivative = crate::core::function::derivative(&derivative, x)?;
+            if component.entries.iter().all(|e| *e == int(0)) {
+                continue;
             }
             for value in &values {
-                let scalar: Basic = crate::core::subs::subs(&derivative, x, value)?;
+                let scalar: Basic = derivative(j, value)?;
+                let bad: bool = scalar.preorder().iter().any(|t| {
+                    matches!(
+                        t.head(),
+                        Head::NaN | Head::ComplexInfinity | Head::Infinity | Head::NegativeInfinity
+                    )
+                });
+                if bad {
+                    return Err(PolyError::Value(format!(
+                        "the function is not defined on the spectrum of the matrix: its derivative of order {} at the eigenvalue {} is {}",
+                        j, value, scalar
+                    )));
+                }
                 let matrix: ExprMatrix = component.subs(&[(sym.clone(), value.clone())])?;
                 total = total
                     .iter()
@@ -202,6 +215,24 @@ pub fn matrix_function(m: &ExprMatrix, function: &Basic, x: &Basic) -> PolyResul
             .map(crate::core::function::expand_method)
             .collect::<PolyResult<_>>()?,
     )
+}
+
+/// `f(M)` for an expression `f` in `x` (`matrix_function`).
+pub fn matrix_function(m: &ExprMatrix, function: &Basic, x: &Basic) -> PolyResult<ExprMatrix> {
+    let mut sym: Basic = fresh_symbol(m);
+    let used: Vec<String> = symbol_names(function);
+    while used.contains(&sym.to_string()) {
+        sym = symbol(&format!("{}_", sym));
+    }
+    let mut derivatives: Vec<Basic> = vec![function.clone()];
+    let mut derivative = |j: usize, value: &Basic| -> PolyResult<Basic> {
+        while derivatives.len() <= j {
+            let next: Basic = crate::core::function::derivative(derivatives.last().expect("a derivative"), x)?;
+            derivatives.push(next);
+        }
+        crate::core::subs::subs(&derivatives[j], x, value)
+    };
+    spectral_sum(m, &sym, &mut derivative)
 }
 
 fn real_exponential(group: &MatrixComponents, t: &Basic) -> PolyResult<Option<Vec<Basic>>> {
@@ -297,15 +328,44 @@ pub fn matrix_exp(m: &ExprMatrix, time: &Basic) -> PolyResult<ExprMatrix> {
     )
 }
 
-/// `M**n` for a symbolic `n` (`matrix_power`).
+/// `M**n`: the product itself for an integer `n` (of the inverse when it
+/// is negative), else a closed form in `n` (`matrix_power`).
 pub fn matrix_power(m: &ExprMatrix, exponent: &Basic) -> PolyResult<ExprMatrix> {
-    let mut variable: Basic = symbol("_base");
-    let mut used: Vec<String> = symbol_names(exponent);
-    for e in &m.entries {
-        used.extend(symbol_names(e));
+    let size: usize = crate::matrices::linalg::square(m)?;
+    if let Some(k) = exponent.as_rational().filter(|r| r.is_int()) {
+        let mut k: crate::numbers::Int = crate::numbers::numer(k);
+        let mut base: ExprMatrix = if k >= crate::numbers::Int::ZERO {
+            m.clone()
+        } else {
+            crate::matrices::linalg::inverse(m)?
+        };
+        let mut result: ExprMatrix = ExprMatrix::eye(size);
+        let normal = crate::matrices::linalg::normal;
+        let two: crate::numbers::Int = crate::numbers::Int::from(2);
+        k = crate::numbers::abs(&k);
+        while k != crate::numbers::Int::ZERO {
+            if &k % &two == crate::numbers::Int::from(1) {
+                result = result.matmul(&base)?.applyfunc(&normal)?;
+            }
+            k /= two.clone();
+            if k != crate::numbers::Int::ZERO {
+                base = base.matmul(&base)?.applyfunc(&normal)?;
+            }
+        }
+        return Ok(result);
     }
-    while used.contains(&variable.to_string()) {
-        variable = symbol(&format!("{}_", variable));
+    let mut sym: Basic = fresh_symbol(m);
+    let used: Vec<String> = symbol_names(exponent);
+    while used.contains(&sym.to_string()) {
+        sym = symbol(&format!("{}_", sym));
     }
-    matrix_function(m, &pw(&variable, exponent)?, &variable)
+    let mut derivative = |j: usize, value: &Basic| -> PolyResult<Basic> {
+        // the derivative of order j of x**n: n (n - 1) ... (n - j + 1) x**(n - j)
+        let mut falling: Basic = int(1);
+        for i in 0..j {
+            falling = m2(&falling, &crate::core::add::sub(exponent, &int(i as i64))?)?;
+        }
+        m2(&falling, &pw(value, &crate::core::add::sub(exponent, &int(j as i64))?)?)
+    };
+    spectral_sum(m, &sym, &mut derivative)
 }

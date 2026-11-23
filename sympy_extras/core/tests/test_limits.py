@@ -146,6 +146,18 @@ def test_limit_with_the_absolute_value_of_a_complex_parameter() -> None:
     assert limit(e.subs(y, I), X, 0) == 0
 
 
+def test_absolute_value_of_an_argument_real_where_defined() -> None:
+    # sin(1 + 1/x) is not known real on a real x (at x = 0 it is undefined), but its imaginary part
+    # is 0: its modulus sqrt(sin(...)**2) gave Abs(sin(...)) back on a new real x, without end
+    import pytest
+    from sympy_extras.core import Integer
+    from sympy_extras.core.coreerrors import PoleError
+    from sympy_extras.functions import abs_, sin
+    x = Symbol('x', positive=True)
+    with pytest.raises(PoleError):
+        abs_(sin(Integer(1) + 1/x)).nseries(x, n=3)
+
+
 def test_exponentials_of_one_class_with_symbolic_ratio() -> None:
     # exp(a*x) and exp(b*x) are of one comparability class and the
     # leading term of their sum depends on the sign of a - b: the limit of

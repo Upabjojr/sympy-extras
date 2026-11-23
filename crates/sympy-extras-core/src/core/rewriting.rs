@@ -148,6 +148,23 @@ fn factorial2_as_gamma(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<O
     ])?))
 }
 
+/// `formula`, which holds for the nonnegative integers `n` and for the
+/// non-integers but is nan at the negative integers where `node` has a
+/// value: guarded by `n >= 0` for an integer of unknown sign, `node` for a
+/// negative one (`_for_nonnegative`).
+fn for_nonnegative(formula: Basic, n: &Basic, node: &Basic) -> PolyResult<Basic> {
+    if is(n, Predicate::integer) != Some(true) || is(n, Predicate::nonnegative) == Some(true) {
+        return Ok(formula);
+    }
+    if is(n, Predicate::negative) == Some(true) {
+        return Ok(node.clone());
+    }
+    piecewise(&[
+        (formula, crate::core::relational::ge(n, &Basic::zero())?),
+        (node.clone(), true_()),
+    ])
+}
+
 fn rising_as_gamma(_: &Basic, a: &[Basic], hints: &RewriteHints) -> PolyResult<Option<Basic>> {
     use crate::core::relational::{gt, le};
     let (x, k) = (&a[0], &a[1]);
@@ -156,6 +173,10 @@ fn rising_as_gamma(_: &Basic, a: &[Basic], hints: &RewriteHints) -> PolyResult<O
         mul(&[pow(&minus_one(), k)?, gamma(&add(&[one(), neg(x)?])?)?])?,
         inv(&gamma(&add(&[neg(k)?, neg(x)?, one()])?)?)?,
     ])?;
+    if is(k, Predicate::integer) != Some(true) {
+        // the reflected form holds at the integers k only (sympy/sympy#31275, V230)
+        return Ok(Some(positive));
+    }
     if !hints.piecewise {
         return Ok(Some(if le(x, &Basic::zero())? == true_() {
             other
@@ -180,6 +201,10 @@ fn falling_as_gamma(_: &Basic, a: &[Basic], hints: &RewriteHints) -> PolyResult<
         mul(&[pow(&minus_one(), k)?, gamma(&add(&[k.clone(), neg(x)?])?)?])?,
         inv(&gamma(&neg(x)?)?)?,
     ])?;
+    if is(k, Predicate::integer) != Some(true) {
+        // as for the rising factorial: the reflected form at the integers k only
+        return Ok(Some(nonnegative));
+    }
     if !hints.piecewise {
         return Ok(Some(if lt(x, &Basic::zero())? == true_() {
             other
@@ -274,11 +299,11 @@ fn falling_as_factorial(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<
     ])?))
 }
 
-fn catalan_as_factorial(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
+fn catalan_as_factorial(node: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
     let n: &Basic = &a[0];
     let two_n: Basic = mul(&[int(2), n.clone()])?;
     let den: Basic = mul(&[factorial(&add(&[n.clone(), one()])?)?, factorial(n)?])?;
-    Ok(Some(mul(&[factorial(&two_n)?, inv(&den)?])?))
+    Ok(Some(for_nonnegative(mul(&[factorial(&two_n)?, inv(&den)?])?, n, node)?))
 }
 
 fn subfactorial_as_factorial(_: &Basic, _: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
@@ -291,16 +316,14 @@ fn rising_as_falling(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Opt
     Ok(Some(call(Function::FallingFactorial, &[top, k.clone()])?))
 }
 
-fn rising_as_binomial(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
+fn rising_as_binomial(node: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
     let (x, k) = (&a[0], &a[1]);
     if is(k, Predicate::integer) != Some(true) {
         return Ok(None);
     }
     let top: Basic = add(&[x.clone(), k.clone(), minus_one()])?;
-    Ok(Some(mul(&[
-        factorial(k)?,
-        call(Function::Binomial, &[top, k.clone()])?,
-    ])?))
+    let formula: Basic = mul(&[factorial(k)?, call(Function::Binomial, &[top, k.clone()])?])?;
+    Ok(Some(for_nonnegative(formula, k, node)?))
 }
 
 fn falling_as_rising(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
@@ -309,15 +332,13 @@ fn falling_as_rising(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Opt
     Ok(Some(call(Function::RisingFactorial, &[bottom, k.clone()])?))
 }
 
-fn falling_as_binomial(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
+fn falling_as_binomial(node: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
     let (x, k) = (&a[0], &a[1]);
     if is(k, Predicate::integer) != Some(true) {
         return Ok(None);
     }
-    Ok(Some(mul(&[
-        factorial(k)?,
-        call(Function::Binomial, &[x.clone(), k.clone()])?,
-    ])?))
+    let formula: Basic = mul(&[factorial(k)?, call(Function::Binomial, &[x.clone(), k.clone()])?])?;
+    Ok(Some(for_nonnegative(formula, k, node)?))
 }
 
 fn binomial_as_falling(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
@@ -329,11 +350,15 @@ fn binomial_as_falling(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<O
     Ok(Some(mul(&[falling, inv(&factorial(k)?)?])?))
 }
 
-fn catalan_as_binomial(_: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
+fn catalan_as_binomial(node: &Basic, a: &[Basic], _: &RewriteHints) -> PolyResult<Option<Basic>> {
     let n: &Basic = &a[0];
     let two_n: Basic = mul(&[int(2), n.clone()])?;
     let b: Basic = call(Function::Binomial, &[two_n, n.clone()])?;
-    Ok(Some(mul(&[b, inv(&add(&[n.clone(), one()])?)?])?))
+    Ok(Some(for_nonnegative(
+        mul(&[b, inv(&add(&[n.clone(), one()])?)?])?,
+        n,
+        node,
+    )?))
 }
 
 /// The rule of a function for a ported target, `None` without one.

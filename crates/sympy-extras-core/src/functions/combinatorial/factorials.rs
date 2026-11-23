@@ -190,7 +190,8 @@ fn factorial_power(x: &Basic, k: &Basic, rising: bool) -> PolyResult<Option<Basi
         return Ok(Some(product(x, 0..kk, if rising { 1 } else { -1 })?));
     }
     if matches!(x.head(), Head::Infinity | Head::NegativeInfinity) {
-        return Ok(Some(Basic::oo()));
+        // the reciprocal of a polynomial of degree -k (SymPy returns oo)
+        return Ok(Some(Basic::zero()));
     }
     Ok(Some(pow(
         &product(x, 1..(-kk + 1), if rising { -1 } else { 1 })?,

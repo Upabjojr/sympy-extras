@@ -143,58 +143,121 @@ pub fn hyper_eta(e: &Basic) -> PolyResult<Basic> {
     sub(&add(hyper_ap(e))?, &add(hyper_bq(e))?)
 }
 
-/// The radius of convergence of the defining series: 0, 1 or oo.
+/// The radius of convergence of the defining series: 0, 1 or oo, with
+/// cases for the integer parameters of unknown sign.
 pub fn radius_of_convergence(e: &Basic) -> PolyResult<Basic> {
-    let (ap, bq) = (hyper_ap(e), hyper_bq(e));
-    let nonpositive = |a: &Basic| -> Option<Int> { integer_of(a).filter(|v| *v <= Int::ZERO) };
-    if ap
-        .iter()
-        .chain(bq)
-        .any(|a| is_true(a, Predicate::integer) && nonpositive(a).is_some())
-    {
-        let mut aints: Vec<Int> = ap.iter().filter_map(nonpositive).collect();
-        let bints: Vec<Int> = bq.iter().filter_map(nonpositive).collect();
-        if aints.len() < bints.len() {
-            return Ok(Basic::zero());
+    radius_of(hyper_ap(e), hyper_bq(e))
+}
+
+/// The radius of the series of the parameters `ap`, `bq`
+/// (`_radius_of_convergence`): equal parameters cancel; a nonpositive
+/// integer numerator ends the series, a nonpositive integer denominator
+/// divides by zero unless some a > b ended it before.
+fn radius_of(ap: &[Basic], bq: &[Basic]) -> PolyResult<Basic> {
+    use crate::core::logic::{and_, false_, not_, or_, true_};
+    use crate::core::relational::{eq, gt, le};
+    let may_be_nonpositive_integer =
+        |a: &Basic| is_true(a, Predicate::integer) && crate::core::expr::is(a, Predicate::positive) != Some(true);
+    let without = |parameters: &[Basic], parameter: &Basic| -> Vec<Basic> {
+        let mut rest: Vec<Basic> = parameters.to_vec();
+        if let Some(i) = rest.iter().position(|p| p == parameter) {
+            rest.remove(i);
         }
-        let mut popped: bool = false;
-        for b in &bints {
-            let mut cancelled: bool = false;
-            while let Some(a) = aints.pop() {
-                if a >= *b {
-                    cancelled = true;
-                    break;
-                }
-                popped = true;
+        rest
+    };
+    let tops: Vec<Basic> = ap.iter().filter(|a| may_be_nonpositive_integer(a)).cloned().collect();
+    let bottoms: Vec<Basic> = bq.iter().filter(|b| may_be_nonpositive_integer(b)).cloned().collect();
+    // the pairs which are, or may be, equal: cancelled, in a case of their own
+    let mut cancelled: Vec<(Basic, Basic)> = Vec::new();
+    for a in &tops {
+        for b in &bottoms {
+            let equal: Basic = eq(a, b)?;
+            if equal == true_() {
+                return radius_of(&without(ap, a), &without(bq, b));
             }
-            if !cancelled {
-                return Ok(Basic::zero());
+            if equal != false_() && cancelled.len() < 2 {
+                cancelled.push((radius_of(&without(ap, a), &without(bq, b))?, equal));
             }
         }
-        if !aints.is_empty() || popped {
-            return Ok(Basic::oo());
+    }
+    let zero: Basic = Basic::zero();
+    let mut defined_parts: Vec<Basic> = Vec::new();
+    for b in &bottoms {
+        let mut options: Vec<Basic> = vec![gt(b, &zero)?];
+        for a in &tops {
+            options.push(and_(&[le(a, &zero)?, gt(a, b)?]));
+        }
+        defined_parts.push(or_(&options));
+    }
+    let defined: Basic = and_(&defined_parts);
+    let ends: Basic = or_(&tops.iter().map(|a| le(a, &zero)).collect::<PolyResult<Vec<_>>>()?);
+    let general: Basic = if ap.len() == bq.len() + 1 {
+        Basic::one()
+    } else if ap.len() <= bq.len() {
+        Basic::oo()
+    } else {
+        zero.clone()
+    };
+    let mut cases: Vec<(Basic, Basic)> = cancelled;
+    if defined == false_() {
+        cases.push((zero.clone(), true_()));
+    } else {
+        if defined != true_() {
+            cases.push((zero.clone(), not_(&defined)));
+        }
+        if ends == true_() {
+            cases.push((Basic::oo(), true_()));
+        } else if ends == false_() {
+            cases.push((general, true_()));
+        } else {
+            cases.push((Basic::oo(), ends));
+            cases.push((general, true_()));
         }
     }
-    if ap.len() == bq.len() + 1 {
-        return Ok(Basic::one());
+    if cases.len() == 1 {
+        return Ok(cases.remove(0).0);
     }
-    if ap.len() <= bq.len() {
-        return Ok(Basic::oo());
-    }
-    Ok(Basic::zero())
+    crate::functions::elementary::piecewise::piecewise(&cases)
 }
 
 /// The condition under which the series converges (`false` for a zero
-/// radius, `true` for an infinite one).
+/// radius, `true` for an infinite one), case by case for a radius which
+/// depends on the parameters.
 pub fn convergence_statement(e: &Basic) -> PolyResult<Basic> {
-    use crate::core::logic::{and_, false_, or_, true_};
-    use crate::core::relational::{ge, le, lt, ne};
-    use crate::functions::elementary::complexes::{abs_, re};
+    use crate::core::logic::{false_, true_};
     let r: Basic = radius_of_convergence(e)?;
     if r == Basic::zero() {
         return Ok(false_());
     }
     if r == Basic::oo() {
+        return Ok(true_());
+    }
+    if matches!(r.head(), Head::Piecewise) {
+        let simplified: Basic = crate::logic::boolsimp::simplify_boolean_default(&statement(e, &r)?, 1.7)?;
+        return crate::logic::boolsimp::simplify_univariate(&simplified, false);
+    }
+    statement(e, &r)
+}
+
+fn statement(e: &Basic, r: &Basic) -> PolyResult<Basic> {
+    use crate::core::logic::{and_, false_, not_, or_, true_};
+    use crate::core::relational::{ge, le, lt, ne};
+    use crate::functions::elementary::complexes::{abs_, re};
+    if matches!(r.head(), Head::Piecewise) {
+        // a radius which depends on the parameters: each case with its own statement
+        let mut cases: Vec<Basic> = Vec::new();
+        let mut before: Basic = true_();
+        for pair in r.args() {
+            let (value, condition) = (&pair.args()[0], &pair.args()[1]);
+            cases.push(and_(&[before.clone(), condition.clone(), statement(e, value)?]));
+            before = and_(&[before, not_(condition)]);
+        }
+        return Ok(or_(&cases));
+    }
+    if *r == Basic::zero() {
+        return Ok(false_());
+    }
+    if *r == Basic::oo() {
         return Ok(true_());
     }
     let one: Basic = Basic::one();

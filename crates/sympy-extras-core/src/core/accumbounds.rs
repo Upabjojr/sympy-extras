@@ -414,6 +414,11 @@ pub fn ab_pow(s: &Basic, other: &Basic) -> PolyResult<Basic> {
                 if is_zero(hi) {
                     return accum_bounds(&a, &oo);
                 }
+                if yes(lo, Predicate::extended_negative) && yes(hi, Predicate::extended_positive) {
+                    // zero inside: the values of the two sides, from the
+                    // smaller of the endpoint values up (sympy/sympy#31275, V222)
+                    return accum_bounds(&min2(&[a, b])?, &oo);
+                }
                 return pow(&ab_rtruediv(s, &one)?, &neg(other)?);
             }
             return accum_bounds(&zero, &max2(&[a, b])?);

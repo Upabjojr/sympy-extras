@@ -190,6 +190,9 @@ fn jn_besselj(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
 }
 
 fn jn_bessely(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    if !integer_order(args) {
+        return Ok(None);
+    }
     let (nu, z) = (&args[0], &args[1]);
     Ok(Some(mul(&[
         pow(&int(-1), nu)?,
@@ -199,6 +202,9 @@ fn jn_bessely(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
 }
 
 fn jn_yn(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    if !integer_order(args) {
+        return Ok(None);
+    }
     let (nu, z) = (&args[0], &args[1]);
     Ok(Some(mul(&[
         pow(&int(-1), nu)?,
@@ -231,6 +237,9 @@ fn yn_bessely(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
 }
 
 fn yn_jn(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    if !integer_order(args) {
+        return Ok(None);
+    }
     let (nu, z) = (&args[0], &args[1]);
     Ok(Some(mul(&[
         pow(&int(-1), &add(&[nu.clone(), int(1)])?)?,
@@ -270,6 +279,9 @@ fn hankel_bessely(args: &[Basic], sign: i64) -> O {
 }
 
 fn hankel_yn(args: &[Basic], sign: i64, h: &RewriteHints) -> O {
+    if !integer_order(args) {
+        return Ok(None);
+    }
     let (nu, z) = (&args[0], &args[1]);
     let j: Basic = rewrite(&b(Function::SphericalJ, nu, z)?, &[], "yn", h)?;
     Ok(Some(add(&[
@@ -279,6 +291,9 @@ fn hankel_yn(args: &[Basic], sign: i64, h: &RewriteHints) -> O {
 }
 
 fn hankel_jn(args: &[Basic], sign: i64, h: &RewriteHints) -> O {
+    if !integer_order(args) {
+        return Ok(None);
+    }
     let (nu, z) = (&args[0], &args[1]);
     let y: Basic = rewrite(&b(Function::SphericalY, nu, z)?, &[], "jn", h)?;
     Ok(Some(add(&[
@@ -628,6 +643,10 @@ fn ei_li(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
     let z: &Basic = &args[0];
     if z.is_function(Function::Log) {
         return Ok(Some(call(Function::LogIntegral, &z.args()[..1])?));
+    }
+    if crate::core::expr::is(z, crate::core::assumptions::Predicate::extended_real) != Some(true) {
+        // li(exp(z)) is Ei(z) for -pi < im(z) <= pi only
+        return Ok(None);
     }
     Ok(Some(call(
         Function::LogIntegral,

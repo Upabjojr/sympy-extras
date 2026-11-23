@@ -111,7 +111,7 @@ fn generic_ns(node: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> R {
     application_nseries(node, x, n, logx, &Basic::zero(), Some(true))
 }
 fn x0_of(arg: &Basic, x: &Basic) -> R {
-    crate::polys::polytools::cancel(&subs(arg, x, &Basic::zero())?, &[])
+    crate::core::series::value_at_zero(arg, x)
 }
 
 /// Whether the class is one of this module's.
@@ -796,7 +796,11 @@ pub fn leading_term(node: &Basic, f: F, x: &Basic, logx: Option<&Basic>, cdir: &
             fx0()
         }
         F::Acosh => {
-            if in_(&[m1.clone(), Basic::zero(), one.clone(), Basic::zoo()]) {
+            if is_number(&x0, 1) {
+                // acosh(1 + u) = sqrt(2*u) + ...
+                return mul(&sqrt(&int(2))?, &sqrt(&lt(&add(&arg, &m1)?, x)?)?);
+            }
+            if in_(&[m1.clone(), Basic::zero(), Basic::zoo()]) {
                 return log_lt(node, x, logx, cdir, false);
             }
             if nan {
@@ -870,7 +874,11 @@ pub fn leading_term(node: &Basic, f: F, x: &Basic, logx: Option<&Basic>, cdir: &
             fx0()
         }
         F::Asech => {
-            if in_(&[m1.clone(), Basic::zero(), one.clone(), Basic::zoo()]) {
+            if is_number(&x0, 1) {
+                // asech(1 - u) = sqrt(2*u) + ...
+                return mul(&sqrt(&int(2))?, &sqrt(&lt(&add(&one, &mul(&m1, &arg)?)?, x)?)?);
+            }
+            if in_(&[m1.clone(), Basic::zero(), Basic::zoo()]) {
                 return log_lt(node, x, logx, cdir, false);
             }
             if nan {

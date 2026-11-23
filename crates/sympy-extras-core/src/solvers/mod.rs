@@ -9,6 +9,7 @@ pub mod isolation;
 pub mod lie;
 pub mod linsolve;
 pub mod parametric;
+pub mod recurr;
 pub mod rootclassification;
 pub mod simplex;
 #[allow(clippy::module_inception)]

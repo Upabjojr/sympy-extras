@@ -721,7 +721,9 @@ fn airy_eval(f: Function, z: &Basic) -> PolyResult<Option<Basic>> {
     }
     let (at_oo, at_minus_oo): (Option<Basic>, Option<Basic>) = match f {
         Function::AiryAi => (Some(Basic::zero()), Some(Basic::zero())),
-        Function::AiryBi | Function::AiryBiPrime => (Some(Basic::oo()), Some(Basic::zero())),
+        Function::AiryBi => (Some(Basic::oo()), Some(Basic::zero())),
+        // no value at -oo: Bi'(-x) oscillates with a growing amplitude
+        Function::AiryBiPrime => (Some(Basic::oo()), None),
         _ => (Some(Basic::zero()), None),
     };
     if matches!(z.head(), Head::Infinity) {

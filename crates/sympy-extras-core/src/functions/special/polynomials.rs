@@ -263,6 +263,9 @@ fn eval(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>> {
         }
         let is_zero: bool = is_true(x, Predicate::zero);
         let infinity: bool = matches!(x.head(), Head::Infinity);
+        // at oo for a positive order only: the polynomial of order 0 is 1
+        // (SymPy returns oo for any symbolic order)
+        let positive: bool = is_true(n, Predicate::positive);
         return Ok(match f {
             Function::Legendre => {
                 if let Some(r) = minus_x(f, n, x)? {
@@ -278,7 +281,7 @@ fn eval(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>> {
                     Some(div(&pow(&pi, &half)?, &mul(&[g1, g2])?)?)
                 } else if *x == one {
                     Some(one)
-                } else if infinity {
+                } else if infinity && positive {
                     Some(Basic::oo())
                 } else {
                     None
@@ -295,7 +298,7 @@ fn eval(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>> {
                     Some(cos(&mul(&[half, pi, n.clone()])?)?)
                 } else if *x == one {
                     Some(one)
-                } else if infinity {
+                } else if infinity && positive {
                     Some(Basic::oo())
                 } else {
                     None
@@ -318,7 +321,7 @@ fn eval(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>> {
                     Some(cos(&mul(&[half, pi, n.clone()])?)?)
                 } else if *x == one {
                     Some(add(&[one, n.clone()])?)
-                } else if infinity {
+                } else if infinity && positive {
                     Some(Basic::oo())
                 } else {
                     None
@@ -331,7 +334,7 @@ fn eval(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>> {
                 if is_zero {
                     let top: Basic = mul(&[pow(&int(2), n)?, pow(&pi, &half)?])?;
                     Some(div(&top, &gamma(&div(&sub(&one, n)?, &int(2))?)?)?)
-                } else if infinity {
+                } else if infinity && positive {
                     Some(Basic::oo())
                 } else {
                     None
@@ -339,14 +342,17 @@ fn eval(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>> {
             }
             Function::Laguerre => {
                 let minus_n: Basic = neg(n)?;
-                if could_extract_minus_sign(n) && !could_extract_minus_sign(&sub(&minus_n, &one)?) {
+                if could_extract_minus_sign(n)
+                    && !could_extract_minus_sign(&sub(&minus_n, &one)?)
+                    && !matches!(x.head(), Head::Infinity | Head::NegativeInfinity)
+                {
                     return Ok(Some(mul(&[exp(x)?, laguerre(&sub(&minus_n, &one)?, &neg(x)?)?])?));
                 }
                 if is_zero {
                     Some(one)
-                } else if matches!(x.head(), Head::NegativeInfinity) {
+                } else if matches!(x.head(), Head::NegativeInfinity) && positive {
                     Some(Basic::oo())
-                } else if infinity {
+                } else if infinity && positive && is_true(n, Predicate::integer) {
                     Some(mul(&[pow(&Basic::negative_one(), n)?, Basic::oo()])?)
                 } else {
                     None
@@ -710,7 +716,19 @@ fn gegenbauer_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
         let n1: Basic = add(&[n.clone(), one.clone()])?;
         if *x == Basic::negative_one() {
             if gt(&re(a)?, &half)? == true_() {
-                return Ok(Some(Basic::zoo()));
+                // the pole of the functions of a noninteger order: the
+                // polynomials have the value (-1)**n*C(n, a, 1) there
+                return Ok(match crate::core::expr::is(n, Predicate::integer) {
+                    Some(false) => Some(Basic::zoo()),
+                    Some(true) if is_true(n, Predicate::nonnegative) => Some(div(
+                        &mul(&[
+                            pow(&Basic::negative_one(), n)?,
+                            gamma(&add(&[two_a.clone(), n.clone()])?)?,
+                        ])?,
+                        &mul(&[gamma(&two_a)?, gamma(&n1)?])?,
+                    )?),
+                    _ => None,
+                });
             }
             let top: Basic = lmul(&[
                 cos(&mul(&[pi.clone(), add(&[a.clone(), n.clone()])?])?)?,
@@ -810,10 +828,12 @@ fn hermite_prob_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
             return Ok(Some(r));
         }
         if is_true(x, Predicate::zero) {
+            // He_n(0) = 2**(-n/2)*H_n(0) (SymPy leaves the power of 2 out)
             let bottom: Basic = gamma(&div(&sub(&Basic::one(), n)?, &int(2))?)?;
-            return Ok(Some(div(&pow(&Basic::pi(), &Basic::half())?, &bottom)?));
+            let top: Basic = mul(&[pow(&int(2), &div(n, &int(2))?)?, pow(&Basic::pi(), &Basic::half())?])?;
+            return Ok(Some(div(&top, &bottom)?));
         }
-        if matches!(x.head(), Head::Infinity) {
+        if matches!(x.head(), Head::Infinity) && is_true(n, Predicate::positive) {
             return Ok(Some(Basic::oo()));
         }
         return Ok(None);

@@ -207,7 +207,12 @@ pub fn eval_derivative(f: Function, e: &Basic, s: &Basic) -> PolyResult<Option<B
             if is_true(s, extended_real) || is_true(a, extended_real) {
                 same(&derivative(a, s)?)?
             } else if is_true(s, imaginary) || is_true(a, imaginary) {
-                mul(&[Basic::negative_one(), i, other(&derivative(a, s)?)?])?
+                if matches!(f, Function::Re) {
+                    // with s = I*t: d/ds re(a) = I*im(a') (SymPy has -I*im(a'))
+                    mul(&[i, other(&derivative(a, s)?)?])?
+                } else {
+                    mul(&[Basic::negative_one(), i, other(&derivative(a, s)?)?])?
+                }
             } else {
                 unevaluated()
             }
