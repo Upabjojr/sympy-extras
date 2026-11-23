@@ -50,7 +50,7 @@ from __future__ import annotations
 from typing import Sequence, TypeVar
 
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.numbers import Integer, Rational, number_from_fraction, pi
+from sympy_extras.core.numbers import ImaginaryUnit, Integer, Rational, number_from_fraction, pi
 from sympy_extras.core.power import sqrt
 from sympy_extras.functions import acos, cos
 from sympy_extras.polys.domains.quotientfield import QuotientField
@@ -58,6 +58,7 @@ from sympy_extras.polys.polyroots import roots
 from sympy_extras.polys.polytools import Poly
 
 from .dense import ExprMatrix
+from .linalg import conjugate_transpose, normal
 from .eigen import (_Field, _RationalField, _characteristic_factors, _column, _extension, _field_nullspace, _fresh_symbol,
                     _shifted, eigenvalues)
 
@@ -67,14 +68,24 @@ T = TypeVar('T')
 
 
 def _gram(M: ExprMatrix) -> ExprMatrix:
-    return M.transpose() * M
+    """``M^* M``, the star being the conjugate transpose."""
+    product = conjugate_transpose(M) * M
+    return product.applyfunc(normal) if product.has(ImaginaryUnit) else product
+
+
+def _size(value: Expr) -> float:
+    """The numerical value of a real number, for the order: the real
+    part, the roots of a polynomial with real roots being written
+    through complex numbers by the formulas in radicals."""
+    return complex(value).real
 
 
 def singular_values(M: ExprMatrix) -> list[Expr]:
     """The singular values with their multiplicities (zeros included, as
     many as columns), the symbols taken to be real: the square roots of
-    the eigenvalues of ``M.T * M``. In decreasing order for a matrix of
-    numbers.
+    the eigenvalues of ``M.T * M`` (of ``M^* M`` with the conjugate
+    transpose, for a matrix with ``I``). In decreasing order for a matrix
+    of numbers.
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.matrices import ExprMatrix
@@ -84,10 +95,18 @@ def singular_values(M: ExprMatrix) -> list[Expr]:
     ([2, 0], [2, sqrt(a**2)])
     """
     values: list[Expr] = []
-    for value, multiplicity in eigenvalues(_gram(M)).items():
-        values.extend([sqrt(value)] * multiplicity)
+    gram = _gram(M)
+    if all(isinstance(e, Rational) for e in gram.entries):
+        # the real forms of the roots (a cubic with three real roots)
+        unknown = _fresh_symbol(gram)
+        for factor, multiplicity in _characteristic_factors(gram, unknown)[1]:
+            for root in _real_roots(factor, unknown):
+                values.extend([sqrt(root)] * multiplicity)
+    else:
+        for value, multiplicity in eigenvalues(gram).items():
+            values.extend([sqrt(value)] * multiplicity)
     if all(not v.free_symbols for v in values):
-        values.sort(key=float, reverse=True)
+        values.sort(key=_size, reverse=True)
     return values
 
 
@@ -173,7 +192,7 @@ def svd(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix]:
     if not all(isinstance(e, Rational) for e in M.entries):
         raise NotImplementedError('the singular value decomposition of a matrix whose entries are not rational numbers')
     pairs = _singular_vectors(_RationalField(), _gram(M))
-    pairs.sort(key=lambda pair: float(pair[0]), reverse=True)
+    pairs.sort(key=lambda pair: _size(pair[0]), reverse=True)
     r = len(pairs)
     zero: Expr = Integer(0)
     sigma = [sqrt(value) for value, _ in pairs]

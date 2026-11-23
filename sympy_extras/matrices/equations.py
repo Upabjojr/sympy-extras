@@ -64,10 +64,9 @@ from __future__ import annotations
 from typing import Final, Optional, Sequence
 
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.numbers import I, ImaginaryUnit
 
 from .dense import ExprMatrix
-from .linalg import _square, linear_solve, normal
+from .linalg import _square, conjugate_transpose, linear_solve
 
 __all__ = ['MatrixSolution', 'kronecker_product', 'vec', 'unvec', 'adjoint', 'linear_matrix_equation', 'sylvester_solve',
            'lyapunov_solve', 'discrete_lyapunov_solve', 'commuting_matrices']
@@ -144,10 +143,7 @@ def adjoint(M: ExprMatrix) -> ExprMatrix:
     >>> adjoint(ExprMatrix.from_rows([[1, 2 + I], [3*I, 4]]))
     ExprMatrix([[1, -3*I], [2 - I, 4]])
     """
-    transposed = M.transpose()
-    if not transposed.has(ImaginaryUnit):
-        return transposed
-    return transposed.xreplace({I: -I}).applyfunc(normal)
+    return conjugate_transpose(M)
 
 
 def linear_matrix_equation(terms: Sequence[tuple[ExprMatrix, ExprMatrix]], C: ExprMatrix) -> Optional[MatrixSolution]:
