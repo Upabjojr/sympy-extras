@@ -274,49 +274,106 @@ class Hyper(Expr):
         from sympy_extras.core.logic import and_, or_
         from sympy_extras.core.relational import ne
         from sympy_extras.functions.elementary.complexes import abs_, re
+        from sympy_extras.core.logic import false, not_, true
+        from sympy_extras.functions.elementary.piecewise import Piecewise
+
+        def statement(R: Expr) -> Boolean:
+            if isinstance(R, Piecewise):
+                # a radius which depends on the parameters: each case with its own statement
+                cases: list[Boolean] = []
+                before: Boolean = true
+                for pair in R.args:
+                    cases.append(and_(before, pair.cond, statement(pair.expr)))
+                    before = and_(before, not_(pair.cond))
+                return or_(*cases)
+            if R == 0:
+                return false
+            if R == oo:
+                return true
+            e = self.eta
+            z = self.argument
+            c1 = and_(re(e) < 0, abs_(z) <= 1)
+            c2 = and_(0 <= re(e), re(e) < 1, abs_(z) <= 1, ne(z, 1))
+            c3 = and_(re(e) >= 1, abs_(z) < 1)
+            return or_(c1, c2, c3)
+
         R = self.radius_of_convergence
         if R == 0:
             return False
         if R == oo:
             return True
-        e = self.eta
-        z = self.argument
-        c1 = and_(re(e) < 0, abs_(z) <= 1)
-        c2 = and_(0 <= re(e), re(e) < 1, abs_(z) <= 1, ne(z, 1))
-        c3 = and_(re(e) >= 1, abs_(z) < 1)
-        return or_(c1, c2, c3)
+        return statement(R)
 
     # PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper.radius_of_convergence
     @property
     def radius_of_convergence(self) -> Expr:
         """The radius of convergence of the defining series: 0, 1 or oo
-        (a nonpositive integer parameter can terminate it)."""
-        def nonpositive_integer(a: Expr) -> bool:
-            return isinstance(a, Rational) and a.q == 1 and a.p <= 0
-        if any(a.is_integer and nonpositive_integer(a) for a in self._ap + self._bq):
-            aints = [a.p for a in self._ap if isinstance(a, Rational) and nonpositive_integer(a)]
-            bints = [b.p for b in self._bq if isinstance(b, Rational) and nonpositive_integer(b)]
-            if len(aints) < len(bints):
-                return Integer(0)
-            popped = False
-            for b in bints:
-                cancelled = False
-                while aints:
-                    a = aints.pop()
-                    if a >= b:
-                        cancelled = True
-                        break
-                    popped = True
-                if not cancelled:
-                    return Integer(0)
-            if aints or popped:
-                return oo
-        if len(self._ap) == len(self._bq) + 1:
-            return ONE
-        if len(self._ap) <= len(self._bq):
-            return oo
-        return Integer(0)
+        (a nonpositive integer parameter can terminate it), with cases for
+        the integer parameters of unknown sign."""
+        return _radius_of_convergence(list(self._ap), list(self._bq))
 
+
+def _radius_of_convergence(ap: list[Expr], bq: list[Expr]) -> Expr:
+    """The radius of the series of the parameters ``ap``, ``bq``.
+
+    Equal parameters cancel (the convention of ``hyper``). A numerator a
+    which is a nonpositive integer ends the series after the term -a; a
+    denominator b which is one makes the term 1 - b a division by zero,
+    unless some a > b ended the series before. The series is not defined
+    (radius 0) when a division by zero comes first, a polynomial (radius
+    oo) when it ends, and the general rule holds otherwise. SymPy pairs
+    every b with an a of its own and forgets the end of the series once
+    the pairs are made: hyper((-1, 1, 2), (-4,), z) = 1 + z/2 has the
+    radius 0 there, and a symbolic nonpositive integer gets the general
+    rule."""
+    from sympy_extras.core.logic import and_, false, not_, or_, true
+    from sympy_extras.core.relational import eq, gt, le
+    from sympy_extras.functions.elementary.piecewise import piecewise
+
+    def may_be_nonpositive_integer(a: Expr) -> bool:
+        return a.is_integer is True and a.is_positive is not True
+
+    def without(parameters: list[Expr], parameter: Expr) -> list[Expr]:
+        rest = list(parameters)
+        rest.remove(parameter)
+        return rest
+
+    tops = [a for a in ap if may_be_nonpositive_integer(a)]
+    bottoms = [b for b in bq if may_be_nonpositive_integer(b)]
+    # the pairs which are, or may be, equal: cancelled, in a case of their own
+    cancelled: list[tuple[Expr, Boolean]] = []
+    for a in tops:
+        for b in bottoms:
+            equal = eq(a, b)
+            if equal == true:
+                return _radius_of_convergence(without(ap, a), without(bq, b))
+            if equal != false and len(cancelled) < 2:
+                cancelled.append((_radius_of_convergence(without(ap, a), without(bq, b)), equal))
+    zero = Integer(0)
+    defined = and_(*[or_(gt(b, zero), *[and_(le(a, zero), gt(a, b)) for a in tops]) for b in bottoms])
+    ends = or_(*[le(a, zero) for a in tops])
+    general: Expr
+    if len(ap) == len(bq) + 1:
+        general = ONE
+    elif len(ap) <= len(bq):
+        general = oo
+    else:
+        general = zero
+    cases: list[tuple[Expr, Boolean]] = list(cancelled)
+    if defined == false:
+        cases.append((zero, true))
+    else:
+        if defined != true:
+            cases.append((zero, not_(defined)))
+        if ends == true:
+            cases.append((oo, true))
+        elif ends == false:
+            cases.append((general, true))
+        else:
+            cases.extend([(oo, ends), (general, true)])
+    if len(cases) == 1:
+        return cases[0][0]
+    return piecewise(*cases)
 
 def hyper(ap: Parameters, bq: Parameters, z: ExprLike) -> Expr:
     """``hyper(ap, bq, z)`` as SymPy builds it: the parameters common to

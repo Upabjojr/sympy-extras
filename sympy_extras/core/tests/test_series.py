@@ -297,7 +297,7 @@ def test_special_function_series_rules() -> None:
     cases = [S.LambertW(sx), S.LambertW(2*sx + sx**2), S.LambertW(sx + 1), S.Abs(-sx + sx**2), S.Abs(S.sin(sx)),
              S.sign(-sx), S.sign(sx + 1), S.arg(-sx), S.sinc(sx), S.gamma(sx - 1), S.gamma(sx + half), S.gamma(2*sx - 2),
              S.loggamma(sx), S.loggamma(sx + 2), S.expint(1, sx), S.expint(half, sx), S.Ei(sx), S.Ei(-sx), S.Ei(sx + 1),
-             S.Si(2*sx), S.Ci(sx**2), S.Shi(sx), S.Chi(sx), S.Ci(sx + 1), S.li(sx + 2), S.Li(sx + 3), S.li(sx),
+             S.Si(2*sx), S.Ci(sx**2), S.Shi(sx), S.Chi(sx), S.Ci(sx + 1),
              S.SingularityFunction(sx, 1, 2), S.SingularityFunction(sx, 0, 0), S.elliptic_k(2*sx), S.elliptic_e(sx**2),
              S.elliptic_e(sx, half),
              S.floor(-sx), S.floor(sx + half), S.floor(S.sin(sx)), S.ceiling(2 - sx), S.ceiling(sx), S.frac(-sx),
@@ -305,7 +305,7 @@ def test_special_function_series_rules() -> None:
              S.polylog(sympy.Symbol('y'), sx), S.polylog(2, S.sqrt(sx)), S.polylog(2, S.sin(sx)), S.polylog(-1, sx),
              S.besselj(0, sx), S.besselj(2, sx**2), S.besselj(half, S.sqrt(sx)), S.besselj(3, 2*sx),
              S.besseli(1, 2*sx), S.besseli(sympy.Rational(1, 3), sx), S.bessely(0, sx), S.bessely(2, 2*sx),
-             S.bessely(3, sx**2), S.besselk(0, sx), S.besselk(1, S.sqrt(sx)), S.besselk(3, 2*sx), S.besselk(half, sx),
+             S.besselk(0, sx), S.besselk(1, S.sqrt(sx)), S.besselk(3, 2*sx), S.besselk(half, sx),
              S.besselk(sympy.Rational(1, 3), sx**2), S.besselj(1, sx + 1)]
     for e in cases:
         for n in (3, 6):
@@ -313,6 +313,15 @@ def test_special_function_series_rules() -> None:
             want = str(e.series(sx, 0, n))
             clear_cache()
             assert ours(e, n) == want, (e, n)
+    # where SymPy is wrong (sympy/sympy#31275, V98): the series of li in log(z), truncated, is an
+    # expansion at z = 1 only; SymPy returns it at any point
+    assert ours(S.li(sx + 2), 3) == 'li(2) + x/log(2) - x**2/(4*log(2)**2) + O(x**3)'
+    assert ours(S.Li(sx + 3), 3) == 'li(3) - li(2) + x/log(3) - x**2/(6*log(3)**2) + O(x**3)'
+    assert ours(S.li(sx + 1), 3) == 'EulerGamma + log(x) + x/2 - x**2/24 + O(x**3)'
+    assert ours(S.li(sx), 3) == 'li(x)'
+    # ... and the terms of bessely between the leading one and x**n (the square of the argument
+    # was truncated at O(x**n) before it met the negative power)
+    assert ours(S.bessely(3, sx**2), 3) == '-16/(pi*x**6) - 2/(pi*x**2) - x**2/(4*pi) + O(x**3*(-2*log(x) + log(2)))'
     # where SymPy is wrong (issue #25): sinc expands in x, SingularityFunction
     # to the order asked, expint(2, x) is real for x > 0
     assert ours(S.sinc(2*sx), 6) == '1 - 2*x**2/3 + 2*x**4/15 + O(x**6)'

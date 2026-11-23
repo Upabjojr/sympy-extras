@@ -328,13 +328,16 @@ def _half(numerator: Expr) -> Rational:
 
 # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besseli._eval_aseries (the sum)
 def _bessel_asymptotic_terms(nu: Expr, z: Expr, n: int, x: Symbol, base: Integer) -> tuple[list[Expr], Expr]:
-    """``sum((2nu - 1)/2)_k ((2nu + 1)/2)_k/(base**k z**((2k + 1)/2) k!) +
+    """``sum((1 - 2nu)/2)_k ((1 + 2nu)/2)_k/(base**k z**((2k + 1)/2) k!) +
     O(1/z**((2n + 1)/2))``, its terms and its order: the common factor of the asymptotic series of
     ``besseli`` (``base = 2``), ``besselk`` (``base = -2``) and their
-    helpers of the Gruntz algorithm."""
+    helpers of the Gruntz algorithm (DLMF 10.40.1 and 10.40.2, where
+    ``a_k(nu) = (1/2 - nu)_k (1/2 + nu)_k/((-2)**k k!)``). SymPy has
+    ``(nu - 1/2)_k`` for the first symbol: every odd coefficient has the
+    wrong sign there and the others are wrong from ``k = 2`` on."""
     from sympy_extras.core.order import order
     from sympy_extras.functions.combinatorial.factorials import factorial, rf
-    lower, upper = _half(2 * nu - 1), _half(2 * nu + 1)
+    lower, upper = _half(1 - 2 * nu), _half(2 * nu + 1)
     s = [div(rf(lower, Integer(k)) * rf(upper, Integer(k)),
              pow(base, Integer(k)) * pow(z, Rational(2 * k + 1, 2)) * factorial(Integer(k))) for k in range(n)]
     return s, order(div(ONE, pow(z, Rational(2 * n + 1, 2))), x)
@@ -708,8 +711,8 @@ class AiryBiPrime(AiryBase):
             return nan
         if isinstance(z, Infinity):
             return oo
-        if isinstance(z, NegativeInfinity):
-            return Integer(0)
+        # no value at -oo: Bi'(-x) oscillates with the growing amplitude
+        # x**(1/4)/sqrt(pi) (DLMF 9.7.12); SymPy returns 0
         if z.is_zero:
             return div(pow(Integer(3), Rational(1, 6)), gamma(Rational(1, 3)))
         return None

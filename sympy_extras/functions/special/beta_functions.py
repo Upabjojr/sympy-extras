@@ -59,6 +59,30 @@ def _beta_numbers(x: Expr, y: Expr) -> Optional[Expr]:
     s = add(x, y)
     if s.is_integer and s.is_negative and x.is_integer is False and y.is_integer is False:
         return Integer(0)
+    if _at_pole(x, y) is True:
+        return zoo
+    return None
+
+
+def _nonpositive_integer(a: Expr) -> Optional[bool]:
+    if a.is_integer is True and a.is_nonpositive is True:
+        return True
+    if a.is_integer is False or a.is_positive is True:
+        return False
+    return None
+
+
+def _at_pole(x: Expr, y: Expr) -> Optional[bool]:
+    """Whether ``gamma(x)*gamma(y)/gamma(x + y)`` is at a pole: an argument
+    is a nonpositive integer and the sum is not (``beta(5, -3)``, which
+    SymPy leaves alone and takes for a real number); ``None`` when it is
+    not known."""
+    poles = [_nonpositive_integer(x), _nonpositive_integer(y)]
+    if poles[0] is False and poles[1] is False:
+        return False
+    cancelled = _nonpositive_integer(add(x, y))
+    if True in poles and cancelled is False:
+        return True
     return None
 
 
@@ -103,8 +127,15 @@ class Beta(DefinedFunction):
     def _eval_facts(self) -> dict[str, bool]:
         facts: dict[str, bool] = {'commutative': True}
         real = [a.is_real for a in self.args]
-        if all(v is True for v in real):
-            facts['real'] = True
+        pole = _at_pole(self.args[0], self.args[-1])
+        if pole is True:
+            facts['real'] = False
+            facts['finite'] = False
+        elif all(v is True for v in real):
+            # a real number only away from the poles (SymPy: for any real
+            # arguments, beta(5, -3) too)
+            if pole is False:
+                facts['real'] = True
         elif real[0] is False or (real[0] is True and real[-1] is False):
             facts['real'] = False
         return facts

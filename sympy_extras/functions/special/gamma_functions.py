@@ -304,8 +304,8 @@ class PolyGamma(DefinedFunction):
         if n == -1:
             return sub(loggamma(z), mul(log(mul(Integer(2), pi)), Rational(1, 2)))
         if n.is_zero:
-            if isinstance(z, NegativeInfinity):
-                return oo
+            # no value at -oo: digamma has a pole at every nonpositive
+            # integer and a zero between any two of them (SymPy returns oo)
             imaginary = z.extract_multiplicatively(I)
             if imaginary is not None and isinstance(imaginary, (Infinity, NegativeInfinity)):
                 return oo

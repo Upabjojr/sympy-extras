@@ -799,8 +799,11 @@ class LiNode(DefinedFunction):
     def _eval_conjugate(self) -> Optional[Expr]:
         from sympy_extras.functions.elementary.complexes import conjugate
         z = self.args[0]
-        if z.is_extended_negative:
-            return None  # the branch cut (-oo, 0)
+        if z.is_extended_negative is not False:
+            # the branch cut (-oo, 0), unless z is known to be off it (SymPy
+            # only excludes a z known to be on it: conjugate(li(-z)) is
+            # li(-z) there for a real z)
+            return None
         return li(conjugate(z))
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
@@ -1119,8 +1122,8 @@ class Erf2inv(DefinedFunction):
             return erfcinv(mul(MINUS_ONE, y))
         if y.is_zero:
             return x
-        if isinstance(y, Infinity):
-            return erfinv(x)
+        # no value at y = oo: erf(w) - erf(x) is bounded (SymPy returns
+        # erfinv(x), for which erf2 is x - erf(x))
         return None
 
     def fdiff(self, argindex: int) -> Expr:

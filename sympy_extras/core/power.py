@@ -198,10 +198,23 @@ class Pow(Expr):
                 raise ValueError()
             _, m = b.leadterm(x)
         except (ValueError, NotImplementedError, PoleError):
-            b = b._eval_nseries(x, max(2, n), logx, cdir).removeO()
+            base = b
+            b = base._eval_nseries(x, max(2, n), logx, cdir).removeO()
             if b.has(nan, ComplexInfinity):
                 raise NotImplementedError()
             _, m = b.leadterm(x)
+            # The series of the base stands for the base from here on: it
+            # must be known to the relative order n - m*e that the binomial
+            # series uses, x**(n - m*e + m) in all. SymPy keeps the series
+            # to O(x**n), and 1/Abs(sin(x)) is 1/x + x/6 + x**3/36 + O(x**4)
+            # there (so is every series in a symbol which is not positive,
+            # where sqrt(sin(x)**2) is first made that)
+            needed = add(Integer(n), mul(Integer(-1), m, e), m)
+            if needed.is_number and needed.is_real is True and _less(Integer(max(2, n)), needed):
+                b = base._eval_nseries(x, _ceiling_int(needed), logx, cdir).removeO()
+                if b.has(nan, ComplexInfinity):
+                    raise NotImplementedError()
+                _, m = b.leadterm(x)
         if e.has(Log):
             from sympy_extras.simplify.simplify import logcombine
             e = logcombine(e).cancel()

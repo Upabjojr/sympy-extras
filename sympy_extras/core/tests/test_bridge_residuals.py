@@ -125,12 +125,29 @@ def test_asymptotic_series_need_no_bridge() -> None:
     variable = expr_from_sympy(w)
     assert isinstance(variable, Symbol)
     for e in [s.erf(1 / w), s.erfc(1 / w), s.erfi(1 / w), s.Ei(1 / w), s.Ei(-1 / w), s.Si(1 / w), s.Ci(1 / w),
-              s.besseli(2, 1 / w), s.besselk(s.Rational(1, 3), 1 / w), _erfs(1 / w), _eis(1 / w), _eis(-1 / w),
-              _besseli(1, 1 / w), _besselk(0, 1 / w), s.Si((2 * w + 1) / w), s.erf(1 / w + 1 / w**2), _erfs(s.I / w),
+              _erfs(1 / w), _eis(1 / w), _eis(-1 / w),
+              s.Si((2 * w + 1) / w), s.erf(1 / w + 1 / w**2), _erfs(s.I / w),
               _eis(w), _erfs(w)]:
         native = expr_from_sympy(e)
         assert isinstance(native, Expr)
         _same(e.nseries(w, n=4), lambda: native.nseries(variable, n=4))
+    # besseli, besselk and their helpers: native too, with the coefficients of DLMF 10.40.1-2,
+    # a_k(nu) = (1/2 - nu)_k*(1/2 + nu)_k/((-2)**k*k!), where SymPy 1.14 has (nu - 1/2)_k
+    # (sympy/sympy#31275, V89 and V90)
+    expected = {
+        s.besseli(2, 1 / w): 'sqrt(2)*(sqrt(w) - 15*w**(3/2)/8 + 105*w**(5/2)/128 + 315*w**(7/2)/1024 '
+                             '+ O(w**(9/2)))*exp(1/w)/(2*sqrt(pi))',
+        _besseli(1, 1 / w): 'sqrt(2)*sqrt(pi)*(-105*w**(7/2)/1024 - 15*w**(5/2)/128 - 3*w**(3/2)/8 + sqrt(w))/2 '
+                            '+ O(w**(9/2))',
+        _besselk(0, 1 / w): 'sqrt(2)*sqrt(pi)*sqrt(w)/2 - sqrt(2)*sqrt(pi)*w**(3/2)/16 + 9*sqrt(2)*sqrt(pi)*w**(5/2)/256 '
+                            '- 75*sqrt(2)*sqrt(pi)*w**(7/2)/2048 + O(w**4)'}
+    for e, text in expected.items():
+        native = expr_from_sympy(e)
+        assert isinstance(native, Expr)
+        with _recording() as recorder:
+            result = native.nseries(variable, n=4)
+        assert recorder.calls == [], recorder.calls
+        assert str(to_sympy(result, evaluate=False)) == text, (e, result)
 
 
 def test_limits_with_the_special_functions_match_sympy() -> None:

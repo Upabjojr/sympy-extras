@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import itertools
 
+import mpmath
 import pytest
 import sympy
 
@@ -13,7 +14,7 @@ from sympy_extras.core import I, Integer, Rational, Symbol, oo, zoo
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.numbers import nan
-from sympy_extras.functions import (betainc, betainc_regularized, conjugate, erf2, erf2inv, erfinv, lerchphi, multigamma,
+from sympy_extras.functions import (Erf2inv, betainc, betainc_regularized, conjugate, erf2, erf2inv, erfinv, lerchphi, multigamma,
                                     riemann_xi, stieltjes)
 
 x, y, z, s, a, b = (Symbol(c) for c in 'xyzsab')
@@ -36,6 +37,8 @@ def test_erf2_erf2inv_match_sympy() -> None:
     for u, v in itertools.product(values, repeat=2):
         su, sv = sympy_value(u), sympy_value(v)
         for ours, theirs in [(erf2(u, v), sympy.erf2(su, sv)), (erf2inv(u, v), sympy.erf2inv(su, sv))]:
+            if v == oo and ours == Erf2inv(u, v):
+                continue  # sympy/sympy#31275 (V94), see test_erf2inv_has_no_value_at_infinity
             if not same(ours, theirs):
                 different.append((str(ours), str(theirs)))
     assert same(erf2(x, erf2inv(x, y)), sympy.erf2(sympy.Symbol('x'), sympy.erf2inv(sympy.Symbol('x'), sympy.Symbol('y'))))
@@ -45,6 +48,14 @@ def test_erf2_erf2inv_match_sympy() -> None:
         assert same(erf2(x, y).diff(v), sympy.erf2(sx, sy).diff(sv))
         assert same(erf2inv(x, y).diff(v), sympy.erf2inv(sx, sy).diff(sv))
     assert erfinv(Integer(0)) == 0
+
+
+def test_erf2inv_has_no_value_at_infinity() -> None:
+    # sympy/sympy#31275 (V94): erf2inv(x, y) is the w with erf(w) - erf(x) = y; SymPy has erfinv(x)
+    # at y = oo, for which the difference is x - erf(x)
+    assert erf2inv(x, oo) == Erf2inv(x, oo)
+    assert abs(mpmath.erf(mpmath.erfinv(mpmath.mpf(1)/3)) - mpmath.erf(mpmath.mpf(1)/3) + 0.0293147784327296) < 1e-15
+    assert same(erf2inv(oo, y), sympy.erfcinv(-sympy.Symbol('y'))) and same(erf2inv(Integer(0), y), sympy.erfinv(sympy.Symbol('y')))
 
 
 def test_betainc_lerchphi_match_sympy() -> None:
