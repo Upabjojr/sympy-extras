@@ -402,6 +402,71 @@ pub fn rounding_facts(f: Function, arg: &Basic) -> FactList {
 
 /// The value (`numeric`): the floor, ceiling or fractional part of the
 /// real and imaginary parts.
+fn fabs(c: &Real) -> Real {
+    if *c < Real::ZERO {
+        -c.clone()
+    } else {
+        c.clone()
+    }
+}
+
+/// The working precision (bits) at which a part near an integer is
+/// settled (`_MAX_ROUNDING_BITS`).
+const MAX_ROUNDING_BITS: usize = 8192;
+
+/// The floor (`direction = -1`) or ceiling (`1`) of the value of the number
+/// `arg`: a part closer to an integer than half the working precision is
+/// proved to be that integer or evaluated again with twice the bits
+/// (sympy/sympy#31275, V57) (`_numeric_integer_part`).
+pub(crate) fn numeric_integer_part(arg: &Basic, prec: usize, direction: i32) -> Option<Complex> {
+    use crate::core::evalf::{complex_real, real_int};
+    let known_zero: (bool, bool) = (
+        crate::core::expr::is(arg, crate::core::assumptions::Predicate::imaginary) == Some(true),
+        crate::core::expr::is(arg, crate::core::assumptions::Predicate::extended_real) == Some(true),
+    );
+    let exact: bool = arg.as_rational().is_some();
+    let mut bits: usize = prec;
+    let mut tried_proof: bool = false;
+    loop {
+        let value: Complex = numeric_value(arg, bits)?;
+        let (re, im) = parts(&value);
+        if re.repr().is_infinite() || im.repr().is_infinite() {
+            return None;
+        }
+        let threshold = |c: &Real| -> Real {
+            let one: Real = real_int(&Int::ONE, bits);
+            let size: Real = if fabs(c) > one { fabs(c) } else { one };
+            size * real_int(&(Int::ONE << (bits / 2)), bits).powi(Int::from(-1))
+        };
+        let near = |c: &Real, zero: bool| -> bool {
+            !zero && *c != Real::ZERO && fabs(&(c.clone() - c.round())) <= threshold(c)
+        };
+        let any_near: bool = near(&re, known_zero.0) || near(&im, known_zero.1);
+        if exact || !any_near || bits >= MAX_ROUNDING_BITS {
+            let round = |c: &Real, zero: bool| -> Real {
+                if zero {
+                    Real::ZERO
+                } else if direction < 0 {
+                    c.floor()
+                } else {
+                    c.ceil()
+                }
+            };
+            return Some(complex(round(&re, known_zero.0), round(&im, known_zero.1)));
+        }
+        if !tried_proof && (known_zero.1 || im == Real::ZERO) {
+            tried_proof = true;
+            let nearest: Int = re.round().to_int().value();
+            let difference: Option<Basic> =
+                crate::core::add::add(&[arg.clone(), Basic::integer(-nearest.clone())]).ok();
+            if difference.is_some_and(|d| crate::numeric::proved_zero(&d)) {
+                return Some(complex_real(real_int(&nearest, bits), bits));
+            }
+        }
+        bits *= 2;
+    }
+}
+
 pub fn rounding_value(f: Function, z: &Complex) -> Complex {
     let (re, im_) = parts(z);
     match f {

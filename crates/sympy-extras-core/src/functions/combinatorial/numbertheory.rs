@@ -230,8 +230,22 @@ fn mobius_eval(n: &Basic) -> PolyResult<Basic> {
     if is_one(n) {
         return Ok(Basic::one());
     }
+    // SymPy multiplies the signs of the numeric factors and forgets the
+    // symbolic ones, and takes m**e with e > 1 for a square without
+    // excluding m = 1: only a certain square factor decides the value of a
+    // product with symbols (sympy/sympy#31275, V75)
+    if let Some(whole) = as_int(n) {
+        let fs: BTreeMap<Int, u64> = factors(&whole);
+        if fs.values().any(|v| *v > 1) {
+            return Ok(Basic::zero());
+        }
+        return Ok(if fs.len() % 2 == 1 {
+            Basic::negative_one()
+        } else {
+            Basic::one()
+        });
+    }
     let factors_of: Vec<Basic> = if n.is_mul() { n.args().to_vec() } else { vec![n.clone()] };
-    let mut result: Option<Basic> = None;
     for factor in factors_of {
         let (m, e) = as_base_exp(&factor)?;
         let fine: bool = is_true(&m, Predicate::integer)
@@ -241,29 +255,18 @@ fn mobius_eval(n: &Basic) -> PolyResult<Basic> {
         if !fine {
             return Ok(node(Function::Mobius, vec![n.clone()]));
         }
-        let relation: Option<bool> = truth(&lt(&Basic::one(), &e)?);
-        if relation == Some(true) {
-            result = Some(Basic::zero());
-            continue;
-        }
         if let Some(value) = as_int(&m) {
-            let fs: BTreeMap<Int, u64> = factors(&value);
-            if fs.values().any(|v| *v > 1) {
-                result = Some(Basic::zero());
-            } else if relation == Some(false) {
-                let sign: Basic = if fs.len() % 2 == 1 {
-                    Basic::negative_one()
-                } else {
-                    Basic::one()
-                };
-                result = Some(match result {
-                    None => sign,
-                    Some(r) => mul(&[r, sign])?,
-                });
+            if factors(&value).values().any(|v| *v > 1) {
+                return Ok(Basic::zero());
             }
         }
+        if truth(&lt(&Basic::one(), &e)?) == Some(true)
+            && (is_true(&m, Predicate::prime) || truth(&lt(&Basic::one(), &m)?) == Some(true))
+        {
+            return Ok(Basic::zero());
+        }
     }
-    Ok(result.unwrap_or_else(|| node(Function::Mobius, vec![n.clone()])))
+    Ok(node(Function::Mobius, vec![n.clone()]))
 }
 
 fn primepi_eval(n: &Basic) -> PolyResult<Basic> {

@@ -171,9 +171,11 @@ CASES: list[tuple[str, ...]] = [
 
 
 def python_call(case: tuple[str, ...]) -> object:
-    name, args = case[0], [parse(a) for a in case[1:]]
+    name = case[0]
     if name == 'rewrite_single':
-        return mj.rewrite_single(args[0], args[1], case[3] == 'True')
+        # the flag is no expression ('True' is outside the parser's grammar)
+        return mj.rewrite_single(parse(case[1]), parse(case[2]), case[3] == 'True')
+    args = [parse(a) for a in case[1:]]
     return getattr(mj, name)(*args)
 
 

@@ -536,6 +536,10 @@ fn power_of_product(base: &Basic, exp: &Basic) -> PolyResult<Option<Basic>> {
         }
     }
     let (coefficient, rest) = as_coeff_mul(base);
+    if coefficient.is_finite_number() && coefficient.number_sign() == 0 {
+        // an unevaluated 0*3: the zero must not be lost (sqrt(0*3) is not sqrt(3))
+        return Ok(None);
+    }
     // SymPy's _eval_expand_power_base: the positive and the polar factors
     // come out of the power
     let positive_or_polar = |f: &Basic| is_true(f, Predicate::positive) || is_true(f, Predicate::polar);

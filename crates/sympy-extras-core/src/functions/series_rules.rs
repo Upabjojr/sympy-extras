@@ -181,6 +181,38 @@ fn lambertw(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> OptR {
 }
 
 fn abs_rule(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> OptR {
+    // sign(direction)*series is the absolute value of a real argument
+    // only; of a complex one it is sqrt(re**2 + im**2) on a real x
+    // (sympy/sympy#31275, V211, V215)
+    let real_x: Basic = crate::core::symbol::Dummy::new("x", &[(Predicate::real, true)]).0;
+    let on_real: Basic = crate::core::subs::subs(&arg(f, 0), x, &real_x)?;
+    if crate::core::expr::is(&on_real, Predicate::extended_real) != Some(true) {
+        use crate::functions::elementary::complexes::{im, re};
+        let imaginary: Basic = im(&on_real)?;
+        // an imaginary part 0 (sin(1 + 1/x), real where it is defined) is
+        // the real case below: its modulus sqrt(re**2) gives Abs(re) back
+        // on a new real x, without end
+        let modulus: Basic = pw(
+            &a2(&pw(&re(&on_real)?, &int(2))?, &pw(&imaginary, &int(2))?)?,
+            &Basic::half(),
+        )?;
+        let parts_known: bool = imaginary != int(0)
+            && !modulus
+                .preorder()
+                .iter()
+                .any(|node| matches!(node.head(), Head::Function(Function::Re | Function::Im)) && node.has(&real_x));
+        let has_abs: bool = modulus
+            .preorder()
+            .iter()
+            .any(|node| matches!(node.head(), Head::Function(Function::Abs)));
+        if parts_known && !has_abs {
+            return Ok(Some(crate::core::subs::subs(
+                &ns0(&modulus, &real_x, n, logx)?,
+                &real_x,
+                x,
+            )?));
+        }
+    }
     let mut direction: Basic = crate::core::series::leadterm(&arg(f, 0), x, None, &int(0))?.0;
     if let Some(l) = logx {
         let lx: Basic = log(x)?;
@@ -313,13 +345,24 @@ fn trig_integral(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, trig: Funct
     )?))
 }
 
-fn li_rule(f: &Basic, n: i64) -> OptR {
+fn li_rule(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic) -> OptR {
+    // a series in log(z): an expansion only where log(z) tends to 0; at
+    // z = 0, where li has no expansion in powers of z and log(z), the
+    // function is kept
     let z: Basic = arg(f, 0);
-    let mut s: Vec<Basic> = Vec::new();
-    for k in 1..n {
-        s.push(d2(&pw(&log(&z)?, &int(k))?, &m2(&factorial(&int(k))?, &int(k))?)?);
+    let z0: Basic = crate::core::limits::limit(&z, x, &int(0), "+")?;
+    if z0 == int(1) {
+        let mut s: Vec<Basic> = Vec::new();
+        for k in 1..n {
+            s.push(d2(&pw(&log(&z)?, &int(k))?, &m2(&factorial(&int(k))?, &int(k))?)?);
+        }
+        let whole: Basic = a2(&a2(&euler_gamma(), &log(&log(&z)?)?)?, &add_all(&s)?)?;
+        return Ok(Some(ns(&whole, x, n, logx, cdir)?));
     }
-    Ok(Some(a2(&a2(&euler_gamma(), &log(&log(&z)?)?)?, &add_all(&s)?)?))
+    if yes(&z0, Predicate::zero) || crate::core::expr::is(&z0, Predicate::finite) != Some(true) {
+        return Ok(Some(f.clone()));
+    }
+    generic(f, x, n, logx)
 }
 
 fn offset_li_rule(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> OptR {
@@ -333,8 +376,16 @@ fn singularity_rule(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &B
     if yes(&p, Predicate::negative) {
         return Ok(Some(int(0)));
     }
-    if yes(&p, Predicate::zero) && yes(&shift, Predicate::zero) {
-        return Ok(Some(int(if *cdir == int(-1) { 0 } else { 1 })));
+    if yes(&shift, Predicate::zero) {
+        // at the singular point the side decides (see the leading term)
+        let d: Basic = s2(&z, &a)?;
+        if !crate::functions::leading_terms::singularity_side_positive(&d, x, cdir)? {
+            return Ok(Some(int(0)));
+        }
+        if yes(&p, Predicate::zero) {
+            return Ok(Some(int(1)));
+        }
+        return Ok(Some(ns(&pw(&d, &p)?, x, n, logx, cdir)?));
     }
     if yes(&shift, Predicate::positive) {
         return Ok(Some(ns(&pw(&s2(&z, &a)?, &p)?, x, n, logx, cdir)?));
@@ -448,8 +499,44 @@ fn bessel_head(f: &Basic, x: &Basic, n: i64) -> PolyResult<Option<(Basic, Basic,
     Ok(Some((nu, z, ex, newn)))
 }
 
-fn half_series(z: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic) -> R {
-    remove_o(&ns(&d2(z, &int(2))?, x, n, logx, cdir)?)
+/// Whether `z` is its own leading term in `x` (`_is_monomial`).
+fn is_monomial(z: &Basic, x: &Basic) -> PolyResult<bool> {
+    let lead: Basic = match crate::core::series::as_leading_term(z, std::slice::from_ref(x), None, &int(0)) {
+        Ok(l) => l,
+        Err(PolyError::Value(_) | PolyError::NotImplemented(_)) => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    Ok(yes(
+        &crate::core::function::expand_mul(&s2(z, &lead)?, true)?,
+        Predicate::zero,
+    ))
+}
+
+/// The series of a Bessel function of an argument which is not a
+/// monomial in `x`: the series in the argument itself, in which `z` is
+/// put and expanded (`_bessel_composed`).
+#[allow(clippy::too_many_arguments)]
+fn bessel_composed(
+    f: &Basic,
+    nu: &Basic,
+    z: &Basic,
+    newn: i64,
+    x: &Basic,
+    n: i64,
+    logx: Option<&Basic>,
+    cdir: &Basic,
+    with_log: bool,
+) -> R {
+    let t: Basic = crate::core::symbol::Dummy::new("t", &[]).0;
+    let rebuilt: Basic = crate::core::function::rebuild_evaluated(f, vec![nu.clone(), t.clone()])?;
+    let inner: Basic = remove_o(&ns(&rebuilt, &t, newn, None, &int(1))?)?;
+    let body: Basic = remove_o(&ns(&crate::core::subs::subs(&inner, &t, z)?, x, n, logx, cdir)?)?;
+    let bound: Basic = if with_log && logx.is_none() {
+        m2(&pw(x, &int(n))?, &log(x)?)?
+    } else {
+        pw(x, &int(n))?
+    };
+    a2(&body, &crate::core::order::order_at_zero(&bound, x)?)
 }
 
 fn bessel_ji(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic, modified: bool) -> OptR {
@@ -459,15 +546,21 @@ fn bessel_ji(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic, m
     if !yes(&ex, Predicate::positive) {
         return generic(f, x, n, logx);
     }
-    let o: Basic = order_xn(x, n)?;
-    let r: Basic = half_series(&z, x, n, logx, cdir)?;
-    if is_zero_number(&r) {
-        return Ok(Some(o));
+    if !is_monomial(&z, x)? {
+        return Ok(Some(bessel_composed(f, &nu, &z, newn, x, n, logx, cdir, false)?));
     }
-    let t: Basic = remove_o(&a2(&mexpand(&pw(&r, &int(2))?)?, &o)?)?;
+    let o: Basic = order_xn(x, n)?;
+    // the monomial and its square are not truncated at O(x**n) as in SymPy
+    let r: Basic = d2(&z, &int(2))?;
+    let t: Basic = mexpand(&pw(&r, &int(2))?)?;
     let mut term: Basic = d2(&pw(&r, &nu)?, &gamma(&a2(&nu, &int(1))?)?)?;
     let mut s: Vec<Basic> = vec![term.clone()];
-    for k in 1..(newn + 1) / 2 {
+    let mut count: i64 = (newn + 1) / 2;
+    if yes(&nu, Predicate::negative) {
+        // the terms are r**(nu + 2*k): more of them lie below x**n
+        count = count.max((int_of(&ceiling(&s2(&d2(&int(n), &ex)?, &nu)?)?)? + 1) / 2);
+    }
+    for k in 1..count {
         let signed: Basic = if modified { t.clone() } else { neg(&t)? };
         term = m2(&term, &d2(&signed, &m2(&int(k), &a2(&nu, &int(k))?)?)?)?;
         term = truncate(&term, &o)?;
@@ -483,6 +576,9 @@ fn bessel_y(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic) ->
     if !(yes(&ex, Predicate::positive) && yes(&nu, Predicate::integer)) {
         return generic(f, x, n, logx);
     }
+    if !is_monomial(&z, x)? {
+        return Ok(Some(bessel_composed(f, &nu, &z, newn, x, n, logx, cdir, true)?));
+    }
     let bn: Basic = crate::functions::special::bessel::besselj(&nu, &z)?;
     let a: Basic = ns(
         &m2(&m2(&d2(&int(2), &pi())?, &log(&d2(&z, &int(2))?)?)?, &bn)?,
@@ -493,11 +589,9 @@ fn bessel_y(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic) ->
     )?;
     let (mut b, mut c): (Vec<Basic>, Vec<Basic>) = (Vec::new(), Vec::new());
     let o: Basic = order_xn(x, n)?;
-    let r: Basic = half_series(&z, x, n, logx, cdir)?;
-    if is_zero_number(&r) {
-        return Ok(Some(o));
-    }
-    let t: Basic = remove_o(&a2(&mexpand(&pw(&r, &int(2))?)?, &o)?)?;
+    // neither the monomial nor its square truncated at O(x**n)
+    let r: Basic = d2(&z, &int(2))?;
+    let t: Basic = mexpand(&pw(&r, &int(2))?)?;
     let k_nu: i64 = int_of(&nu)?;
     if k_nu > 0 {
         let mut term: Basic = d2(&m2(&pw(&r, &neg(&nu)?)?, &factorial(&s2(&nu, &int(1))?)?)?, &pi())?;
@@ -534,13 +628,16 @@ fn bessel_k(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic) ->
     if !yes(&ex, Predicate::positive) {
         return generic(f, x, n, logx);
     }
-    let r: Basic = half_series(&z, x, n, logx, cdir)?;
-    if is_zero_number(&r) {
-        return Ok(Some(crate::core::order::order_at_zero(
-            &a2(&pw(&z, &neg(&nu)?)?, &pw(&z, &nu)?)?,
-            x,
-        )?));
+    if !is_monomial(&z, x)? {
+        if yes(&nu, Predicate::integer) || yes(&nu, Predicate::noninteger) {
+            let with_log: bool = yes(&nu, Predicate::integer);
+            return Ok(Some(bessel_composed(f, &nu, &z, newn, x, n, logx, cdir, with_log)?));
+        }
+        return Err(PolyError::NotImplemented(
+            "besselk expansion is only implemented for real order".to_string(),
+        ));
     }
+    let r: Basic = d2(&z, &int(2))?;
     let o: Basic = order_xn(x, n)?;
     if yes(&nu, Predicate::integer) {
         let bn: Basic = crate::functions::special::bessel::bessel(Function::BesselI, &[nu.clone(), z.clone()])?;
@@ -577,8 +674,9 @@ fn bessel_k(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic) ->
         return Ok(Some(add_all(&[a, add_all(&b)?, add_all(&c)?, o])?));
     }
     if yes(&nu, Predicate::noninteger) {
-        let newn_a: i64 = int_of(&ceiling(&d2(&a2(&int(n), &nu)?, &ex)?)?)?;
-        let newn_b: i64 = int_of(&ceiling(&d2(&s2(&int(n), &nu)?, &ex)?)?)?;
+        // the terms are r**(2*k -+ nu), of the orders (2*k -+ nu)*ex in x
+        let newn_a: i64 = int_of(&ceiling(&a2(&d2(&int(n), &ex)?, &nu)?)?)?;
+        let newn_b: i64 = int_of(&ceiling(&s2(&d2(&int(n), &ex)?, &nu)?)?)?;
         let rf = crate::functions::combinatorial::factorials::rf;
         let mut terms: Vec<Basic> = Vec::new();
         for k in 0..(newn_a + 1) / 2 {
@@ -633,7 +731,7 @@ pub fn series_rule(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Ba
                 &Basic::zero(),
             )?))
         }
-        "LiNode" => li_rule(f, n),
+        "LiNode" => li_rule(f, x, n, logx, cdir),
         "OffsetLiNode" => offset_li_rule(f, x, n, logx),
         "SingularityFunctionNode" => singularity_rule(f, x, n, logx, cdir),
         "EllipticK" => elliptic_rule(f, x, n, logx, Basic::half()),

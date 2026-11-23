@@ -374,6 +374,10 @@ impl<'a> Parser<'a> {
                     self.expect(")")?;
                     return self.function(&name, args);
                 }
+                if crate::core::foreign_names::is_sympy_constant(&name) && !is_native_constant(&name) {
+                    // true, Reals: not symbols of that name
+                    return Err(unsupported(format!("{} in {:?}", name, self.text)));
+                }
                 Ok(named(&name))
             }
             other => Err(unsupported(format!("unexpected {:?} in {:?}", other, self.text))),
@@ -405,6 +409,30 @@ impl<'a> Parser<'a> {
                 )))
             }
         };
+        if name == "Mod" && args.len() == 2 {
+            // Mod is an application of the core, not a defined function:
+            // without this it would be read as an undefined function
+            if self.evaluate {
+                return crate::core::modulo::modulo(&args[0], &args[1]);
+            }
+            return Ok(Basic::new(Head::Function(Function::Mod), args));
+        }
+        if !self.evaluate {
+            // the roots are functions which build powers: unevaluated ones here
+            let unevaluated = |exponent: Basic| Basic::new(Head::Pow, vec![args[0].clone(), exponent]);
+            if name == "sqrt" && args.len() == 1 {
+                return Ok(unevaluated(Basic::half()));
+            }
+            if name == "cbrt" && args.len() == 1 {
+                return Ok(unevaluated(crate::core::mul::div(&Basic::one(), &Basic::int(3))?));
+            }
+            if name == "root" && args.len() == 2 {
+                if let Some(k) = args[1].as_rational().filter(|v| v.is_int() && !v.is_zero()) {
+                    let q: Basic = Basic::integer(k.numerator().clone());
+                    return Ok(unevaluated(crate::core::mul::div(&Basic::one(), &q)?));
+                }
+            }
+        }
         // Python's order: the class itself without evaluation, then the plain
         // callables (also without evaluation), then the class's `apply`
         if !self.evaluate && !(name == "log" && args.len() == 2) {
@@ -462,6 +490,11 @@ impl<'a> Parser<'a> {
                 "the function {} in the Rust parser",
                 name
             )));
+        }
+        if crate::core::foreign_names::is_sympy_callable(name) {
+            // Eq(x, y), Derivative(f(x), x), O(x), S(1): a class or a function
+            // of SymPy which this parser has not, no undefined function
+            return Err(unsupported(format!("{}(...) in {:?}", name, self.text)));
         }
         Arc::new(UndefinedFunction::new(name, None, &[])).apply(args)
     }
@@ -697,6 +730,13 @@ fn number(text: &str) -> PolyResult<Basic> {
         "the Float {} (no Float in the Rust core)",
         text
     )))
+}
+
+fn is_native_constant(text: &str) -> bool {
+    matches!(
+        text,
+        "pi" | "E" | "I" | "oo" | "zoo" | "nan" | "EulerGamma" | "Catalan" | "GoldenRatio" | "TribonacciConstant"
+    )
 }
 
 fn named(text: &str) -> Basic {

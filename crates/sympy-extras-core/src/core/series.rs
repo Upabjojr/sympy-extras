@@ -589,6 +589,20 @@ fn hyper_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) 
     Ok(e.clone())
 }
 
+/// The value of `arg` at `x = 0`; where the substitution gives `nan`
+/// (`sin(x)/x`) and the leading term is a finite constant, that constant
+/// (`_value_at_zero`).
+pub(crate) fn value_at_zero(arg: &Basic, x: &Basic) -> R {
+    let x0: Basic = crate::polys::polytools::cancel(&subs(arg, x, &Basic::zero())?, &[])?;
+    if matches!(x0.head(), Head::NaN) {
+        let leading: Basic = as_leading_term(arg, std::slice::from_ref(x), None, &Basic::zero())?;
+        if !leading.has(x) && is(&leading, Predicate::finite) == Some(true) {
+            return Ok(leading);
+        }
+    }
+    Ok(x0)
+}
+
 pub(crate) fn generic_leading_term_pub(f: &Basic, x: &Basic, logx: Option<&Basic>) -> R {
     generic_leading_term(f, x, logx)
 }
@@ -694,6 +708,11 @@ fn add_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) ->
         let mut res: Basic = order(&Basic::one(), &[])?;
         let mut incr: i64 = 1;
         while is_order(&res) {
+            if incr > 64 {
+                // every term cancels up to a high order: a sum which
+                // vanishes on this side without simplifying to 0
+                return Ok(Basic::zero());
+            }
             res = eval_nseries(&old, x, ceiling_int(&add(&[n0.clone(), int(incr)])?)?, logx, cdir)?;
             res = crate::simplify::trigsimp::trigsimp(
                 &crate::simplify::powsimp::powsimp_default(&cancel(&res)?)?,
@@ -1554,7 +1573,9 @@ fn mul_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic)
             let fac: Vec<Basic> = indices.iter().zip(&ords2).map(|(i, v)| v[*i].clone()).collect();
             let ords3: Vec<(Basic, Basic)> = fac.iter().map(|t| coeff_exp_in(t, x)).collect::<PolyResult<_>>()?;
             let power: Basic = add(&ords3.iter().map(|(_, p)| p.clone()).collect::<Vec<_>>())?;
-            if yes(&sub(&power, &nn)?, Predicate::negative) {
+            // not SymPy's: a term whose exponent is not known to reach the
+            // order is kept (the series of exp(x)*x**a for a positive a)
+            if !yes(&sub(&power, &nn)?, Predicate::nonnegative) {
                 let c: Basic = mul(&ords3.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>())?;
                 res = add(&[res, mul(&[c, pow(x, &power)?])?])?;
             }
@@ -1961,8 +1982,17 @@ fn pow_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic)
         exp_series = add(&[exp_series, order_at_zero(&pow(&t, &int(n))?, x)?])?;
         return powsimp_exp(&exp_series);
     }
+    // SymPy denests with force=True, which takes every symbol for
+    // positive; only the variable of the expansion is positive here (the
+    // expansion is at 0+)
+    let x_name: String = match x.head() {
+        Head::Symbol(d) | Head::Dummy(d, _) => d.name.clone(),
+        _ => x.to_string(),
+    };
+    let positive_x: Basic = Dummy::new(&x_name, &[(Predicate::positive, true)]).0;
+    let denested: Basic = crate::simplify::powsimp::powdenest(&subs(e, x, &positive_x)?, false, false)?;
     let me: Basic = crate::simplify::trigsimp::trigsimp(
-        &crate::simplify::powsimp::powdenest(e, true, false)?,
+        &subs(&denested, &positive_x, x)?,
         crate::simplify::trigsimp::Method::Matching,
     )?;
     let (mut b, mut ex) = crate::core::expr::as_base_exp(&me)?;
@@ -2013,11 +2043,27 @@ fn pow_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic)
     let m: Basic = match first {
         Ok((_, m)) => m,
         Err(err) if caught(&err, true, true, false, true) => {
-            b = remove_o(&eval_nseries(&b, x, n.max(2), logx, cdir)?)?;
+            let base: Basic = b.clone();
+            b = remove_o(&eval_nseries(&base, x, n.max(2), logx, cdir)?)?;
             if has_any(&b, &|n| matches!(n.head(), Head::NaN | Head::ComplexInfinity)) {
                 return Err(not_implemented(""));
             }
-            leadterm(&b, x, None, &Basic::zero())?.1
+            let mut m: Basic = leadterm(&b, x, None, &Basic::zero())?.1;
+            // the series of the base stands for the base from here on: it
+            // must be known to x**(n - m*e + m), the relative order of the
+            // binomial series
+            let needed: Basic = add(&[int(n), neg(&mul(&[m.clone(), ex.clone()])?)?, m.clone()])?;
+            if crate::core::assumptions::is_number(&needed)
+                && yes(&needed, Predicate::real)
+                && less(&int(n.max(2)), &needed)?
+            {
+                b = remove_o(&eval_nseries(&base, x, ceiling_int(&needed)?, logx, cdir)?)?;
+                if has_any(&b, &|n| matches!(n.head(), Head::NaN | Head::ComplexInfinity)) {
+                    return Err(not_implemented(""));
+                }
+                m = leadterm(&b, x, None, &Basic::zero())?.1;
+            }
+            m
         }
         Err(err) => return Err(err),
     };
@@ -2030,6 +2076,12 @@ fn pow_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic)
         let logarithmic: Basic = exp(&mul(&[ex.clone(), log(&b)?])?)?;
         let via_log: Basic = eval_nseries(&logarithmic, x, n, logx, cdir)?;
         if via_log == logarithmic {
+            return Ok(me);
+        }
+        if is_order(&via_log) && !yes(&sub(&mul(&[m.clone(), ex.clone()])?, &int(n))?, Predicate::nonnegative) {
+            // not SymPy's: exp(e*log(b)) with an exponent going to -oo is
+            // taken to be smaller than every power, which does not hold for
+            // x**a = exp(a*log(x))
             return Ok(me);
         }
         return Ok(via_log);

@@ -311,7 +311,29 @@ pub fn deltasummation(f: &Basic, limit: &Limit, no_piecewise: bool) -> R {
     if no_piecewise {
         return subs(&expr, x, value);
     }
-    let condition: Basic = crate::sets::sets::as_relational(&crate::sets::sets::interval(a, b, false, false)?, value)?;
+    // the index runs over a + 0, a + 1, ...: a solution off this lattice
+    // is no term of the sum (sympy/sympy#31275, V47)
+    let infinite = |e: &Basic| matches!(e.head(), Head::Infinity | Head::NegativeInfinity);
+    let anchor: Basic = if !infinite(a) {
+        a.clone()
+    } else if !infinite(b) {
+        b.clone()
+    } else {
+        int(0)
+    };
+    let offset: Basic = crate::core::add::sub(value, &anchor)?;
+    let on_lattice: Option<bool> = crate::core::expr::is(&offset, crate::core::assumptions::Predicate::integer);
+    if on_lattice == Some(false) {
+        return Ok(int(0));
+    }
+    let mut condition: Basic =
+        crate::sets::sets::as_relational(&crate::sets::sets::interval(a, b, false, false)?, value)?;
+    if on_lattice.is_none() {
+        condition = crate::core::logic::and_(&[
+            condition,
+            crate::sets::sets::contains(&Basic::atom(Head::Integers), &offset)?,
+        ]);
+    }
     crate::functions::elementary::piecewise::piecewise(&[
         (subs(&expr, x, value)?, condition),
         (int(0), crate::core::logic::true_()),

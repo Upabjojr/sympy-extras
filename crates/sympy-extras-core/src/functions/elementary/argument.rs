@@ -142,7 +142,9 @@ fn atan2_eval(y: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
             return Ok(Some(mul(&[minus_one(), pi()])?));
         }
         if is_true(&real_y, zero) {
-            return Ok(Some(Basic::zero()));
+            // y = I*b: the defining logarithm tends to pi, as for y = 0
+            // (SymPy takes Heaviside(0) = 1/2 and returns 0)
+            return Ok(Some(pi()));
         }
         return Ok(None);
     }
@@ -197,7 +199,20 @@ fn atan2_eval(y: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
             // SymPy: Piecewise((pi, re(x) < 0), (0, Ne(x, 0)), (nan, True)),
             // evaluated when its conditions are decided
             let real_x: Basic = re(&x)?;
-            match crate::core::expr::is(&real_x, extended_negative) {
+            let re_negative: Option<bool> = crate::core::expr::is(&real_x, extended_negative);
+            if re_negative == Some(true) {
+                return Ok(Some(pi()));
+            }
+            if is_true(&real_x, zero) {
+                // on the negative imaginary axis the defining logarithm
+                // gives pi (SymPy returns 0 for atan2(0, -2*I))
+                match crate::core::expr::is(&crate::functions::elementary::complexes::im(&x)?, extended_negative) {
+                    Some(true) => return Ok(Some(pi())),
+                    None => return Ok(None),
+                    Some(false) => {}
+                }
+            }
+            match re_negative {
                 Some(true) => return Ok(Some(pi())),
                 Some(false) => {
                     if is_false(&x, zero) {

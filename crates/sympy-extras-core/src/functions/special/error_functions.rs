@@ -215,9 +215,7 @@ fn erf2inv_eval(x: &Basic, y: &Basic) -> PolyResult<Basic> {
     if zero(y) {
         return Ok(x.clone());
     }
-    if matches!(y.head(), Head::Infinity) {
-        return erfinv(x);
-    }
+    // no value at y = oo: erf(w) - erf(x) is bounded (SymPy returns erfinv(x))
     Ok(node(Function::Erf2inv, vec![x.clone(), y.clone()]))
 }
 
@@ -863,8 +861,8 @@ pub fn integral_conjugate(f: Function, e: &Basic) -> PolyResult<Option<Basic>> {
     let z: &Basic = &e.args()[0];
     match f {
         Function::LogIntegral => {
-            if is_true(z, Predicate::extended_negative) {
-                // the branch cut (-oo, 0): Python's override gives no rule
+            if crate::core::expr::is(z, Predicate::extended_negative) != Some(false) {
+                // the branch cut (-oo, 0), unless z is known to be off it
                 return Ok(None);
             }
             Ok(Some(integral(f, &conjugate(z)?)?))

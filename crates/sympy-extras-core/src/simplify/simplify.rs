@@ -561,6 +561,39 @@ fn simplified_arg(a: &Basic, o: &Options) -> PolyResult<Basic> {
     simplify(a, o)
 }
 
+/// Whether folding `rewritten` (`e` with `sign(u)` as a `Piecewise` with a
+/// case `0` at `u = 0`) gives a value to `e` at a point where it has none
+/// (sympy/sympy#31275, V66) (`_zero_case_at_a_pole`).
+fn zero_case_at_a_pole(e: &Basic, rewritten: &Basic) -> PolyResult<bool> {
+    let folded: Basic = crate::functions::elementary::piecewise::piecewise_fold(rewritten, None)?;
+    for node in folded.preorder() {
+        if !matches!(node.head(), Head::Piecewise) {
+            continue;
+        }
+        for pair in node.args() {
+            let cond: &Basic = &pair.args()[1];
+            if !matches!(cond.head(), Head::Relational(crate::core::basic::RelOp::Eq)) {
+                continue;
+            }
+            let (lhs, rhs) = (&cond.args()[0], &cond.args()[1]);
+            if !(lhs.is_symbol() && crate::core::assumptions::is_number(rhs)) {
+                continue;
+            }
+            let value: Basic = crate::core::subs::subs(e, lhs, rhs)?;
+            let bad: bool = value.preorder().iter().any(|n| {
+                matches!(
+                    n.head(),
+                    Head::NaN | Head::ComplexInfinity | Head::Infinity | Head::NegativeInfinity
+                )
+            });
+            if bad {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// The expression simplified: the shortest of SymPy's heuristics by the
 /// measure, the input when every result is more than `ratio` times longer
 /// (`simplify`). Not ported: the simplification of `Piecewise` conditions,
@@ -645,7 +678,11 @@ pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
     e = crate::core::exprtools::factor_terms(&e, false, false, false, false)?;
     let has_f = |x: &Basic, f: Function| has_head(x, &|n| n.is_function(f));
     if has_f(&e, Function::Sign) {
-        e = crate::core::rewriting::rewrite(&e, &[], "Abs", &crate::core::rewriting::RewriteHints::default())?;
+        let rewritten: Basic =
+            crate::core::rewriting::rewrite(&e, &[], "Abs", &crate::core::rewriting::RewriteHints::default())?;
+        if !zero_case_at_a_pole(&e, &rewritten)? {
+            e = rewritten;
+        }
     }
     let has_pw = |x: &Basic| has_head(x, &|n| matches!(n.head(), Head::Piecewise));
     if has_pw(&e) {

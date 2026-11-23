@@ -442,12 +442,19 @@ fn irrational(e: &Basic, a: &Basic) -> R {
 }
 
 fn real(e: &Basic, a: &Basic) -> R {
-    if matches!(func(e), Some(Function::Abs | Function::Im | Function::Re))
-        || matches!(
-            e.head(),
-            Head::Exp1 | Head::GoldenRatio | Head::Pi | Head::TribonacciConstant
-        )
-        || is_rational_node(e)
+    if matches!(func(e), Some(Function::Abs | Function::Im | Function::Re)) {
+        // SymPy answers True whatever the argument: Abs(oo), re(oo) are oo
+        // (sympy/sympy#31275, V7, V8, V28)
+        return Ok(if is_yes(askq("complex", &e.args()[0], a)?) {
+            Some(true)
+        } else {
+            None
+        });
+    }
+    if matches!(
+        e.head(),
+        Head::Exp1 | Head::GoldenRatio | Head::Pi | Head::TribonacciConstant
+    ) || is_rational_node(e)
     {
         return Ok(Some(true));
     }
@@ -530,9 +537,14 @@ fn real_pow(e: &Basic, a: &Basic) -> R {
         return Ok(odd.map(|o| !o));
     }
     if is_yes(askq("imaginary", exp, a)?) {
-        let imlog: Truth = askq("imaginary", &crate::functions::elementary::exponential::log(base)?, a)?;
-        if imlog.is_some() {
-            return Ok(imlog);
+        // SymPy answers False when log(base) is not imaginary: 5**x is -1
+        // at the imaginary x = I*pi/log(5)
+        if is_yes(askq(
+            "imaginary",
+            &crate::functions::elementary::exponential::log(base)?,
+            a,
+        )?) {
+            return Ok(Some(true));
         }
     }
     if is_yes(askq("real", base, a)?) && is_yes(askq("real", exp, a)?) {
@@ -566,8 +578,24 @@ fn extended_real(e: &Basic, a: &Basic) -> R {
     if matches!(e.head(), Head::Infinity | Head::NegativeInfinity) {
         return Ok(Some(true));
     }
-    if e.is_add() || e.is_mul() || e.is_pow() {
+    if e.is_add() || e.is_mul() {
         return closed_group(e, a, "extended_real");
+    }
+    if e.is_pow() {
+        // not a closed group as in SymPy: (-1)**(1/2) is I
+        if is_yes(askq("real", e, a)?) {
+            return Ok(Some(true));
+        }
+        if is_yes(ask_in(
+            &and_(&[
+                qa("extended_positive", &e.args()[0])?,
+                qa("extended_real", &e.args()[1])?,
+            ]),
+            a,
+        )?) {
+            return Ok(Some(true));
+        }
+        return Ok(None);
     }
     Ok(None)
 }
@@ -580,28 +608,56 @@ fn is_number_symbol(e: &Basic) -> bool {
 }
 
 fn complex(e: &Basic, a: &Basic) -> R {
-    if matches!(
-        func(e),
-        Some(
-            Function::Abs | Function::Cos | Function::Exp | Function::Im | Function::Log | Function::Re | Function::Sin
-        )
-    ) || matches!(e.head(), Head::ImaginaryUnit)
-        || e.is_number_class()
-        || is_number_symbol(e)
-    {
+    if matches!(e.head(), Head::ImaginaryUnit) || e.is_number_class() || is_number_symbol(e) {
         if matches!(e.head(), Head::Infinity | Head::NegativeInfinity | Head::NaN) {
             return Ok(Some(false));
         }
         return Ok(Some(true));
     }
+    // SymPy answers True for these functions whatever the argument:
+    // exp(oo), Abs(oo), re(oo) are oo, log(0) is zoo (sympy/sympy#31275, V5-V8)
+    let one_argument: bool = e.args().len() == 1;
+    if one_argument
+        && matches!(
+            func(e),
+            Some(Function::Abs | Function::Cos | Function::Exp | Function::Im | Function::Re | Function::Sin)
+        )
+    {
+        return Ok(if is_yes(askq("complex", &e.args()[0], a)?) {
+            Some(true)
+        } else {
+            None
+        });
+    }
+    if one_argument && func(e) == Some(Function::Log) {
+        let x: &Basic = &e.args()[0];
+        return Ok(
+            if is_yes(askq("complex", x, a)?) && askq("zero", x, a)? == Some(false) {
+                Some(true)
+            } else {
+                None
+            },
+        );
+    }
     if e.is_add() || e.is_mul() {
         return closed_group(e, a, "complex");
     }
     if e.is_pow() {
-        if matches!(e.args()[0].head(), Head::Exp1) {
+        let (base, exp) = (&e.args()[0], &e.args()[1]);
+        if matches!(base.head(), Head::Exp1) {
+            return Ok(if is_yes(askq("complex", exp, a)?) {
+                Some(true)
+            } else {
+                None
+            });
+        }
+        if is_yes(askq("complex", base, a)?)
+            && is_yes(askq("complex", exp, a)?)
+            && (askq("zero", base, a)? == Some(false) || is_yes(askq("positive", exp, a)?))
+        {
             return Ok(Some(true));
         }
-        return closed_group(e, a, "complex");
+        return Ok(None);
     }
     Ok(None)
 }
@@ -621,20 +677,41 @@ fn imaginary(e: &Basic, a: &Basic) -> R {
         if is_number(e) {
             return Ok(imaginary_number(e));
         }
-        let mut reals: usize = 0;
+        let (mut reals, mut imaginaries): (Vec<Basic>, Vec<Basic>) = (Vec::new(), Vec::new());
         for arg in e.args() {
             if is_yes(askq("imaginary", arg, a)?) {
+                imaginaries.push(arg.clone());
             } else if is_yes(askq("real", arg, a)?) {
-                reals += 1;
+                reals.push(arg.clone());
             } else {
                 return Ok(None);
             }
         }
-        if reals == 0 {
-            return Ok(Some(true));
-        }
-        if reals == 1 || reals == e.args().len() {
+        if imaginaries.is_empty() {
             return Ok(Some(false));
+        }
+        // imaginary terms may cancel and the real term may be zero
+        // (sympy/sympy#31275, V17-V21)
+        let minus_i: Basic = crate::core::mul::neg(&Basic::imaginary_unit())?;
+        let mut all_positive: bool = true;
+        let mut all_negative: bool = true;
+        for t in &imaginaries {
+            let scaled: Basic = crate::core::mul::mul(&[minus_i.clone(), t.clone()])?;
+            all_positive = all_positive && is_yes(askq("positive", &scaled, a)?);
+            all_negative = all_negative && is_yes(askq("negative", &scaled, a)?);
+        }
+        let same_side: bool = imaginaries.len() == 1 || all_positive || all_negative;
+        if reals.is_empty() {
+            return Ok(if same_side { Some(true) } else { None });
+        }
+        if reals.len() == 1 {
+            let zero: Truth = askq("zero", &reals[0], a)?;
+            if zero == Some(false) {
+                return Ok(Some(false));
+            }
+            if zero == Some(true) && same_side {
+                return Ok(Some(true));
+            }
         }
         return Ok(None);
     }
@@ -710,7 +787,11 @@ fn imaginary_pow(e: &Basic, a: &Basic) -> R {
         return askq("odd", exp, a);
     }
     if is_yes(askq("imaginary", exp, a)?)
-        && askq("imaginary", &crate::functions::elementary::exponential::log(base)?, a)?.is_some()
+        && is_yes(askq(
+            "imaginary",
+            &crate::functions::elementary::exponential::log(base)?,
+            a,
+        )?)
     {
         return Ok(Some(false));
     }
@@ -722,12 +803,19 @@ fn imaginary_pow(e: &Basic, a: &Basic) -> R {
         if !is_yes(rat) {
             return Ok(rat);
         }
-        if is_yes(askq("integer", exp, a)?) {
+        let integer: Truth = askq("integer", exp, a)?;
+        if is_yes(integer) {
             return Ok(Some(false));
         }
         let half: Truth = askq("integer", &times(2, exp)?, a)?;
         if is_yes(half) {
-            return askq("negative", base, a);
+            let negative: Truth = askq("negative", base, a)?;
+            if integer == Some(false) || negative == Some(false) {
+                return Ok(negative);
+            }
+            // SymPy answers True for a negative base without asking
+            // whether the exponent is an integer (sympy/sympy#31275, V24)
+            return Ok(None);
         }
         return Ok(half);
     }
@@ -865,7 +953,15 @@ fn nonzero(e: &Basic, a: &Basic) -> R {
         return Ok(Some(true));
     }
     if e.is_pow() {
-        return askq("nonzero", &e.args()[0], a);
+        // Q.nonzero is real and not zero: SymPy answers with the base alone
+        // (sympy/sympy#31275, V26, V27)
+        if is_yes(askq("nonzero", &e.args()[0], a)?) {
+            return askq("real", e, a);
+        }
+        if is_yes(askq("zero", &e.args()[0], a)?) && is_yes(askq("positive", &e.args()[1], a)?) {
+            return Ok(Some(false));
+        }
+        return Ok(None);
     }
     if func(e) == Some(Function::Abs) {
         return askq("nonzero", &e.args()[0], a);
@@ -1025,7 +1121,18 @@ fn positive(e: &Basic, a: &Basic) -> R {
             }
             Ok(None)
         }
-        Some(Function::Acot) => askq("real", &e.args()[0], a),
+        Some(Function::Acot) => {
+            // acot is odd, acot(-1) is -pi/4: SymPy answers True for every
+            // real argument (sympy/sympy#31275, V31)
+            let x: &Basic = &e.args()[0];
+            if is_yes(askq("nonnegative", x, a)?) {
+                return Ok(Some(true));
+            }
+            if is_yes(askq("negative", x, a)?) {
+                return Ok(Some(false));
+            }
+            Ok(None)
+        }
         _ => Ok(None),
     }
 }

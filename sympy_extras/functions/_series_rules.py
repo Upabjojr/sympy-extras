@@ -107,8 +107,12 @@ def _abs(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Option
     on_real = _e(_arg(f).subs(x, real_x))
     if on_real.is_extended_real is not True:
         from sympy_extras.functions.elementary.complexes import Im, Re, im, re
-        modulus = (re(on_real)**2 + im(on_real)**2)**Rational(1, 2)
-        parts_known = not any(isinstance(node, (Re, Im)) and node.has(real_x) for node in preorder_traversal(modulus))
+        imaginary = im(on_real)
+        # an imaginary part 0 (sin(1 + 1/x), real where it is defined) is the real case below: its
+        # modulus sqrt(re**2) gives Abs(re) back on a new real x, without end
+        modulus = (re(on_real)**2 + imaginary**2)**Rational(1, 2)
+        parts_known = imaginary != 0 and not any(
+            isinstance(node, (Re, Im)) and node.has(real_x) for node in preorder_traversal(modulus))
         if parts_known and not modulus.has(Abs):
             return _e(_ns(modulus, real_x, n, logx).subs(real_x, x))
     direction = _arg(f).leadterm(x)[0]

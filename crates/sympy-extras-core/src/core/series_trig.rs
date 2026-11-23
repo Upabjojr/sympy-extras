@@ -358,7 +358,7 @@ pub fn leading_term(e: &Basic, f: Function, x: &Basic, logx: Option<&Basic>, cdi
 
 /// `arg.subs(x, 0).cancel()`.
 fn subs0(arg: &Basic, x: &Basic) -> R {
-    crate::polys::polytools::cancel(&subs(arg, x, &Basic::zero())?, &[])
+    crate::core::series::value_at_zero(arg, x)
 }
 
 /// `trig_leading_term`: `k` the multiple of the period at the value of

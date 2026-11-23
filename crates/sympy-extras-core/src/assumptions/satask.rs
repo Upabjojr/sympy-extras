@@ -188,7 +188,10 @@ fn q(name: &'static str) -> impl Fn(&Basic) -> Basic {
 fn abs_facts(expr: &Basic) -> Vec<Basic> {
     let arg: &Basic = &expr.args()[0];
     vec![
-        q1("nonnegative", expr),
+        // SymPy states Q.nonnegative(expr) whatever the argument: Abs(oo)
+        // is oo (sympy/sympy#31275, V7)
+        q1("extended_nonnegative", expr),
+        implies(&q1("complex", arg), &q1("nonnegative", expr)),
         equivalent(&[not_(&q1("zero", arg)), not_(&q1("zero", expr))]),
         implies(&q1("even", arg), &q1("even", expr)),
         implies(&q1("odd", arg), &q1("odd", expr)),
@@ -264,7 +267,13 @@ fn pow_facts(expr: &Basic) -> Vec<Basic> {
             &and_(&[q1("nonpositive", base), q1("odd", exp), q1("nonnegative", exp)]),
             &q1("nonpositive", expr),
         ),
-        equivalent(&[q1("zero", expr), and_(&[q1("zero", base), q1("positive", exp)])]),
+        // SymPy states the equivalence: 2**(-oo), oo**(-1) and 0**(1 + I)
+        // are 0 (sympy/sympy#31275, V33)
+        implies(&and_(&[q1("zero", base), q1("positive", exp)]), &q1("zero", expr)),
+        implies(
+            &and_(&[q1("zero", expr), q1("finite", base), q1("finite", exp)]),
+            &q1("zero", base),
+        ),
     ]
 }
 

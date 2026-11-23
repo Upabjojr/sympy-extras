@@ -1215,6 +1215,14 @@ fn shifted_variable(z: &Basic, z0: &Basic, dir: &str) -> Basic {
     Dummy::new("h", &[]).0
 }
 
+/// Whether `f` has a power of `w` whose exponent is not a number
+/// (`_has_symbolic_power`).
+fn has_symbolic_power(f: &Basic, w: &Basic) -> bool {
+    f.preorder()
+        .iter()
+        .any(|t| t.is_pow() && t.args()[0] == *w && !t.args()[1].free_symbols().is_empty())
+}
+
 fn mrv_leadterm(e: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
     if !e.has(x) {
         return Ok((e.clone(), Basic::zero()));
@@ -1235,6 +1243,12 @@ fn mrv_leadterm(e: &Basic, x: &Basic) -> PolyResult<(Basic, Basic)> {
     let f: Basic = crate::core::function::replace_where(&f0, &query, &value)?;
     let lt: (Basic, Basic) = match leadterm(&f, &w, Some(&logw), &Basic::zero()) {
         Ok(v) => v,
+        Err(err @ PolyError::NotImplemented(_)) if caught(&err, true, true, true) && has_symbolic_power(&f, &w) => {
+            // not SymPy's: the series below writes a power w**c with a
+            // symbolic c as exp(c*log(w)) and orders the terms by the other
+            // powers of w (sympy/sympy#31017, W7)
+            return Err(err);
+        }
         Err(err) if caught(&err, true, true, true) => {
             let n0: i64 = 1;
             let mut series: Basic = crate::core::order::order(&Basic::one(), &[])?;

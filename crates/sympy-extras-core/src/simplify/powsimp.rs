@@ -188,6 +188,15 @@ fn number_gcd(a: &Basic, b: &Basic) -> Basic {
 }
 
 /// `(b**e1)**e2` denested where valid (`_denest_pow`).
+/// Whether the imaginary part of `e` is certainly in `(-pi, pi]`: a real
+/// expression, a logarithm, or a sum of real terms and at most one
+/// logarithm (`_principal_sum`).
+fn principal_sum(e: &Basic) -> bool {
+    let terms: Vec<Basic> = terms_of(e);
+    let others: Vec<&Basic> = terms.iter().filter(|t| !is_true(t, Predicate::extended_real)).collect();
+    others.is_empty() || (others.len() == 1 && is_log(others[0]))
+}
+
 fn denest_pow(eq: &Basic) -> PolyResult<Basic> {
     let mut eq: Basic = eq.clone();
     let (mut b, mut e) = as_base_exp(&eq)?;
@@ -210,7 +219,36 @@ fn denest_pow(eq: &Basic) -> PolyResult<Basic> {
                 other.push(ei.clone());
             }
         }
-        return pow(&exp(&logcombine(&mul(&logs)?, false)?)?, &mul(&other)?);
+        let exponent: Basic = mul(&other)?;
+        // exp(c*L) is exp(L)**c when c is an integer or the imaginary part
+        // of L is in (-pi, pi] (sympy/sympy#31275, V232)
+        let real = |t: &Basic| is_true(t, Predicate::extended_real);
+        if is_true(&exponent, Predicate::integer)
+            || logs.iter().all(real)
+            || (logs.len() == 1 && principal_sum(&logs[0]))
+        {
+            return pow(&exp(&logcombine(&mul(&logs)?, false)?)?, &exponent);
+        }
+        if logs.len() == 1 {
+            let terms: Vec<Basic> = logs[0].args().to_vec();
+            if logs[0].is_add() && terms.iter().all(principal_sum) {
+                // exp(c*(L1 + L2)) is exp(L1)**c*exp(L2)**c
+                return mul(&terms
+                    .iter()
+                    .map(|t| pow(&exp(t)?, &exponent))
+                    .collect::<PolyResult<Vec<_>>>()?);
+            }
+            return Ok(eq);
+        }
+        for (position, entry) in logs.iter().enumerate() {
+            if principal_sum(entry) {
+                let mut rest: Vec<Basic> = vec![exponent.clone()];
+                rest.extend(logs[..position].iter().cloned());
+                rest.extend(logs[position + 1..].iter().cloned());
+                return pow(&exp(&logcombine(entry, false)?)?, &mul(&rest)?);
+            }
+        }
+        return Ok(eq);
     }
     let (_, be) = as_base_exp(&b)?;
     let non_integer_rational: bool = b.as_rational().is_some_and(|v| !v.is_int()) && is_rational(&b);

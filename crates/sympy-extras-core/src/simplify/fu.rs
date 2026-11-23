@@ -1278,10 +1278,6 @@ fn ok_n(ni: &Basic) -> Option<(Basic, Basic)> {
     None
 }
 
-fn sum_of_args(t: &Basic) -> R {
-    add(&t.args().iter().map(arg).collect::<Vec<Basic>>())
-}
-
 /// `(tan(a) + tan(b))/(1 - tan(a)*tan(b))` as `tan(a + b)` (`TR12i`).
 pub fn tr12i(rv: &Basic) -> R {
     bottom(rv, &|e: &Basic| -> R {
@@ -1298,7 +1294,9 @@ pub fn tr12i(rv: &Basic) -> R {
         while i < d_args.len() {
             let di: Basic = d_args[i].clone();
             if let Some((g, t)) = ok_d(&di)? {
-                opt_set(&mut dok, sum_of_args(&t)?, Basic::one());
+                // the denominators told apart by their product of tangents
+                let count: Basic = add2(&opt_get(&dok, &t).cloned().unwrap_or_else(Basic::zero), &Basic::one())?;
+                opt_set(&mut dok, t, count);
                 d_args[i] = g;
             } else if di.is_add() {
                 let fd: Basic = factor(&di)?;
@@ -1309,9 +1307,16 @@ pub fn tr12i(rv: &Basic) -> R {
             } else if di.is_pow()
                 && (is_true(&di.args()[1], Predicate::integer) || is_true(&di.args()[0], Predicate::positive))
             {
-                if let Some((g, t)) = ok_d(&di.args()[0])? {
-                    opt_set(&mut dok, sum_of_args(&t)?, di.args()[1].clone());
+                let found = ok_d(&di.args()[0])?;
+                if let Some((g, t)) = found
+                    .clone()
+                    .filter(|(g, _)| is_true(&di.args()[1], Predicate::integer) || is_true(g, Predicate::positive))
+                {
+                    let count: Basic = add2(&opt_get(&dok, &t).cloned().unwrap_or_else(Basic::zero), &di.args()[1])?;
+                    opt_set(&mut dok, t, count);
                     d_args[i] = pow(&g, &di.args()[1])?;
+                } else if found.is_some() {
+                    // a power whose cofactor is not known to be positive stays
                 } else {
                     let fd: Basic = factor(&di)?;
                     if fd.is_mul() {
@@ -1348,7 +1353,8 @@ pub fn tr12i(rv: &Basic) -> R {
                 {
                     m = ok_n(&ni.args()[0]);
                     if m.is_some() {
-                        n_args[i] = Basic::one();
+                        // one factor to the tangent of the sum, the others kept
+                        n_args[i] = pow(&ni.args()[0], &add2(&ni.args()[1], &Basic::negative_one())?)?;
                     } else {
                         let fnn: Basic = factor(&ni)?;
                         if fnn.is_mul() {
@@ -1365,28 +1371,30 @@ pub fn tr12i(rv: &Basic) -> R {
             } else {
                 n_args[i] = Basic::one();
             }
-            hit = true;
             let (t1, t2) = m.expect("a pair");
-            let s: Basic = add2(&arg(&t1), &arg(&t2))?;
-            let Some(ed) = opt_get(&dok, &s).cloned() else {
-                return Err(PolyError::Index(format!("no denominator for {}", s)));
+            let key: Basic = mul2(&t1, &t2)?;
+            let Some(ed) = opt_get(&dok, &key).cloned() else {
+                // no denominator tan(a)*tan(b) - 1 for this sum: the factor stays
+                n_args[i] = ni;
+                i += 1;
+                continue;
             };
-            if let Some(newed) = crate::core::expr::extract_additively(&ed, &Basic::one())? {
-                if !is_zero_number(&newed) {
-                    opt_set(&mut dok, s.clone(), newed);
-                } else {
-                    dok.retain(|(k, _)| *k != s);
-                }
+            hit = true;
+            let newed: Basic = add2(&ed, &Basic::negative_one())?;
+            if is_zero_number(&newed) {
+                dok.retain(|(k, _)| *k != key);
+            } else {
+                opt_set(&mut dok, key.clone(), newed);
             }
+            let s: Basic = add2(&arg(&t1), &arg(&t2))?;
             n_args[i] = mul2(&n_args[i], &neg(&tan(&s)?)?)?;
             i += 1;
         }
         if hit {
+            // the denominators which are left, as they were
             let mut parts: Vec<Basic> = Vec::new();
             for (k, ex) in &dok {
-                let ks: Vec<Basic> = if k.is_add() { k.args().to_vec() } else { vec![k.clone()] };
-                let tans: Basic = add(&ks.iter().map(tan).collect::<PolyResult<Vec<Basic>>>()?)?;
-                parts.push(pow(&add2(&tans, &Basic::negative_one())?, ex)?);
+                parts.push(pow(&add2(k, &Basic::negative_one())?, ex)?);
             }
             let denominator: Basic = mul(&parts)?;
             return mul(&[mul(&n_args)?, inv(&mul(&d_args)?)?, inv(&denominator)?]);

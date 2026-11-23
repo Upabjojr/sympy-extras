@@ -4,12 +4,10 @@
 
 #![allow(clippy::mutable_key_type)]
 
-use std::collections::HashMap;
-
-use crate::core::basic::{Basic, Head};
+use crate::core::basic::Basic;
 use crate::error::{value_error, PolyError, PolyResult};
 use crate::matrices::dense::ExprMatrix;
-use crate::matrices::linalg::{linear_solve, normal, square};
+use crate::matrices::linalg::{linear_solve, square};
 
 /// A particular solution and a basis of the homogeneous solutions
 /// (`MatrixSolution`).
@@ -67,15 +65,7 @@ pub fn unvec(v: &ExprMatrix, rows: usize, cols: usize) -> PolyResult<ExprMatrix>
 
 /// The conjugate transpose (`adjoint`).
 pub fn adjoint(m: &ExprMatrix) -> PolyResult<ExprMatrix> {
-    let transposed: ExprMatrix = m.transpose();
-    let i: Basic = Basic::atom(Head::ImaginaryUnit);
-    if !transposed.has(&i) {
-        return Ok(transposed);
-    }
-    let rule: HashMap<Basic, Basic> = [(i.clone(), crate::core::mul::neg(&i)?)].into_iter().collect();
-    transposed
-        .applyfunc(&|e| crate::core::function::xreplace_evaluated(e, &rule))?
-        .applyfunc(&normal)
+    crate::matrices::linalg::conjugate_transpose(m)
 }
 
 /// The solutions of `sum A_k X B_k = C` (`linear_matrix_equation`).

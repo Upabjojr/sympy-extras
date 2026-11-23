@@ -82,7 +82,13 @@ fn difference_delta_rule(e: &Basic, n: &Basic, h: &Basic) -> OptR {
     if matches!(e.head(), Head::Sum) {
         use crate::concrete::expr_with_limits::{limits, sum_};
         let lims = limits(e);
-        let (k, _, upper) = lims[lims.len() - 1].clone();
+        let (k, lower, upper) = lims[lims.len() - 1].clone();
+        // SymPy takes the new terms of the last limit only, with the
+        // summand at n: wrong when the summand or the lower limit depends
+        // on n too (sympy/sympy#31275, V213)
+        if k == *n || lower.has(n) {
+            return Ok(None);
+        }
         let new_upper: Basic = subs(&upper, n, &a2(n, h)?)?;
         let tuple = |l: &(Basic, Basic, Basic)| Basic::new(Head::Tuple, vec![l.0.clone(), l.1.clone(), l.2.clone()]);
         let f: Basic = if lims.len() == 1 {
@@ -93,8 +99,16 @@ fn difference_delta_rule(e: &Basic, n: &Basic, h: &Basic) -> OptR {
                 &lims[..lims.len() - 1].iter().map(tuple).collect::<Vec<_>>(),
             )?
         };
-        let last: Basic = Basic::new(Head::Tuple, vec![k, a2(&upper, &Basic::one())?, new_upper]);
-        return Ok(Some(crate::core::function::doit(&sum_(&f, &[last])?)?));
+        let last: Basic = Basic::new(Head::Tuple, vec![k.clone(), a2(&upper, &Basic::one())?, new_upper]);
+        let shifted: Basic = subs(&f, n, &a2(n, h)?)?;
+        let new_terms: Basic = crate::core::function::doit(&sum_(&shifted, &[last])?)?;
+        if !f.has(n) {
+            return Ok(Some(new_terms));
+        }
+        let inner: Basic = difference_delta(&f, n, h)?;
+        let whole: Basic = Basic::new(Head::Tuple, vec![k, lower, upper]);
+        let rest: Basic = crate::core::function::doit(&sum_(&inner, &[whole])?)?;
+        return Ok(Some(a2(&new_terms, &rest)?));
     }
     Ok(None)
 }
