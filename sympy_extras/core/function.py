@@ -36,6 +36,7 @@ References
 from __future__ import annotations
 
 import inspect
+import operator
 
 import mpmath
 from fractions import Fraction
@@ -894,7 +895,8 @@ class Derivative(Expr):
             elif isinstance(v, Tuple):
                 counts.append(_as_count(v))
             else:
-                counts.append((v[0], v[1]))
+                # an Integer count is kept as an int: Tuple(s, Integer(n)) of args is not nested
+                counts.append((v[0], operator.index(v[1])))
         self._counts: Final[tuple[VariableCount, ...]] = _merge_counts(counts)
         Basic.__init__(self)
 

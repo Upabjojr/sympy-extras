@@ -1,0 +1,1263 @@
+[
+[
+"chini_ode",
+"-y(x)**3 + Derivative(y(x), x) - 1/x**(3/2)",
+"y(x)"
+],
+[
+"chini_ode",
+"-x**2*y(x)**3 + x**2 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"chini_ode",
+"-y(x)**3 - y(x) + Derivative(y(x), x) - 1",
+"y(x)"
+],
+[
+"chini_ode",
+"-x - y(x)**3 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"chini_ode",
+"-x*y(x)**2 - y(x)**3 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"abel_ode",
+"-y(x)**3 - 3*y(x)**2 - 3*y(x) + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"abel_ode",
+"-x**2*(y(x)**3 + 3*y(x)**2 + 3*y(x) + 1) - x**2 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"abel_ode",
+"-3*y(x)**2 + y(x)*Derivative(y(x), x) - 3*y(x) - 1",
+"y(x)"
+],
+[
+"abel_ode",
+"-x - y(x)**3 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"abel_ode",
+"-y(x)**3 + Derivative(y(x), (x, 2))",
+"y(x)"
+],
+[
+"lagrange_ode",
+"Eq(y(x), 2*x*Derivative(y(x), x) + Derivative(y(x), x)**2)",
+"y(x)"
+],
+[
+"lagrange_ode",
+"Eq(y(x), x*Derivative(y(x), x)**2 + Derivative(y(x), x))",
+"y(x)"
+],
+[
+"lagrange_ode",
+"Eq(y(x), x*Derivative(y(x), x) + Derivative(y(x), x)**2)",
+"y(x)"
+],
+[
+"lagrange_ode",
+"-y(x)**2 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"dsolve_first_order",
+"Eq(y(x), 2*x*Derivative(y(x), x) + Derivative(y(x), x)**2)",
+"y(x)",
+"True"
+],
+[
+"dsolve_first_order",
+"-x - sqrt(y(x)) + Derivative(y(x), x)",
+"y(x)",
+"True"
+],
+[
+"dsolve_first_order",
+"-x**2 - sqrt(y(x)) + Derivative(y(x), x)",
+"y(x)",
+"True"
+],
+[
+"riccati_ode",
+"y(x)**2 + Derivative(y(x), x) - 2/x**2",
+"y(x)",
+"True"
+],
+[
+"riccati_ode",
+"a*x + b + y(x)**2 + Derivative(y(x), x)",
+"y(x)",
+"True"
+],
+[
+"riccati_ode",
+"a*y(x)**2 - b*x**3 + Derivative(y(x), x)",
+"y(x)",
+"True"
+],
+[
+"riccati_ode",
+"-y(x)**3 + Derivative(y(x), x)",
+"y(x)",
+"True"
+],
+[
+"dsolve_first_order",
+"a*x + b + y(x)**2 + Derivative(y(x), x)",
+"y(x)",
+"True"
+],
+[
+"abel_ode",
+"-x + y(x)*Derivative(y(x), x) - y(x)",
+"y(x)"
+],
+[
+"riccati_ode",
+"a*x + b + y(x)**2 + Derivative(y(x), x)",
+"y(x)",
+"False"
+],
+[
+"dsolve_first_order",
+"y(x)**2 + Derivative(y(x), x) - 2/x**2",
+"y(x)",
+"True"
+],
+[
+"abel_invariants",
+"(x, 1, -x, x**2 + 1)",
+"x"
+],
+[
+"abel_invariants",
+"(2*t**5 + 2*t**3, 6*t**7 + 6*t**5 + 2*t**2, (6*t**10 + 6*t**8 + 4*t**5 - 2*t**4 - 2*t**2 - 1)/t, 2*t**11 + 2*t**9 + 2*t**6 - 2*t**5 + 2*t**4 - 2*t**3 + 4*t**2 - 3*t + 4)",
+"t"
+],
+[
+"abel_invariants",
+"(1, 0, 0, x**(-3/2))",
+"x"
+],
+[
+"constant_invariant",
+"(1, 0, 0, x**(-3/2))",
+"x"
+],
+[
+"constant_invariant",
+"(-1, -2*x, 0, 0)",
+"x"
+],
+[
+"abel_equivalence",
+"(-1, 2 - 2*x, 0, 0)",
+"x",
+"(-1, -2*t, 0, 0)",
+"t"
+],
+[
+"abel_equivalence",
+"(-2*x**3, -4*x**4 - 6*x**2, (-8*x**4 - 6*x**2 - 1)/x, -4*x**2 - 2)",
+"x",
+"(-1, -2*t, 0, 0)",
+"t"
+],
+[
+"abel_equivalence",
+"(1, 0, 0, x**(-3/2))",
+"x",
+"(-1, -2*t, 0, 0)",
+"t"
+],
+[
+"particular_solution",
+"(-1, -2*x, 0, 0)",
+"x",
+"2"
+],
+[
+"particular_solution",
+"(1, 0, -x**2, 1)",
+"x",
+"2"
+],
+[
+"particular_solution",
+"(1, 0, 0, exp(x))",
+"x",
+"2"
+],
+[
+"air_solution",
+"(-1, -2*x, 0, 0)",
+"x",
+"y(x)"
+],
+[
+"air_solution",
+"(-1/x, x**(-2), 0, 0)",
+"x",
+"y(x)"
+],
+[
+"air_solution",
+"(-1/x**2, 2/x**3, 0, 0)",
+"x",
+"y(x)"
+],
+[
+"air_solution",
+"(1, 0, -x**2, 1)",
+"x",
+"y(x)"
+],
+[
+"abel_by_invariants",
+"-(2 - 2*x)*y(x)**2 + y(x)**3 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"abel_ode",
+"-(2 - 2*x)*y(x)**2 + y(x)**3 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"abel_by_invariants",
+"-y(x)**3 - exp(x) + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"abel_equivalence",
+"(-1/(x**3 + x**2), (-3*x**2 - 3*x + 1)/(x**3 + 2*x**2 + x), (-3*x**4 - 3*x**3 + 3*x**2 + 2*x + 1)/(x**3 + 2*x**2 + x), (-x**5 - x**4 - 2*x**2 - x)/(x**2 + 2*x + 1))",
+"x",
+"(-1/t, t**(-2), 0, 0)",
+"t"
+],
+[
+"abel_equivalence",
+"(-1/(x**3 + x**2), (-3*x**2 - 3*x + 1)/(x**3 + 2*x**2 + x), (-3*x**4 - 3*x**3 + 3*x**2 + 2*x + 1)/(x**3 + 2*x**2 + x), (-x**5 - x**4 - 2*x**2 - x)/(x**2 + 2*x + 1))",
+"x",
+"(-1, -2*t, 0, 0)",
+"t"
+],
+[
+"abel_ode",
+"2*x**3*y(x)**3 + 4*x**2 - (-4*x**4 - 6*x**2)*y(x)**2 + Derivative(y(x), x) + 2 - (-8*x**4 - 6*x**2 - 1)*y(x)/x",
+"y(x)"
+],
+[
+"abel_by_invariants",
+"2*x**3*y(x)**3 + 4*x**2 - (-4*x**4 - 6*x**2)*y(x)**2 + Derivative(y(x), x) + 2 - (-8*x**4 - 6*x**2 - 1)*y(x)/x",
+"y(x)"
+],
+[
+"abel_ode",
+"-(-3*x**2 - 3*x + 1)*y(x)**2/(x**3 + 2*x**2 + x) + Derivative(y(x), x) - (-3*x**4 - 3*x**3 + 3*x**2 + 2*x + 1)*y(x)/(x**3 + 2*x**2 + x) - (-x**5 - x**4 - 2*x**2 - x)/(x**2 + 2*x + 1) + y(x)**3/(x**3 + x**2)",
+"y(x)"
+],
+[
+"abel_by_invariants",
+"-(-3*x**2 - 3*x + 1)*y(x)**2/(x**3 + 2*x**2 + x) + Derivative(y(x), x) - (-3*x**4 - 3*x**3 + 3*x**2 + 2*x + 1)*y(x)/(x**3 + 2*x**2 + x) - (-x**5 - x**4 - 2*x**2 - x)/(x**2 + 2*x + 1) + y(x)**3/(x**3 + x**2)",
+"y(x)"
+],
+[
+"abel_ode",
+"-y(x)**3 + Derivative(y(x), x) - 1/x**(3/2)",
+"y(x)"
+],
+[
+"abel_ode",
+"Eq(Derivative(y(x), x), x*y(x)**3 + y(x)**2)",
+"y(x)"
+],
+[
+"second_order_rhs",
+"x*Derivative(y(x), (x, 2)) - y(x)**2 + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"second_order_rhs",
+"-y(x) + Derivative(y(x), (x, 2))**2",
+"y(x)"
+],
+[
+"second_order_rhs",
+"-y(x) + Derivative(y(x), (x, 3))",
+"y(x)"
+],
+[
+"integrating_factor_xy",
+"-p**2/y",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_xy",
+"-p/x",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_xy",
+"-p/x - y/x**2",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_xy",
+"-2*p/x",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_xy",
+"(p - y/x)/x",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_xy",
+"y**2",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_xy",
+"p**3",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_p",
+"p**3*(p*y + x)",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_p",
+"(p*y + x)/p",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_p",
+"(p*x + y)*exp(-p)",
+"x",
+"y",
+"p"
+],
+[
+"integrating_factor_p",
+"p**3*(p*x + y**2)",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"p**2",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"-3*p*y - y**3",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"(-p**2*exp(y) - 4*p*x - 2*y)/(x**2 + exp(y))",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"2*p*(p**2*x - p*y - 1)/(x - 2*y**2)",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"(6*p**3*x*y - 2*p)/(x - 3*y**3)",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"y**2",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"(-p**2 - 1)/y",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"(p**2 + 1)/y",
+"x",
+"y",
+"p"
+],
+[
+"is_linearizable",
+"p**4",
+"x",
+"y",
+"p"
+],
+[
+"linearize",
+"p**2",
+"x",
+"y",
+"p"
+],
+[
+"linearize",
+"(-p**2*exp(y) - 4*p*x - 2*y)/(x**2 + exp(y))",
+"x",
+"y",
+"p"
+],
+[
+"linearize",
+"-3*p*y - y**3",
+"x",
+"y",
+"p"
+],
+[
+"linearize",
+"y**2",
+"x",
+"y",
+"p"
+],
+[
+"ode_symmetries",
+"y(x)**3 + 3*y(x)*Derivative(y(x), x) + Derivative(y(x), (x, 2))",
+"y(x)",
+"3"
+],
+[
+"transformed_rhs",
+"-3*p*y - y**3",
+"x - 1/y",
+"1/(2*y**2)",
+"x",
+"y",
+"p",
+"_v"
+],
+[
+"ode_symmetries",
+"-y(x)**2 + Derivative(y(x), (x, 2))",
+"y(x)",
+"3"
+],
+[
+"dsolve_second_order",
+"-Derivative(y(x), x)**2 + Derivative(y(x), (x, 2))",
+"y(x)",
+"3",
+"True"
+],
+[
+"dsolve_second_order",
+"y(x)**3 + 3*y(x)*Derivative(y(x), x) + Derivative(y(x), (x, 2))",
+"y(x)",
+"3",
+"True"
+],
+[
+"dsolve_second_order",
+"y(x)*Derivative(y(x), (x, 2)) + Derivative(y(x), x)**2",
+"y(x)",
+"3",
+"True"
+],
+[
+"dsolve_second_order",
+"x**2*Derivative(y(x), (x, 2)) + x*Derivative(y(x), x) + y(x)",
+"y(x)",
+"3",
+"True"
+],
+[
+"dsolve_second_order",
+"y(x)*Derivative(y(x), x)**2 + Derivative(y(x), (x, 2))",
+"y(x)",
+"3",
+"True"
+],
+[
+"dsolve_second_order",
+"-y(x)**2 + Derivative(y(x), (x, 2))",
+"y(x)",
+"3",
+"True"
+],
+[
+"dsolve_second_order",
+"Eq(-y(x) + Derivative(y(x), (x, 2)) + Derivative(y(x), x)/x, 0)",
+"y(x)",
+"3",
+"True"
+],
+[
+"transformed_rhs",
+"-3*p*y - y**3",
+"x - 1/y",
+"1/(2*y**2)",
+"x",
+"y",
+"p",
+"v"
+],
+[
+"check_ode_solution",
+"y(x)*Derivative(y(x), x)**2 + Derivative(y(x), (x, 2))",
+"Eq(sqrt(2)*sqrt(pi)*erfi(sqrt(2)*y(x)/2)/2, C1*x + C2)",
+"y(x)",
+"False"
+],
+[
+"ode_symmetries",
+"Derivative(y(x), (x, 2))",
+"y(x)",
+"2"
+],
+[
+"ode_symmetries",
+"y(x)**5 + Derivative(y(x), (x, 2)) + 2*Derivative(y(x), x)/x",
+"y(x)",
+"2"
+],
+[
+"ode_symmetries",
+"-y(x)**2 + Derivative(y(x), x) - 1/x**2",
+"y(x)",
+"2"
+],
+[
+"dsolve_lie",
+"Derivative(y(x), (x, 2)) - Derivative(y(x), x)**2/y(x)",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"dsolve_lie",
+"-y(x)**2 + Derivative(y(x), x) - 1/x**2",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"dsolve_lie",
+"Derivative(y(x), (x, 2)) - Derivative(y(x), x)**2/y(x) - Derivative(y(x), x)/x",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"dsolve_lie",
+"2*x*y(x) - x*exp(-x**2) + Derivative(y(x), x)",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"solve_ode",
+"-y(x) + Derivative(y(x), x)",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"solve_ode",
+"Derivative(y(x), (x, 2)) - Derivative(y(x), x)**2/y(x) - Derivative(y(x), x)/x",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"solve_ode",
+"Eq((-2*x**2 - x + 1)*Derivative(y(x), x) + 3*y(x) + Derivative(y(x), (x, 2)), 0)",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"solve_ode",
+"-x**4 + x**3*Derivative(y(x), x) - y(x)**2",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"solve_ode",
+"-k*y(x) - exp(x) + Derivative(y(x), x)",
+"y(x)",
+"2",
+"True",
+"True"
+],
+[
+"check_ode_solution",
+"-y(x) + Derivative(y(x), x)",
+"Eq(y(x), C1*exp(x))",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-y(x) + Derivative(y(x), x)",
+"Eq(y(x), C1*exp(2*x))",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"Derivative(y(x), x) + Derivative(y(x), (x, 2))",
+"C1 + C2*exp(-x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"Eq(Derivative(y(x), x), y(x))",
+"Eq(C1*exp(x), y(x))",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"x + y(x)*Derivative(y(x), x)",
+"Eq(x**2 + y(x)**2, C1)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"(cos(y(x)) + 1)*Derivative(y(x), x) - 1",
+"Eq(y(x) + sin(y(x)), C1 + x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"Derivative(y(x), x) - exp(-y(x))/y(x)",
+"Eq(x - (y(x) - 1)*exp(y(x)), C1)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-x + y(x)*Derivative(y(x), x)",
+"Eq(x**2 + y(x)**2, C1)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-(a + x**2)*y(x) + Derivative(y(x), (x, 2))",
+"Eq(y(x), (x**2)**(3/4)*exp(-x**2/2)*hyper((a/4 + 3/4,), (3/2,), x**2)/sqrt(x))",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-a*y(x) - x*Derivative(y(x), x) + x*Derivative(y(x), (x, 2))",
+"Eq(y(x), x*hyper((a + 1,), (2,), x))",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-a*y(x) - x*Derivative(y(x), x) + x*Derivative(y(x), (x, 2))",
+"Eq(y(x), x*hyper((a + 2,), (2,), x))",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"a*Derivative(y(x), x) + b*x*y(x) + x*Derivative(y(x), (x, 2))",
+"Eq(y(x), sqrt(x)*besselj(a/2 - 1/2, sqrt(b)*x)/x**(a/2))",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-3*x**2 - 2*x*y(x)**2 + (2*x**2*y(x) + 3*y(x)**2)*Derivative(y(x), x)",
+"Eq(-x**3 + x**2*y(x)**2 + y(x)**3, 0)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"Derivative(y(x), x) - 1/(2*sqrt(x))",
+"Eq(y(x)**2, x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"2*y(x)*Derivative(y(x), x) - 1",
+"Eq(y(x)**2, x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"(cos(y(x)) + 1)*Derivative(y(x), x) + 1",
+"Eq(y(x) + sin(y(x)), C1 + x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"(cos(y(x)) + 1)*Derivative(y(x), x) + 1",
+"Eq(y(x) + sin(y(x)), C1 + x)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"(5*y(x)**4 + 1)*Derivative(y(x), x) - 1",
+"Eq(y(x)**5 + y(x), C1 + x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"(5*y(x)**4 + 1)*Derivative(y(x), x) - 1",
+"Eq(y(x)**5 + y(x), C1 + x)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"(5*y(x)**4 + 1)*Derivative(y(x), x) - 2",
+"Eq(y(x)**5 + y(x), C1 + x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"(5*y(x)**4 + 1)*Derivative(y(x), x) - 2",
+"Eq(y(x)**5 + y(x), C1 + x)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"-2*x + (exp(y(x)) + 1)*Derivative(y(x), x)",
+"Eq(y(x) + exp(y(x)), C1 + x**2)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-2*x + (exp(y(x)) + 1)*Derivative(y(x), x)",
+"Eq(y(x) + exp(y(x)), C1 + x**2)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"(a*cos(y(x)) + 1)*Derivative(y(x), x) - 1",
+"Eq(a*sin(y(x)) + y(x), C1 + x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"(a*cos(y(x)) + 1)*Derivative(y(x), x) - 1",
+"Eq(a*sin(y(x)) + y(x), C1 + x)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"-a + (a*cos(y(x)) + 1)*Derivative(y(x), x)",
+"Eq(a*sin(y(x)) + y(x), C1 + x)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-a + (a*cos(y(x)) + 1)*Derivative(y(x), x)",
+"Eq(a*sin(y(x)) + y(x), C1 + x)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"Derivative(y(x), x) - y(x)/x",
+"Eq(y(x)**2, C1*x**2)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"Derivative(y(x), x) - y(x)/x",
+"Eq(y(x)**2, C1*x**2)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"Derivative(y(x), x) - 2*y(x)/x",
+"Eq(y(x)**2, C1*x**2)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"Derivative(y(x), x) - 2*y(x)/x",
+"Eq(y(x)**2, C1*x**2)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"y(x)*Derivative(y(x), (x, 2)) + Derivative(y(x), x)**2",
+"Eq(y(x)**2, C1*x + C2)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"y(x)*Derivative(y(x), (x, 2)) + Derivative(y(x), x)**2",
+"Eq(y(x)**2, C1*x + C2)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"y(x)*Derivative(y(x), (x, 2)) - Derivative(y(x), x)**2",
+"Eq(y(x)**2, C1*x + C2)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"y(x)*Derivative(y(x), (x, 2)) - Derivative(y(x), x)**2",
+"Eq(y(x)**2, C1*x + C2)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"(exp(y(x)) + 1)*Derivative(y(x), (x, 2)) + exp(y(x))*Derivative(y(x), x)**2",
+"Eq(y(x) + exp(y(x)), C1*x + C2)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"(exp(y(x)) + 1)*Derivative(y(x), (x, 2)) + exp(y(x))*Derivative(y(x), x)**2",
+"Eq(y(x) + exp(y(x)), C1*x + C2)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"(exp(y(x)) + 1)*Derivative(y(x), (x, 2)) - exp(y(x))*Derivative(y(x), x)**2",
+"Eq(y(x) + exp(y(x)), C1*x + C2)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"(exp(y(x)) + 1)*Derivative(y(x), (x, 2)) - exp(y(x))*Derivative(y(x), x)**2",
+"Eq(y(x) + exp(y(x)), C1*x + C2)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"-3*x**2 + 2*x*y(x)**2 + (2*x**2*y(x) + 3*y(x)**2)*Derivative(y(x), x)",
+"Eq(-x**3 + x**2*y(x)**2 + y(x)**3, 0)",
+"y(x)",
+"True"
+],
+[
+"check_ode_solution",
+"-3*x**2 + 2*x*y(x)**2 + (2*x**2*y(x) + 3*y(x)**2)*Derivative(y(x), x)",
+"Eq(-x**3 + x**2*y(x)**2 + y(x)**3, 0)",
+"y(x)",
+"False"
+],
+[
+"check_ode_solution",
+"Derivative(y(x), x) - 1/(2*sqrt(x))",
+"Eq(y(x)**2, x)",
+"y(x)",
+"False"
+],
+[
+"prelle_singer",
+"Derivative(y(x), x) - (x + y(x))/(x - y(x))",
+"y(x)",
+"4",
+"None"
+],
+[
+"prelle_singer",
+"x*(1 - y(x))*Derivative(y(x), x) - (x - 1)*y(x)",
+"y(x)",
+"4",
+"None"
+],
+[
+"prelle_singer",
+"-x*y(x) + Derivative(y(x), x) - 1",
+"y(x)",
+"4",
+"None"
+],
+[
+"prelle_singer",
+"-x*y(x) - y(x)**3 + Derivative(y(x), x)",
+"y(x)",
+"4",
+"None"
+],
+[
+"prelle_singer",
+"-x**2 + 2*x*y(x)*Derivative(y(x), x) - y(x)**2 + 1",
+"y(x)",
+"4",
+"None"
+],
+[
+"prelle_singer",
+"-2*x*y(x)/(x**2 - y(x)**2) + Derivative(y(x), x)",
+"y(x)",
+"4",
+"None"
+],
+[
+"vector_field",
+"-x + (x - y(x))*Derivative(y(x), x) - y(x)",
+"y(x)"
+],
+[
+"vector_field",
+"-(x*y(x)**2 - y(x))/(x**2*y(x) - x) + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"vector_field",
+"-exp(y(x)) + Derivative(y(x), x)",
+"y(x)"
+],
+[
+"vector_field",
+"-y(x) + Derivative(y(x), x)**2",
+"y(x)"
+],
+[
+"prelle_singer",
+"-sqrt(y(x)) + Derivative(y(x), x)",
+"y(x)",
+"4",
+"None"
+],
+[
+"prelle_singer",
+"x**2*Derivative(y(x), x) - x*y(x) + 1",
+"y(x)",
+"4",
+"None"
+],
+[
+"prelle_singer",
+"a*y(x)**2 - b + Derivative(y(x), x)",
+"y(x)",
+"4",
+"None"
+],
+[
+"prelle_singer",
+"x*(y(x) + 4)*Derivative(y(x), x) - 2*x - y(x)**2 - 2*y(x)",
+"y(x)",
+"4",
+"None"
+],
+[
+"darboux_polynomials",
+"y*(x - 1)",
+"x*(1 - y)",
+"x",
+"y",
+"3",
+"None"
+],
+[
+"darboux_polynomials",
+"x + y",
+"x - y",
+"x",
+"y",
+"2",
+"None"
+],
+[
+"darboux_polynomials",
+"x + y",
+"x - y",
+"x",
+"y",
+"1",
+"I"
+],
+[
+"darboux_polynomials",
+"y",
+"x",
+"x",
+"y",
+"1",
+"None"
+],
+[
+"darboux_polynomials",
+"x*y - 1",
+"x**2",
+"x",
+"y",
+"1",
+"None"
+],
+[
+"darboux_polynomials",
+"y**2 + x",
+"1",
+"x",
+"y",
+"3",
+"None"
+],
+[
+"darboux_polynomials",
+"sqrt(2)*y",
+"x",
+"x",
+"y",
+"1",
+"None"
+],
+[
+"darboux_polynomials",
+"-(2*x**2 + x*y + y**2)",
+"x*(y - x)",
+"x",
+"y",
+"1",
+"I"
+],
+[
+"darboux_polynomials",
+"b - a*y**2",
+"1",
+"x",
+"y",
+"4",
+"None"
+],
+[
+"exponential_factors",
+"x*y + 1",
+"1",
+"x",
+"y",
+"1",
+"None"
+],
+[
+"exponential_factors",
+"y",
+"x**2",
+"x",
+"y",
+"1",
+"None"
+],
+[
+"darboux_integrating_factor",
+"y*(x - 1)",
+"x*(1 - y)",
+"x",
+"y",
+"4",
+"None"
+],
+[
+"darboux_integrating_factor",
+"x*y + 1",
+"1",
+"x",
+"y",
+"1",
+"None"
+],
+[
+"darboux_integrating_factor",
+"x + y",
+"x - y",
+"x",
+"y",
+"2",
+"None"
+],
+[
+"darboux_integrating_factor",
+"b - a*y**2",
+"1",
+"x",
+"y",
+"4",
+"None"
+],
+[
+"darboux_first_integral",
+"y*(x - 1)",
+"x*(1 - y)",
+"x",
+"y",
+"4",
+"None"
+],
+[
+"darboux_first_integral",
+"x + y",
+"x - y",
+"x",
+"y",
+"4",
+"None"
+],
+[
+"darboux_first_integral",
+"x*y + 1",
+"1",
+"x",
+"y",
+"4",
+"None"
+],
+[
+"darboux_first_integral",
+"y",
+"x**2",
+"x",
+"y",
+"4",
+"None"
+],
+[
+"darboux_first_integral",
+"y**2 + x",
+"1",
+"x",
+"y",
+"3",
+"None"
+],
+[
+"darboux_first_integral",
+"a*y",
+"x",
+"x",
+"y",
+"1",
+"None"
+],
+[
+"darboux_first_integral",
+"x + y",
+"x - y",
+"x",
+"y",
+"1",
+"None"
+],
+[
+"darboux_first_integral",
+"x + y",
+"x - y",
+"x",
+"y",
+"2",
+"None"
+],
+[
+"darboux_first_integral",
+"y**2 - x**2 + 1",
+"2*x*y",
+"x",
+"y",
+"2",
+"None"
+],
+[
+"darboux_first_integral",
+"x*y - 1",
+"x**2",
+"x",
+"y",
+"2",
+"None"
+],
+[
+"darboux_first_integral",
+"x*y**2 - y",
+"x**2*y - x",
+"x",
+"y",
+"2",
+"None"
+]
+]

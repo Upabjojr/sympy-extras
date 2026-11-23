@@ -1080,7 +1080,7 @@ fn split(expr: &Basic, unknowns: &[Basic], variables: &BTreeSet<Basic>) -> PolyR
     grouped.into_iter().map(|(_, cs)| add(&cs)).collect()
 }
 
-fn polynomial_terms(expr: &Basic, gens: &[Basic]) -> PolyResult<Option<Vec<(Vec<u32>, Basic)>>> {
+pub(crate) fn polynomial_terms(expr: &Basic, gens: &[Basic]) -> PolyResult<Option<Vec<(Vec<u32>, Basic)>>> {
     let mut collected: BTreeMap<Vec<u32>, Vec<Basic>> = BTreeMap::new();
     for term in terms_of(&expand(expr)?) {
         let mut exponents: Vec<u32> = vec![0; gens.len()];
@@ -1525,4 +1525,10 @@ pub fn symmetries(
         }
     }
     Ok(result)
+}
+
+/// The highest derivatives solved for, branching on the roots of a
+/// nonlinear leading term (`_leading_derivatives(jets, eqs, branch=True)`).
+pub(crate) fn leading_derivatives_branch(jets: &JetSpace, eqs: &[Basic]) -> PolyResult<Vec<(Basic, Basic)>> {
+    leading_derivatives_of(jets, eqs, None, true)
 }

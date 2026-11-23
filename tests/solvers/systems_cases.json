@@ -1,0 +1,820 @@
+[
+[
+"complete_integral",
+"Derivative(u(x, y), x)*Derivative(u(x, y), y) - 1",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"Derivative(u(x, y), x)*Derivative(u(x, y), y) - 1",
+"u(x, y)",
+"Eq(u(x, y), a*x + b + y/a)"
+],
+[
+"complete_integral",
+"Derivative(u(x, y), x)**2 + Derivative(u(x, y), y)**2 - 1",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"Derivative(u(x, y), x)**2 + Derivative(u(x, y), y)**2 - 1",
+"u(x, y)",
+"Eq(u(x, y), a*x + b - y*sqrt(1 - a**2))"
+],
+[
+"complete_integral",
+"Derivative(u(x, y), x)**2 - Derivative(u(x, y), y)",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"Derivative(u(x, y), x)**2 - Derivative(u(x, y), y)",
+"u(x, y)",
+"Eq(u(x, y), a**2*y + a*x + b)"
+],
+[
+"complete_integral",
+"x*Derivative(u(x, y), x) - y*Derivative(u(x, y), y)",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"x*Derivative(u(x, y), x) - y*Derivative(u(x, y), y)",
+"u(x, y)",
+"Eq(u(x, y), a*log(x) + a*log(y) + b)"
+],
+[
+"complete_integral",
+"-x + Derivative(u(x, y), x)*Derivative(u(x, y), y)",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"-x + Derivative(u(x, y), x)*Derivative(u(x, y), y)",
+"u(x, y)",
+"Eq(u(x, y), a*y + b + x**2/(2*a))"
+],
+[
+"complete_integral",
+"-x*Derivative(u(x, y), x) - y*Derivative(u(x, y), y) + u(x, y) - Derivative(u(x, y), x)*Derivative(u(x, y), y)",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"-x*Derivative(u(x, y), x) - y*Derivative(u(x, y), y) + u(x, y) - Derivative(u(x, y), x)*Derivative(u(x, y), y)",
+"u(x, y)",
+"Eq(u(x, y), a*b + a*x + b*y)"
+],
+[
+"complete_integral",
+"Eq(u(x, y), x*Derivative(u(x, y), x) + y*Derivative(u(x, y), y) + Derivative(u(x, y), x)*Derivative(u(x, y), y))",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"Derivative(u(x, y), x)*Derivative(u(x, y), y) - 1",
+"u(x, y)",
+"a*x + b + y/a"
+],
+[
+"check_complete_integral",
+"Derivative(u(x, y), x)*Derivative(u(x, y), y) - 1",
+"u(x, y)",
+"Eq(u(x, y), a*x + b + y)"
+],
+[
+"complete_integral",
+"-x*y*u(x, y) + Derivative(u(x, y), x)*Derivative(u(x, y), y)",
+"u(x, y)"
+],
+[
+"complete_integral",
+"Derivative(u(x, y), (x, 2)) - Derivative(u(x, y), y)",
+"u(x, y)"
+],
+[
+"complete_integral",
+"Derivative(u(x, y), x) - 1",
+"v(x)"
+],
+[
+"check_complete_integral",
+"Eq(u(x, y), x*Derivative(u(x, y), x) + y*Derivative(u(x, y), y) + Derivative(u(x, y), x)*Derivative(u(x, y), y))",
+"u(x, y)",
+"Eq(u(x, y), a*b + a*x + b*y)"
+],
+[
+"complete_integral",
+"Eq(u(x, y), x*Derivative(u(x, y), x) + y*Derivative(u(x, y), y) + sqrt(Derivative(u(x, y), x)**2 + Derivative(u(x, y), y)**2 + 1))",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"Eq(u(x, y), x*Derivative(u(x, y), x) + y*Derivative(u(x, y), y) + sqrt(Derivative(u(x, y), x)**2 + Derivative(u(x, y), y)**2 + 1))",
+"u(x, y)",
+"Eq(u(x, y), a*x + b*y + sqrt(a**2 + b**2 + 1))"
+],
+[
+"complete_integral",
+"-u(x, y) + Derivative(u(x, y), x)**2 + Derivative(u(x, y), y)**2",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"-u(x, y) + Derivative(u(x, y), x)**2 + Derivative(u(x, y), y)**2",
+"u(x, y)",
+"Eq(u(x, y), (a*y + b + x)**2/(4*(a**2 + 1)))"
+],
+[
+"complete_integral",
+"u(x, y)*Derivative(u(x, y), x)*Derivative(u(x, y), y) - 1",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"u(x, y)*Derivative(u(x, y), x)*Derivative(u(x, y), y) - 1",
+"u(x, y)",
+"Eq(u(x, y), 2**(1/3)*((a*y*(a*y + 2*b + 2*x) + b**2 + 2*b*x + x**2)/a)**(1/3)*(-3**(2/3) - 3*3**(1/6)*I)/4)"
+],
+[
+"complete_integral",
+"x - y**2 + Derivative(u(x, y), x)**2 - Derivative(u(x, y), y)",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"x - y**2 + Derivative(u(x, y), x)**2 - Derivative(u(x, y), y)",
+"u(x, y)",
+"Eq(u(x, y), a*y + b - y**3/3 + 2*(a - x)**(3/2)/3)"
+],
+[
+"complete_integral",
+"-x*Derivative(u(x, y), y) + Derivative(u(x, y), x)**2",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"-x*Derivative(u(x, y), y) + Derivative(u(x, y), x)**2",
+"u(x, y)",
+"Eq(u(x, y), a*y + b - 2*(a*x)**(3/2)/(3*a))"
+],
+[
+"complete_integral",
+"y*Derivative(u(x, y), x) - Derivative(u(x, y), y)**2",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"y*Derivative(u(x, y), x) - Derivative(u(x, y), y)**2",
+"u(x, y)",
+"Eq(u(x, y), a*x + b - 2*(a*y)**(3/2)/(3*a))"
+],
+[
+"complete_integral",
+"-x - Derivative(u(x, y), x)**2 + Derivative(u(x, y), y)",
+"u(x, y)"
+],
+[
+"check_complete_integral",
+"-x - Derivative(u(x, y), x)**2 + Derivative(u(x, y), y)",
+"u(x, y)",
+"Eq(u(x, y), -a*y + b + 2*(-a - x)**(3/2)/3)"
+],
+[
+"matrix_exponential",
+"ExprMatrix([[2, 1, 0], [0, 2, 1], [0, 0, 2]])",
+"x"
+],
+[
+"matrix_exponential",
+"ExprMatrix([[0, 1], [-1, 0]])",
+"x"
+],
+[
+"matrix_exponential",
+"ExprMatrix([[1, 2], [3, 4]])",
+"x"
+],
+[
+"matrix_exponential",
+"ExprMatrix([[a, 1], [0, 2]])",
+"x"
+],
+[
+"matrix_exponential",
+"ExprMatrix([[1, -1, 0], [1, 1, 0], [0, 0, 3]])",
+"x"
+],
+[
+"matrix_exponential",
+"ExprMatrix([[0, 0], [0, 0]])",
+"x"
+],
+[
+"core_nilpotent_decomposition",
+"ExprMatrix([[1, 1], [0, 0]])"
+],
+[
+"core_nilpotent_decomposition",
+"ExprMatrix([[0, 1, 0], [0, 0, 1], [0, 0, 0]])"
+],
+[
+"core_nilpotent_decomposition",
+"ExprMatrix([[2, 0, 0], [0, 0, 1], [0, 0, 0]])"
+],
+[
+"core_nilpotent_decomposition",
+"ExprMatrix([[a, 0], [0, 0]])"
+],
+[
+"core_nilpotent_decomposition",
+"ExprMatrix([[1, 0, 1], [0, 0, 1], [0, 0, 0]])"
+],
+[
+"core_nilpotent_decomposition",
+"ExprMatrix([[1, 2, 3]])"
+],
+[
+"dae_index",
+"ExprMatrix([[1, 0], [0, 0]])",
+"ExprMatrix([[0, 1], [1, 0]])"
+],
+[
+"dae_index",
+"ExprMatrix([[0, 1, 0], [0, 0, 1], [0, 0, 0]])",
+"ExprMatrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[1, 0], [0, 0]])",
+"ExprMatrix([[0, -1], [1, 0]])",
+"ExprMatrix([[0], [sin(x)]])",
+"x"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[1, 0], [0, 1]])",
+"ExprMatrix([[-1, -1], [0, -1]])",
+"None",
+"x"
+],
+[
+"check_dae",
+"ExprMatrix([[1, 0], [0, 1]])",
+"ExprMatrix([[-1, -1], [0, -1]])",
+"None",
+"ExprMatrix([[(C1 + C2*x)*exp(x)], [C2*exp(x)]])",
+"x"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[1, 0], [0, 0]])",
+"ExprMatrix([[a, 0], [0, 1]])",
+"ExprMatrix([[0], [x**2]])",
+"x"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[1, 0], [0, 0]])",
+"ExprMatrix([[0, 0], [0, 0]])",
+"None",
+"x"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[x, 0], [0, 0]])",
+"ExprMatrix([[0, 1], [1, 0]])",
+"None",
+"x"
+],
+[
+"dae_matrices",
+"[Eq(Derivative(y1(x), x), y2(x)), Eq(y1(x), sin(x))]",
+"[y1(x), y2(x)]"
+],
+[
+"dae_matrices",
+"[Eq(a*Derivative(y1(x), x), y2(x) + 1), -x**2 + y2(x)]",
+"[y1(x), y2(x)]"
+],
+[
+"dae_matrices",
+"[Eq(Derivative(y1(x), (x, 2)), y2(x))]",
+"[y1(x), y2(x)]"
+],
+[
+"dae_matrices",
+"[Eq(x*Derivative(y1(x), x), y2(x)), Eq(y1(x), 0)]",
+"[y1(x), y2(x)]"
+],
+[
+"dae_matrices",
+"[Eq(y2(x)*Derivative(y1(x), x), 0)]",
+"[y1(x), y2(x)]"
+],
+[
+"dae_matrices",
+"[Eq(Derivative(y1(x), x), y1(x)**2)]",
+"[y1(x)]"
+],
+[
+"dae_matrices",
+"[]",
+"[]"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[1, 0, 0], [0, 1, 0], [0, 0, 0]])",
+"ExprMatrix([[0, 1, 0], [1, 0, 0], [-1, -1, 1]])",
+"ExprMatrix([[exp(x)], [0], [0]])",
+"x"
+],
+[
+"check_dae",
+"ExprMatrix([[1, 0, 0], [0, 1, 0], [0, 0, 0]])",
+"ExprMatrix([[0, 1, 0], [1, 0, 0], [-1, -1, 1]])",
+"ExprMatrix([[exp(x)], [0], [0]])",
+"ExprMatrix([[-(4*C1 - 2*x + exp(2*x))*sinh(x)/4 + (C2 + x/2 + exp(2*x)/4)*cosh(x)], [(C1 - x/2 + exp(2*x)/4)*cosh(x) - (4*C2 + 2*x + exp(2*x))*sinh(x)/4], [-C1*sinh(x) + C1*cosh(x) - C2*sinh(x) + C2*cosh(x) - exp(2*x)*sinh(x)/2 + exp(2*x)*cosh(x)/2]])",
+"x"
+],
+[
+"check_dae",
+"ExprMatrix([[1, 0, 0], [0, 1, 0], [0, 0, 0]])",
+"ExprMatrix([[0, 1, 0], [1, 0, 0], [-1, -1, 1]])",
+"ExprMatrix([[exp(x)], [0], [0]])",
+"ExprMatrix([[-(4*C1 - 2*x + exp(2*x))*sinh(x)/4 + (C2 + x/2 + exp(2*x)/4)*cosh(x) + exp(2*x)], [(C1 - x/2 + exp(2*x)/4)*cosh(x) - (4*C2 + 2*x + exp(2*x))*sinh(x)/4], [-C1*sinh(x) + C1*cosh(x) - C2*sinh(x) + C2*cosh(x) - exp(2*x)*sinh(x)/2 + exp(2*x)*cosh(x)/2]])",
+"x"
+],
+[
+"core_nilpotent_decomposition",
+"ExprMatrix([[2, 1], [1, 2]])"
+],
+[
+"dae_index",
+"ExprMatrix([[1, 0], [0, 0]])",
+"ExprMatrix([[0, 0], [1, -1]])"
+],
+[
+"dae_index",
+"ExprMatrix([[1, 0], [0, 1]])",
+"ExprMatrix([[0, 1], [1, 0]])"
+],
+[
+"dae_index",
+"ExprMatrix([[1, 0], [0, 0]])",
+"ExprMatrix([[0, 0], [0, 0]])"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[0, 1, 0], [0, 0, 1], [0, 0, 0]])",
+"ExprMatrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])",
+"ExprMatrix([[f1(x)], [f2(x)], [f3(x)]])",
+"x"
+],
+[
+"check_dae",
+"ExprMatrix([[0, 1, 0], [0, 0, 1], [0, 0, 0]])",
+"ExprMatrix([[1, 0, 0], [0, 1, 0], [0, 0, 1]])",
+"ExprMatrix([[f1(x)], [f2(x)], [f3(x)]])",
+"ExprMatrix([[f1(x) - Derivative(f2(x), x) + Derivative(f3(x), (x, 2))], [f2(x) - Derivative(f3(x), x)], [f3(x)]])",
+"x"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[1, 0], [0, 0]])",
+"ExprMatrix([[0, 0], [1, -1]])",
+"None",
+"x"
+],
+[
+"dsolve_dae",
+"ExprMatrix([[1, 0], [0, 1]])",
+"ExprMatrix([[0, -1], [1, 0]])",
+"None",
+"x"
+],
+[
+"check_dae",
+"ExprMatrix([[1, 0], [0, 1]])",
+"ExprMatrix([[0, -1], [1, 0]])",
+"None",
+"ExprMatrix([[C1*cos(x) + C2*sin(x)], [-C1*sin(x) + C2*cos(x)]])",
+"x"
+],
+[
+"cyclic_vector",
+"ExprMatrix([[0, 1], [-1, 0]])",
+"x"
+],
+[
+"cyclic_vector",
+"ExprMatrix([[1, 0], [0, 2]])",
+"x"
+],
+[
+"system_to_scalar",
+"ExprMatrix([[1/x, 1], [0, 1/x]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1]])",
+"x",
+"ExprMatrix([[1], [2]])"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[1/x, 1], [0, 1/x]])",
+"x"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[0, 1], [-1, 0]])",
+"x"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[-1/x, 0], [1, 0]])",
+"x"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[-1/x, 0], [1/x, -3/x]])",
+"x"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[x**(-2), 0], [0, -1/x**2]])",
+"x"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(x**2 - 1)/x, 2 - x**2], [x**2/(x**2 - 2), -x**3/(x**2 - 2)]])",
+"x"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[0, 1, 0], [0, 0, 1], [0, 0, 0]])",
+"x"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[0, 0], [0, 0]])",
+"x"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[x**(-2), x**(-2)], [x**(-2), x**(-2)]])",
+"x"
+],
+[
+"hyperexponential_system_solutions",
+"ExprMatrix([[1, 0], [0, 2]])",
+"x"
+],
+[
+"hyperexponential_system_solutions",
+"ExprMatrix([[1, 1/x], [0, 0]])",
+"x"
+],
+[
+"hyperexponential_system_solutions",
+"ExprMatrix([[0, 1], [x, 0]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[0, 1], [2/x**2, 0]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[2/x, -1/x], [3/x, -2/x]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1, 1], [4, 1]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[-1/2, 1], [-1, -1/2]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1, 1, 0], [0, 1, 1], [0, 0, 1]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[0, 1], [a**2, 0]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1/x, 0], [0, 1/x]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[0, 1], [-1/x**2, -1/x]])",
+"x",
+"None"
+],
+[
+"dsolve_linear_system",
+"ExprMatrix([[0, 1], [-1, 0]])",
+"x"
+],
+[
+"matrix_exponential",
+"ExprMatrix([[1, 1], [0, 1]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[0, 1], [2/x**2, 0]])",
+"x",
+"ExprMatrix([[(-x**5 - 2*x**4 - x**3 - 1)/(x**2 + 2*x + 1)], [(3*x**5 + 3*x**4 - 2)/(x**3 + x**2)]])"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1/x, 1], [0, 1/x]])",
+"x",
+"ExprMatrix([[1], [0]])"
+],
+[
+"dsolve_system",
+"ExprMatrix([[-2, 1], [1, -2]])",
+"x",
+"ExprMatrix([[2*exp(-x)], [3*x]])"
+],
+[
+"dsolve_system",
+"ExprMatrix([[0, 1], [-1, 0]])",
+"x",
+"ExprMatrix([[0], [1/cos(x)]])"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1/x, 1], [0, 1/x]])",
+"x",
+"ExprMatrix([[0], [0]])"
+],
+[
+"dsolve_system",
+"ExprMatrix([[0, 1], [-2/x**2, 2/x]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1/x, 1], [0, 1/x]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1, -1], [1, 3]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[0, 1], [(1 - 4*x**2)/(4*x**2), -1/x]])",
+"x",
+"None"
+],
+[
+"hyperexponential_system_solutions",
+"ExprMatrix([[1/(2*x), x + 1/2], [0, 1]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(x**5 + 5*x**4 + 2*x**3 - 4*x**2 + 4*x - 8)/(x**5 - x**4 - 6*x**3 - 2*x**2 + 4*x), (-x**6 - 4*x**5 - 5*x**4 + 4*x**3 + 10*x**2 - 4*x - 4)/(x**6 - x**5 - 6*x**4 - 2*x**3 + 4*x**2)], [(x**4 + 4*x**3 - 2*x**2 + 8*x - 8)/(x**4 - x**3 - 6*x**2 - 2*x + 4), (-x**4 - 3*x**3 - 3*x**2 + 4*x - 2)/(x**4 - x**3 - 6*x**2 - 2*x + 4)]])",
+"x",
+"ExprMatrix([[1], [x]])"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(-x**2 - x + 1)/(x**2 + 3*x + 2), (-x - 2)/(x + 1)], [(x - 2)/(x + 2), (x - 1)/x]])",
+"x",
+"ExprMatrix([[x + 2], [-1]])"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(-x**2 - x + 1)/(x**2 + 3*x + 2), (-x - 2)/(x + 1)], [(x - 2)/(x + 2), (x - 1)/x]])",
+"x",
+"ExprMatrix([[0], [0]])"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(-x**4 - 2*x**3 + 3*x**2 - 2)/(2*x**3 + 2*x**2), (-x**3 - x**2 + 2*x + 2)/(2*x**2)], [(x**4 + 2*x**3 - 3*x**2 + 4*x - 2)/(2*x**3 + 2*x**2), (x**3 + x**2 - 2*x + 2)/(2*x**2)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(-x**4 - 2*x**3 + 3*x**2 - 2)/(2*x**3 + 2*x**2), (-x**3 - x**2 + 2*x + 2)/(2*x**2)], [(x**4 + 2*x**3 - 3*x**2 + 4*x - 2)/(2*x**3 + 2*x**2), (x**3 + x**2 - 2*x + 2)/(2*x**2)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(x**4 - x**3 + 2*x**2 + 4*x - 4)/(x**4 + x**3 - 4*x**2), (-x**4 + 4*x**3 - x**2 - 4*x + 2)/(x**4 + x**3 - 4*x**2)], [(x**4 + 2*x**2 - 8)/(x**4 + x**3 - 4*x**2), (-x**4 + 3*x**3 - x**2 - 4*x + 4)/(x**4 + x**3 - 4*x**2)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(x**4 - x**3 + 2*x**2 + 4*x - 4)/(x**4 + x**3 - 4*x**2), (-x**4 + 4*x**3 - x**2 - 4*x + 2)/(x**4 + x**3 - 4*x**2)], [(x**4 + 2*x**2 - 8)/(x**4 + x**3 - 4*x**2), (-x**4 + 3*x**3 - x**2 - 4*x + 4)/(x**4 + x**3 - 4*x**2)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(x**3 - x**2 + 3*x + 5)/(2*x**2 + 5*x), (x**2 + 2*x + 2)/(2*x + 5)], [(-x**2 + 4*x - 7)/(2*x + 5), (-x**3 + x**2 + 3*x + 5)/(2*x**2 + 5*x)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(x**3 - x**2 + 3*x + 5)/(2*x**2 + 5*x), (x**2 + 2*x + 2)/(2*x + 5)], [(-x**2 + 4*x - 7)/(2*x + 5), (-x**3 + x**2 + 3*x + 5)/(2*x**2 + 5*x)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(-x**2 + 3*x + 3)/(x**2 + x), (x + 1)/x], [(-x**2 + 4*x - 2)/(x**2 + x), 1]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(-x**2 + 3*x + 3)/(x**2 + x), (x + 1)/x], [(-x**2 + 4*x - 2)/(x**2 + x), 1]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[1/(x**2 - x), 0], [(x**2 - x + 4)/(x**2 - x), 1/x]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[1/(x**2 - x), 0], [(x**2 - x + 4)/(x**2 - x), 1/x]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[-2/(x**2 + 2*x), 0], [(x**3 + 4*x**2 - 4)/(x**3 + 4*x**2 + 4*x), 1/(x + 2)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[-2/(x**2 + 2*x), 0], [(x**3 + 4*x**2 - 4)/(x**3 + 4*x**2 + 4*x), 1/(x + 2)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[x/(x - 3), (2*x - 3)/(x**2 - 3*x)], [-2*x/(x - 3), (-x**2 + 2*x - 3)/(x**2 - 3*x)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[x/(x - 3), (2*x - 3)/(x**2 - 3*x)], [-2*x/(x - 3), (-x**2 + 2*x - 3)/(x**2 - 3*x)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(x**2 - 3*x + 3)/(x**2 - 2*x + 1), (-2*x**2 + 6*x - 5)/(x**2 - 2*x + 1)], [(3 - 2*x)/(x**2 - 2*x + 1), (-x**2 + 5*x - 5)/(x**2 - 2*x + 1)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(x**2 - 3*x + 3)/(x**2 - 2*x + 1), (-2*x**2 + 6*x - 5)/(x**2 - 2*x + 1)], [(3 - 2*x)/(x**2 - 2*x + 1), (-x**2 + 5*x - 5)/(x**2 - 2*x + 1)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(x**2 + 2*x + 1)/(2*x**2 - 2*x + 2), (-x**2 + 4*x - 7)/(2*x**2 - 2*x + 2)], [(x**2 + 1)/(2*x**2 - 2*x + 2), (3*x**2 - 2*x + 1)/(2*x**2 - 2*x + 2)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(x**2 + 2*x + 1)/(2*x**2 - 2*x + 2), (-x**2 + 4*x - 7)/(2*x**2 - 2*x + 2)], [(x**2 + 1)/(2*x**2 - 2*x + 2), (3*x**2 - 2*x + 1)/(2*x**2 - 2*x + 2)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(2*x + 4)/(x**2 + 2*x + 2), (-x**2 - 2*x)/(x**2 + 2*x + 2)], [(x**2 - 2)/(x**2 + 2*x + 2), (2*x**2 + 4*x + 2)/(x**2 + 2*x + 2)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(2*x + 4)/(x**2 + 2*x + 2), (-x**2 - 2*x)/(x**2 + 2*x + 2)], [(x**2 - 2)/(x**2 + 2*x + 2), (2*x**2 + 4*x + 2)/(x**2 + 2*x + 2)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(x - 2)/(3*x - 2), (x - 6)/(3*x - 2), 2/(3*x - 2)], [(2 - 2*x)/(3*x - 2), (4 - 2*x)/(3*x - 2), -1/(3*x - 2)], [(-x**2 - 4*x + 2)/(3*x - 2), (-x**2 - 6*x)/(3*x - 2), (x + 1)/(3*x - 2)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(x - 2)/(3*x - 2), (x - 6)/(3*x - 2), 2/(3*x - 2)], [(2 - 2*x)/(3*x - 2), (4 - 2*x)/(3*x - 2), -1/(3*x - 2)], [(-x**2 - 4*x + 2)/(3*x - 2), (-x**2 - 6*x)/(3*x - 2), (x + 1)/(3*x - 2)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(x**2 + 4*x - 4)/(x**3 + 5*x**2 - 2*x), (4 - 6*x)/(x**3 + 5*x**2 - 2*x), -2*x/(x**2 + 5*x - 2)], [(-x**3 - 7*x**2 - 9*x - 2)/(x**3 + 5*x**2 - 2*x), (x**2 + 7*x + 2)/(x**3 + 5*x**2 - 2*x), (-x**2 - 5*x)/(x**2 + 5*x - 2)], [(-x**3 - 8*x**2 - 13*x + 4)/(x**3 + 5*x**2 - 2*x), (2*x**2 + 14*x - 4)/(x**3 + 5*x**2 - 2*x), (x - 1)/(x**2 + 5*x - 2)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(x**2 + 4*x - 4)/(x**3 + 5*x**2 - 2*x), (4 - 6*x)/(x**3 + 5*x**2 - 2*x), -2*x/(x**2 + 5*x - 2)], [(-x**3 - 7*x**2 - 9*x - 2)/(x**3 + 5*x**2 - 2*x), (x**2 + 7*x + 2)/(x**3 + 5*x**2 - 2*x), (-x**2 - 5*x)/(x**2 + 5*x - 2)], [(-x**3 - 8*x**2 - 13*x + 4)/(x**3 + 5*x**2 - 2*x), (2*x**2 + 14*x - 4)/(x**3 + 5*x**2 - 2*x), (x - 1)/(x**2 + 5*x - 2)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(3*x**3 - 10*x**2 + 2*x + 10)/(x**4 - 3*x**3 + 5*x**2), (-x**3 + x**2 + 4*x - 3)/(x**3 - 3*x**2 + 5*x), (-x**3 - 2*x**2 + 4)/(x**3 - 3*x**2 + 5*x)], [(-x**5 + 4*x**4 - 4*x**3 - 4*x**2 + 4*x + 20)/(x**5 - 3*x**4 + 5*x**3), (x**4 - 3*x**3 + 3*x**2 + 7*x - 6)/(x**4 - 3*x**3 + 5*x**2), (x**4 - x**3 - 2*x**2 + 8*x + 8)/(x**4 - 3*x**3 + 5*x**2)], [(-4*x**3 + 12*x**2 - 2*x - 10)/(x**5 - 3*x**4 + 5*x**3), (-x**4 + 5*x**3 - 8*x**2 - x + 3)/(x**4 - 3*x**3 + 5*x**2), (-x**4 + 4*x**3 - 2*x**2 + x - 4)/(x**4 - 3*x**3 + 5*x**2)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(3*x**3 - 10*x**2 + 2*x + 10)/(x**4 - 3*x**3 + 5*x**2), (-x**3 + x**2 + 4*x - 3)/(x**3 - 3*x**2 + 5*x), (-x**3 - 2*x**2 + 4)/(x**3 - 3*x**2 + 5*x)], [(-x**5 + 4*x**4 - 4*x**3 - 4*x**2 + 4*x + 20)/(x**5 - 3*x**4 + 5*x**3), (x**4 - 3*x**3 + 3*x**2 + 7*x - 6)/(x**4 - 3*x**3 + 5*x**2), (x**4 - x**3 - 2*x**2 + 8*x + 8)/(x**4 - 3*x**3 + 5*x**2)], [(-4*x**3 + 12*x**2 - 2*x - 10)/(x**5 - 3*x**4 + 5*x**3), (-x**4 + 5*x**3 - 8*x**2 - x + 3)/(x**4 - 3*x**3 + 5*x**2), (-x**4 + 4*x**3 - 2*x**2 + x - 4)/(x**4 - 3*x**3 + 5*x**2)]])",
+"x",
+"None"
+],
+[
+"rational_system_solutions",
+"ExprMatrix([[(-3*x**2 - 6*x + 3)/(x**3 - x**2 + x + 3), (-x**2 - 2*x - 1)/(x**2 - 2*x + 3), (2*x + 2)/(x**2 - 2*x + 3)], [(-x**6 + 2*x**5 + 16*x**4 - 18*x**3 + 15*x**2 - 6)/(x**6 - x**5 + x**4 + 3*x**3), (5*x**4 - x**2 + 6*x - 4)/(x**5 - 2*x**4 + 3*x**3), (-x**4 - 6*x**3 + 3*x**2 - 4*x + 2)/(x**5 - 2*x**4 + 3*x**3)], [(-2*x**6 + 2*x**5 + 2*x**4 - 12*x**3 + 24*x**2 - 6*x - 12)/(x**6 - x**5 + x**4 + 3*x**3), (-x**5 + 2*x**4 - x**3 + 8*x - 8)/(x**5 - 2*x**4 + 3*x**3), (2*x**4 - 4*x**3 + 4*x**2 - 6*x + 4)/(x**5 - 2*x**4 + 3*x**3)]])",
+"x"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(-3*x**2 - 6*x + 3)/(x**3 - x**2 + x + 3), (-x**2 - 2*x - 1)/(x**2 - 2*x + 3), (2*x + 2)/(x**2 - 2*x + 3)], [(-x**6 + 2*x**5 + 16*x**4 - 18*x**3 + 15*x**2 - 6)/(x**6 - x**5 + x**4 + 3*x**3), (5*x**4 - x**2 + 6*x - 4)/(x**5 - 2*x**4 + 3*x**3), (-x**4 - 6*x**3 + 3*x**2 - 4*x + 2)/(x**5 - 2*x**4 + 3*x**3)], [(-2*x**6 + 2*x**5 + 2*x**4 - 12*x**3 + 24*x**2 - 6*x - 12)/(x**6 - x**5 + x**4 + 3*x**3), (-x**5 + 2*x**4 - x**3 + 8*x - 8)/(x**5 - 2*x**4 + 3*x**3), (2*x**4 - 4*x**3 + 4*x**2 - 6*x + 4)/(x**5 - 2*x**4 + 3*x**3)]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[(2 - x)/(x + 1), (x**2 + 2)/(x + 1), (x - 2)/(x + 1)], [(-2*x**2 - 2*x + 2)/(x**4 + x**3), (x**3 + 3*x**2 - 4)/(x**3 + x**2), (-x**2 + x + 4)/(x**3 + x**2)], [(2*x**2 - 4*x + 2)/x**3, (4*x - 4)/x**2, (4 - 3*x)/x**2]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[-8/x**3, (x**2 + 4*x + 8)/x**2, -4/x, (3*x**2 + 8)/x**2], [0, -1, 1, 0], [0, -1, 1, 1], [-8/x**4, (4*x + 8)/x**3, -4/x**2, (2*x**2 + 8)/x**3]])",
+"x",
+"None"
+],
+[
+"dsolve_system",
+"ExprMatrix([[0, 1], [-1, 0]])",
+"x",
+"None"
+],
+[
+"pde_symmetries",
+"Derivative(u(x, t), t) - Derivative(u(x, t), (x, 2))",
+"u(x, t)",
+"3",
+"False"
+],
+[
+"pde_symmetries",
+"Derivative(u(x, t), t) - Derivative(u(x, t), (x, 2))",
+"u(x, t)",
+"3",
+"True"
+],
+[
+"pdsolve_lie",
+"Derivative(u(x, t), t) - Derivative(u(x, t), (x, 2))",
+"u(x, t)",
+"3",
+"True"
+],
+[
+"pdsolve_lie",
+"u(x, t)*Derivative(u(x, t), x) + Derivative(u(x, t), t) - Derivative(u(x, t), (x, 2))",
+"u(x, t)",
+"2",
+"True"
+]
+]

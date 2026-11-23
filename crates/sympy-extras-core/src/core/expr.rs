@@ -1043,3 +1043,154 @@ pub fn extract_additively(e: &Basic, c: &Basic) -> PolyResult<Option<Basic>> {
         .collect::<PolyResult<_>>()?;
     Ok(Some(super::add::add(&parts)?))
 }
+
+/// The value of `e` at the point when it is the same at 60 and 200 bits
+/// (`_value_at`).
+fn value_at(e: &Basic, point: &std::collections::HashMap<Basic, Basic>) -> PolyResult<Option<super::evalf::Complex>> {
+    let at: Basic = if point.is_empty() {
+        e.clone()
+    } else {
+        match super::function::xreplace_evaluated(e, point) {
+            Ok(v) => v,
+            Err(
+                crate::error::PolyError::ZeroDivision(_)
+                | crate::error::PolyError::Value(_)
+                | crate::error::PolyError::Type(_),
+            ) => return Ok(None),
+            Err(other) => return Err(other),
+        }
+    };
+    let (Some(low), Some(high)) = (
+        super::evalf::numeric_value(&at, 60),
+        super::evalf::numeric_value(&at, 200),
+    ) else {
+        return Ok(None);
+    };
+    let difference: super::evalf::Complex = &low - &high;
+    if complex_size(&difference) > 1e-12 * complex_size(&high).max(1.0) {
+        return Ok(None);
+    }
+    Ok(Some(high))
+}
+
+fn complex_size(z: &super::evalf::Complex) -> f64 {
+    let (a, b) = super::evalf::parts(z);
+    a.to_f64().value().hypot(b.to_f64().value())
+}
+
+/// `False` when `e` takes two clearly different values at admissible points
+/// of `wrt`; `True` when its derivatives in `wrt` are exactly zero; `None`
+/// otherwise (`_constant_natively`).
+fn constant_natively(e: &Basic, wrt: &[Basic]) -> PolyResult<Option<bool>> {
+    let mut others: Vec<Basic> = e
+        .free_symbols()
+        .into_iter()
+        .filter(|s| matches!(s.head(), Head::Symbol(_)) && !wrt.contains(s))
+        .collect();
+    others.sort_by_key(|s| s.to_string());
+    let mut fixed: std::collections::HashMap<Basic, Basic> = std::collections::HashMap::new();
+    let mut complete: bool = true;
+    for (i, s) in others.iter().enumerate() {
+        match admissible_value(s, (wrt.len() + i) as i64, 0)? {
+            None => {
+                complete = false;
+                break;
+            }
+            Some(v) => {
+                fixed.insert(s.clone(), v);
+            }
+        }
+    }
+    if complete {
+        let mut values: Vec<super::evalf::Complex> = Vec::new();
+        'variants: for variant in 0..3 {
+            let mut point = fixed.clone();
+            for (i, s) in wrt.iter().enumerate() {
+                match admissible_value(s, i as i64, variant)? {
+                    None => break 'variants,
+                    Some(v) => {
+                        point.insert(s.clone(), v);
+                    }
+                }
+            }
+            if let Some(found) = value_at(e, &point)? {
+                values.push(found);
+            }
+        }
+        if let Some(first) = values.first() {
+            for v in &values[1..] {
+                let difference: super::evalf::Complex = v - first;
+                let scale: f64 = complex_size(v).max(complex_size(first)).max(1.0);
+                if complex_size(&difference) > 1e-20 * scale {
+                    return Ok(Some(false));
+                }
+            }
+        }
+    }
+    for w in wrt {
+        let d: Basic = super::function::diff(e, &[(w.clone(), 1)])?;
+        if d != Basic::zero() {
+            return Ok(None);
+        }
+    }
+    Ok(Some(true))
+}
+
+/// The rest of SymPy's `is_constant` after the values at points
+/// (`_constant_by_simplified_derivatives`).
+fn constant_by_simplified_derivatives(e: &Basic, wrt: &[Basic]) -> PolyResult<Option<bool>> {
+    let options = crate::simplify::simplify::Options::default();
+    let expr: Basic = crate::simplify::simplify::simplify(e, &options)?;
+    if is(&expr, Predicate::zero) == Some(true) {
+        return Ok(Some(true));
+    }
+    for w in wrt {
+        let d: Basic =
+            crate::simplify::simplify::simplify(&super::function::diff(&expr, &[(w.clone(), 1)])?, &options)?;
+        if d != Basic::zero() {
+            return Ok(Some(false));
+        }
+    }
+    let mut zeros: Vec<Option<bool>> = Vec::new();
+    for node in e.preorder() {
+        if crate::core::logic::is_boolean(&node) || matches!(node.head(), Head::Tuple) {
+            continue;
+        }
+        let den: Basic = crate::simplify::radsimp::denom_of(&node)?;
+        if den == Basic::one() {
+            continue;
+        }
+        let factors: Vec<Basic> = if den.is_mul() { den.args().to_vec() } else { vec![den] };
+        for factor in factors {
+            zeros.push(is(&factor, Predicate::zero));
+        }
+    }
+    if zeros.contains(&Some(true)) {
+        return Ok(Some(false));
+    }
+    if zeros.contains(&None) {
+        return Ok(None);
+    }
+    Ok(Some(true))
+}
+
+/// Whether the expression does not depend on `wrt` (on any symbol when
+/// empty): SymPy's steps, native (`Expr.is_constant`).
+pub fn is_constant(e: &Basic, wrt: &[Basic]) -> PolyResult<Option<bool>> {
+    let mut free: std::collections::BTreeSet<Basic> = e.free_symbols();
+    if !wrt.is_empty() {
+        free.retain(|s| wrt.contains(s));
+    }
+    if free.is_empty() {
+        return Ok(Some(true));
+    }
+    let mut symbols: Vec<Basic> = free
+        .into_iter()
+        .filter(|s| matches!(s.head(), Head::Symbol(_)))
+        .collect();
+    symbols.sort_by_key(|s| s.to_string());
+    if let Some(native) = constant_natively(e, &symbols)? {
+        return Ok(Some(native));
+    }
+    constant_by_simplified_derivatives(e, &symbols)
+}

@@ -48,9 +48,9 @@ use super::super::rings::{Monomial, MonomialOrder, PolyElement, PolyRing, Terms}
 use super::algebraicfield::AlgebraicField;
 use super::domain::Domain;
 use super::finitefield::FiniteField;
-use super::gaussiandomains::GaussianIntegerRing;
+use super::gaussiandomains::{GaussianIntegerRing, GaussianRational, GaussianRationalField, QQ_I};
 use super::integerring::{IntegerRing, ZZ};
-use super::rationalfield::RationalField;
+use super::rationalfield::{RationalField, QQ};
 
 /// Which gcd the ring computes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -108,6 +108,17 @@ pub trait SparseGround: Domain {
         _f: &PolyElement<Self>,
         _g: &PolyElement<Self>,
     ) -> Option<(PolyElement<Self>, PolyElement<Self>)> {
+        None
+    }
+
+    /// The whole gcd, when it is not SymPy's `PolyElement.gcd` with the
+    /// hooks above (`_GaussianPolynomialRing.gcd` of
+    /// `integrals/telescoping`).
+    fn sympy_gcd(
+        _ring: &SparsePolynomialRing<Self>,
+        _a: &PolyElement<Self>,
+        _b: &PolyElement<Self>,
+    ) -> Option<PolyElement<Self>> {
         None
     }
 
@@ -252,6 +263,79 @@ impl SparseGround for AlgebraicField {}
 /// The generic hooks: `SparsePolynomialRing(ZZ_I, ...)` of
 /// `gaussianfactor` (the subresultant gcd).
 impl SparseGround for GaussianIntegerRing {}
+
+/// Whether the coefficients are rational (`_real`).
+fn gaussian_real(f: &PolyElement<GaussianRationalField>) -> bool {
+    f.terms.values().all(|c| c.y == Rat::ZERO)
+}
+
+/// `QQ_I[y1, ..., yk]` whose fractions are cancelled as SymPy's `QQ(y1,
+/// ...)` cancels them when the coefficients are rational, and with a monic
+/// denominator otherwise (`_GaussianPolynomialRing` of
+/// `integrals/telescoping`, the `Sympy` flavor); the rest is generic.
+impl SparseGround for GaussianRationalField {
+    fn sympy_gcd(
+        ring: &SparsePolynomialRing<GaussianRationalField>,
+        a: &PolyElement<GaussianRationalField>,
+        b: &PolyElement<GaussianRationalField>,
+    ) -> Option<PolyElement<GaussianRationalField>> {
+        if !gaussian_real(a) || !gaussian_real(b) {
+            return None;
+        }
+        let rational: SparsePolynomialRing<RationalField> = SparsePolynomialRing::sympy(QQ, ring.names.clone());
+        let g = rational.gcd(&gaussian_to_rational(&rational, a), &gaussian_to_rational(&rational, b));
+        Some(gaussian_from_rational(ring, &g))
+    }
+
+    fn sympy_cancel(
+        ring: &SparsePolynomialRing<GaussianRationalField>,
+        f: &PolyElement<GaussianRationalField>,
+        g: &PolyElement<GaussianRationalField>,
+    ) -> Option<(PolyElement<GaussianRationalField>, PolyElement<GaussianRationalField>)> {
+        if f.is_zero() {
+            return Some((f.clone(), ring.one()));
+        }
+        if gaussian_real(f) && gaussian_real(g) {
+            let rational: SparsePolynomialRing<RationalField> = SparsePolynomialRing::sympy(QQ, ring.names.clone());
+            let (p, q) = rational.cancel(&gaussian_to_rational(&rational, f), &gaussian_to_rational(&rational, g));
+            return Some((gaussian_from_rational(ring, &p), gaussian_from_rational(ring, &q)));
+        }
+        let h = ring.gcd(f, g);
+        let numerator = f.exquo(&h).expect("the gcd divides");
+        let denominator = g.exquo(&h).expect("the gcd divides");
+        let inverse: GaussianRational = QQ_I.invert(&denominator.LC()).expect("a nonzero leading coefficient");
+        Some((numerator.mul_ground(&inverse), denominator.mul_ground(&inverse)))
+    }
+}
+
+fn gaussian_to_rational(
+    rational: &SparsePolynomialRing<RationalField>,
+    f: &PolyElement<GaussianRationalField>,
+) -> PolyElement<RationalField> {
+    rational
+        .ring
+        .from_dict(f.terms.iter().map(|(m, c)| (m.clone(), c.x.clone())).collect())
+}
+
+fn gaussian_from_rational(
+    ring: &SparsePolynomialRing<GaussianRationalField>,
+    f: &PolyElement<RationalField>,
+) -> PolyElement<GaussianRationalField> {
+    ring.ring.from_dict(
+        f.terms
+            .iter()
+            .map(|(m, c)| {
+                (
+                    m.clone(),
+                    GaussianRational {
+                        x: c.clone(),
+                        y: Rat::ZERO,
+                    },
+                )
+            })
+            .collect(),
+    )
+}
 
 impl<K: SparseGround> SparsePolynomialRing<K> {
     /// `SparsePolynomialRing(ground, names)`.
@@ -539,6 +623,11 @@ impl<K: SparseGround> Domain for SparsePolynomialRing<K> {
     /// the coefficients when one of them is a term; the canonical gcd
     /// otherwise.
     fn gcd(&self, a: &PolyElement<K>, b: &PolyElement<K>) -> PolyElement<K> {
+        if self.flavor == GcdFlavor::Sympy {
+            if let Some(result) = K::sympy_gcd(self, a, b) {
+                return result;
+            }
+        }
         if a.is_zero() && b.is_zero() {
             return self.zero();
         }
