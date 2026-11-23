@@ -1085,3 +1085,91 @@ def test_subs_does_not_capture_a_bound_variable_of_subs() -> None:
     # nothing to capture: the bound variable is kept
     assert Subs(x + y, y, 2).subs(x, z) == Subs(z + y, y, 2)
     assert Subs(z + y, y, x).subs(x, y) == Subs(z + y, y, y)
+
+
+def test_wrapped_atoms_of_sympy_keep_their_data() -> None:
+    # an object of SymPy without arguments was rebuilt from them: Str('A'), the name of a MatrixSymbol, as Str(),
+    # so that from_sympy(MatrixSymbol('A', 2, 2)).args raised TypeError("Str.__new__() missing 1 required positional
+    # argument"), and two matrix symbols of one shape were *equal* nodes (their names had no content)
+    import pickle
+    from sympy.combinatorics import Permutation
+    A, B = sympy.MatrixSymbol('A', 2, 2), sympy.MatrixSymbol('B', 2, 2)
+    a, b = from_sympy(A), from_sympy(B)
+    assert len(a.args) == 3 and a.args[1:] == (Integer(2), Integer(2))
+    assert to_sympy(a.args[0]) == A.args[0] and str(a.args[0]) == 'A'
+    assert a != b and hash(a) != hash(b) and a == from_sympy(sympy.MatrixSymbol('A', 2, 2))
+    assert a.func(*a.args) == a and a.args[0].func(*a.args[0].args) == a.args[0]
+    assert srepr(a) == sympy.srepr(A) == "MatrixSymbol(Str('A'), Integer(2), Integer(2))"
+    difference = from_sympy(A - B)
+    assert to_sympy(difference) == A - B and to_sympy(difference) != sympy.ZeroMatrix(2, 2)
+    # the round trip without the cache of the conversions: rebuilt from the node alone
+    rebuilt = pickle.loads(pickle.dumps(from_sympy(sympy.Trace(A*B))))
+    assert to_sympy(rebuilt) == sympy.Trace(A*B) and rebuilt == from_sympy(sympy.Trace(A*B))
+    # a permutation has its data outside its args: its wrapper printed as the identity "()"
+    p = Permutation([1, 0, 2])
+    node = from_sympy(p)
+    assert str(node) == str(p) and node != from_sympy(Permutation([0, 2, 1]))
+    assert to_sympy(pickle.loads(pickle.dumps(node))) == p
+    # the free symbols of a wrapped expression are the symbols proper (SymPy lists the matrix symbols and the
+    # indexed objects too, which raised TypeError("a symbol is expected, got A"))
+    trace = as_expr(from_sympy(sympy.Trace(A) + sympy.Symbol('x')))
+    assert trace.free_symbols == {x}
+    assert as_expr(from_sympy(sympy.Indexed('a', sympy.Symbol('x')))).free_symbols == {Symbol('a'), x}
+    # a mutable Matrix is not a Basic: a clear error (this was "unhashable type: 'MutableDenseMatrix'")
+    message = ''
+    try:
+        untyped(from_sympy)(sympy.Matrix([[1, 2], [3, 4]]))
+    except TypeError as error:
+        message = str(error)
+    assert 'as_immutable' in message
+    immutable = from_sympy(sympy.ImmutableMatrix([[1, sympy.Symbol('x')]]))
+    assert to_sympy(immutable) == sympy.ImmutableMatrix([[1, sympy.Symbol('x')]])
+
+
+def test_sstr_brackets_unevaluated_and_algebraic_operands() -> None:
+    # sympy/sympy#30844 (the UnevaluatedExpr and AlgebraicNumber items, listed there for the LaTeX printer): sstr
+    # gave both the precedence of an atom, so that x*UnevaluatedExpr(y + z) was printed 'x*y + z', the square of
+    # UnevaluatedExpr(x + y) 'x + y**2', of UnevaluatedExpr(-x) '-x**2', of UnevaluatedExpr(1/2) '1/2**2', and
+    # x*AlgebraicNumber(sqrt(2), [1, 2]) 'x*sqrt(2) + 2' (SymPy's str has the last one too)
+    from sympy_extras.core import AlgebraicNumber, UnevaluatedExpr, sstr
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    U = UnevaluatedExpr
+    assert sstr(Mul(x, U(y + z))) == 'x*(y + z)' and sstr(Pow(U(x + y), 2)) == '(x + y)**2'
+    assert sstr(Mul(2, U(-x))) == '2*(-x)' and sstr(Pow(U(-x), 2)) == '(-x)**2'
+    assert sstr(Pow(U(Rational(1, 2)), 2)) == '(1/2)**2' and sstr(Pow(U(x**2), 3)) == '(x**2)**3'
+    assert sstr(Pow(2, U(x + y))) == '2**(x + y)' and sstr(Mul(-1, U(x + y))) == '-(x + y)'
+    assert sstr(U(x)*U(y)) == 'x*y' and sstr(Add(x, U(-y))) == 'x - y'
+    # the value of the printed form is the value of the tree
+    values = {'x': 1.3, 'y': 0.7, 'z': 2.1}
+    for e, expected in ((Mul(x, U(y + z)), 1.3*(0.7 + 2.1)), (Pow(U(x + y), 2), (1.3 + 0.7)**2), (Pow(U(-x), 2), 1.3**2),
+                        (Pow(U(Rational(1, 2)), 2), 0.25)):
+        assert abs(eval(sstr(e), dict(values)) - expected) < 1e-12
+    number = AlgebraicNumber(sqrt(Integer(2)), [1, 2])
+    assert sstr(Mul(x, number)) == 'x*(sqrt(2) + 2)' and sstr(Pow(number, 2)) == '(sqrt(2) + 2)**2'
+    assert sstr(Pow(2, number)) == '2**(sqrt(2) + 2)' and sstr(Add(x, number)) == 'x + sqrt(2) + 2'
+
+
+def test_limit_is_rebuilt_from_its_arguments() -> None:
+    # sympy/sympy#30844 (srepr not evaluable; python() declares the direction as a symbol): the direction of a
+    # Limit is the symbol Symbol('-') among its args, which the constructor refused, so that e.func(*e.args) and
+    # the evaluation of srepr(e) raised ValueError("direction must be one of '+', '-' or '+-', not -")
+    from sympy_extras.core.limits import Limit
+    x = Symbol('x')
+    f = Function('f')
+    for direction in ('+', '-', '+-'):
+        limit = Limit(f(x), x, 0, direction)
+        assert limit.func(*limit.args) == limit
+        namespace = {'Limit': Limit, 'Function': Function, 'Symbol': Symbol, 'Integer': Integer}
+        assert eval(srepr(limit), namespace) == limit
+    assert Limit(f(x), x, 0, Symbol('-')).direction == '-'
+    raises(ValueError, lambda: Limit(f(x), x, 0, Symbol('left')))
+
+
+def test_sympify_of_infinite_floats() -> None:
+    # sympify(float('inf')) raised OverflowError("cannot convert Infinity to integer ratio") and sympify(float('nan'))
+    # ValueError (the float was made an exact Float), so that x + float('inf') and latex(float('inf')) crashed:
+    # they are oo, -oo and nan, as in SymPy
+    assert sympify(float('inf')) == oo and sympify(float('-inf')) == -oo and sympify(float('nan')) is nan
+    x = Symbol('x')
+    assert (x + float('inf')).has(oo) and (2*x).subs(x, float('inf')) == oo
+    assert sympify(2.5) == Float(2.5)

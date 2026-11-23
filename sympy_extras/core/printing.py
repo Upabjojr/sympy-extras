@@ -12,17 +12,32 @@ References
 
 .. [1] SymPy Development Team, *SymPy documentation: Printing*,
        https://docs.sympy.org/latest/modules/printing.html#module-sympy.printing.str
+
+The orders of the terms of a printed sum (the setting ``order`` of the
+printers: ``_ordered_monomial``, ``_monomial_ordered``, ``_compare_old``)
+are ported from SymPy's ``sympy.core.expr`` (``Expr.as_ordered_terms``),
+``sympy.polys.orderings`` and ``sympy.printing.printer``.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/core/expr.py (Expr.as_ordered_terms, Expr._parse_order),
+# sympy/polys/orderings.py (monomial_key), sympy/printing/printer.py
+# (Printer._as_ordered_terms, Printer._compare_pretty) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the keys of the monomial orders flattened into tuples of
+# fractions; the exponent of the old order without the pattern matcher.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Optional, Sequence
+from functools import cmp_to_key
+from typing import Final, Optional, Sequence
 
 from .basic import Basic
-from .expr import Expr
-from .numbers import (AlgebraicNumber, Float, ImaginaryUnit, NegativeInfinity, Number, NumberSymbol, Rational,
+from .expr import Expr, UnevaluatedExpr
+from .numbers import (AlgebraicNumber, Float, ImaginaryUnit, Integer, NegativeInfinity, Number, NumberSymbol, Rational,
     number_from_fraction)
-from .sorting import SortKey, compare_key, default_sort_key
+from .sorting import SortKey, compare_key, default_sort_key, ordered
 
 # the classes printed here (none of these modules imports this one at module level)
 from .add import Add  # noqa: E402
@@ -32,7 +47,8 @@ from .mul import Mul  # noqa: E402
 from .power import Pow  # noqa: E402
 from .relational import Relational  # noqa: E402
 
-__all__ = ['sstr', 'srepr', 'StrPrinter', 'ordered_terms', 'printed_terms', 'printed_factors']
+__all__ = ['sstr', 'srepr', 'StrPrinter', 'ordered_terms', 'printed_terms', 'printed_factors', 'PRINT_ORDERS',
+           'check_print_order']
 
 PREC_XOR = 10
 PREC_IMPLIES = 10
@@ -82,6 +98,13 @@ def precedence(e: Basic) -> int:
         return PREC_ADD if e.as_fraction() < 0 else PREC_ATOM
     if isinstance(e, NegativeInfinity):
         return PREC_ADD
+    if isinstance(e, UnevaluatedExpr):
+        # printed as its content, and binding as it does: x*(y + z), (x + y)**2, 2*(-x) (these lost their
+        # parentheses: the wrapper had the precedence of an atom; sympy/sympy#30844 lists this for the LaTeX printer)
+        return precedence(e.args[0])
+    if isinstance(e, AlgebraicNumber):
+        # printed as its expression: x*(sqrt(2) + 2) (sympy/sympy#30844)
+        return precedence(e.as_expr())
     return PREC_ATOM
 
 
@@ -97,8 +120,11 @@ class StrPrinter:
     is printed without its trailing zeros (``2.5*x``), as SymPy does, a
     float alone with all its digits (``2.50000000000000``)."""
 
-    def __init__(self) -> None:
+    def __init__(self, order: Optional[str] = None) -> None:
+        check_print_order(order)
         self.level: int = 0
+        #: the order of the terms of the sums (see printed_terms)
+        self.order: Final[Optional[str]] = order
 
     def doprint(self, e: Basic) -> str:
         if isinstance(e, Float) and self.level > 0:
@@ -136,7 +162,7 @@ class StrPrinter:
         # an evaluated sum (a number first, then the terms in the compare
         # order) is printed in the printing order; an unevaluated one as given
         parts: list[str] = []
-        for i, term in enumerate(printed_terms(terms)):
+        for i, term in enumerate(printed_terms(terms, self.order)):
             s = self.parenthesize(term, PREC_ADD)
             if i == 0:
                 parts.append(s)
@@ -147,7 +173,7 @@ class StrPrinter:
         return ''.join(parts)
 
     def print_mul(self, factors: Sequence[Expr]) -> str:
-        factors = printed_factors(factors)
+        factors = printed_factors(factors, self.order)
         sign = ''
         numerator: list[str] = []
         denominator: list[str] = []
@@ -208,8 +234,10 @@ class StrPrinter:
         return '%s**%s' % (b, e)
 
 
-def sstr(e: Basic) -> str:
-    """The string form of ``e`` in SymPy's notation.
+def sstr(e: Basic, order: Optional[str] = None) -> str:
+    """The string form of ``e`` in SymPy's notation; ``order`` is the
+    order of the terms of the sums, as in SymPy's ``sstr`` (see
+    :func:`printed_terms`).
 
     Examples
     ========
@@ -218,8 +246,10 @@ def sstr(e: Basic) -> str:
     >>> x, y, z = symbols('x y z')
     >>> sstr(x**2 + 2*x + 1), sstr(-x*y/(2*z)), sstr(x**-2), sstr((x + 1)/(x + 2))
     ('x**2 + 2*x + 1', '-x*y/(2*z)', 'x**(-2)', '(x + 1)/(x + 2)')
+    >>> sstr(x**2 + x*y + y**3, order='grlex'), sstr(x**2 + x*y + y**3, order='rev-lex')
+    ('y**3 + x**2 + x*y', 'y**3 + x*y + x**2')
     """
-    return StrPrinter().doprint(e)
+    return StrPrinter(order).doprint(e)
 
 
 def srepr(e: Basic) -> str:
@@ -262,6 +292,9 @@ def srepr(e: Basic) -> str:
         return "Function(%r%s)(%s)" % (e.name, given, ', '.join(srepr(a) for a in e.args))
     if isinstance(e, DefinedFunction):
         return "%s(%s)" % (e.name, ', '.join(srepr(a) for a in e.args))
+    atom = e._srepr_atom()
+    if atom is not None:
+        return atom
     head = e._srepr_name()
     if head is not None:
         return "%s(%s)" % (head, ', '.join(srepr(a) for a in e.args))
@@ -396,6 +429,67 @@ def _printing_order(factors: Sequence[Expr]) -> list[Expr]:
     return sorted(commutative, key=default_sort_key) + tail
 
 
+#: the monomial orders of the terms of a printed sum (SymPy's ``monomial_key``)
+_MONOMIAL_ORDERS: tuple[str, ...] = ('lex', 'grlex', 'grevlex', 'ilex', 'igrlex', 'igrevlex')
+#: the values of the setting ``order`` of the printers: ``None`` (the
+#: printing order: ``'lex'`` with the special case ``1 - x``), a monomial
+#: order, ``'rev-'`` and a monomial order (the same key, decreasing),
+#: ``'old'`` (SymPy's order before 0.7: by the exponent of the last power
+#: of a term, then the compare order) and ``'none'`` (the arguments as
+#: they are stored)
+PRINT_ORDERS: tuple[Optional[str], ...] = (None,) + _MONOMIAL_ORDERS + tuple('rev-' + name for name in _MONOMIAL_ORDERS) \
+    + ('old', 'none')
+
+
+def check_print_order(order: Optional[str]) -> None:
+    """``ValueError`` unless ``order`` is one of :data:`PRINT_ORDERS`."""
+    if order not in PRINT_ORDERS:
+        raise ValueError("'order' must be None, 'lex', 'grlex', 'grevlex', 'ilex', 'igrlex', 'igrevlex', one of these "
+                         "after 'rev-', 'old' or 'none', not %r" % (order,))
+
+
+# PORTED FROM SYMPY: sympy/polys/orderings.py:monomial_key, sympy/core/expr.py:Expr._parse_order
+def _ordered_monomial(negated: tuple[Fraction, ...], name: str) -> tuple[Fraction, ...]:
+    """The key of a monomial under the order ``name``, smallest first in
+    the sum: SymPy's ``neg(monomial_key(name)(m))``, flattened, for the
+    exponents ``m`` given negated."""
+    if name == 'lex':
+        return negated
+    if name == 'grlex':
+        return (sum(negated, Fraction(0)),) + negated
+    if name == 'grevlex':
+        return (sum(negated, Fraction(0)),) + tuple(-e for e in reversed(negated))
+    exponents = tuple(-e for e in negated)
+    if name == 'ilex':
+        return exponents
+    if name == 'igrlex':
+        return (sum(exponents, Fraction(0)),) + exponents
+    return (sum(exponents, Fraction(0)),) + tuple(reversed(negated))
+
+
+# PORTED FROM SYMPY: sympy/core/expr.py:Expr.as_ordered_terms
+def _monomial_ordered(terms: Sequence[Expr], name: str, reverse: bool) -> list[Expr]:
+    """The terms by the monomial order ``name`` of their generators, then
+    the factors which do not commute, then the numerical coefficients;
+    in the decreasing order of these keys with ``reverse``. With order
+    terms the others are always in decreasing order (a series is printed
+    by increasing powers) and the order terms last."""
+    values: NumericValues = {}
+    gens: set[Expr] = set()
+    for t in terms:
+        gens.update(_generators(t, values))
+    ordered_gens = sorted(gens, key=default_sort_key)
+    keys: dict[Expr, tuple[tuple[Fraction, ...], tuple[SortKey, ...], CoefficientRank, SortKey]] = {
+        t: (_ordered_monomial(_monomial_key(t, ordered_gens, values), name), _noncommutative_key(t),
+            _coefficient_rank(t, values), t.sort_key())
+        for t in terms}
+    plain = [t for t in terms if not t.is_Order]
+    orders = sorted([t for t in terms if t.is_Order], key=lambda t: keys[t])
+    if orders:
+        return sorted(plain, key=lambda t: keys[t], reverse=True) + orders
+    return sorted(plain, key=lambda t: keys[t], reverse=reverse)
+
+
 def ordered_terms(terms: Sequence[Expr]) -> list[Expr]:
     """The terms of a sum in the printing order: decreasing degrees in
     the generators (lexicographically), numbers last.
@@ -411,30 +505,73 @@ def ordered_terms(terms: Sequence[Expr]) -> list[Expr]:
     """
     if len(terms) == 2 and _leads_a_difference(terms[0], terms[1]):
         return list(terms)  # SymPy's special case: 1 - x, 2 - pi (but -x - 2, -pi*x + 1, -x*y + 1)
-    values: NumericValues = {}
-    gens: set[Expr] = set()
-    for t in terms:
-        gens.update(_generators(t, values))
-    ordered_gens = sorted(gens, key=default_sort_key)
-    keys: dict[Expr, tuple[tuple[Fraction, ...], tuple[SortKey, ...], CoefficientRank, SortKey]] = {
-        t: (_monomial_key(t, ordered_gens, values), _noncommutative_key(t), _coefficient_rank(t, values), t.sort_key())
-        for t in terms}
-    plain = sorted([t for t in terms if not t.is_Order], key=lambda t: keys[t])
-    orders = sorted([t for t in terms if t.is_Order], key=lambda t: keys[t])
-    if orders:
-        plain.reverse()  # a series is printed in increasing order: x - x**3/6 + O(x**5)
-    return plain + orders
+    return _monomial_ordered(terms, 'lex', False)
+
+
+def _old_exponent(term: Expr) -> Optional[Expr]:
+    """The exponent ``p3`` with which SymPy's pattern ``p1 * p2**p3``
+    (three wilds) matches a term: the exponent of the last of its
+    factors in the order of ``ordered`` (the number of nodes, then
+    ``default_sort_key``), which SymPy's commutative matcher gives to the
+    power first; ``0`` for the term 1; ``None`` for a term which is not
+    known to commute, which the commutative pattern does not match.
+    Written out because the core's matcher, which is as free as SymPy's
+    to choose among the factors, takes another one."""
+    from .expr import factors_of
+    if term.is_commutative is not True:
+        return None
+    if term == 1:
+        return Integer(0)
+    return ordered(factors_of(term))[-1].as_base_exp()[1]
+
+
+# PORTED FROM SYMPY: sympy/printing/printer.py:Printer._compare_pretty
+def _compare_old(a: Expr, b: Expr) -> int:
+    """SymPy's comparison of two terms under the order ``'old'``: the
+    order terms last, the rational numbers by value, then by the exponent
+    of a power which the term is a multiple of (:func:`_old_exponent`),
+    then the compare order."""
+    from .order import Order
+    if isinstance(a, Order) and not isinstance(b, Order):
+        return 1
+    if not isinstance(a, Order) and isinstance(b, Order):
+        return -1
+    if isinstance(a, Rational) and isinstance(b, Rational):
+        left, right = a.p * b.q, b.p * a.q
+        return (left > right) - (left < right)
+    exponent_a = _old_exponent(a)
+    if exponent_a is not None:
+        exponent_b = _old_exponent(b)
+        if exponent_b is not None:
+            c = exponent_a.compare(exponent_b)
+            if c != 0:
+                return c
+    return a.compare(b)
 
 
 def printed_terms(terms: Sequence[Expr], order: Optional[str] = None) -> list[Expr]:
     """The terms of a sum in the order in which the printers (``sstr``,
-    the LaTeX and the pretty printer) write them: the terms of an
-    unevaluated sum, and all terms under the order ``'none'``, as they
-    are given; the terms of an evaluated sum (a number first, then the
-    compare order) in the printing order of :func:`ordered_terms`
-    (``None`` or ``'lex'``), by decreasing total degree (``'grlex'``) or
-    by decreasing total degree with the last generators first
-    (``'grevlex'``).
+    the LaTeX and the pretty printer) write them, as SymPy's printers do
+    under their setting ``order``: the terms of an unevaluated sum, and
+    all terms under the order ``'none'``, as they are given; the terms of
+    an evaluated sum (a number first, then the compare order)
+
+    - in the printing order of :func:`ordered_terms` (``None``), which is
+      ``'lex'`` with SymPy's special case ``1 - x``;
+    - by a monomial order of their generators: decreasing degrees
+      lexicographically (``'lex'``), by decreasing total degree
+      (``'grlex'``), by decreasing total degree with the last generators
+      first (``'grevlex'``), or the inverses of these (``'ilex'``,
+      ``'igrlex'``, ``'igrevlex'``: increasing monomials, the terms of
+      one monomial still by increasing coefficient);
+    - by the same keys in decreasing order (``'rev-lex'``, ...,
+      ``'rev-igrevlex'``): the reversed sum;
+    - in SymPy's old order (``'old'``): the rational number first, then
+      by the exponent of a power in the term, then the compare order.
+
+    With an order term in the sum the other terms are written by
+    increasing powers whatever the monomial order and its direction (as
+    SymPy does: ``x - x**3/6 + O(x**5)``).
 
     Examples
     ========
@@ -444,32 +581,29 @@ def printed_terms(terms: Sequence[Expr], order: Optional[str] = None) -> list[Ex
     >>> x, y = symbols('x y')
     >>> printed_terms((x + y**2 + x*y + 1).args), printed_terms((x + y**2 + x*y + 1).args, 'grlex')
     ([x*y, x, y**2, 1], [x*y, y**2, x, 1])
+    >>> printed_terms((x + y**2 + x*y + 1).args, 'rev-lex'), printed_terms((x + y**2 + x*y + 1).args, 'old')
+    ([1, y**2, x, x*y], [1, x, x*y, y**2])
     >>> printed_terms(Add(Integer(1), y, x).args), printed_terms((x + y + 1).args, 'none') == list((x + y + 1).args)
     ([1, y, x], True)
+    >>> printed_terms((1 - x).args), printed_terms((1 - x).args, 'lex')
+    ([1, -x], [-x, 1])
     """
-    if order not in (None, 'lex', 'grlex', 'grevlex', 'none'):
-        raise ValueError("the order of the terms must be None, 'lex', 'grlex', 'grevlex' or 'none', not %r" % (order,))
+    check_print_order(order)
     if order == 'none' or not _in_compare_order(terms):
         return list(terms)
-    if order is None or order == 'lex':
+    if order is None:
         return ordered_terms(terms)
-    values: NumericValues = {}
-    gens: set[Expr] = set()
-    for t in terms:
-        gens.update(_generators(t, values))
-    ordered_gens = sorted(gens, key=default_sort_key)
-    keyed = [(_monomial_key(t, ordered_gens, values), t) for t in ordered_terms(terms)]
-    if order == 'grlex':
-        keyed.sort(key=lambda kt: (sum(kt[0]), kt[0]))
-    else:
-        keyed.sort(key=lambda kt: (sum(kt[0]), tuple(-x for x in reversed(kt[0]))))
-    return [t for _, t in keyed]
+    if order == 'old':
+        return sorted(terms, key=cmp_to_key(_compare_old))
+    if order.startswith('rev-'):
+        return _monomial_ordered(terms, order[4:], True)
+    return _monomial_ordered(terms, order, False)
 
 
 def printed_factors(factors: Sequence[Expr], order: Optional[str] = None) -> list[Expr]:
     """The factors of a product in the order in which the printers write
     them: the factors of an unevaluated product, and all factors under
-    the order ``'none'``, as they are given; the commutative factors of
+    the orders ``'none'`` and ``'old'``, as they are given; the commutative factors of
     an evaluated product by ``default_sort_key`` (the numbers, then
     ``sqrt(2)``, ``x``, ``sin(x)``, ``cos(x)``), the others after them.
 
@@ -482,7 +616,8 @@ def printed_factors(factors: Sequence[Expr], order: Optional[str] = None) -> lis
     >>> printed_factors((2*y*x*sqrt(Integer(2))).args), printed_factors(Mul(y, x, Integer(2)).args)
     ([2, sqrt(2), x, y], [y, x, 2])
     """
-    if order == 'none':
+    if order in ('none', 'old'):
+        # (SymPy's printers write the stored arguments of a product under both)
         return list(factors)
     return _printing_order(factors)
 

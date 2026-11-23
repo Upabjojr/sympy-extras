@@ -89,7 +89,7 @@ The settings are keyword arguments, typed; a wrong value raises
 | `long_frac_ratio` | above this ratio of the widths, a part of the numerator goes after the fraction | `None` |
 | `mat_delim`, `mat_str` | the delimiter (`'['`, `'('`, `''`) and the environment of matrices | `'['`, by size |
 | `mul_symbol` | `None`, `'ldot'`, `'dot'`, `'times'` or any LaTeX | `None` |
-| `order` | the order of the terms of sums: `None`/`'lex'`, `'grlex'`, `'grevlex'`, `'none'` (as stored) | `None` |
+| `order` | the order of the terms of sums, as in SymPy: `None`, `'lex'`, `'grlex'`, `'grevlex'`, `'ilex'`, `'igrlex'`, `'igrevlex'`, these after `'rev-'`, `'old'`, `'none'` (as stored); see *The order of the terms* | `None` |
 | `symbol_names` | the LaTeX of some symbols | `{}` |
 | `root_notation` | `\sqrt[3]{x}` instead of `x^{\frac{1}{3}}` | `True` |
 | `imaginary_unit` | `'i'`, `'ri'`, `'ti'`, `'j'`, `'rj'`, `'tj'` or any LaTeX | `'i'` |
@@ -116,8 +116,7 @@ $x^{2/3} / 2$
 SymPy's `mat_symbol_style`, `perm_cyclic`, `adjoint_style` and
 `disable_split_super_sub` concern classes this package does not have (or
 a way to switch off the scripts of names which produced invalid TeX) and
-are not offered; the orders `'old'` and the reversed ones are not
-supported.
+are not offered.
 
 ## Pretty printing
 
@@ -173,7 +172,7 @@ list, tuple, dictionary or set of such objects.
 |---|---|
 | `use_unicode` | Unicode or ASCII; `None` is the default set by `pretty_use_unicode` |
 | `wrap_line`, `num_columns` | a picture wider than `num_columns` (the terminal for `None`) is cut into screens, the cuts marked with `↪` or `>` |
-| `order` | `None` (or `'lex'`): the printing order of `sstr`; `'none'`: the order of the arguments |
+| `order` | the order of the terms of sums, as in SymPy and in `latex` (`None`, `'lex'`, `'grlex'`, `'grevlex'`, the reversed orders, `'old'`); `'none'`: the order of the arguments |
 | `root_notation` | `False` writes `x**(1/n)` as a power, not as a root |
 | `use_unicode_sqrt_char` | `False` draws a square root always with its bar, never as `√x` |
 | `imaginary_unit` | `'i'` or `'j'`: the letter of the imaginary unit in Unicode |
@@ -342,6 +341,80 @@ same order:
 cos(y) + exp(-2*x/3) | \cos{\left(y \right)} + e^{- \frac{2 x}{3}} | cos(y) + ℯ
 
 ```
+
+### The order of the terms
+
+`sstr(expr, order=...)`, `latex(expr, order=...)` and `pretty(expr,
+order=...)` take the values of the setting `order` of SymPy's printers and
+write the same sums as SymPy (`core.printing.printed_terms`,
+`PRINT_ORDERS`):
+
+| `order` | the terms of an evaluated sum |
+|---|---|
+| `None` | the printing order: `'lex'`, with SymPy's special case of a positive number minus one term (`1 - x`) |
+| `'lex'`, `'grlex'`, `'grevlex'` | by decreasing monomials of the generators: lexicographically, by total degree, by total degree with the last generators first; the terms of one monomial by increasing coefficient |
+| `'ilex'`, `'igrlex'`, `'igrevlex'` | the inverse monomial orders: increasing monomials |
+| `'rev-lex'`, ..., `'rev-igrevlex'` | the same keys in decreasing order: the reversed sum |
+| `'old'` | SymPy's order before its 0.7: the rational number first, then by the exponent of the last factor of the term, then the order of the arguments |
+| `'none'` | the terms, and the factors of the products, as they are stored |
+
+With an order term in the sum the other terms are written by increasing
+powers under every monomial order and direction, as SymPy does (`x -
+x**3/6 + O(x**5)`). Under `'old'` and `'none'` the factors of a product
+are written as they are stored. An unevaluated sum keeps the order of its
+arguments under every order.
+
+```python
+>>> from sympy_extras.core import sstr
+>>> p = x**2 + x*y + y**3 + 1
+>>> [sstr(p, order=o) for o in (None, 'grlex', 'rev-lex', 'old')]
+['x**2 + x*y + y**3 + 1', 'y**3 + x**2 + x*y + 1', '1 + y**3 + x*y + x**2', '1 + x*y + x**2 + y**3']
+>>> print(latex(p, order='grlex'), '|', latex(1 - x), '|', latex(1 - x, order='lex'))
+y^{3} + x^{2} + x y + 1 | 1 - x | - x + 1
+>>> print(pretty(p, order='rev-grlex'))  # doctest: +NORMALIZE_WHITESPACE
+           2    3
+1 + x*y + x  + y
+
+```
+
+### Objects of SymPy
+
+A node which wraps an object of SymPy with no class here
+(`sympy_extras.interop`: a `MatrixSymbol`, a `Trace`, an `Indexed`, an
+unevaluated `Integral` converted from SymPy, ...) is printed **by SymPy's
+own printer**: its LaTeX and its picture are SymPy's, and the brackets
+around it inside a native expression are decided by this framework from
+how that output binds (SymPy's precedence for the LaTeX, the binding of
+SymPy's picture). The printing package does not import SymPy: a node says
+what a foreign system printed for it through two hooks of `Basic`
+(`_foreign_latex`, `_foreign_pretty`, returning a `ForeignPrint`: the
+rows, the baseline and the name of a `Binding`), which the wrappers of
+`sympy_extras.interop` implement and every node of the core leaves at
+`None`. The settings which SymPy's printers share are handed over
+(`mul_symbol`, `order`, `fold_short_frac`, ...; not `symbol_names`).
+
+```python
+>>> import sympy
+>>> from sympy_extras.interop import from_sympy
+>>> A = sympy.MatrixSymbol('A', 2, 2)
+>>> trace = from_sympy(sympy.Trace(A*A.T))
+>>> print(latex(trace), '|', latex(x*trace**2 + 1), '|', latex(from_sympy(A.T)))
+\operatorname{tr}\left(A A^{T} \right) | x \operatorname{tr}\left(A A^{T} \right)^{2} + 1 | A^{T}
+>>> print(pretty(x + trace, use_unicode=True))
+      ⎛   T⎞
+x + tr⎝A⋅A ⎠
+>>> print(latex(from_sympy(sympy.Integral(sympy.Symbol('t'), sympy.Symbol('t')))**2))
+\left(\int t\, dt\right)^{2}
+
+```
+
+(Before, the LaTeX of such a node was the name of its wrapper,
+`\operatorname{SymPyExprNode}\left(\text{SymPyNode}, 2, 2\right)`, and its
+picture its string on one row.) What SymPy prints wrongly for its own
+objects stays wrong inside them (the defects of sympy/sympy#30844 which
+concern matrix expressions, for instance); the terms of a sum are ordered
+by the keys of the wrappers, which may differ from SymPy's order for two
+wrapped terms.
 
 What still differs between the two printers, and why:
 

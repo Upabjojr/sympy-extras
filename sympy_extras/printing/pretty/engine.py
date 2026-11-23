@@ -46,9 +46,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence, TypeVar
 
-from ...core.basic import Basic
+from ...core.basic import Basic, ForeignPrint, PrintSetting
+from ...core.printing import check_print_order
 from ...core.printing import sstr
-from ..framework import Binding, Dispatcher, TreePrinter
+from ..framework import Binding, Dispatcher, TreePrinter, binding_named
 from .layout import Picture, PrettyContext, PrettyResult
 from .symbology import Symbology
 
@@ -62,7 +63,8 @@ class PrettySettings:
     use_unicode: bool = False
     wrap_line: bool = True
     num_columns: Optional[int] = None
-    #: ``None`` for the printing order, ``'none'`` for the order of the arguments
+    #: the order of the terms of the sums (``core.printing.printed_terms``): ``None`` for the printing order,
+    #: ``'none'`` for the order of the arguments, ``'grlex'``, ``'rev-lex'``, ``'old'``, ... as in SymPy
     order: Optional[str] = None
     root_notation: bool = True
     use_unicode_sqrt_char: bool = True
@@ -74,8 +76,7 @@ class PrettySettings:
     def __post_init__(self) -> None:
         if self.imaginary_unit not in ('i', 'j'):
             raise ValueError("'imaginary_unit' must be either 'i' or 'j', not '%s'" % self.imaginary_unit)
-        if self.order not in (None, 'lex', 'none'):
-            raise ValueError("'order' must be None, 'lex' or 'none', not '%s'" % self.order)
+        check_print_order(self.order)
 
 
 Rule = Callable[['PrettyPrinter', Basic, PrettyContext], PrettyResult]
@@ -141,6 +142,10 @@ class PrettyPrinter(TreePrinter[Basic, Picture]):
         self.settings: PrettySettings = settings
         self.symbology: Symbology = Symbology(settings.use_unicode, settings.imaginary_unit)
         self._rules: PrettyRules = rules
+        #: the settings handed to the system of a wrapped foreign object (Basic._foreign_pretty)
+        self.foreign_settings: dict[str, PrintSetting] = {
+            'use_unicode': settings.use_unicode, 'order': settings.order, 'root_notation': settings.root_notation,
+            'use_unicode_sqrt_char': settings.use_unicode_sqrt_char, 'imaginary_unit': settings.imaginary_unit}
 
     @property
     def unicode(self) -> bool:
@@ -157,10 +162,21 @@ class PrettyPrinter(TreePrinter[Basic, Picture]):
     def rule(self, node: Basic, context: PrettyContext) -> PrettyResult:
         """``node`` printed in ``context``, without the brackets the
         context may require (see :meth:`operand`)."""
+        foreign = node._foreign_pretty(self.foreign_settings)
+        if foreign is not None:
+            return self.foreign(foreign)
         found = self._rules.lookup(type(node))
         if found is None:
             return self.generic(node, context)
         return found(self, node, context)
+
+    def foreign(self, printed: ForeignPrint) -> PrettyResult:
+        """The picture which the system of a wrapped foreign object drew
+        for it (SymPy's, for the nodes of :mod:`sympy_extras.interop`),
+        binding as that system says."""
+        picture = Picture(printed.rows, printed.baseline)
+        binding = binding_named(printed.binding)
+        return PrettyResult(picture, binding, stacked=binding == Binding.FRACTION and picture.height() > 1)
 
     def generic(self, e: Basic, context: PrettyContext) -> PrettyResult:
         """A node without a rule: its string form (what SymPy's printer

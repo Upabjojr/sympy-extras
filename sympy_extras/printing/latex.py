@@ -54,7 +54,8 @@ import mpmath
 from sympy_extras.core.accumbounds import AccumBounds
 from sympy_extras.core.add import Add
 from sympy_extras.core.assume import AppliedPredicate, Predicate
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, ForeignPrint, PrintSetting
+from sympy_extras.core.sympify import sympify
 from sympy_extras.core.containers import Dict, Tuple
 from sympy_extras.core.expr import Expr, UnevaluatedExpr
 from sympy_extras.core.function import Application, AppliedUndef, Derivative, Lambda, Subs, WildFunction
@@ -67,7 +68,7 @@ from sympy_extras.core.numbers import (AlgebraicNumber, CatalanType, ComplexInfi
     TribonacciConstantType, fraction_to_mpf, number_from_fraction)
 from sympy_extras.core.order import Order
 from sympy_extras.core.power import Pow
-from sympy_extras.core.printing import printed_factors, printed_terms
+from sympy_extras.core.printing import check_print_order, printed_factors, printed_terms
 from sympy_extras.core.relational import Relational
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
@@ -76,7 +77,7 @@ from sympy_extras.matrices.dense import ExprMatrix
 from sympy_extras.polys.polytools import Poly
 
 from ._latex_names import escape_name, escape_text, name_latex, operator_name, split_super_sub, text, translate
-from .framework import Binding, Context, Dispatcher, Position, Result, TreePrinter, needs_brackets
+from .framework import Binding, Context, Dispatcher, Position, Result, TreePrinter, binding_named, needs_brackets
 
 __all__ = ['latex', 'LatexSettings', 'LatexPrinter', 'LatexInput', 'RULES']
 
@@ -93,7 +94,6 @@ _MUL_SYMBOLS = {None: ' ', 'ldot': r' \,.\, ', 'dot': r' \cdot ', 'times': r' \t
 _IMAGINARY_UNITS = {'i': 'i', 'ri': r'\mathrm{i}', 'ti': r'\text{i}', 'j': 'j', 'rj': r'\mathrm{j}',
                     'tj': r'\text{j}'}
 _DIFF_OPERATORS = {'d': 'd', 'rd': r'\mathrm{d}', 'td': r'\text{d}'}
-_ORDERS = (None, 'lex', 'grlex', 'grevlex', 'none')
 _SPACES = ('', ' ', '\\', '\\,', '\\:', '\\;', '\\quad')
 
 _ENDS_WITH_NUMBER = re.compile(r'[0-9][} ]*$')
@@ -151,8 +151,7 @@ class LatexPrinter(TreePrinter[LatexInput, str]):
             raise ValueError("'decimal_separator' must be 'period' or 'comma'")
         if s.inv_trig_style not in ('abbreviated', 'full', 'power'):
             raise ValueError("'inv_trig_style' must be 'abbreviated', 'full' or 'power'")
-        if s.order not in _ORDERS:
-            raise ValueError("'order' must be None, 'lex', 'grlex', 'grevlex' or 'none'")
+        check_print_order(s.order)
         if s.mat_delim not in (None, '', '[', '('):
             raise ValueError("'mat_delim' must be '[', '(' or ''")
         self.settings: LatexSettings = s
@@ -167,6 +166,14 @@ class LatexPrinter(TreePrinter[LatexInput, str]):
         self.diff_operator: str = _DIFF_OPERATORS.get(s.diff_operator, s.diff_operator)
         #: between the elements of a container and the arguments of a function
         self.comma: str = ';' if s.decimal_separator == 'comma' else ','
+        #: the settings handed to the system of a wrapped foreign object (Basic._foreign_latex)
+        self.foreign_settings: dict[str, PrintSetting] = {
+            'fold_frac_powers': s.fold_frac_powers, 'fold_func_brackets': s.fold_func_brackets,
+            'fold_short_frac': self.fold_short_frac, 'inv_trig_style': s.inv_trig_style, 'itex': s.itex,
+            'ln_notation': s.ln_notation, 'long_frac_ratio': s.long_frac_ratio, 'mat_delim': s.mat_delim,
+            'mat_str': s.mat_str, 'mul_symbol': s.mul_symbol, 'order': s.order, 'root_notation': s.root_notation,
+            'imaginary_unit': s.imaginary_unit, 'gothic_re_im': s.gothic_re_im, 'decimal_separator': s.decimal_separator,
+            'parenthesize_super': s.parenthesize_super, 'min': s.min, 'max': s.max, 'diff_operator': s.diff_operator}
 
     @staticmethod
     def _mul_symbol(symbol: Optional[str]) -> str:
@@ -194,11 +201,25 @@ class LatexPrinter(TreePrinter[LatexInput, str]):
 
     def rule(self, node: LatexInput, context: Ctx) -> Res:
         if isinstance(node, Basic):
+            foreign = node._foreign_latex(self.foreign_settings)
+            if foreign is not None:
+                return self.foreign(foreign)
             found = RULES.lookup(type(node))
             if found is not None:
                 return found(self, node, context)
             return _basic(self, node, context)
         return _python_value(self, node, context)
+
+    def foreign(self, printed: ForeignPrint) -> Res:
+        """The LaTeX which the system of a wrapped foreign object wrote
+        for it (SymPy's, for the nodes of :mod:`sympy_extras.interop`),
+        binding as that system says; an output which starts with a minus
+        sign binds as a negation at most."""
+        text = ' '.join(printed.rows)
+        binding = binding_named(printed.binding)
+        if text.lstrip().startswith('-') and binding > Binding.NEGATION:
+            binding = Binding.NEGATION
+        return Result(text, binding, applies=binding == Binding.APPLICATION)
 
     def bracket(self, result: Res, context: Ctx) -> str:
         scripts_only = result.scripted and context.scripts_follow and result.binding >= context.level
@@ -338,7 +359,8 @@ def _python_value(p: LatexPrinter, e: LatexInput, ctx: Ctx) -> Res:
     if isinstance(e, int):
         return p.rule(Integer(e), ctx)
     if isinstance(e, float):
-        return p.rule(Float(e), ctx)
+        # (through sympify: an infinite float is \infty, nan is \text{NaN}; Float(inf) raised OverflowError)
+        return p.rule(sympify(e), ctx)
     if isinstance(e, Fraction):
         return p.rule(number_from_fraction(e), ctx)
     if isinstance(e, str):
@@ -1000,8 +1022,10 @@ def latex(expr: LatexInput, *, mode: str = 'plain', fold_frac_powers: bool = Fal
     mat_str : the environment of matrices ('matrix', 'smallmatrix',
         'array', ...)
     mul_symbol : None (a space), 'ldot', 'dot', 'times' or any LaTeX
-    order : the order of the terms of the sums: None or 'lex', 'grlex',
-        'grevlex', or 'none' (as stored)
+    order : the order of the terms of the sums, as in SymPy: None, 'lex',
+        'grlex', 'grevlex', 'ilex', 'igrlex', 'igrevlex', one of these
+        after 'rev-' (reversed), 'old' or 'none' (as stored); see
+        :func:`sympy_extras.core.printing.printed_terms`
     symbol_names : the LaTeX of some symbols
     root_notation : ``\sqrt[3]{x}`` instead of ``x^{\frac{1}{3}}``
     imaginary_unit : 'i' (default), 'ri', 'ti', 'j', 'rj', 'tj' or any LaTeX

@@ -31,7 +31,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import (Callable, Final, Iterable, Iterator, Literal, Mapping, Optional, Protocol, SupportsIndex,
+from typing import (Callable, Final, Iterable, Iterator, Literal, Mapping, Optional, Protocol, Sequence, SupportsIndex,
     Union, overload)
 
 from .kind import Kind, UndefinedKind
@@ -39,7 +39,7 @@ from .sorting import ArgsKey, ClassKey, CompareItem, CompareKey, SortKey, class_
 
 __all__ = ['Basic', 'Atom', 'preorder_traversal', 'SubsValue', 'SubsMapping', 'SubsRules',
     'SubsArg', 'ReplacementRule', 'NodePrinter', 'TextSink', 'MatchDict', 'Query', 'Replacement',
-    'register_singleton']
+    'register_singleton', 'ForeignPrint', 'PrintSetting']
 
 #: a type pattern for :meth:`Basic.atoms` and :meth:`Basic.has`
 TypePattern = type['Basic']
@@ -93,6 +93,27 @@ class ReplacementRule(Protocol):
     def __contains__(self, item: Basic) -> bool: ...
 
     def __getitem__(self, item: Basic) -> Basic: ...
+
+
+#: the value of a setting of a printer, as handed to a foreign system
+PrintSetting = Union[bool, int, float, str, None]
+
+
+class ForeignPrint:
+    """What a foreign system printed for one of its objects wrapped in a
+    node (:meth:`Basic._foreign_latex`, :meth:`Basic._foreign_pretty`):
+    the rows of the output (one row for LaTeX), the row of the baseline,
+    and how the output binds, as the name of a
+    :class:`~sympy_extras.printing.framework.Binding` (``'ATOM'``,
+    ``'POWER'``, ``'SUM'``, ...), from which the printers decide on
+    brackets around it."""
+
+    __slots__ = ('rows', 'baseline', 'binding')
+
+    def __init__(self, rows: Sequence[str], baseline: int, binding: str) -> None:
+        self.rows: Final[tuple[str, ...]] = tuple(rows)
+        self.baseline: Final[int] = baseline
+        self.binding: Final[str] = binding
 
 
 class TextSink(Protocol):
@@ -380,6 +401,23 @@ class Basic:
 
     def _srepr_name(self) -> Optional[str]:
         """The head of the node in ``srepr``, as for a function."""
+        return None
+
+    def _srepr_atom(self) -> Optional[str]:
+        """The whole ``srepr`` of a node without arguments which wraps an
+        atom of a foreign system."""
+        return None
+
+    def _foreign_latex(self, settings: Mapping[str, PrintSetting]) -> Optional[ForeignPrint]:
+        """The LaTeX of a wrapped foreign object by its own system, with
+        the settings of the printer which that system knows; ``None``
+        for a node of the core (printed by the rules of
+        :mod:`sympy_extras.printing.latex`)."""
+        return None
+
+    def _foreign_pretty(self, settings: Mapping[str, PrintSetting]) -> Optional[ForeignPrint]:
+        """The picture of a wrapped foreign object by its own system;
+        ``None`` for a node of the core."""
         return None
 
     def _eval_factor_terms(self, radical: bool, clear: bool, fraction: bool, sign: bool) -> Optional[Basic]:

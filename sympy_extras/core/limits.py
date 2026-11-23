@@ -21,7 +21,7 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-from typing import Final, Optional
+from typing import Final, Optional, Union
 
 from .basic import Basic, NodePrinter
 from .coreerrors import PoleError
@@ -155,9 +155,13 @@ class Limit(Expr):
 
     __slots__ = ('_expr', '_z', '_z0', '_dir')
 
-    def __init__(self, e: ExprLike, z: Symbol, z0: ExprLike, dir: str = "+") -> None:
+    def __init__(self, e: ExprLike, z: Symbol, z0: ExprLike, dir: Union[str, Symbol] = "+") -> None:
         self._expr: Final[Expr] = to_expr(e)
         point = to_expr(z0)
+        if isinstance(dir, Symbol):
+            # the direction as the node stores it among its arguments (as SymPy's Limit does), so that
+            # ``e.func(*e.args)`` and the tree printed by ``srepr`` rebuild the limit (they raised ValueError)
+            dir = dir.name
         if isinstance(point, Infinity) or point == I * oo:
             dir = "-"
         elif isinstance(point, NegativeInfinity) or point == I * (-oo):

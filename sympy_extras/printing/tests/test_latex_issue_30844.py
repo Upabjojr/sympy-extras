@@ -276,3 +276,11 @@ def test_information_is_not_lost() -> None:
     assert latex(ExpPolar(x)) == r'\operatorname{exp\_polar}{\left(x \right)}'
     assert latex(Mul(x, 3)) == r'x \cdot 3'
     assert latex(Mul(sin(2), 3)) == r'\sin{\left(2 \right)} \cdot 3'
+
+
+def test_python_floats_which_are_not_finite() -> None:
+    # second pass on the crashes on valid input: latex(float('inf')) raised OverflowError("cannot convert Infinity
+    # to integer ratio") and latex(float('nan')) ValueError (a Python float is printed as a Float); as in SymPy now
+    assert latex(float('inf')) == r'\infty' and latex(float('-inf')) == r'-\infty'
+    assert latex(float('nan')) == r'\text{NaN}'
+    assert latex([float('inf'), 1.5]) == r'\left[ \infty, \  1.5\right]'

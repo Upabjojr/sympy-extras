@@ -177,3 +177,46 @@ def test_rows_have_the_same_width() -> None:
         for unicode in (True, False):
             rows = pretty(e, use_unicode=unicode, wrap_line=False).split('\n')
             assert len({len(row) for row in rows}) == 1, (e, rows)
+
+
+def test_wrapped_objects_of_sympy_are_drawn_by_sympy() -> None:
+    # a wrapped object of SymPy was its string on one row ("Integral(f(x)/2, (x, 0, 1))", "A.T"): it is now the
+    # picture of SymPy's own pretty printer, with its baseline, bracketed by ours from the binding of that picture
+    from sympy_extras.core.expr import as_expr
+    from sympy_extras.interop import from_sympy, to_sympy
+    sx = sympy.Symbol('x')
+    A = sympy.MatrixSymbol('A', 2, 2)
+    x, y = Symbol('x'), Symbol('y')
+    for unicode in (False, True):
+        for w in (A, A.T, A*A, sympy.Trace(A*A.T), sympy.Determinant(A), sympy.Indexed('a', 1),
+                  sympy.Integral(sympy.Function('f')(sx)/2, (sx, 0, 1)), sympy.Range(0, 5)):
+            node = from_sympy(w)
+            assert type(node).__name__.startswith('SymPy'), w
+            assert pretty(node, use_unicode=unicode) == sympy.pretty(w, use_unicode=unicode, wrap_line=False), w
+        trace = as_expr(from_sympy(sympy.Trace(A*A.T)))
+        integral = as_expr(from_sympy(sympy.Integral(sympy.Function('f')(sx)/2, (sx, 0, 1))))
+        for e in (trace + x, x*trace**2, trace/y, integral + x, x*integral**2, integral/y, -integral, 2**integral):
+            reference = sympy.pretty(to_sympy(e, evaluate=False), use_unicode=unicode, wrap_line=False)
+            assert pretty(e, use_unicode=unicode) == reference, str(e)
+    assert pretty(from_sympy(A.T)) == ' T\nA '
+    assert pretty(from_sympy(sympy.Tuple(A, A.T)), use_unicode=True) == sympy.pretty(sympy.Tuple(A, A.T), use_unicode=True)
+    # SymPy's global Unicode flag is restored
+    from sympy.printing.pretty.pretty_symbology import pretty_use_unicode
+    before = pretty_use_unicode()
+    pretty(from_sympy(A.T), use_unicode=not before)
+    assert pretty_use_unicode() == before
+
+
+def test_the_orders_of_the_terms_as_in_sympy() -> None:
+    # the setting `order` of SymPy's pretty printer: 'grlex', 'grevlex', the reversed orders and 'old' raised
+    # ValueError (None, 'lex' and 'none' only were taken)
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    sums: list[Basic] = [x + y**2 + x*y + 1, x**2 + y**2 + z**2 + x*y*z + x + y + z + 1, 2*x**2 - 3*x*y + y - Rational(1, 2),
+                         sin(x) + x**2 + exp(y)*x + 1, x/y + y/x + 1/(x*y) + x*y, (x + 1)**2 + (x + 1) + y*(x + 1)**3,
+                         1 - x, x - x**3/6 + Order(x**5), (x*y + 1)*(z + x**2), sqrt(x + y**2 + x*y), Eq(x + y**2, z + x**3)]
+    for order in ('lex', 'grlex', 'grevlex', 'ilex', 'rev-lex', 'rev-grlex', 'rev-grevlex', 'rev-igrlex', 'old'):
+        for e in sums:
+            for unicode in (False, True):
+                mine = pretty(e, use_unicode=unicode, wrap_line=False, order=order)
+                theirs = sympy.pretty(to_sympy(e), use_unicode=unicode, wrap_line=False, order=order)
+                assert mine == theirs, (str(e), order)

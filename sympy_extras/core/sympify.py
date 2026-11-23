@@ -35,6 +35,8 @@ def sympify(a: SympifyLike) -> Basic:
     >>> from fractions import Fraction
     >>> sympify(2), sympify(Fraction(1, 2)), sympify(2.5), sympify(True)
     (2, 1/2, 2.50000000000000, True)
+    >>> sympify(float('inf')), sympify(float('-inf')), sympify(float('nan'))
+    (oo, -oo, nan)
     >>> sympify('x**2 + 1')
     x**2 + 1
     >>> import sympy, sympy_extras.interop  # SymPy objects are converted by the bridge
@@ -53,6 +55,14 @@ def sympify(a: SympifyLike) -> Basic:
     if isinstance(a, Fraction):
         return number_from_fraction(a)
     if isinstance(a, float):
+        # an infinite float is the infinity of its sign and nan is nan, as in SymPy (the conversion to an exact
+        # Float raised OverflowError and ValueError: latex(float('inf')) and x + float('inf') crashed)
+        if a != a:
+            from .numbers import nan
+            return nan
+        if a in (float('inf'), float('-inf')):
+            from .numbers import oo
+            return oo if a > 0 else -oo
         return Float(a)
     if isinstance(a, str):
         from .bridge import ForeignOperationUnavailable, bridge

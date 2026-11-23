@@ -15,7 +15,8 @@ from sympy_extras.concrete.expr_with_limits import Sum
 from sympy_extras.core import Add, Derivative, Float, Function, I, Integer, Mul, Rational, Symbol, pi, sqrt, sstr
 from sympy_extras.core.expr import Expr, factors_of, terms_of
 from sympy_extras.core.limits import Limit
-from sympy_extras.core.printing import ordered_terms, printed_factors, printed_terms
+from sympy_extras.core.order import Order
+from sympy_extras.core.printing import PRINT_ORDERS, ordered_terms, printed_factors, printed_terms
 from sympy_extras.functions.elementary.exponential import exp, log
 from sympy_extras.functions.elementary.trigonometric import cos, sin
 from sympy_extras.interop import to_sympy
@@ -136,3 +137,85 @@ def test_printed_terms_and_factors() -> None:
     assert printed_factors(factors, 'none') == list(factors)
     assert printed_factors(Mul(y, x, Integer(2)).args) == [y, x, Integer(2)]
     raises(ValueError, lambda: printed_terms(terms, 'wrong'))
+
+
+#: the values of the setting ``order`` of SymPy's printers
+_ORDERS = ['lex', 'grlex', 'grevlex', 'ilex', 'igrlex', 'igrevlex', 'rev-lex', 'rev-grlex', 'rev-grevlex', 'rev-ilex',
+           'rev-igrlex', 'rev-igrevlex', 'old', 'none']
+
+
+def _order_corpus() -> list[Expr]:
+    w = Symbol('w')
+    series = x - x**3/6 + x**5/120 + Order(x**6)
+    return [x + y**2 + x*y + 1, x**2 + y**2 + z**2 + x*y*z + x + y + z + 1, x**3*y + x*y**3 + x**2*y**2 + z**4 + x*z + 3,
+            2*x**2 - 3*x*y + y - Rational(1, 2), sin(x) + x**2 + exp(y)*x + 1, x + I*x + sqrt(Integer(2))*x + y, 1 - x,
+            1 - 2*x**2, x**2 + x + Order(x**3), series, A*B + B*A + x*A + 1, x/y + y/x + 1/(x*y) + x*y,
+            sqrt(x) + x**Rational(3, 2) + 1/x + x, (x + 1)**2 + (x + 1) + y*(x + 1)**3, x*y*z + x*y + y*z + x*z + w**3,
+            pi + exp(Integer(1)) + x + sqrt(Integer(2)), x**y + y**x + x + y, f(x) + f(y)**2 + x*f(x) + 1, -x - y - 1,
+            x**2*y**2*z + x*y*z**3 + x**3 + y**4*z, exp(x) + exp(2*x) + exp(-x), 3*x*y**2 - Float(2.5)*x**2*y + x - 7,
+            x + 2*y + 3*z + 4*w, log(x)*x + log(x)**2 + x**2, (x*y + 1)*(z + x**2), sin(x + y**2 + x*y),
+            x*y**2*sin(x)**3 + x**2*y + sin(x), Rational(1, 2) + x/3 + y**2/5, x*exp(y) + sin(x) + x**2 + 1]
+
+
+def test_the_orders_of_sympy_printers() -> None:
+    # the setting `order` of SymPy's printers: sstr had none, and printed_terms knew None, 'lex', 'grlex', 'grevlex'
+    # and 'none' only ('rev-lex', 'old', ... raised ValueError), with the special case 1 - x under 'lex' as well
+    # (SymPy has it for order=None only: -x + 1 under 'lex')
+    import sympy
+    for e in _order_corpus():
+        reference = to_sympy(e)
+        for order in _ORDERS:
+            assert sstr(e, order=order) == sympy.sstr(reference, order=order), (str(e), order)
+    assert sstr(1 - x) == '1 - x' and sstr(1 - x, order='lex') == '-x + 1' and sstr(1 - x, order='rev-lex') == '1 - x'
+    e = x**2 + y**2 + z**2 + x*y*z + x + y + z + 1
+    assert sstr(e, order='grlex') == 'x*y*z + x**2 + y**2 + z**2 + x + y + z + 1'
+    assert sstr(e, order='rev-grlex') == '1 + z + y + x + z**2 + y**2 + x**2 + x*y*z'
+    assert sstr(e, order='old') == '1 + x + y + z + x*y*z + x**2 + y**2 + z**2'
+    # with an order term the powers increase whatever the order (as in SymPy)
+    series = x - x**3/6 + Order(x**5)
+    assert sstr(series, order='rev-lex') == sstr(series, order='grlex') == 'x - x**3/6 + O(x**5)'
+    raises(ValueError, lambda: sstr(e, order='bogus'))
+    raises(ValueError, lambda: printed_terms(terms_of(e), 'rev-old'))
+    assert set(_ORDERS) | {None} == set(PRINT_ORDERS)
+
+
+def test_random_sums_in_every_order() -> None:
+    import sympy
+    rng = random.Random(30844)
+    different: list[tuple[str, str]] = []
+    for _ in range(60):
+        e: Expr = Integer(0)
+        for _ in range(rng.randint(2, 6)):
+            e = e + _random_term(rng)
+        reference = to_sympy(e)
+        for order in _ORDERS:
+            if order in ('old', 'none') and e.has(Limit):
+                # (these orders print the factors of a product as they are stored, and the core stores a Limit,
+                # whose commutativity is unknown, before the commutative factors, SymPy after them)
+                continue
+            if sstr(e, order=order) != sympy.sstr(reference, order=order):
+                different.append((sstr(e), order))
+    assert different == []
+
+
+def test_ordered_counts_the_nodes_as_sympy() -> None:
+    # `ordered` counted every node 1: SymPy counts a float a half and a derivative as its function plus the number
+    # of differentiations, so that the factors of these products were ordered otherwise (found by the 'old' order
+    # of the printers, which takes the exponent of the last factor)
+    import sympy
+    from sympy_extras.core.sorting import ordered
+    w = [exp(Float(-2.5)*x*y), x**(2*z), f(z), pi, Derivative(f(y), y), exp(z/2), log(y), Derivative(f(x), x, x), x*y*z]
+    reference = [str(s) for s in sympy.ordered([to_sympy(e) for e in w])]
+    assert [str(to_sympy(e)) for e in ordered(w)] == reference
+    assert ordered([x**(2*z), exp(Float(-2.5)*x*y)])[-1] == x**(2*z)
+    assert ordered([exp(z/2), Derivative(f(y), y)])[-1] == exp(z/2)
+
+
+def test_old_order_takes_the_exponent_of_the_last_factor() -> None:
+    # SymPy's 'old' order compares the exponents p3 of the matches of p1*p2**p3; its matcher gives the power the
+    # last factor in the order of `ordered` (x*exp(y) is p1 = x, p2 = E, p3 = y), the core's matcher the first
+    # one (p2 = x, p3 = 1): the order is computed without the matcher
+    from sympy_extras.core.printing import _old_exponent
+    assert _old_exponent(x*exp(y)) == y and _old_exponent(x*y**2*sin(x)**3) == 3 and _old_exponent(sqrt(x)*y) == Rational(1, 2)
+    assert _old_exponent(Integer(1)) == 0 and _old_exponent(Rational(1, 2)) == 1 and _old_exponent(A*B) is None
+    assert sstr(x*exp(y) + sin(x) + x**2 + 1, order='old') == '1 + sin(x) + x**2 + x*exp(y)'

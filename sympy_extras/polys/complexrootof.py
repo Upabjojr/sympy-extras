@@ -421,7 +421,7 @@ def _pure_factors(coefficients: Sequence[Fraction]) -> list[tuple[IntegerPoly, i
 _Address = tuple[IntegerPoly, int]
 
 
-def _factor_key(f: IntegerPoly, x: Symbol) -> tuple[int, SortKey]:
+def _factor_key(f: IntegerPoly, x: Symbol) -> tuple[float, SortKey]:
     """SymPy's ``ordered`` of the factors: ``_nodes`` then ``default_sort_key``."""
     e = _factor_expr(f, x)
     return _nodes(e), e.sort_key()

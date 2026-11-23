@@ -607,6 +607,8 @@ sympy_extras/
     matrices/                ExprMatrix: a small immutable matrix of expressions (what hyperexpand needs)
       domainmatrix.py        DomainMatrix[T] over a Domain[T]: Bareiss determinant, fraction-free Gauss-Jordan (rank, null space, inverse, systems), Berkowitz characteristic polynomial, adjugate
       linalg.py              the same on ExprMatrix: entries as fractions over ZZ[kernels], pivots certified by the zero test when the kernels are not symbols
+                             (Float entries are the exact rationals they store, in linalg, eigen, svd, decompositions and functions: no tolerance;
+                             float_precision, exact_matrix, approximate, approximate_matrix)
       eigen.py               eigenspaces per irreducible factor of the characteristic polynomial (elimination over K[x]/(f)), eigenvalues, eigenvectors, diagonalize, jordan_chains, jordan_form
       decompositions.py      lu, ldl, cholesky, qr, gram_schmidt, rank_factorization, congruence_diagonalize, inertia, positive definiteness
       equations.py           sylvester_solve, lyapunov_solve, discrete_lyapunov_solve, linear_matrix_equation, commuting_matrices, kronecker_product

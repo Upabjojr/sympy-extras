@@ -3906,6 +3906,63 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `sympy_extras.interop`: **an object of SymPy without arguments keeps
+  its data** in its wrapper. `Str('A')`, the name of a `MatrixSymbol`,
+  was rebuilt as `Str()`: `from_sympy(MatrixSymbol('A', 2, 2)).args`
+  raised `TypeError`, `srepr` and the free symbols of every expression
+  with a matrix symbol too, and two matrix symbols of one shape were
+  **equal nodes** (as were two permutations: a `Permutation` printed as
+  the identity). The wrappers (`SymPyNode`, `SymPyExprNode`,
+  `SymPyBooleanNode`, `SymPySetNode`) take `atom=`, the object itself,
+  for an object whose `args` are empty; its `srepr` is SymPy's, and the
+  `srepr` of a wrapper has the name of the class of SymPy
+  (`MatrixSymbol(Str('A'), Integer(2), Integer(2))`, not
+  `SymPyExprNode(...)`). The free symbols of a wrapped expression are the
+  symbols proper (SymPy lists the matrix symbols and indexed objects,
+  which raised `TypeError`), and `from_sympy` of a mutable `Matrix`
+  raises a `TypeError` which says to convert `M.as_immutable()` (it was
+  `unhashable type`).
+- `latex` and `pretty` print **a wrapped object of SymPy by SymPy's own
+  printer** (`\operatorname{tr}\left(A A^{T} \right)`, the picture of an
+  integral), bracketed inside a native expression by the framework from
+  the binding of that output; they printed the name of the wrapper
+  (`\operatorname{SymPyExprNode}\left(\text{SymPyNode}, 2, 2\right)`) and
+  the string on one row. The printing package still imports no SymPy:
+  `Basic._foreign_latex` and `Basic._foreign_pretty` (new hooks, `None`
+  for the nodes of the core) return a `ForeignPrint` (new, in
+  `core.basic`), and `printing.framework.binding_named` reads its
+  binding. See "Objects of SymPy" in `docs/printing.md`.
+- The printers take **every value of the setting `order` of SymPy's
+  printers** and write the same sums as SymPy: `'lex'`, `'grlex'`,
+  `'grevlex'`, `'ilex'`, `'igrlex'`, `'igrevlex'`, each of them after
+  `'rev-'`, `'old'` and `'none'`. `latex` knew `'grlex'` and `'grevlex'`
+  only, `pretty` raised `ValueError` for them, and `sstr` had no `order`
+  (new: `sstr(e, order=...)`, `StrPrinter(order)`,
+  `core.printing.PRINT_ORDERS`, `check_print_order`). Under `'lex'`
+  given explicitly SymPy's special case `1 - x` does not apply (`-x +
+  1`, as in SymPy; it applied). The order `'old'` is computed without
+  the pattern matcher SymPy uses for it, whose choice among the factors
+  the core's matcher does not make. See "The order of the terms" in
+  `docs/printing.md`.
+- `core.sorting.ordered` counts the nodes as SymPy's does: a float for a
+  half and a derivative as its function plus the number of
+  differentiations (every node counted 1, so that the factors of
+  `pi*x**(2*z)*exp(-2.5*x*y)` and of `I*Derivative(f(y), y)*exp(z/2)`
+  were ordered otherwise than by SymPy). **Behaviour change** wherever
+  `ordered` sorts expressions with floats or derivatives.
+- `sstr` brackets an `UnevaluatedExpr` and an `AlgebraicNumber` as what
+  they print (sympy/sympy#30844, the items listed there for the LaTeX
+  printer): `x*UnevaluatedExpr(y + z)` was printed `x*y + z`, the square
+  of `UnevaluatedExpr(x + y)` `x + y**2`, of `UnevaluatedExpr(-x)`
+  `-x**2`, and `x*AlgebraicNumber(sqrt(2), [1, 2])` `x*sqrt(2) + 2`.
+- `Limit` takes its direction as the symbol it stores among its
+  arguments (`Symbol('-')`), so that `e.func(*e.args)` and the tree
+  printed by `srepr` rebuild a limit; both raised `ValueError`.
+- `sympify(float('inf'))`, `float('-inf')` and `float('nan')` are `oo`,
+  `-oo` and `nan`, as in SymPy; they raised `OverflowError` and
+  `ValueError`, and with them `x + float('inf')` and
+  `latex(float('inf'))`. `pretty` prints these floats as the infinity
+  and the nan of the core (`inf`, `nan` before).
 - `sympy_extras.matrices`: **matrices with `Float` entries** (the second
   pass on sympy/sympy#30900, items M3-3, M3-4, M3-5, and
   sympy/sympy#6420). A float was a *kernel* of the polynomial ring of the

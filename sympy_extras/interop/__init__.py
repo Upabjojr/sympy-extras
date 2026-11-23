@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from functools import partial
-from typing import Callable, Final, Optional, Sequence, Union
+from typing import Callable, Final, Mapping, Optional, Sequence, Union
 
 import mpmath
 import sympy
@@ -33,10 +33,14 @@ from sympy.core.relational import Relational as SymPyRelational
 from sympy.logic.boolalg import Boolean as SymPyBoolean
 from sympy.concrete.expr_with_limits import ExprWithLimits
 from sympy.functions.elementary.piecewise import ExprCondPair as SymPyExprCondPair
+from sympy.printing.precedence import precedence_traditional as sympy_precedence
+from sympy.printing.pretty.pretty import PrettyPrinter as _SymPyPrettyPrinterBase
+from sympy.printing.pretty.pretty_symbology import pretty_use_unicode
+from sympy.printing.pretty.stringpict import prettyForm as SymPyPrettyForm
 
 from sympy_extras.core.add import Add
 from sympy_extras.core.assume import AppliedPredicate, Predicate
-from sympy_extras.core.basic import Basic, NodePrinter, ReplacementRule, SubsMapping
+from sympy_extras.core.basic import Basic, ForeignPrint, NodePrinter, PrintSetting, ReplacementRule, SubsMapping
 from sympy_extras.core.bridge import Bridge, RewriteTarget, register_bridge
 from sympy_extras.core.containers import Dict, Tuple
 from sympy_extras.core.assumptions import Facts, Truth
@@ -125,8 +129,46 @@ _LOGIC_FROM_SYMPY: dict[type[SymPyBasic], type[BooleanFunction]] = {
     sympy.Equivalent: Equivalent, sympy.ITE: ITE}
 
 
+#: SymPy's precedences (sympy.printing.precedence.PRECEDENCE) as the names
+#: of the bindings of sympy_extras.printing.framework, tightest first
+_PRECEDENCE_BINDINGS: tuple[tuple[int, str], ...] = (
+    (1000, 'ATOM'), (100, 'NOT'), (70, 'APPLICATION'), (60, 'POWER'), (50, 'PRODUCT'), (40, 'SUM'), (35, 'RELATION'),
+    (30, 'AND'), (20, 'OR'), (10, 'IMPLICATION'))
+#: the bindings of SymPy's prettyForm (ATOM, FUNC, DIV, POW, MUL, ADD, NEG, OPEN)
+_PRETTY_BINDINGS: tuple[str, ...] = ('ATOM', 'APPLICATION', 'FRACTION', 'POWER', 'PRODUCT', 'SUM', 'NEGATION', 'LOWEST')
+#: the settings of sympy_extras.printing which SymPy's printers take too
+_SYMPY_LATEX_SETTINGS: frozenset[str] = frozenset({
+    'fold_frac_powers', 'fold_func_brackets', 'fold_short_frac', 'inv_trig_style', 'itex', 'ln_notation',
+    'long_frac_ratio', 'mat_delim', 'mat_str', 'mul_symbol', 'order', 'root_notation', 'imaginary_unit', 'gothic_re_im',
+    'decimal_separator', 'parenthesize_super', 'min', 'max', 'diff_operator'})
+_SYMPY_PRETTY_SETTINGS: frozenset[str] = frozenset({'order', 'root_notation', 'use_unicode_sqrt_char', 'imaginary_unit'})
+
+
+def _checked_atom(atom: Optional[SymPyBasic], args: tuple[Basic, ...]) -> Optional[SymPyBasic]:
+    """The object of SymPy a wrapper keeps as it is: one without
+    arguments, which its class does not rebuild from them."""
+    if atom is not None and (args or atom.args):
+        raise ValueError("only an object of SymPy without arguments is kept as an atom, got %s" % (atom,))
+    return atom
+
+
 class _SymPyNodeMixin:
-    """The behaviour shared by the generic wrappers of SymPy objects."""
+    """The behaviour shared by the generic wrappers of SymPy objects.
+
+    An object of SymPy **without arguments** (``Str('A')``, the name of
+    a ``MatrixSymbol``; a ``Permutation``, whose data is not in its
+    ``args``) is kept as it is (``atom``): its class does not rebuild it
+    from no arguments, and two such objects of one class differ.
+
+    >>> import sympy
+    >>> from sympy_extras.core import srepr
+    >>> from sympy_extras.interop import from_sympy, to_sympy
+    >>> A, B = (from_sympy(sympy.MatrixSymbol(name, 2, 2)) for name in 'AB')
+    >>> A.args, A == B, srepr(A)
+    ((A, 2, 2), False, "MatrixSymbol(Str('A'), Integer(2), Integer(2))")
+    >>> A.func(*A.args) == A, to_sympy(A.args[0])
+    (True, A)
+    """
 
     def _is_foreign_node(self) -> bool:
         return True
@@ -135,6 +177,7 @@ class _SymPyNodeMixin:
 
     _sympy_class: type[SymPyBasic]
     _node_args: tuple[Basic, ...]
+    _sympy_atom: Optional[SymPyBasic]
 
     @property
     def args(self) -> tuple[Basic, ...]:
@@ -150,19 +193,73 @@ class _SymPyNodeMixin:
         return self._sympy_class.__name__
 
     def _hashable_content(self) -> tuple[Basic, ...]:
+        if self._sympy_atom is not None:
+            # (the content of an atom of SymPy is in its srepr: Str('A') is not Str('B'))
+            return (Symbol(self._sympy_class.__name__), Symbol(sympy.srepr(self._sympy_atom)))
         return (Symbol(self._sympy_class.__name__),) + self._node_args
 
     def _compare_name(self) -> str:
         return self._sympy_class.__name__
 
     def _compare_content(self) -> tuple[CompareItem, ...]:
+        if self._sympy_atom is not None:
+            return (sympy.srepr(self._sympy_atom),)
         return tuple(a.compare_key() for a in self._node_args)
 
+    def _rebuilt(self, args: Sequence[Basic]) -> SymPyBasic:
+        """The object of SymPy of the class of the node with the
+        arguments ``args``."""
+        if self._sympy_atom is not None and not args:
+            return self._sympy_atom
+        return self._sympy_class(*[to_sympy(a) for a in args])
+
     def _sympy(self) -> SymPyBasic:
-        return self._sympy_class(*[to_sympy(a) for a in self._node_args])
+        return self._rebuilt(self._node_args)
 
     def _sympystr(self, printer: NodePrinter) -> str:
         return sympy.sstr(self._sympy())
+
+    def _srepr_name(self) -> Optional[str]:
+        return self._sympy_class.__name__
+
+    def _srepr_atom(self) -> Optional[str]:
+        if self._sympy_atom is not None:
+            return str(sympy.srepr(self._sympy_atom))
+        return None
+
+    def _foreign_latex(self, settings: Mapping[str, PrintSetting]) -> Optional[ForeignPrint]:
+        # SymPy's own LaTeX of the wrapped object (A^{T}, \operatorname{tr}\left(A \right)) with the settings
+        # SymPy's printer shares with ours; the binding from the precedence by which SymPy's LaTeX printer brackets
+        wrapped = self._sympy()
+        taken = {name: value for name, value in settings.items() if name in _SYMPY_LATEX_SETTINGS}
+        text = str(sympy.latex(wrapped, mode='plain', **taken))
+        level = sympy_precedence(wrapped)
+        binding = 'LOWEST'
+        for threshold, name in _PRECEDENCE_BINDINGS:
+            if level >= threshold:
+                binding = name
+                break
+        return ForeignPrint([text], 0, binding)
+
+    def _foreign_pretty(self, settings: Mapping[str, PrintSetting]) -> Optional[ForeignPrint]:
+        # SymPy's own picture of the wrapped object, with the binding its prettyForm carries
+        taken: dict[str, PrintSetting] = {name: value for name, value in settings.items()
+                                          if name in _SYMPY_PRETTY_SETTINGS}
+        use_unicode = settings.get('use_unicode') is True
+        taken['use_unicode'] = use_unicode
+        taken['wrap_line'] = False
+        previous = pretty_use_unicode(use_unicode)
+        try:
+            form: object = _SymPyPrettyPrinterBase(taken)._print(self._sympy())
+        finally:
+            pretty_use_unicode(previous)
+        if not isinstance(form, SymPyPrettyForm):
+            raise TypeError("SymPy's pretty printer returned %r" % (form,))
+        level, baseline = form.binding, form.baseline
+        binding = 'LOWEST'
+        if isinstance(level, int) and 0 <= level < len(_PRETTY_BINDINGS):
+            binding = _PRETTY_BINDINGS[level]
+        return ForeignPrint([str(row) for row in form.picture], baseline if isinstance(baseline, int) else 0, binding)
 
 
 class SymPyNode(_SymPyNodeMixin, Basic):
@@ -181,23 +278,24 @@ class SymPyNode(_SymPyNodeMixin, Basic):
     ('SymPyNode', (x**2 + 1, x), True)
     """
 
-    __slots__ = ('_sympy_class', '_node_args')
+    __slots__ = ('_sympy_class', '_node_args', '_sympy_atom')
 
-    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic) -> None:
+    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic, atom: Optional[SymPyBasic] = None) -> None:
         self._sympy_class: type[SymPyBasic] = sympy_class
         self._node_args: tuple[Basic, ...] = args
+        self._sympy_atom: Optional[SymPyBasic] = _checked_atom(atom, args)
         Basic.__init__(self)
 
     @property
     def func(self) -> Callable[..., Basic]:
-        return partial(SymPyNode, self._sympy_class)
+        return partial(SymPyNode, self._sympy_class, atom=self._sympy_atom)
 
     @classmethod
     def class_key(cls) -> ClassKey:
         return (5, 0, 'SymPyNode')
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
-        return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
+        return from_sympy(self._rebuilt(args))
 
     def doit(self) -> Basic:
         return from_sympy(self._sympy().doit())
@@ -222,23 +320,24 @@ class SymPySetNode(_SymPyNodeMixin, NativeSet):
     True
     """
 
-    __slots__ = ('_sympy_class', '_node_args')
+    __slots__ = ('_sympy_class', '_node_args', '_sympy_atom')
 
-    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic) -> None:
+    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic, atom: Optional[SymPyBasic] = None) -> None:
         self._sympy_class: type[SymPyBasic] = sympy_class
         self._node_args: tuple[Basic, ...] = args
+        self._sympy_atom: Optional[SymPyBasic] = _checked_atom(atom, args)
         Basic.__init__(self)
 
     @property
     def func(self) -> Callable[..., Basic]:
-        return partial(SymPySetNode, self._sympy_class)
+        return partial(SymPySetNode, self._sympy_class, atom=self._sympy_atom)
 
     @classmethod
     def class_key(cls) -> ClassKey:
         return (5, 0, 'SymPySetNode')
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
-        return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
+        return from_sympy(self._rebuilt(args))
 
     def doit(self) -> Basic:
         return from_sympy(self._sympy().doit())
@@ -287,23 +386,24 @@ class SymPyBooleanNode(_SymPyNodeMixin, Boolean):
     (Contains((x, x), ProductSet(Reals, Reals)), 'SymPyBooleanNode', (x > 0) ^ Contains((x, x), ProductSet(Reals, Reals)))
     """
 
-    __slots__ = ('_sympy_class', '_node_args')
+    __slots__ = ('_sympy_class', '_node_args', '_sympy_atom')
 
-    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic) -> None:
+    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic, atom: Optional[SymPyBasic] = None) -> None:
         self._sympy_class: type[SymPyBasic] = sympy_class
         self._node_args: tuple[Basic, ...] = args
+        self._sympy_atom: Optional[SymPyBasic] = _checked_atom(atom, args)
         Basic.__init__(self)
 
     @property
     def func(self) -> Callable[..., Basic]:
-        return partial(SymPyBooleanNode, self._sympy_class)
+        return partial(SymPyBooleanNode, self._sympy_class, atom=self._sympy_atom)
 
     @classmethod
     def class_key(cls) -> ClassKey:
         return (5, 0, 'SymPyBooleanNode')
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
-        return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
+        return from_sympy(self._rebuilt(args))
 
     def doit(self) -> Basic:
         return from_sympy(self._sympy().doit())
@@ -329,7 +429,7 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
     (Integral(1/x, (x, 1, t)), 'SymPyExprNode', log(t))
     """
 
-    __slots__ = ('_sympy_class', '_node_args')
+    __slots__ = ('_sympy_class', '_node_args', '_sympy_atom')
 
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         """SymPy's leading term of the wrapped expression (when its class
@@ -337,14 +437,15 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
         found = leading_term_node_through_sympy(self, x, logx, cdir)
         return self if found is None else found
 
-    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic) -> None:
+    def __init__(self, sympy_class: type[SymPyBasic], *args: Basic, atom: Optional[SymPyBasic] = None) -> None:
         self._sympy_class: type[SymPyBasic] = sympy_class
         self._node_args: tuple[Basic, ...] = args
+        self._sympy_atom: Optional[SymPyBasic] = _checked_atom(atom, args)
         Basic.__init__(self)
 
     @property
     def func(self) -> Callable[..., Basic]:
-        return partial(SymPyExprNode, self._sympy_class)
+        return partial(SymPyExprNode, self._sympy_class, atom=self._sympy_atom)
 
     def _numeric_node(self, prec: int) -> Optional[mpmath.mpc]:
         # a root of a polynomial (CRootOf, not ported) has SymPy's value,
@@ -359,10 +460,12 @@ class SymPyExprNode(_SymPyNodeMixin, Expr):
 
     @property
     def free_symbols(self) -> set[Symbol]:
-        return {_symbol(s) for s in self._sympy().free_symbols}
+        # the symbols proper: SymPy also lists the matrix symbols and the indexed objects of an expression
+        # (MatrixSymbol('A', 2, 2).free_symbols is {A}), which are not symbols of the core (this raised TypeError)
+        return {_symbol(s) for s in self._sympy().free_symbols if isinstance(s, sympy.Symbol)}
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
-        return from_sympy(self._sympy_class(*[to_sympy(a) for a in args]))
+        return from_sympy(self._rebuilt(args))
 
     def _subs(self, old: Basic, new: Basic) -> Basic:
         # the variable of the polynomial of a CRootOf is bound: the root
@@ -727,6 +830,10 @@ def from_sympy(e: Union[SymPyBasic, int]) -> Basic:
     """
     if isinstance(e, int):
         return Integer(e)
+    if not isinstance(e, SymPyBasic):
+        # (a mutable Matrix is not hashable: the cache below raised "unhashable type")
+        hint = ': convert its immutable form, M.as_immutable()' if isinstance(e, sympy.MatrixBase) else ''
+        raise TypeError("cannot convert %s from SymPy, which is not a Basic%s" % (type(e).__name__, hint))
     key = (type(e), e)
     cached = _from_sympy_cache.get(key)
     if cached is not None:
@@ -910,12 +1017,14 @@ def _from_sympy(e: SymPyBasic) -> Basic:
     from sympy_extras.solvers.isolation_sympy import TranscendentalRoot as SymPyTranscendentalRoot, native_root
     if isinstance(e, SymPyTranscendentalRoot):
         return native_root(e)
+    # an object without arguments is kept as it is: its class does not rebuild it from none (Str('A'), a Permutation)
+    atom = None if e.args else e
     if isinstance(e, SymPyExpr):
-        return SymPyExprNode(type(e), *[from_sympy(a) for a in e.args])
+        return SymPyExprNode(type(e), *[from_sympy(a) for a in e.args], atom=atom)
     if isinstance(e, SymPyBoolean):
-        return SymPyBooleanNode(type(e), *[from_sympy(a) for a in e.args])
+        return SymPyBooleanNode(type(e), *[from_sympy(a) for a in e.args], atom=atom)
     if isinstance(e, SymPyBasic):
-        return SymPyNode(type(e), *[from_sympy(a) for a in e.args])
+        return SymPyNode(type(e), *[from_sympy(a) for a in e.args], atom=atom)
     raise TypeError("cannot convert %s (%s) from SymPy" % (e, type(e).__name__))
 
 
@@ -1412,11 +1521,12 @@ def _set_from_sympy(e: SymPyBasic) -> Basic:
             and isinstance(parts[1], native_sets.Set):
         return native_sets.Contains(parts[0], parts[1])
     # a set not ported, or with a part not ported
+    atom = None if e.args else e
     if isinstance(e, SymPyBoolean):
-        return SymPyBooleanNode(type(e), *parts)
+        return SymPyBooleanNode(type(e), *parts, atom=atom)
     if isinstance(e, sympy.Set):
-        return SymPySetNode(type(e), *parts)
-    return SymPyNode(type(e), *parts)
+        return SymPySetNode(type(e), *parts, atom=atom)
+    return SymPyNode(type(e), *parts, atom=atom)
 
 
 # ---------------------------------------------------------------------

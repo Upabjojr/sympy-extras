@@ -53,7 +53,7 @@ from dataclasses import dataclass, replace
 from enum import Enum, IntEnum
 from typing import Callable, Generic, Optional, TypeVar
 
-__all__ = ['Binding', 'Position', 'Context', 'Result', 'needs_brackets', 'Dispatcher', 'TreePrinter']
+__all__ = ['Binding', 'Position', 'Context', 'Result', 'needs_brackets', 'binding_named', 'Dispatcher', 'TreePrinter']
 
 #: the output of a printer
 T = TypeVar('T')
@@ -396,6 +396,19 @@ def needs_brackets(result: Result[T], context: Context[T]) -> bool:
     if result.stacked and context.position in (Position.NUMERATOR, Position.DENOMINATOR):
         return True
     return False
+
+
+def binding_named(name: str) -> Binding:
+    """The binding of a name (``'POWER'``), :attr:`Binding.LOWEST` for an
+    unknown one: how a foreign system says how its output binds
+    (:class:`~sympy_extras.core.basic.ForeignPrint`).
+
+    >>> from sympy_extras.printing.framework import binding_named
+    >>> binding_named('SUM').name, binding_named('?').name
+    ('SUM', 'LOWEST')
+    """
+    found = Binding.__members__.get(name)
+    return Binding.LOWEST if found is None else found
 
 
 class Dispatcher(Generic[P, E, T]):

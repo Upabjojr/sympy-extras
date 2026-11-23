@@ -79,8 +79,15 @@ def test_order() -> None:
     e = Add(Integer(1), x, x**2)
     assert pretty(e) == _u(' 2        ', 'x  + x + 1')
     assert pretty(e, order='none') == _u('         2', '1 + x + x ')
+    # the orders of SymPy's printers (the pretty printer took None, 'lex' and 'none' only, and this test asserted
+    # the ValueError of 'grevlex')
+    p = x**2 + x*y + y**3
+    assert pretty(p, order='grevlex') == pretty(p, order='grlex') == _u(' 3    2      ', 'y  + x  + x*y')
+    assert pretty(p, order='rev-lex') == _u(' 3          2', 'y  + x*y + x ')
+    assert pretty(p, order='old') == _u('       2    3', 'x*y + x  + y ')
+    assert pretty(1 - x) == '1 - x' and pretty(1 - x, order='lex') == '-x + 1'
     with pytest.raises(ValueError):
-        pretty(e, order='grevlex')
+        pretty(e, order='degree')
 
 
 def test_root_notation() -> None:

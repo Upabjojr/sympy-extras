@@ -30,6 +30,7 @@ from typing import AbstractSet, Mapping, Optional, Sequence, Union
 
 from ...core.basic import Basic, TextSink
 from ...core.sorting import default_sort_key
+from ...core.sympify import sympify
 from ...matrices.dense import ExprMatrix
 from ...polys.polytools import Poly
 from .engine import PrettyPrinter, PrettyRules, PrettySettings, rule_table
@@ -142,6 +143,9 @@ def _printable(p: PrettyPrinter, obj: Printable, context: PrettyContext) -> Pret
     if isinstance(obj, int):
         return integer_result(obj)
     if isinstance(obj, float):
+        if obj != obj or obj in (float('inf'), float('-inf')):
+            # (the infinity sign and nan of the nodes, as SymPy; these printed as Python's inf and nan)
+            return p.rule(sympify(obj), context)
         return p.opaque(repr(obj))
     if isinstance(obj, str):
         # (as SymPy: a string is printed as it is)
@@ -205,7 +209,10 @@ def pretty(expr: Printable, use_unicode: Optional[bool] = None, wrap_line: bool 
     ``use_unicode`` chooses between Unicode and ASCII (``None``: the
     default set by :func:`pretty_use_unicode`, ASCII at the start);
     ``wrap_line`` cuts a picture wider than ``num_columns`` columns (the
-    width of the terminal for ``None``) into screens; ``order='none'``
+    width of the terminal for ``None``) into screens; ``order`` is the
+    order of the terms of the sums, as in SymPy (``'lex'``, ``'grlex'``,
+    ``'grevlex'``, these after ``'rev-'``, ``'old'``; see
+    :func:`sympy_extras.core.printing.printed_terms`), and ``order='none'``
     keeps the terms of the sums and the factors of the products in the
     order of the arguments; ``root_notation=False`` writes ``x**(1/n)``
     as a power instead of a root; ``use_unicode_sqrt_char=False`` draws

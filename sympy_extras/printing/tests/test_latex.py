@@ -66,6 +66,10 @@ def test_orders_floats_and_names() -> None:
     e = x**2 + y*x + y**3
     assert latex(e) == r'x^{2} + x y + y^{3}'
     assert latex(e, order='grlex') == r'y^{3} + x^{2} + x y' and latex(e, order='lex') == latex(e)
+    # the reversed orders and SymPy's old order (ValueError before)
+    assert latex(e, order='rev-lex') == r'y^{3} + x y + x^{2}' and latex(e, order='rev-grlex') == r'x y + x^{2} + y^{3}'
+    assert latex(e, order='old') == r'x y + x^{2} + y^{3}' and latex(1 - x, order='lex') == '- x + 1'
+    raises(ValueError, lambda: latex(e, order='degree'))
     assert latex(Add(y, x), order='none') == 'y + x'
     assert latex(Float(123456.789), min=-2, max=3) == r'1.23456789 \cdot 10^{5}'
     assert latex(Float(0.5), full_prec=True) == '0.500000000000000' and latex(Float(0.5)) == '0.5'
@@ -83,7 +87,9 @@ def test_wrong_settings_are_refused() -> None:
     raises(ValueError, lambda: latex(x, mode='display'))
     raises(ValueError, lambda: latex(x, decimal_separator='dot'))
     raises(ValueError, lambda: latex(x, inv_trig_style='arc'))
-    raises(ValueError, lambda: latex(x, order='old'))
+    # ('old' was refused: it is one of SymPy's orders, and is supported now)
+    raises(ValueError, lambda: latex(x, order='oldest'))
+    assert latex(x + 1, order='old') == '1 + x'
     raises(ValueError, lambda: latex(x, mat_delim='{'))
 
 

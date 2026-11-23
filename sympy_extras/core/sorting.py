@@ -19,7 +19,17 @@ References
        https://docs.sympy.org/latest/modules/core.html#sympy.core.basic.Basic.compare
 .. [2] SymPy Development Team, *SymPy documentation: default_sort_key*,
        https://docs.sympy.org/latest/modules/core.html#sympy.core.sorting.default_sort_key
+
+The counts of nodes of ``ordered`` (``_nodes``, ``_node_count``) are
+ported from SymPy's ``sympy.core.sorting``.
 """
+# ---------------------------------------------------------------------
+# PORTED FROM SYMPY: sympy/core/sorting.py (_nodes, _node_count) (SymPy 1.14)
+# Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
+# see sympy_extras/LICENSE-SymPy.
+# Changes: typed; the nodes are those of the typed core (a Protocol), the
+# multiplicities of a derivative are integers.
+# ---------------------------------------------------------------------
 from __future__ import annotations
 
 from fractions import Fraction
@@ -48,6 +58,8 @@ CompareKey = tuple[tuple[int, str], int, tuple[CompareItem, ...]]
 class Sortable(Protocol):
     """What the keys are taken from: a node of the tree (satisfied by
     :class:`~sympy_extras.core.basic.Basic`, which imports this module)."""
+
+    is_Float: bool
 
     @property
     def args(self) -> Sequence[Sortable]: ...
@@ -127,6 +139,26 @@ def ordered(items: Iterable[_Node]) -> list[_Node]:
     return sorted(items, key=lambda e: (_nodes(e), e.sort_key()))
 
 
-def _nodes(e: Sortable) -> int:
-    """The number of nodes of the tree."""
-    return 1 + sum(_nodes(a) for a in e.args)
+# PORTED FROM SYMPY: sympy/core/sorting.py:_node_count
+def _node_count(e: Sortable) -> float:
+    """The number of nodes of the tree, a float counting for a half (as
+    in SymPy: ``exp(2.5*x)`` sorts before ``exp(2*x)``)."""
+    if e.is_Float:
+        return 0.5
+    return 1 + sum(_node_count(a) for a in e.args)
+
+
+# PORTED FROM SYMPY: sympy/core/sorting.py:_nodes
+def _nodes(e: Sortable) -> float:
+    """The number of nodes by which SymPy's ``ordered`` sorts: the nodes
+    of the tree (:func:`_node_count`), and for a derivative those of the
+    function plus the number of differentiations (``Derivative(f(y), y)``
+    counts 3, less than ``exp(y/2)``).
+
+    Both rules were missing (every node counted 1), so that ``ordered``
+    differed from SymPy's on expressions with floats and on derivatives.
+    """
+    from .function import Derivative
+    if isinstance(e, Derivative):
+        return _nodes(e.expr) + sum(count for _, count in e.variable_count)
+    return _node_count(e)

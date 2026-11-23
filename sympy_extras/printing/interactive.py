@@ -167,7 +167,7 @@ def native_pretty(obj: LatexInput, use_unicode: bool) -> str:
     """
     chosen = _SESSION.state.latex_settings
     settings = PrettySettings(use_unicode=use_unicode,
-                              order=chosen.order if chosen.order in (None, 'lex', 'none') else None,
+                              order=chosen.order,
                               root_notation=chosen.root_notation,
                               imaginary_unit=chosen.imaginary_unit if chosen.imaginary_unit in ('i', 'j') else 'i',
                               full_prec=True if chosen.full_prec else None)

@@ -206,3 +206,10 @@ def test_no_information_is_lost() -> None:
     # SymPy: exp_polar(x) prints like exp(x)
     assert pretty(ExpPolar(x), use_unicode=True) == 'exp_polar(x)'
     assert pretty(ExpPolar(x), use_unicode=True) != pretty(Exp(x), use_unicode=True)
+
+
+def test_python_floats_which_are_not_finite() -> None:
+    # (second pass) Python's inf and nan were printed as 'inf' and 'nan', and crashed the LaTeX printer: they are
+    # the infinity and the nan of the core, as in SymPy
+    assert pretty(float('inf'), use_unicode=True) == '∞' and pretty(float('-inf'), use_unicode=True) == '-∞'
+    assert pretty(float('inf')) == 'oo' and pretty(float('nan')) == 'nan' and pretty(1.5) == '1.5'

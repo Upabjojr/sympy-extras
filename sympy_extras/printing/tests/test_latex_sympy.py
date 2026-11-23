@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import sympy
 
-from sympy_extras.core import Integer, Rational, Symbol
+from sympy_extras.core import Integer, Rational, Symbol, sqrt
 from sympy_extras.core.basic import Basic
 from sympy_extras.interop import to_sympy
 from sympy_extras.matrices.dense import ExprMatrix
@@ -32,6 +32,15 @@ SETTINGS: list[LatexSettings] = [
     LatexSettings(min=-2, max=3),
     LatexSettings(order='grlex'),
     LatexSettings(order='grevlex'),
+    # the other orders of SymPy's printers (they raised ValueError)
+    LatexSettings(order='rev-lex'),
+    LatexSettings(order='rev-grlex'),
+    LatexSettings(order='rev-grevlex'),
+    LatexSettings(order='igrlex'),
+    LatexSettings(order='rev-ilex'),
+    # (with a product sign, as for 'none': the factors are printed as stored under both, a number may then follow a
+    # symbol, and SymPy writes y 2^{- x} where this printer puts a dot)
+    LatexSettings(mul_symbol='times', order='old'),
 ]
 
 
@@ -84,3 +93,37 @@ def test_python_values_as_in_sympy() -> None:
     assert latex(3) == sympy.latex(3) and latex(-3) == sympy.latex(-3) and latex(2.5) == sympy.latex(2.5)
     assert latex(True) == sympy.latex(True) and latex(None) == sympy.latex(None)
     assert latex({x, Integer(2)}) == sympy.latex({sx, 2})
+
+
+def test_wrapped_objects_of_sympy_print_as_in_sympy() -> None:
+    # a wrapped object of SymPy (interop's SymPyExprNode, ...) printed as the name of its wrapper,
+    # \operatorname{SymPyExprNode}\left(\text{SymPyNode}, 2, 2\right) for MatrixSymbol('A', 2, 2): it is now printed by
+    # SymPy's own LaTeX printer, and bracketed by ours from the precedence SymPy gives it
+    from sympy_extras.core.expr import as_expr
+    from sympy_extras.interop import from_sympy
+    sx = sympy.Symbol('x')
+    A = sympy.MatrixSymbol('A', 2, 2)
+    wrapped = [A, A.T, A*A, sympy.Trace(A), sympy.Determinant(A), sympy.Identity(3), sympy.Indexed('a', 1),
+               sympy.Integral(sympy.Function('f')(sx)/2, (sx, 0, 1)), sympy.KroneckerProduct(A, A),
+               sympy.Range(0, 5), sympy.ImmutableMatrix([[1, sx]])]
+    for w in wrapped:
+        node = from_sympy(w)
+        assert type(node).__name__.startswith('SymPy'), w
+        assert latex(node) == sympy.latex(w), w
+        assert 'SymPy' not in latex(node)
+    assert latex(from_sympy(A)) == 'A' and latex(from_sympy(sympy.Trace(A))) == r'\operatorname{tr}\left(A \right)'
+    # inside native nodes: the brackets are ours, decided from how the foreign output binds
+    trace = as_expr(from_sympy(sympy.Trace(A)))
+    integral = as_expr(from_sympy(sympy.Integral(sx, sx)))
+    for e in (trace + x, x*trace, trace**2, 2**trace, trace/y, -trace, x - trace, integral + x, x*integral, integral**2,
+              integral/y, sqrt(integral)):
+        assert latex(e) == sympy.latex(to_sympy(e, evaluate=False)), str(e)
+    assert latex(integral**2) == r'\left(\int x\, dx\right)^{2}'
+    # the settings SymPy's printer shares are handed over
+    half = as_expr(from_sympy(sympy.Integral(sympy.Function('f')(sx)/2, (sx, 0, 1))))
+    assert latex(half + x, mode='inline') == r'$x + \int\limits_{0}^{1} f{\left(x \right)} / 2\, dx$'
+    assert latex(as_expr(from_sympy(sympy.Integral(2*sx*sympy.Symbol('y'), sx))), mul_symbol='dot') == \
+        sympy.latex(sympy.Integral(2*sx*sympy.Symbol('y'), sx), mul_symbol='dot')
+    # an atom of SymPy (the name of the matrix symbol) and a container with wrapped objects
+    assert latex(from_sympy(A).args[0]) == 'A'
+    assert latex(from_sympy(sympy.Tuple(A, A.T))) == sympy.latex(sympy.Tuple(A, A.T))
