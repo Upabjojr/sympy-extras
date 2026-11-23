@@ -196,6 +196,14 @@ def test_rsolve_linear() -> None:
     raises(ValueError, lambda: rsolve_linear(y(n + 1)*y(n) - 1, y(n)))
     raises(ValueError, lambda: rsolve_linear(y(n**2) - y(n), y(n)))
     raises(ValueError, lambda: rsolve_linear(n**2 - 1, y(n)))
+    # an initial value depending on the index is not a constant: SymPy
+    # substitutes it and returns a sequence which does not satisfy the
+    # recurrence (sympy/sympy#31275, V255)
+    raises(ValueError, lambda: rsolve_linear((-16*n**2 + 32*n - 12)*y(n - 1) + (4*n**2 - 12*n + 9)*y(n), y(n),
+                                             {y(1): n*(2*n + 1)*(2*n - 1)/3}))
+    kk = Symbol('K')
+    constant = rsolve_linear((-16*n**2 + 32*n - 12)*y(n - 1) + (4*n**2 - 12*n + 9)*y(n), y(n), {y(1): kk})
+    assert constant is not None and expand(constant - kk*4**(n - 1)*(2*n - 1)) == 0
     raises(ValueError, lambda: rsolve_linear(y(n + 1) - 2*y(n), y(n), {y(0): 1, y(1): 3}))
 
 

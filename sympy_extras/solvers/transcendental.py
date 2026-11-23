@@ -420,7 +420,14 @@ def _clear(formula: Boolean, variable: Symbol, family: str, u: Expr, order: int 
         f = polynomial(numerator)
         op = atom.rel_op
         if _positive_denominator(denominator, variable, family):
-            return _relation(op, f, Integer(0))
+            cleared_atom = _relation(op, f, Integer(0))
+            if family == 'root' and denominator.has(variable) \
+                    and as_expr(denominator.subs(variable, Integer(0))).is_positive is not True:
+                # the kernel of a root is nonnegative, not positive: the
+                # relation is not defined where the denominator vanishes
+                # (1/sqrt(x) > 1 does not hold at 0)
+                return and_(cleared_atom, variable > 0)
+            return cleared_atom
         g = polynomial(denominator)
         if op == '==':
             return and_(eq(f, 0), ne(g, 0))
