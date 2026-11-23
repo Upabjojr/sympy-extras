@@ -17,7 +17,7 @@ from sympy_extras.core import I, Integer, Rational, S, Symbol, oo, pi, sqrt
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.logic import Boolean
 from sympy_extras.core.relational import Eq, Gt, Lt
-from sympy_extras.functions import cos, exp, log, sin, tan
+from sympy_extras.functions import abs_, cos, exp, log, sin, tan
 from sympy_extras.integrals import residues
 from sympy_extras.integrals.conditions import ConditionalValue
 from sympy_extras.integrals.residues import (fourier_integral, keyhole_integral, period_integral, poles,
@@ -147,6 +147,88 @@ def test_period() -> None:
     assert abs(_number(found.value.subs({a: 3, b: 1})) - float(2 * mpmath.pi / mpmath.sqrt(8))) < 1e-12
     with configure(numerical_checks=False):
         assert period_integral(1 / (a + b * cos(x)), x, 0, 2 * pi, a > b) is None
+
+
+def _case_value(found: ConditionalValue, s: Symbol, value: Expr) -> Optional[Expr]:
+    """The value of a result with cases at ``s = value``, ``None`` where no
+    case holds."""
+    cases = found.cases()
+    pairs = cases if cases is not None else [(found.value, found.condition)]
+    for branch, condition in pairs:
+        holds = condition.subs(s, value)
+        assert holds in (S.true, S.false), (condition, value)
+        if holds == S.true:
+            return branch.subs(s, value)
+    return None
+
+
+def _period_quadrature(f: Callable[[mpmath.mpf], mpmath.mpf]) -> complex:
+    """``Integral(f, (x, 0, 2*pi))`` by mpmath."""
+    return _quadrature(f, mpmath.mpf(0), 2 * mpmath.pi)
+
+
+def test_period_cases_of_one_parameter() -> None:
+    # 1/(c + cos(x)) without assumptions came back unevaluated: the real
+    # line of c is cut at -1 and 1, where a pole crosses the unit circle,
+    # and the cases with a value (|c| > 1) are written; for |c| < 1 a pole
+    # lies on the circle and the integral diverges
+    f = 1 / (c + cos(x))
+    found = period_integral(f, x, 0, 2 * pi)
+    assert found is not None
+    for v in (Rational(3, 2), Integer(-2), Integer(5)):
+        value = _case_value(found, c, v)
+        w = mpmath.mpf(v.p) / v.q
+        expected = _period_quadrature(lambda t: 1 / (w + mpmath.cos(t)))
+        assert value is not None and abs(_number(value) - expected) < 1e-12
+    for v in (Integer(-1), Integer(0), Rational(1, 2), Integer(1)):
+        assert _case_value(found, c, v) is None
+    # the Poisson kernel: the cases |k| < 1 (with k = 0, where the pole
+    # 1/k goes to infinity, joined) and |k| > 1
+    f = 1 / (1 - 2 * k * cos(x) + k**2)
+    found = period_integral(f, x, 0, 2 * pi)
+    assert found is not None
+    for v in (Rational(1, 2), Rational(-1, 3), Integer(0), Integer(2), Integer(-3)):
+        value = _case_value(found, k, v)
+        w = mpmath.mpf(v.p) / v.q
+        expected = _period_quadrature(lambda t: 1 / (1 - 2 * w * mpmath.cos(t) + w**2))
+        assert value is not None and abs(_number(value) - expected) < 1e-12
+    assert _case_value(found, k, Integer(1)) is None
+    # a sine with complex coefficients in z, the value in its real form
+    found = period_integral(1 / (1 + k * sin(x)), x, 0, 2 * pi, [k > 0, k < 1])
+    assert found is not None and not found.value.has(I)
+    assert _same(found.value, 2 * pi / sqrt(1 - k**2))
+
+
+def test_poles_placed_at_a_sample_hold_on_one_side_of_the_crossings() -> None:
+    # the bug: under c > 0, 1/(2 + c*cos(x)) was 2*pi/sqrt(4 - c**2) with
+    # no condition, the poles placed at a sample below 2 and the value
+    # checked at two more; for c > 2 a pole is on the unit circle and the
+    # integral diverges
+    found = period_integral(1 / (2 + c * cos(x)), x, 0, 2 * pi, c > 0)
+    assert found is not None
+    assert found.condition.subs(c, 3) == S.false
+    assert found.condition.subs(c, 1) == S.true
+    assert _same(found.value, 2 * pi / sqrt(4 - c**2))
+    assert period_integral(1 / (2 + c * cos(x)), x, 0, 2 * pi, c > 3) is None
+
+
+def test_period_cases_of_a_sign() -> None:
+    # 1/(c + d*cos(x)) under c > Abs(d): the pole inside the unit circle is
+    # -c/d + sqrt(c**2 - d**2)/d for d > 0 and the other one for d < 0, so
+    # nothing was decided; the cases d > 0, d < 0 and d = 0 agree
+    d = Symbol('d', real=True)
+    found = period_integral(1 / (c + d * cos(x)), x, 0, 2 * pi, c > abs_(d))
+    assert found is not None and found.condition == S.true
+    assert _same(found.value, 2 * pi / sqrt(c**2 - d**2))
+    # the case d = 0 of cos(x)/(c + d*cos(x)) is not the limit of the others
+    found = period_integral(cos(x) / (c + d * cos(x)), x, 0, 2 * pi, c > abs_(d))
+    assert found is not None
+    zero = _case_value(found, d, Integer(0))
+    assert zero == 0
+    value = _case_value(found, d, Integer(-1))
+    assert value is not None
+    expected = _period_quadrature(lambda t: mpmath.cos(t) / (2 - mpmath.cos(t)))
+    assert abs(_number(value.subs(c, 2)) - expected) < 1e-12
 
 
 def test_dispatch() -> None:

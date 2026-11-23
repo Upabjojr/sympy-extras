@@ -202,8 +202,15 @@ def test_period_parametric() -> None:
     assert _agrees(found, 1 / (a + b * cos(x)), S.Zero, 2 * pi, {a: S(3), b: S.One})
     with configure(numerical_checks=False):
         assert period_integral(1 / (a + b * cos(x)), x, S.Zero, 2 * pi, a > b) is None
-    # without assumptions the position of the pole is unknown
-    assert period_integral(1 / (1 - 2 * a * cos(x) + a**2), x, S.Zero, 2 * pi) is None
+    # without assumptions the position of the pole depends on a: the cases
+    # 0 < a < 1 and a > 1 (on either side of a = 1, where the pole is on the
+    # unit circle and the integral diverges), each the value found above
+    found = period_integral(1 / (1 - 2 * a * cos(x) + a**2), x, S.Zero, 2 * pi)
+    assert found is not None
+    value = found.value
+    assert simplify(value.subs(a, Rational(1, 2)) - 2 * pi / (1 - Rational(1, 4))) == 0
+    assert simplify(value.subs(a, 3) - 2 * pi / 8) == 0
+    assert found.condition.subs(a, 1) == S.false
 
 
 def test_residue_integral_dispatch() -> None:

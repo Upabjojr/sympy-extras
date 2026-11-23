@@ -1488,6 +1488,10 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
             crate::functions::special::tensor_functions::tensor_facts()
         }
         super::basic::Function::Mod => super::modulo::modulo_facts(e.args()),
+        // SymPy's helpers of the Gruntz algorithm: commutative only
+        super::basic::Function::Erfs | super::basic::Function::Eis => {
+            crate::functions::special::polynomials::orthogonal_facts()
+        }
         g @ (super::basic::Function::Zeta
         | super::basic::Function::DirichletEta
         | super::basic::Function::PolyLog

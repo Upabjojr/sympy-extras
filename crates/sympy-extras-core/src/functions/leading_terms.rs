@@ -518,6 +518,16 @@ pub fn leading_term_rule(f: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basi
         "BesselY" => bessel_y(f, x, logx, cdir)?,
         "BesselK" => bessel_k(f, x, logx)?,
         "SingularityFunctionNode" => singularity(f, x, cdir)?,
+        "Eis" => {
+            // PORTED FROM SYMPY: sympy/functions/special/error_functions.py:_eis._eval_as_leading_term
+            let z: &Basic = &f.args()[0];
+            let x0: Basic = crate::core::limits::limit(z, x, &Basic::zero(), "+")?;
+            if crate::core::expr::is(&x0, crate::core::assumptions::Predicate::zero) != Some(true) {
+                return Ok(None);
+            }
+            let rewritten: Basic = crate::functions::special::error_functions::helper_intractable(Function::Eis, z)?;
+            crate::core::series::eval_as_leading_term(&rewritten, x, logx, cdir)?
+        }
         _ => return Ok(None),
     };
     Ok(Some(found))

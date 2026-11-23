@@ -100,6 +100,14 @@ def test_check_applies_to_the_dsolve_branch() -> None:
     # with the check in place the fallback finds the real general solution
     homogeneous = y.diff(x) - (2*x**3*y - y**4)/(x**4 - 2*x*y**3)
     solutions = solve_ode(homogeneous, y, check=True, timeout=10)
+    # the implicit general solution log(y/x) - log(1 + y**3/x**3) - log(x)
+    # = C1 was not verified (the native solve gave up: None) and nothing
+    # was returned
+    assert solutions
     for sol in solutions:
         assert not sol.has(nan)
-        assert checkodesol(homogeneous, sol, y)[0], sol
+        # checkodesol solves an implicit solution for y first, which does
+        # not finish on this one (minutes, issue #25): its derivative is
+        # substituted instead
+        explicit = sol.lhs == y and not sol.rhs.has(y)
+        assert checkodesol(homogeneous, sol, y, solve_for_func=explicit)[0], sol

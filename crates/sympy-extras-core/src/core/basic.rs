@@ -427,6 +427,10 @@ pub enum Function {
     OffsetLogIntegral,
     FresnelS,
     FresnelC,
+    /// SymPy's helper `_erfs(z) = (1 - erf(z))*exp(z**2)` (Gruntz).
+    Erfs,
+    /// SymPy's helper `_eis(z) = exp(-z)*Ei(z)` (Gruntz).
+    Eis,
 }
 
 impl Function {
@@ -507,6 +511,8 @@ impl Function {
             Function::Hankel1 => "hankel1",
             Function::Hankel2 => "hankel2",
             Function::BesselIs => "_besseli",
+            Function::Erfs => "_erfs",
+            Function::Eis => "_eis",
             Function::BesselKs => "_besselk",
             Function::SphericalJ => "jn",
             Function::SphericalY => "yn",
@@ -674,6 +680,8 @@ impl Function {
             Function::Hankel1 => "Hankel1",
             Function::Hankel2 => "Hankel2",
             Function::BesselIs => "BesselIs",
+            Function::Erfs => "Erfs",
+            Function::Eis => "Eis",
             Function::BesselKs => "BesselKs",
             Function::SphericalJ => "SphericalJ",
             Function::SphericalY => "SphericalY",
@@ -859,6 +867,8 @@ impl Function {
             | Function::Hankel2
             | Function::BesselIs
             | Function::BesselKs
+            | Function::Erfs
+            | Function::Eis
             | Function::SphericalJ
             | Function::SphericalY
             | Function::SphericalHankel1
