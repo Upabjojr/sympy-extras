@@ -84,7 +84,8 @@ from sympy_extras.core.power import sqrt
 
 from .dense import ExprMatrix
 from .eigen import _Field, _FunctionField, _GaussianField, _RationalField
-from .linalg import _PolynomialLift, _complex_lift, _kernels, _square, det, rref
+from .linalg import (_PolynomialLift, _complex_lift, _kernels, _square, approximate_matrix, det, exact_matrix,
+                     float_precision, rref)
 
 __all__ = ['LUDecomposition', 'lu', 'ldl', 'cholesky', 'gram_schmidt', 'qr', 'rank_factorization', 'is_hermitian',
            'congruence_diagonalize', 'inertia', 'is_positive_definite', 'is_positive_semidefinite',
@@ -350,6 +351,9 @@ def _algorithms(matrices: Sequence[ExprMatrix]) -> _Algorithms:
 
 # ---------------------------------------------------------------------
 # the public functions
+#
+# A matrix with floats is decomposed exactly, as the matrix of the rational
+# numbers they store, and the factors are written with floats (see linalg).
 
 def lu(M: ExprMatrix) -> LUDecomposition:
     """The LU decomposition ``P M = L U`` of a matrix of any shape and
@@ -368,6 +372,11 @@ def lu(M: ExprMatrix) -> LUDecomposition:
     >>> lu(ExprMatrix.from_rows([[1, 2], [2, 4], [3, 7]])).U
     ExprMatrix([[1, 2], [0, 1], [0, 0]])
     """
+    digits = float_precision([M])
+    if digits is not None:
+        exact = lu(exact_matrix(M))
+        return LUDecomposition(approximate_matrix(exact.L, digits), approximate_matrix(exact.U, digits), exact.permutation,
+                               exact.rank)
     return _algorithms([M]).lu(M)
 
 
@@ -381,6 +390,8 @@ def is_hermitian(M: ExprMatrix) -> bool:
     >>> is_hermitian(ExprMatrix.from_rows([[1, I], [-I, 2]])), is_hermitian(ExprMatrix.from_rows([[1, I], [I, 2]]))
     (True, False)
     """
+    if float_precision([M]) is not None:
+        return is_hermitian(exact_matrix(M))
     return _algorithms([M]).is_hermitian(M)
 
 
@@ -396,6 +407,10 @@ def ldl(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
     >>> ldl(ExprMatrix.from_rows([[a, b], [b, c]]))
     (ExprMatrix([[1, 0], [b/a, 1]]), ExprMatrix([[a, 0], [0, (a*c - b**2)/a]]))
     """
+    digits = float_precision([M])
+    if digits is not None:
+        L, D = ldl(exact_matrix(M))
+        return approximate_matrix(L, digits), approximate_matrix(D, digits)
     _square(M)
     return _algorithms([M]).ldl(M)
 
@@ -415,6 +430,9 @@ def cholesky(M: ExprMatrix) -> ExprMatrix:
     >>> cholesky(ExprMatrix.from_rows([[2, I], [-I, 1]]))
     ExprMatrix([[sqrt(2), 0], [-sqrt(2)*I/2, sqrt(2)/2]])
     """
+    digits = float_precision([M])
+    if digits is not None:
+        return approximate_matrix(cholesky(exact_matrix(M)), digits)
     L, D = ldl(M)
     n = M.rows
     roots: list[Expr] = []
@@ -440,6 +458,9 @@ def gram_schmidt(vectors: Sequence[ExprMatrix], normalize: bool = False) -> list
     >>> gram_schmidt(v, normalize=True)
     [ExprMatrix([[sqrt(2)/2], [sqrt(2)/2], [0]]), ExprMatrix([[sqrt(6)/6], [-sqrt(6)/6], [sqrt(6)/3]])]
     """
+    digits = float_precision(vectors)
+    if digits is not None:
+        return [approximate_matrix(v, digits) for v in gram_schmidt([exact_matrix(v) for v in vectors], normalize)]
     if not vectors:
         return []
     size = vectors[0].rows
@@ -467,6 +488,10 @@ def qr(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
     >>> qr(ExprMatrix.from_rows([[1, 2], [2, 4]]))
     (ExprMatrix([[sqrt(5)/5], [2*sqrt(5)/5]]), ExprMatrix([[sqrt(5), 2*sqrt(5)]]))
     """
+    digits = float_precision([M])
+    if digits is not None:
+        Q, R = qr(exact_matrix(M))
+        return approximate_matrix(Q, digits), approximate_matrix(R, digits)
     Q, R, _ = _algorithms([M]).qr(M, True)
     return Q, R
 
@@ -502,6 +527,10 @@ def congruence_diagonalize(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
     >>> congruence_diagonalize(ExprMatrix.from_rows([[1, a], [a, 1]]))
     (ExprMatrix([[1, -a], [0, 1]]), ExprMatrix([[1, 0], [0, 1 - a**2]]))
     """
+    digits = float_precision([M])
+    if digits is not None:
+        P, D = congruence_diagonalize(exact_matrix(M))
+        return approximate_matrix(P, digits), approximate_matrix(D, digits)
     _square(M)
     return _algorithms([M]).congruence(M)
 
@@ -527,6 +556,8 @@ def inertia(M: ExprMatrix) -> tuple[int, int, int]:
     >>> inertia(ExprMatrix.from_rows([[2, -1, 0], [-1, 2, -1], [0, -1, 2]])), inertia(ExprMatrix.from_rows([[1, 2], [2, 4]]))
     ((3, 0, 0), (1, 0, 1))
     """
+    if float_precision([M]) is not None:
+        return inertia(exact_matrix(M))
     _, D = congruence_diagonalize(M)
     positive = negative = zero = 0
     for k in range(D.rows):

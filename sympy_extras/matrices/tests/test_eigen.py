@@ -9,7 +9,7 @@ from fractions import Fraction
 import pytest
 import sympy
 
-from sympy_extras.core import I, Integer, Rational, Symbol
+from sympy_extras.core import Float, I, Integer, Rational, Symbol
 from sympy_extras.core.expr import Expr
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.matrices import ExprMatrix
@@ -292,3 +292,60 @@ def test_square_roots() -> None:
     assert all(sympy.simplify(difference[i, j]) == 0 for i in range(2) for j in range(2))
     with pytest.raises(NotImplementedError):
         eigenvalues(ExprMatrix.from_rows([[sqrt(two), 1], [1, 0]]))
+
+
+def _floats(rows: list[list[float]]) -> ExprMatrix:
+    return ExprMatrix.from_rows([[Float(v) for v in row] for row in rows])
+
+
+def test_float_jordan_block_is_not_diagonalizable() -> None:
+    # sympy/sympy#30900 M3-5: SymPy returns two "independent" eigenvectors ([-1.0, 2.46e-32]) for the Jordan block
+    # [[1.0, 1.0], [0, 1.0]], is_diagonalizable() True and a P with det 2.46e-32; here every function raised
+    # NotImplementedError (a float was a kernel). The structure is now the exact one of the numbers stored
+    M = _floats([[1.0, 1.0], [0.0, 1.0]])
+    assert eigenvalues(M) == {Float(1.0): 2}
+    [(value, multiplicity, vectors)] = eigenvectors(M)
+    assert value == Float(1.0) and multiplicity == 2 and len(vectors) == 1
+    assert [complex(e) for e in vectors[0].entries] == [1, 0]
+    assert is_diagonalizable(M) is False
+    assert diagonalize(M) is None
+    P, J = jordan_form(M)
+    assert [complex(e) for e in J.entries] == [1, 1, 0, 1]
+    assert [complex(e) for e in (M*P - P*J).entries] == [0, 0, 0, 0]
+    [space] = eigenspaces(M, x)
+    assert space.multiplicity == 2 and space.geometric_multiplicity == 1
+    assert [chains.block_sizes for chains in jordan_chains(M, x)] == [[2]]
+
+
+def test_float_eigenvalues_of_any_degree() -> None:
+    # the eigenvalues of a matrix of floats are the exactly isolated roots of its characteristic polynomial: no
+    # radicals are needed (a generic 5 by 5 matrix has an irreducible quintic)
+    rng = random.Random(5)
+    for n in (2, 3, 5):
+        rows = [[rng.uniform(-1, 1) for _ in range(n)] for _ in range(n)]
+        M = _floats(rows)
+        found = eigenvalues(M)
+        assert sum(found.values()) == n
+        polynomial = sympy.Matrix(n, n, [sympy.Rational(Fraction(v).numerator, Fraction(v).denominator)
+                                         for row in rows for v in row]).charpoly()
+        expected = sorted((complex(r) for r in sympy.Poly(polynomial.as_expr()).nroots(n=20)), key=lambda z: (z.real, z.imag))
+        values = [complex(v) for v in found]
+        assert len(values) == n and all(abs(u - v) < 1e-12 for u, v in zip(values, expected))
+        for value, _, vectors in eigenvectors(M):
+            [vector] = vectors
+            residual = M*vector - vector*value
+            assert all(abs(complex(e)) < 1e-10 for e in residual.entries)
+        diagonalized = diagonalize(M)
+        assert diagonalized is not None
+        P, D = diagonalized
+        assert all(abs(complex(e)) < 1e-10 for e in (M*P - P*D).entries)
+
+
+def test_float_eigenvalues_exact_multiplicities() -> None:
+    # 1.0*(i+1)*(j+1): rank 1, the eigenvalue 0 twice (exactly) and 14
+    M = _floats([[1.0*(i + 1)*(j + 1) for j in range(3)] for i in range(3)])
+    assert eigenvalues(M) == {Integer(0): 2, Float(14.0): 1}
+    assert is_diagonalizable(M) is True
+    # with a symbol: the exact parametric answer, written with floats
+    P = ExprMatrix.from_rows([[x, Float(0.5)], [Float(0.5), x]])
+    assert eigenvalues(P) == {x - Float(0.5): 1, x + Float(0.5): 1}

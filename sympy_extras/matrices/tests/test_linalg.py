@@ -4,17 +4,18 @@ identities; kernels with relations go through the zero test."""
 from __future__ import annotations
 
 import random
+from fractions import Fraction
 
 import pytest
 import sympy
 
-from sympy_extras.core import I, Integer, Rational, Symbol
+from sympy_extras.core import Float, I, Integer, Rational, Symbol
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import cos, sin, sqrt
 from sympy_extras.interop import to_sympy
 from sympy_extras.matrices import ExprMatrix
-from sympy_extras.matrices.linalg import (adjugate, charpoly, charpoly_coefficients, det, inverse, linear_solve,
-                                          nullspace, pseudoinverse, rank, rref)
+from sympy_extras.matrices.linalg import (adjugate, approximate, charpoly, charpoly_coefficients, det, exact_matrix,
+                                          float_precision, inverse, linear_solve, nullspace, pseudoinverse, rank, rref)
 
 x, y, z, t = Symbol('x'), Symbol('y'), Symbol('z'), Symbol('t')
 
@@ -266,3 +267,86 @@ def test_matrix_data_is_checked() -> None:
     with pytest.raises(IndexError):
         M.row(-1)
     assert M.with_entry(1, 0, 9) == ExprMatrix.from_rows([[1, 2], [9, 4]]) and M.row(1) == (Integer(3), Integer(4))
+
+
+def _floats(rows: list[list[float]]) -> ExprMatrix:
+    return ExprMatrix.from_rows([[Float(v) for v in row] for row in rows])
+
+
+def _close(e: Expr, value: complex, tolerance: float = 1e-12) -> bool:
+    return abs(complex(e) - value) <= tolerance*max(1.0, abs(value))
+
+
+def test_float_entries_are_exact_numbers() -> None:
+    # sympy/sympy#30900 (M3-3, M3-5) and sympy/sympy#6420: a float was a kernel of the polynomial ring (a variable),
+    # so that rank, rref, nullspace, inverse and linear_solve raised NotImplementedError('the pivot 0 is not proved
+    # nonzero') for every matrix of floats with a zero pivot. Now the floats are the rational numbers they store
+    singular = _floats([[1.0*(i + 1)*(j + 1) for j in range(3)] for i in range(3)])
+    assert rank(singular) == 1
+    echelon, pivots = rref(singular)
+    assert pivots == (0,)
+    assert [complex(e) for e in echelon.entries] == [1, 2, 3, 0, 0, 0, 0, 0, 0]
+    # an exact zero of the echelon form is the integer, not a float
+    assert echelon[1, 0] == Integer(0) and isinstance(echelon[0, 0], Float)
+    assert det(singular) == 0
+    assert len(nullspace(singular)) == 2
+    for vector in nullspace(singular):
+        assert all(e == 0 for e in (singular * vector).entries)
+    with pytest.raises(ValueError):
+        inverse(singular)
+    # 0.2 is twice 0.1 and 0.6 twice 0.3 as floats: rank 1, exactly
+    assert rank(_floats([[0.1, 0.2], [0.3, 0.6]])) == 1
+    # the floats of 0.1, 0.7, 0.3, 2.1 are not proportional: the determinant is that of the numbers stored
+    # (4.16e-17, where floating point arithmetic gives 2.78e-17), and no tolerance makes the rank 1
+    near = _floats([[0.1, 0.7], [0.3, 2.1]])
+    exact = Fraction(0.1)*Fraction(2.1) - Fraction(0.7)*Fraction(0.3)
+    assert exact != 0 and rank(near) == 2
+    assert _close(det(near), float(exact), 1e-14)
+    assert _close(inverse(near)[0, 0], float(Fraction(2.1)/exact))
+
+
+def test_float_linear_system_of_sympy_6420() -> None:
+    # sympy/sympy#6420: SymPy's linsolve gives EmptySet for this consistent system with floats (its RR elimination
+    # takes a rounding error for a pivot); here it raised NotImplementedError. The solution is (0, -60, 160)
+    A = ExprMatrix.from_rows([[0, Float(15.0), Float(10.0)], [1, 1, 1], [0, Float(10.0), Float(5.0)], [Float(-5.0), 0, 0]])
+    B = ExprMatrix.column([Float(700.0), Float(100.0), Float(200.0), 0])
+    solution = linear_solve(A, B)
+    assert solution is not None and solution.is_unique
+    assert [complex(e) for e in solution.particular.entries] == [0, -60, 160]
+    assert A.solve(B) == solution.particular
+    # an inconsistent system of floats has no solution
+    assert linear_solve(_floats([[1.0, 2.0], [2.0, 4.0]]), ExprMatrix.column([Float(1.0), Float(3.0)])) is None
+
+
+def test_float_matrices_against_exact_arithmetic() -> None:
+    rng = random.Random(11)
+    for n in (2, 3, 4):
+        rows = [[rng.uniform(-2, 2) for _ in range(n)] for _ in range(n)]
+        M = _floats(rows)
+        exact = sympy.Matrix(n, n, [sympy.Rational(Fraction(v).numerator, Fraction(v).denominator) for row in rows for v in row])
+        assert _close(det(M), complex(exact.det()))
+        inverted, reference = inverse(M), exact.inv()
+        assert all(_close(inverted[i, j], complex(reference[i, j]), 1e-10) for i in range(n) for j in range(n))
+        adjoint, reference = adjugate(M), exact.adjugate()
+        assert all(_close(adjoint[i, j], complex(reference[i, j]), 1e-10) for i in range(n) for j in range(n))
+        coefficients = charpoly_coefficients(M)
+        reference_coefficients = exact.charpoly().all_coeffs()
+        assert all(_close(c, complex(r), 1e-10) for c, r in zip(coefficients, reference_coefficients))
+        assert rank(M) == n and nullspace(M) == []
+        wide = ExprMatrix(n - 1, n, M.entries[:n*(n - 1)])
+        product = wide * pseudoinverse(wide)
+        assert all(_close(product[i, j], 1.0 if i == j else 0.0, 1e-9) for i in range(n - 1) for j in range(n - 1))
+
+
+def test_floats_with_symbols_and_precision() -> None:
+    M = ExprMatrix.from_rows([[x, Float(0.5)], [Float(0.25), x]])
+    assert det(M) == x**2 - Float(0.125)
+    assert rank(M) == 2
+    assert float_precision([M]) == 15 and float_precision([ExprMatrix.eye(2)]) is None
+    assert exact_matrix(M) == ExprMatrix.from_rows([[x, Rational(1, 2)], [Rational(1, 4), x]])
+    # the precision of the result is the largest of the entries
+    high = ExprMatrix.from_rows([[Float('0.1', 30), 1], [1, 3]])
+    value = det(high)
+    assert isinstance(value, Float) and value.dps == 30
+    assert str(value) == '-0.700000000000000000000000000000'
+    assert approximate(Rational(1, 3)*x, 15) == Float(Rational(1, 3))*x

@@ -9,7 +9,7 @@ import mpmath
 import pytest
 import sympy
 
-from sympy_extras.core import I, Integer, Rational, Symbol, sqrt
+from sympy_extras.core import Float, I, Integer, Rational, Symbol, sqrt
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.matrices import ExprMatrix
 from sympy_extras.matrices.svd import singular_values, svd
@@ -71,7 +71,12 @@ def test_particular_matrices() -> None:
 def test_singular_values() -> None:
     assert singular_values(ExprMatrix.from_rows([[3, 0], [4, 5]])) == [3*sqrt(Integer(5)), sqrt(Integer(5))]
     assert singular_values(ExprMatrix.from_rows([[1, 1], [1, 1]])) == [2, 0]
-    assert singular_values(ExprMatrix.from_rows([[1, 2, 2]])) == [3, 0, 0]
+    # sympy/sympy#30900 M3-4: a 1 by 3 matrix has one singular value, as its transpose (this was [3, 0, 0], as many
+    # values as columns, like SymPy: a wide matrix of full rank then had the condition number zoo)
+    assert singular_values(ExprMatrix.from_rows([[1, 2, 2]])) == [3]
+    assert singular_values(ExprMatrix.from_rows([[1], [2], [2]])) == [3]
+    assert singular_values(ExprMatrix.from_rows([[1, 0, 0], [0, 0, 0]])) == [1, 0]
+    assert singular_values(ExprMatrix.from_rows([[1, I, 0]])) == [sqrt(Integer(2))]
     a = Symbol('a')
     assert set(singular_values(ExprMatrix.from_rows([[a, 0], [0, 2]]))) == {Integer(2), sqrt(a**2)}
     with pytest.raises(NotImplementedError):
@@ -109,3 +114,23 @@ def test_singular_values_of_complex_matrices() -> None:
     assert singular_values(ExprMatrix.from_rows([[1, I], [I, -1]])) == [2, 0]
     assert singular_values(ExprMatrix.from_rows([[1], [I]])) == [sqrt(Integer(2))]
     assert singular_values(ExprMatrix.from_rows([[3*I, 0], [0, 4]])) == [4, 3]
+
+
+def test_singular_values_of_float_matrices() -> None:
+    # sympy/sympy#30900 M3-3 (sympy/sympy#17332): SymPy gives [9.77e-16*I, 14.0, 0] for this matrix of rank 1 (not
+    # ordered, and a rounding error as a singular value); here it raised NotImplementedError. The Gram matrix of the
+    # numbers stored is exact, and so are its zero eigenvalues
+    M = ExprMatrix.from_rows([[Float(1.0*(i + 1)*(j + 1)) for j in range(3)] for i in range(3)])
+    assert singular_values(M) == [Float(14.0), Integer(0), Integer(0)]
+    rng = random.Random(2)
+    for rows, cols in ((2, 2), (3, 3), (5, 5), (2, 4), (4, 2)):
+        data = [[rng.uniform(-1, 1) for _ in range(cols)] for _ in range(rows)]
+        F = ExprMatrix.from_rows([[Float(v) for v in row] for row in data])
+        values = singular_values(F)
+        expected = mpmath.svd_r(mpmath.matrix(data), compute_uv=False)
+        assert len(values) == min(rows, cols)
+        assert all(abs(complex(v) - float(e)) < 1e-12 for v, e in zip(values, expected))
+        if rows <= 3:
+            U, S, V = svd(F)
+            product = U*S*V.transpose()
+            assert all(abs(complex(product[i, j]) - data[i][j]) < 1e-10 for i in range(rows) for j in range(cols))

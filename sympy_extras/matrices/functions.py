@@ -67,7 +67,8 @@ from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
 from .eigen import (_Field, _FunctionField, _GaussianField, _RationalField, _characteristic_factors, _coefficients, _column,
                     _extension, _fresh_symbol, _roots_in_radicals, _shifted)
-from .linalg import _PolynomialLift, _complex_lift, _square, inverse, normal
+from .linalg import (_PolynomialLift, _complex_lift, _square, approximate_matrix, exact_matrix, float_precision, inverse,
+                     normal)
 
 __all__ = ['MatrixComponents', 'matrix_components', 'matrix_function', 'matrix_exp', 'matrix_power']
 
@@ -205,6 +206,10 @@ def matrix_function(M: ExprMatrix, f: ExprLike, x: Symbol) -> ExprMatrix:
     >>> matrix_function(ExprMatrix.from_rows([[1, 1], [0, 1]]), 1/x, x)
     ExprMatrix([[1, -1], [0, 1]])
     """
+    digits = float_precision([M])
+    if digits is not None:
+        # exactly, for the rational numbers the floats store (see linalg)
+        return approximate_matrix(matrix_function(exact_matrix(M), f, x), digits)
     function = to_expr(f)
     symbol = _fresh_symbol(M)
     used = {s.name for s in function.free_symbols if isinstance(s, Symbol)}
@@ -264,6 +269,10 @@ def matrix_exp(M: ExprMatrix, t: ExprLike = 1) -> ExprMatrix:
     >>> matrix_exp(ExprMatrix.from_rows([[1, -2], [2, 1]]), t)
     ExprMatrix([[exp(t)*cos(2*t), -exp(t)*sin(2*t)], [exp(t)*sin(2*t), exp(t)*cos(2*t)]])
     """
+    digits = float_precision([M])
+    if digits is not None:
+        # exactly, for the rational numbers the floats store (see linalg)
+        return approximate_matrix(matrix_exp(exact_matrix(M), t), digits)
     time = to_expr(t)
     n = M.rows
     symbol = _fresh_symbol(M)
@@ -309,6 +318,10 @@ def matrix_power(M: ExprMatrix, n: ExprLike) -> ExprMatrix:
     >>> matrix_power(ExprMatrix.from_rows([[0, 1], [0, 0]]), n)
     ExprMatrix([[0**n, 0**(n - 1)*n], [0, 0**n]])
     """
+    digits = float_precision([M])
+    if digits is not None:
+        # exactly, for the rational numbers the floats store (see linalg)
+        return approximate_matrix(matrix_power(exact_matrix(M), n), digits)
     exponent = to_expr(n)
     size = _square(M)
     if isinstance(exponent, Integer):

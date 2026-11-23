@@ -3906,6 +3906,42 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `sympy_extras.matrices`: **matrices with `Float` entries** (the second
+  pass on sympy/sympy#30900, items M3-3, M3-4, M3-5, and
+  sympy/sympy#6420). A float was a *kernel* of the polynomial ring of the
+  entries (a variable), so that `rank`, `rref`, `nullspace`, `inverse`,
+  `linear_solve`, `lu`, `qr`, `inertia` raised `NotImplementedError('the
+  pivot 0 is not proved nonzero')` whenever a pivot vanished, and the
+  eigenvalues, the singular values and `matrix_exp` raised for every
+  matrix of floats. The policy is now one rule, without a tolerance: a
+  float is the rational number it stores, the algorithms of `linalg`,
+  `eigen`, `svd`, `decompositions` and `functions` run exactly on these
+  numbers, and the numbers of the result are written back as floats of
+  the largest precision of the entries (`linalg.float_precision`,
+  `exact_matrix`, `approximate`, `approximate_matrix`, new). The rank,
+  the pivots, the solvability of a system, the multiplicities of the
+  eigenvalues and the Jordan structure are those of the matrix as stored:
+  `[[1.0, 1.0], [0, 1.0]]` has the eigenvalue `1.0` twice with one
+  eigenvector and is not diagonalisable (SymPy: two "independent"
+  vectors, `is_diagonalizable() == True`); the matrix `1.0*(i+1)*(j+1)`
+  has rank 1 and the singular values `[14.0, 0, 0]` (SymPy:
+  `[9.77e-16*I, 14.0, 0]`); the system of sympy/sympy#6420 has the
+  solution `(0, -60, 160)` (SymPy's `linsolve`: `EmptySet`). The
+  eigenvalues of a matrix of floats are the exactly isolated roots of
+  the factors of its characteristic polynomial, at any degree
+  (`Eigenspace.isolated_values`, new), in increasing order of the real
+  parts. `cholesky` of a matrix of floats which is not positive definite
+  raises `ValueError` (it took the square root of a negative pivot).
+  See "Floating point entries" in `docs/matrices.md`. Behaviour changes:
+  results for matrices with floats are floats where some were exact
+  numbers (`rref` of an invertible float matrix has `1.0` on the
+  diagonal), and the determinant of a nearly singular matrix is the
+  correctly rounded exact value instead of a rounding error.
+- `singular_values` returns `min(rows, columns)` values, the eigenvalues
+  of the smaller Gram matrix: `[[1, 2, 2]]` has the singular values
+  `[3]`, as its transpose, not `[3, 0, 0]` (as many as columns, the
+  convention of SymPy criticised in sympy/sympy#30900 M3-4). **Behaviour
+  change** for matrices with more columns than rows.
 - `Integral(x, x, 0, 1)` stored the Python numbers of its bounds as they
   were given, so that `str()` failed with `'int' object has no attribute
   '_sympystr'`: the constructor converts its function and its bounds

@@ -34,6 +34,19 @@ or over $\mathbb{Q}(i)$ when ``I`` remains in it (Trager's algorithm,
 its coefficients, or with other kernels, the factorisation over the
 field they generate would be needed (``NotImplementedError``).
 
+**Floating point entries** are the rational numbers they store (see
+:mod:`sympy_extras.matrices.linalg`): the characteristic polynomial, its
+factorisation and the eliminations are exact, so that the multiplicities,
+the dimensions of the eigenspaces and the Jordan structure are those of
+the matrix as stored, and no eigenvector is "independent" by a rounding
+error (``[[1.0, 1.0], [0, 1.0]]`` has the eigenvalue ``1.0`` twice, one
+eigenvector, and is not diagonalisable). The eigenvalues are then the
+roots of the irreducible factors, isolated exactly
+(:func:`sympy_extras.polys.complexrootof.all_roots`: any degree) and
+written as floats of the precision of the entries, in increasing order
+of their real parts; :func:`eigenspaces` and :func:`jordan_chains` return
+the exact structure.
+
 Examples
 ========
 
@@ -86,6 +99,7 @@ from sympy_extras.polys.domains import QQ
 from sympy_extras.polys.domains.domain import Domain
 from sympy_extras.polys.domains.quotientfield import QuotientField
 from sympy_extras.polys.domains.sparsefractionfield import SparseFracElement, SparseFractionField
+from sympy_extras.polys.complexrootof import all_roots
 from sympy_extras.polys.polyroots import roots
 from sympy_extras.polys.domains.gaussiandomains import QQ_I
 from sympy_extras.polys.gaussianfactor import gaussian_ext_factor
@@ -96,7 +110,7 @@ from sympy_extras.polys.rings import PolyRing
 from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
 from .linalg import (_ComplexLift, _IntegerLift, _PolynomialLift, _Radical, _complex_lift, _is_radical, _kernels, _square,
-                     charpoly)
+                     approximate, approximate_matrix, charpoly, exact_matrix, float_precision)
 
 __all__ = ['Eigenspace', 'eigenspaces', 'eigenvalues', 'eigenvectors', 'is_diagonalizable', 'diagonalize', 'JordanChains',
            'jordan_chains', 'jordan_form']
@@ -146,6 +160,20 @@ def _roots_in_radicals(factor: Expr, x: Symbol) -> Optional[list[Expr]]:
     return sorted(found, key=default_sort_key)
 
 
+def _isolated_roots(factor: Expr, x: Symbol) -> Optional[list[Expr]]:
+    """The roots of an irreducible factor as exact numbers for a
+    numerical result: isolated roots (nodes of any degree) when the
+    coefficients are rational numbers, the radical forms otherwise."""
+    if factor.free_symbols == {x} and not factor.has(ImaginaryUnit):
+        return all_roots(factor, x, radicals=False)
+    return _roots_in_radicals(factor, x)
+
+
+def _numerical_order(value: Expr) -> tuple[float, float]:
+    number = complex(value)
+    return (number.real, number.imag)
+
+
 class Eigenspace:
     """The eigenvalues which are the roots of ``factor``, an irreducible
     factor of the characteristic polynomial in ``symbol``, of multiplicity
@@ -172,6 +200,14 @@ class Eigenspace:
     def vectors(self, value: Expr) -> list[ExprMatrix]:
         """The basis of the eigenspace of the eigenvalue ``value``."""
         return [v.subs(self.symbol, value) for v in self.basis]
+
+    def isolated_values(self) -> Optional[list[Expr]]:
+        """The roots of ``factor`` as exact numbers which have a
+        numerical value at any precision: isolated roots
+        (:class:`~sympy_extras.polys.complexrootof.ComplexRootOf`) when
+        its coefficients are rational numbers, the radical forms of
+        :meth:`values` otherwise."""
+        return _isolated_roots(self.factor, self.symbol)
 
     def __repr__(self) -> str:
         return 'Eigenspace(%s, %d, %r)' % (self.factor, self.multiplicity, list(self.basis))
@@ -429,7 +465,12 @@ def eigenspaces(M: ExprMatrix, x: Symbol) -> list[Eigenspace]:
     (x**5 - x - 1, 1, True)
     >>> space.basis
     (ExprMatrix([[x**4 - 1], [x**3], [x**2], [x], [1]]),)
+
+    For a matrix with floats, the exact structure of the matrix of the
+    rational numbers they store.
     """
+    if float_precision([M]) is not None:
+        return eigenspaces(exact_matrix(M), x)
     unknown = _fresh_symbol(M)
     kernels, factors = _characteristic_factors(M, unknown)
     gaussian = _complex_lift(kernels)
@@ -454,7 +495,12 @@ def jordan_chains(M: ExprMatrix, x: Symbol) -> list[JordanChains]:
     >>> [blocks] = jordan_chains(M, x)
     >>> blocks, blocks.chains
     (JordanChains(x - 2, 3, blocks [2, 1]), ((ExprMatrix([[1], [-1], [0]]), ExprMatrix([[1], [0], [0]])), (ExprMatrix([[0], [0], [1]]),)))
+
+    For a matrix with floats, the exact structure of the matrix of the
+    rational numbers they store.
     """
+    if float_precision([M]) is not None:
+        return jordan_chains(exact_matrix(M), x)
     unknown = _fresh_symbol(M)
     kernels, factors = _characteristic_factors(M, unknown)
     gaussian = _complex_lift(kernels)
@@ -474,17 +520,35 @@ def jordan_form(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
     >>> from sympy_extras.matrices.eigen import jordan_form
     >>> jordan_form(ExprMatrix.from_rows([[3, 1, 0], [-1, 1, 0], [0, 0, 2]]))
     (ExprMatrix([[1, 1, 0], [-1, 0, 0], [0, 0, 1]]), ExprMatrix([[2, 1, 0], [0, 2, 0], [0, 0, 2]]))
+
+    With floats in the entries the structure is the exact one of the
+    numbers stored, and ``P`` and ``J`` are written with floats:
+
+    >>> from sympy_extras.core import Float
+    >>> jordan_form(ExprMatrix.from_rows([[Float(1.0), Float(1.0)], [0, Float(1.0)]]))[1]
+    ExprMatrix([[1.00000000000000, 1.00000000000000], [0, 1.00000000000000]])
     """
+    digits = float_precision([M])
+    if digits is not None:
+        P, J = _jordan_form(exact_matrix(M), True)
+        return approximate_matrix(P, digits), approximate_matrix(J, digits)
+    return _jordan_form(M, False)
+
+
+def _jordan_form(M: ExprMatrix, numerical: bool) -> tuple[ExprMatrix, ExprMatrix]:
     n = _square(M)
     blocks: list[tuple[Expr, list[ExprMatrix]]] = []
     for group in jordan_chains(M, _fresh_symbol(M)):
-        found = _roots_in_radicals(group.factor, group.symbol)
+        found = _isolated_roots(group.factor, group.symbol) if numerical else _roots_in_radicals(group.factor, group.symbol)
         if found is None:
             raise NotImplementedError('the roots of %s are not expressed in radicals: see jordan_chains' % (group.factor,))
         for value in found:
             for vectors in group.chains:
                 blocks.append((value, [v.subs(group.symbol, value) for v in vectors]))
-    blocks.sort(key=lambda block: (default_sort_key(block[0]), -len(block[1])))
+    if numerical and all(not value.free_symbols for value, _ in blocks):
+        blocks.sort(key=lambda block: (_numerical_order(block[0]), -len(block[1])))
+    else:
+        blocks.sort(key=lambda block: (default_sort_key(block[0]), -len(block[1])))
     columns: list[ExprMatrix] = []
     zero: Expr = Integer(0)
     one: Expr = Integer(1)
@@ -500,14 +564,20 @@ def jordan_form(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
     return P, ExprMatrix(n, n, [e for row in J for e in row])
 
 
-def _explicit(M: ExprMatrix) -> list[tuple[Expr, Eigenspace]]:
+def _explicit(M: ExprMatrix, numerical: bool = False) -> list[tuple[Expr, Eigenspace]]:
+    """The eigenvalues with their spaces; with ``numerical`` (the exact
+    matrix of a matrix with floats) as exact numbers to be evaluated, in
+    numerical order."""
     pairs: list[tuple[Expr, Eigenspace]] = []
     for space in eigenspaces(M, _fresh_symbol(M)):
-        values = space.values()
+        values = space.isolated_values() if numerical else space.values()
         if values is None:
             raise NotImplementedError('the roots of %s are not expressed in radicals: see eigenspaces' % (space.factor,))
         pairs.extend((value, space) for value in values)
-    pairs.sort(key=lambda pair: default_sort_key(pair[0]))
+    if numerical and all(not value.free_symbols for value, _ in pairs):
+        pairs.sort(key=lambda pair: _numerical_order(pair[0]))
+    else:
+        pairs.sort(key=lambda pair: default_sort_key(pair[0]))
     return pairs
 
 
@@ -522,7 +592,23 @@ def eigenvalues(M: ExprMatrix) -> dict[Expr, int]:
     >>> a, b = Symbol('a'), Symbol('b')
     >>> eigenvalues(ExprMatrix.from_rows([[a, b], [b, a]])), eigenvalues(ExprMatrix.from_rows([[a, 1], [0, a]]))
     ({a - b: 1, a + b: 1}, {a: 2})
+
+    With floats in the entries, the roots of the exact characteristic
+    polynomial (of any degree) as floats, with their exact
+    multiplicities; eigenvalues which differ by less than the precision
+    are one key, with the sum of the multiplicities.
+
+    >>> from sympy_extras.core import Float
+    >>> eigenvalues(ExprMatrix.from_rows([[Float(1.0), Float(1.0)], [0, Float(1.0)]]))
+    {1.00000000000000: 2}
     """
+    digits = float_precision([M])
+    if digits is not None:
+        counted: dict[Expr, int] = {}
+        for value, space in _explicit(exact_matrix(M), True):
+            key = approximate(value, digits)
+            counted[key] = counted.get(key, 0) + space.multiplicity
+        return counted
     return {value: space.multiplicity for value, space in _explicit(M)}
 
 
@@ -536,7 +622,19 @@ def eigenvectors(M: ExprMatrix) -> list[tuple[Expr, int, list[ExprMatrix]]]:
     >>> a, b = Symbol('a'), Symbol('b')
     >>> eigenvectors(ExprMatrix.from_rows([[a, b], [b, a]]))
     [(a - b, 1, [ExprMatrix([[-1], [1]])]), (a + b, 1, [ExprMatrix([[1], [1]])])]
+
+    With floats in the entries the eigenspaces are those of the numbers
+    stored: a defective matrix has fewer vectors than the multiplicity.
+
+    >>> from sympy_extras.core import Float
+    >>> eigenvectors(ExprMatrix.from_rows([[Float(1.0), Float(1.0)], [0, Float(1.0)]]))
+    [(1.00000000000000, 2, [ExprMatrix([[1.00000000000000], [0]])])]
     """
+    digits = float_precision([M])
+    if digits is not None:
+        return [(approximate(value, digits), space.multiplicity,
+                 [approximate_matrix(v, digits) for v in space.vectors(value)])
+                for value, space in _explicit(exact_matrix(M), True)]
     return [(value, space.multiplicity, space.vectors(value)) for value, space in _explicit(M)]
 
 
@@ -564,11 +662,24 @@ def diagonalize(M: ExprMatrix) -> Optional[tuple[ExprMatrix, ExprMatrix]]:
     (ExprMatrix([[-1/2, 1], [1, 1]]), ExprMatrix([[2, 0], [0, 5]]))
     >>> diagonalize(ExprMatrix.from_rows([[1, 1], [0, 1]])) is None
     True
+
+    With floats in the entries, whether the matrix is diagonalisable is
+    decided exactly for the numbers stored.
     """
+    digits = float_precision([M])
+    if digits is not None:
+        exact = _diagonalize(exact_matrix(M), True)
+        if exact is None:
+            return None
+        return approximate_matrix(exact[0], digits), approximate_matrix(exact[1], digits)
+    return _diagonalize(M, False)
+
+
+def _diagonalize(M: ExprMatrix, numerical: bool) -> Optional[tuple[ExprMatrix, ExprMatrix]]:
     n = _square(M)
     columns: list[ExprMatrix] = []
     diagonal: list[Expr] = []
-    for value, space in _explicit(M):
+    for value, space in _explicit(M, numerical):
         if space.geometric_multiplicity != space.multiplicity:
             return None
         for vector in space.vectors(value):

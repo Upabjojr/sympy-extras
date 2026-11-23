@@ -9,7 +9,7 @@ import random
 import pytest
 import sympy
 
-from sympy_extras.core import I, Integer, Rational, Symbol
+from sympy_extras.core import Float, I, Integer, Rational, Symbol
 from sympy_extras.core.expr import Expr
 from sympy_extras.functions import cos, sin, sqrt
 from sympy_extras.interop import sympy_expr, to_sympy
@@ -260,3 +260,25 @@ def test_kernels_with_relations() -> None:
 def test_matrix_methods() -> None:
     M = ExprMatrix.from_rows([[4, 2], [2, 3]])
     assert M.lu().U == lu(M).U and M.qr() == qr(M) and M.cholesky() == cholesky(M) and M.ldl() == ldl(M)
+
+
+def test_decompositions_of_float_matrices() -> None:
+    # a matrix of floats is decomposed exactly, as the rational numbers stored: the singular one raised
+    # NotImplementedError('the pivot 0 is not proved nonzero') in lu, qr and inertia, and cholesky took the square
+    # root of a negative float pivot instead of raising
+    singular = ExprMatrix.from_rows([[Float(1.0*(i + 1)*(j + 1)) for j in range(3)] for i in range(3)])
+    decomposition = lu(singular)
+    assert decomposition.rank == 1
+    assert [complex(e) for e in (decomposition.L*decomposition.U - decomposition.P*singular).entries] == [0]*9
+    Q, R = qr(singular)
+    assert Q.cols == 1 and all(abs(complex(e)) < 1e-12 for e in (Q*R - singular).entries)
+    assert inertia(singular) == (1, 0, 2)
+    assert is_positive_semidefinite(singular) and not is_positive_definite(singular)
+    definite = ExprMatrix.from_rows([[Float(4.0), Float(2.0)], [Float(2.0), Float(3.0)]])
+    C = cholesky(definite)
+    assert all(abs(complex(e)) < 1e-12 for e in (C*C.transpose() - definite).entries)
+    L, D = ldl(definite)
+    assert [complex(e) for e in (L*D*L.transpose() - definite).entries] == [0]*4
+    with pytest.raises(ValueError):
+        cholesky(ExprMatrix.from_rows([[Float(1.0), Float(2.0)], [Float(2.0), Float(1.0)]]))
+    assert is_hermitian(definite) and rank(singular) == 1

@@ -22,6 +22,17 @@ Eigenvectors for different eigenvalues of a symmetric matrix are
 orthogonal, so nothing else is needed. The decomposition returned is the
 compact one: only the nonzero singular values, in decreasing order.
 
+An $m \times n$ matrix has $\min(m, n)$ singular values, zeros included:
+:func:`singular_values` takes the eigenvalues of the smaller of $A^* A$
+and $A A^*$, which have the same nonzero eigenvalues.
+
+Floating point entries are the rational numbers they store
+(:mod:`sympy_extras.matrices.linalg`): the Gram matrix and its
+characteristic polynomial are exact, the singular values are the square
+roots of its exactly isolated roots, written as floats, and a singular
+value which is zero for the numbers stored is the exact ``0`` (never a
+rounding error such as ``9.8e-16*I``).
+
 Examples
 ========
 
@@ -54,11 +65,12 @@ from sympy_extras.core.numbers import ImaginaryUnit, Integer, Rational, number_f
 from sympy_extras.core.power import sqrt
 from sympy_extras.functions import acos, cos
 from sympy_extras.polys.domains.quotientfield import QuotientField
+from sympy_extras.polys.complexrootof import all_roots
 from sympy_extras.polys.polyroots import roots
 from sympy_extras.polys.polytools import Poly
 
 from .dense import ExprMatrix
-from .linalg import conjugate_transpose, normal
+from .linalg import approximate, approximate_matrix, conjugate_transpose, exact_matrix, float_precision, normal
 from .eigen import (_Field, _RationalField, _characteristic_factors, _column, _extension, _field_nullspace, _fresh_symbol,
                     _shifted, eigenvalues)
 
@@ -81,11 +93,12 @@ def _size(value: Expr) -> float:
 
 
 def singular_values(M: ExprMatrix) -> list[Expr]:
-    """The singular values with their multiplicities (zeros included, as
-    many as columns), the symbols taken to be real: the square roots of
-    the eigenvalues of ``M.T * M`` (of ``M^* M`` with the conjugate
-    transpose, for a matrix with ``I``). In decreasing order for a matrix
-    of numbers.
+    """The singular values with their multiplicities (zeros included: as
+    many as the smaller of the numbers of rows and columns), the symbols
+    taken to be real: the square roots of the eigenvalues of ``M.T * M``
+    (of ``M^* M`` with the conjugate transpose, for a matrix with ``I``),
+    or of ``M * M.T`` for a matrix with more columns than rows. In
+    decreasing order for a matrix of numbers.
 
     >>> from sympy_extras.core import Symbol
     >>> from sympy_extras.matrices import ExprMatrix
@@ -93,14 +106,30 @@ def singular_values(M: ExprMatrix) -> list[Expr]:
     >>> a = Symbol('a')
     >>> singular_values(ExprMatrix.from_rows([[1, 1], [1, 1]])), singular_values(ExprMatrix.from_rows([[a, 0], [0, 2]]))
     ([2, 0], [2, sqrt(a**2)])
+    >>> singular_values(ExprMatrix.from_rows([[1, 2, 2]])), singular_values(ExprMatrix.from_rows([[1], [2], [2]]))
+    ([3], [3])
+
+    With floats in the entries (the exact numbers they store):
+
+    >>> from sympy_extras.core import Float
+    >>> singular_values(ExprMatrix.from_rows([[Float(1.0), Float(2.0)], [Float(2.0), Float(4.0)]]))
+    [5.00000000000000, 0]
     """
+    digits = float_precision([M])
+    if digits is not None:
+        return [approximate(v, digits) for v in _singular_values(exact_matrix(M), True)]
+    return _singular_values(M, False)
+
+
+def _singular_values(M: ExprMatrix, numerical: bool) -> list[Expr]:
     values: list[Expr] = []
-    gram = _gram(M)
+    # the smaller Gram matrix: min(rows, columns) singular values
+    gram = _gram(conjugate_transpose(M)) if M.cols > M.rows else _gram(M)
     if all(isinstance(e, Rational) for e in gram.entries):
         # the real forms of the roots (a cubic with three real roots)
         unknown = _fresh_symbol(gram)
         for factor, multiplicity in _characteristic_factors(gram, unknown)[1]:
-            for root in _real_roots(factor, unknown):
+            for root in (all_roots(factor, unknown, radicals=False) if numerical else _real_roots(factor, unknown)):
                 values.extend([sqrt(root)] * multiplicity)
     else:
         for value, multiplicity in eigenvalues(gram).items():
@@ -153,7 +182,7 @@ def _real_roots(factor: Expr, unknown: Expr) -> list[Expr]:
     return list(found)
 
 
-def _singular_vectors(field: _Field[T], gram: ExprMatrix) -> list[tuple[Expr, ExprMatrix]]:
+def _singular_vectors(field: _Field[T], gram: ExprMatrix, numerical: bool = False) -> list[tuple[Expr, ExprMatrix]]:
     """``(lambda, v)``: the positive eigenvalues of the Gram matrix with
     orthonormal eigenvectors."""
     unknown = _fresh_symbol(gram)
@@ -165,7 +194,7 @@ def _singular_vectors(field: _Field[T], gram: ExprMatrix) -> list[tuple[Expr, Ex
             continue
         F = _extension(field, factor, unknown)
         orthogonal = _orthogonal(F, _field_nullspace(_shifted(field, F, gram)))
-        for value in _real_roots(factor, unknown):
+        for value in (all_roots(factor, unknown, radicals=False) if numerical else _real_roots(factor, unknown)):
             for vector, norm in orthogonal:
                 column = _column(field, vector, unknown).subs(unknown, value)
                 length = sqrt(_column(field, [norm], unknown)[0, 0].subs(unknown, value))
@@ -181,7 +210,9 @@ def svd(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix]:
     ``r``) with orthonormal columns.
 
     ``NotImplementedError`` when the singular values are not expressed in
-    radicals.
+    radicals. A matrix of floats is decomposed exactly for the numbers
+    stored (singular values of any degree) and the three matrices are
+    written with floats.
 
     >>> from sympy_extras.matrices import ExprMatrix
     >>> from sympy_extras.matrices.svd import svd
@@ -189,9 +220,17 @@ def svd(M: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix]:
     >>> U, S, V
     (ExprMatrix([[sqrt(2)/2], [sqrt(2)/2]]), ExprMatrix([[2]]), ExprMatrix([[sqrt(2)/2], [sqrt(2)/2]]))
     """
+    digits = float_precision([M])
+    if digits is not None:
+        U, S, V = _svd(exact_matrix(M), True)
+        return approximate_matrix(U, digits), approximate_matrix(S, digits), approximate_matrix(V, digits)
+    return _svd(M, False)
+
+
+def _svd(M: ExprMatrix, numerical: bool) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix]:
     if not all(isinstance(e, Rational) for e in M.entries):
         raise NotImplementedError('the singular value decomposition of a matrix whose entries are not rational numbers')
-    pairs = _singular_vectors(_RationalField(), _gram(M))
+    pairs = _singular_vectors(_RationalField(), _gram(M), numerical)
     pairs.sort(key=lambda pair: _size(pair[0]), reverse=True)
     r = len(pairs)
     zero: Expr = Integer(0)

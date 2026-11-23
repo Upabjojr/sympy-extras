@@ -348,6 +348,61 @@ True
 eigenvalues of the conjugate transpose times the matrix); `svd` raises
 `NotImplementedError` for them and when the singular values are not
 expressed in radicals.
+An $m \times n$ matrix has $\min(m, n)$ singular values (zeros included):
+those of a matrix and of its transpose are the same list.
+
+## Floating point entries
+
+There is one rule for matrices with `Float` entries, and no tolerance: **a
+float is the rational number it stores** (a dyadic fraction), every
+algorithm of `linalg`, `eigen`, `svd`, `decompositions` and `functions`
+runs exactly on these numbers, and the numbers of the result are written
+back as floats of the largest precision found in the entries. Nothing is
+decided by the size of a number or by a rounding error during the
+elimination: the rank, the pivots, the existence of solutions of a
+system, the multiplicities of the eigenvalues, the dimensions of the
+eigenspaces and the Jordan structure are those of the matrix *as stored*.
+A zero which is exact in the result stays the integer `0`.
+
+```python
+>>> from sympy_extras.core import Float
+>>> F = ExprMatrix.from_rows([[Float(1.0*(i + 1)*(j + 1)) for j in range(3)] for i in range(3)])
+>>> F.rank(), F.det(), F.singular_values(), F.eigenvals()
+(1, 0, [14.0000000000000, 0, 0], {0: 2, 14.0000000000000: 1})
+>>> J = ExprMatrix.from_rows([[Float(1.0), Float(1.0)], [0, Float(1.0)]])
+>>> J.eigenvects(), J.is_diagonalizable()
+([(1.00000000000000, 2, [ExprMatrix([[1.00000000000000], [0]])])], False)
+>>> A = ExprMatrix.from_rows([[0, Float(15.0), Float(10.0)], [1, 1, 1], [0, Float(10.0), Float(5.0)], [Float(-5.0), 0, 0]])
+>>> A.solve(ExprMatrix.column([Float(700.0), Float(100.0), Float(200.0), 0]))
+ExprMatrix([[0], [-60.0000000000000], [160.000000000000]])
+
+```
+
+(SymPy gives the singular values `[9.77e-16*I, 14.0, 0]` for the first
+matrix, two "independent" eigenvectors and `is_diagonalizable() == True`
+for the Jordan block, and `EmptySet` from `linsolve` for the system:
+sympy/sympy#30900 M3-3 and M3-5, sympy/sympy#6420.)
+
+What this means for numbers which were rounded when they were typed:
+`[[0.1, 0.2], [0.3, 0.6]]` has rank 1, because the float of 0.2 is twice
+that of 0.1 and likewise 0.6 and 0.3, while `[[0.1, 0.7], [0.3, 2.1]]`
+has rank 2, because the floats nearest to these decimals are not
+proportional. Its determinant is `4.16333634234434e-17`, the exact value
+for the four floats correctly rounded, and its inverse has entries of
+the order of `1e16`: the answer is honest about the matrix which was
+given, and it is for the caller to decide that such a matrix "is"
+singular (enter rational numbers, or round the entries, to say so).
+
+The eigenvalues of a matrix of floats do not need radicals: they are the
+roots of the irreducible factors of the exact characteristic polynomial,
+isolated exactly (`polys.complexrootof`) at any degree, in increasing
+order of the real parts. `eigenspaces` and `jordan_chains` return the
+exact structure. The modules `steps`, `normalforms`, `pencils`,
+`riccati`, `statespace`, `markov` and `equations` do not take floats
+this way yet (`steps` and `normalforms` raise `NotImplementedError`,
+the others were not reviewed): apply
+`linalg.exact_matrix` first and `linalg.approximate_matrix` to the
+result.
 
 ## Decompositions
 

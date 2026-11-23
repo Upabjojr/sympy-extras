@@ -27,6 +27,36 @@ other kernels each pivot of the elimination is submitted to the zero test
 of :mod:`sympy_extras.simplify.structure`, and ``NotImplementedError`` is
 raised unless all are proved nonzero.
 
+**Floating point entries.** A :class:`~sympy_extras.core.numbers.Float`
+is a dyadic rational number, stored exactly. Every function of this
+module (and of :mod:`~sympy_extras.matrices.eigen` and
+:mod:`~sympy_extras.matrices.svd`) computes with these exact values, by
+the exact algorithms, and converts the numbers of the result back to
+floats of the largest precision found in the entries
+(:func:`float_precision`, :func:`exact_matrix`, :func:`approximate`).
+There is no tolerance and no rounding during the elimination: a pivot is
+zero when it is exactly zero for the numbers which were given. The rank,
+the pivot columns, the multiplicities of the eigenvalues and the
+existence of solutions are therefore those of the matrix *as stored*:
+``[[1.0, 2.0], [2.0, 4.0]]`` and ``[[0.1, 0.2], [0.3, 0.6]]`` have rank
+1 (the float of 0.2 is twice that of 0.1), and ``[[0.1, 0.7], [0.3,
+2.1]]`` has rank 2, because the floats nearest to these decimal numbers
+are not proportional: its determinant is ``4.16333634234434e-17``
+exactly rounded, where floating point arithmetic gives
+``2.78e-17``. Nothing is decided by the size of a number; a matrix which
+is singular only up to the rounding of its entries is inverted, and the
+size of the entries of the inverse shows it. A zero which is exact in
+the result (in an echelon form) stays the integer ``0``.
+
+>>> from sympy_extras.core import Float
+>>> from sympy_extras.matrices import ExprMatrix
+>>> from sympy_extras.matrices.linalg import det, rank, rref
+>>> N = ExprMatrix.from_rows([[Float(0.1), Float(0.2)], [Float(0.3), Float(0.6)]])
+>>> rank(N), rref(N)
+(1, (ExprMatrix([[1.00000000000000, 2.00000000000000], [0, 0]]), (0,)))
+>>> det(ExprMatrix.from_rows([[Float(0.1), Float(0.7)], [Float(0.3), Float(2.1)]]))
+4.16333634234434e-17
+
 Examples
 ========
 
@@ -70,7 +100,8 @@ from typing import Final, Generic, Optional, Sequence, TypeVar
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.mul import Mul, mul
-from sympy_extras.core.numbers import I, ImaginaryUnit, Integer, Rational
+from sympy_extras.core.basic import Basic
+from sympy_extras.core.numbers import Float, I, ImaginaryUnit, Integer, Rational, number_from_fraction
 from sympy_extras.core.power import Pow, pow, sqrt
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.domains import ZZ
@@ -85,7 +116,8 @@ from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
 
 __all__ = ['normal', 'det', 'adjugate', 'inverse', 'rank', 'rref', 'nullspace', 'linear_solve', 'LinearSolution', 'charpoly',
-           'charpoly_coefficients', 'pseudoinverse', 'conjugate_transpose']
+           'charpoly_coefficients', 'pseudoinverse', 'conjugate_transpose', 'float_precision', 'exact_matrix', 'approximate',
+           'approximate_matrix']
 
 T = TypeVar('T')
 
@@ -539,6 +571,61 @@ def _complex_lift(kernels: Sequence[Expr]) -> Optional[_ComplexLift]:
 # ---------------------------------------------------------------------
 # the public functions
 
+def float_precision(matrices: Sequence[ExprMatrix]) -> Optional[int]:
+    """The largest precision, in decimal digits, of the floats in the
+    entries of the matrices, or ``None`` when there is none.
+
+    >>> from sympy_extras.core import Float
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.linalg import float_precision
+    >>> float_precision([ExprMatrix.from_rows([[1, Float(0.5)]])]), float_precision([ExprMatrix.eye(2)]) is None
+    (15, True)
+    """
+    digits: Optional[int] = None
+    for M in matrices:
+        for e in M.entries:
+            for atom in e.atoms(Float):
+                if isinstance(atom, Float) and (digits is None or atom.dps > digits):
+                    digits = atom.dps
+    return digits
+
+
+def exact_matrix(M: ExprMatrix) -> ExprMatrix:
+    """The matrix with every float replaced by the rational number it
+    stores.
+
+    >>> from sympy_extras.core import Float
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.linalg import exact_matrix
+    >>> exact_matrix(ExprMatrix.from_rows([[Float(0.5), Float(0.1)]]))
+    ExprMatrix([[1/2, 3602879701896397/36028797018963968]])
+    """
+    rule: dict[Basic, Basic] = {}
+    for e in M.entries:
+        for atom in e.atoms(Float):
+            if isinstance(atom, Float):
+                rule[atom] = number_from_fraction(atom.as_fraction())
+    return M.xreplace(rule) if rule else M
+
+
+def approximate(e: Expr, digits: int) -> Expr:
+    """The expression with its numbers as floats of ``digits`` decimal
+    digits (an exact zero stays ``0``): the form of the results for a
+    matrix with floats.
+
+    >>> from sympy_extras.core import Rational, Symbol
+    >>> from sympy_extras.matrices.linalg import approximate
+    >>> approximate(Rational(1, 3)*Symbol('x') + 2, 15)
+    0.333333333333333*x + 2.0
+    """
+    return e.evalf(digits)
+
+
+def approximate_matrix(M: ExprMatrix, digits: int) -> ExprMatrix:
+    """:func:`approximate` on every entry."""
+    return M.applyfunc(lambda e: approximate(e, digits))
+
+
 def normal(e: Expr) -> Expr:
     """The expression as a quotient of two expanded polynomials in its
     kernels, in lowest terms (the form in which the functions of this
@@ -572,6 +659,9 @@ def det(M: ExprMatrix) -> Expr:
     >>> det(ExprMatrix.from_rows([[x, 1, 0], [1, x, 1], [0, 1, x]])), det(ExprMatrix.from_rows([[1/x, y], [1, x]]))
     (x**3 - 2*x, 1 - y)
     """
+    digits = float_precision([M])
+    if digits is not None:
+        return approximate(det(exact_matrix(M)), digits)
     _square(M)
     kernels = _kernels([M])
     gaussian = _complex_lift(kernels)
@@ -583,6 +673,9 @@ def det(M: ExprMatrix) -> Expr:
 def charpoly_coefficients(M: ExprMatrix) -> list[Expr]:
     r"""The coefficients of $\det(\lambda I - M)$, highest degree first
     (Berkowitz' division-free algorithm)."""
+    digits = float_precision([M])
+    if digits is not None:
+        return [approximate(c, digits) for c in charpoly_coefficients(exact_matrix(M))]
     _square(M)
     kernels = _kernels([M])
     gaussian = _complex_lift(kernels)
@@ -615,6 +708,9 @@ def adjugate(M: ExprMatrix) -> ExprMatrix:
     >>> adjugate(ExprMatrix.from_rows([[1, 2], [2, 4]]))
     ExprMatrix([[4, -2], [-2, 1]])
     """
+    digits = float_precision([M])
+    if digits is not None:
+        return approximate_matrix(adjugate(exact_matrix(M)), digits)
     _square(M)
     kernels = _kernels([M])
     gaussian = _complex_lift(kernels)
@@ -633,6 +729,9 @@ def inverse(M: ExprMatrix) -> ExprMatrix:
     >>> inverse(ExprMatrix.from_rows([[1, x], [0, 1]])), inverse(ExprMatrix.from_rows([[2, 1], [1, 1]]))
     (ExprMatrix([[1, -x], [0, 1]]), ExprMatrix([[1, -1], [-1, 2]]))
     """
+    digits = float_precision([M])
+    if digits is not None:
+        return approximate_matrix(inverse(exact_matrix(M)), digits)
     _square(M)
     kernels = _kernels([M])
     gaussian = _complex_lift(kernels)
@@ -651,6 +750,8 @@ def rank(M: ExprMatrix) -> int:
     >>> rank(ExprMatrix.from_rows([[x, x**2], [1, x]])), rank(ExprMatrix.from_rows([[x, 1], [1, x]]))
     (1, 2)
     """
+    if float_precision([M]) is not None:
+        return rank(exact_matrix(M))
     kernels = _kernels([M])
     gaussian = _complex_lift(kernels)
     if gaussian is not None:
@@ -668,6 +769,10 @@ def rref(M: ExprMatrix) -> tuple[ExprMatrix, tuple[int, ...]]:
     >>> rref(ExprMatrix.from_rows([[1, x, 2], [x, 1, 3]]))
     (ExprMatrix([[1, 0, (3*x - 2)/(x**2 - 1)], [0, 1, (2*x - 3)/(x**2 - 1)]]), (0, 1))
     """
+    digits = float_precision([M])
+    if digits is not None:
+        exact, pivots = rref(exact_matrix(M))
+        return approximate_matrix(exact, digits), pivots
     kernels = _kernels([M])
     gaussian = _complex_lift(kernels)
     if gaussian is not None:
@@ -687,6 +792,9 @@ def nullspace(M: ExprMatrix) -> list[ExprMatrix]:
     >>> nullspace(ExprMatrix.from_rows([[1, x, 0], [0, 1, x]]))
     [ExprMatrix([[x**2], [-x], [1]])]
     """
+    digits = float_precision([M])
+    if digits is not None:
+        return [approximate_matrix(v, digits) for v in nullspace(exact_matrix(M))]
     kernels = _kernels([M])
     gaussian = _complex_lift(kernels)
     if gaussian is not None:
@@ -710,6 +818,13 @@ def linear_solve(A: ExprMatrix, B: ExprMatrix) -> Optional[LinearSolution]:
     >>> linear_solve(ExprMatrix.from_rows([[1, 1], [1, 1]]), ExprMatrix.column([1, 2])) is None
     True
     """
+    digits = float_precision([A, B])
+    if digits is not None:
+        exact = linear_solve(exact_matrix(A), exact_matrix(B))
+        if exact is None:
+            return None
+        return LinearSolution(approximate_matrix(exact.particular, digits),
+                              [approximate_matrix(v, digits) for v in exact.nullspace])
     if A.rows != B.rows:
         raise ValueError('%d equations and %d right-hand sides' % (A.rows, B.rows))
     kernels = _kernels([A, B])
@@ -769,6 +884,9 @@ def pseudoinverse(M: ExprMatrix) -> ExprMatrix:
            and Applications*, 2nd ed., Springer, 2003, Chapter 1, Section
            7 (full rank factorisation).
     """
+    digits = float_precision([M])
+    if digits is not None:
+        return approximate_matrix(pseudoinverse(exact_matrix(M)), digits)
     reduced, pivots = rref(M)
     r = len(pivots)
     if r == 0:
