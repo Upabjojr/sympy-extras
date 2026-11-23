@@ -88,7 +88,7 @@ def test_rewrite_gamma_matches_sympy() -> None:
     general = to_sympy(expr_from_sympy(s.rf(m, y)**2).rewrite(Gamma), evaluate=False)
     assert str(general) == 'gamma(m + y)**2/gamma(m)**2'
     at = {m: s.Rational(-33, 10), y: s.Rational(1, 2)}
-    assert abs(complex(general.subs(at).evalf()) - complex(s.rf(at[m], at[y]).evalf())**2) < 1e-12
+    assert abs(complex(s.N(general.subs(at))) - complex(s.N(s.rf(at[m], at[y])))**2) < 1e-12
 
 
 def test_expand_complex_matches_sympy() -> None:
