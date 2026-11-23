@@ -3430,15 +3430,21 @@ impl Integrator {
         self.integrate(&g, &u, &zero, &Basic::one(), depth + 1, false, true)
     }
 
-    fn mean_value(&self, f: &Basic, _x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
+    fn mean_value(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
         if !has_trigonometric(f) || infinite(a) || infinite(b) {
             return Ok(None);
         }
-        Err(crate::error::not_ported("integrals/periodic (mean_value_integral)"))
+        self.finish(crate::integrals::periodic::mean_value_integral(f, x, a, b)?)
     }
 
-    fn residues(&self, _f: &Basic, _x: &Basic, _a: &Basic, _b: &Basic, _depth: usize) -> OptCV {
-        Err(crate::error::not_ported("integrals/residues (residue_integral)"))
+    fn residues(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
+        self.finish(crate::integrals::residues::residue_integral(
+            f,
+            x,
+            a,
+            b,
+            &self.assumptions,
+        )?)
     }
 
     fn real_parts(&self, condition: &Basic) -> R {
@@ -4315,15 +4321,27 @@ impl Integrator {
         Err(crate::error::not_ported("integrals/series (series_integral)"))
     }
 
-    fn laplace(&self, f: &Basic, _x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
+    fn laplace(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
         if depth > 1 || *a != Basic::zero() || *b != oo() || !has_any_function(f, &[Function::Exp]) {
             return Ok(None);
         }
-        Err(crate::error::not_ported("integrals/laplace (laplace_integral)"))
+        self.finish(crate::integrals::laplace::laplace_integral(
+            f,
+            x,
+            a,
+            b,
+            &self.assumptions,
+        )?)
     }
 
-    fn contours(&self, _f: &Basic, _x: &Basic, _a: &Basic, _b: &Basic, _depth: usize) -> OptCV {
-        Err(crate::error::not_ported("integrals/contours (contour_integral)"))
+    fn contours(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
+        self.finish(crate::integrals::contours::contour_integral(
+            f,
+            x,
+            a,
+            b,
+            &self.assumptions,
+        )?)
     }
 
     fn transformations(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
@@ -5015,7 +5033,7 @@ fn has_nan(e: &Basic) -> bool {
 pub fn definite_integral(f: &Basic, x: &Basic, a: &Basic, b: &Basic, assumptions: &[Basic], options: &Options) -> R {
     let unevaluated = || crate::integrals::integral::integral(f, x, Some((a, b)));
     let mut found: Option<ConditionalValue> = match &options.summability {
-        Some(_) => return Err(crate::error::not_ported("integrals/summability (summable_integral)")),
+        Some(method) => crate::integrals::summability::summable_integral(f, x, a, b, method, assumptions)?,
         None => conditional_integral(
             f,
             x,

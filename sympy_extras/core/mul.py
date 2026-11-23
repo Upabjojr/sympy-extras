@@ -138,7 +138,10 @@ class Mul(AssocOp):
         for fac in product(*ords2):
             ords3 = [coeff_exp(term) for term in fac]
             power = add(*[p for _, p in ords3])
-            if add(power, mul(Integer(-1), nn)).is_negative is True:
+            # not SymPy's: a term whose exponent is not known to reach the
+            # order is kept (SymPy keeps those known to be below it, and
+            # the series of exp(x)*x**a for a positive symbol a lost every term)
+            if add(power, mul(Integer(-1), nn)).is_nonnegative is not True:
                 res = add(res, mul(mul(*[c for c, _ in ords3]), pow(x, power)))
 
         if self.is_polynomial(x) is True:

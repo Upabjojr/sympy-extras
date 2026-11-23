@@ -490,3 +490,18 @@ def test_series_of_the_absolute_value_of_a_complex_argument() -> None:
     # a real argument as before
     assert abs_(X - r).series(X, 1, 3) == -r*sign(1 - r) + (X - 1)*sign(1 - r) + sign(1 - r)
     assert abs_(X).series(X, 0, 3) == X
+
+
+def test_powers_with_a_positive_symbolic_exponent_are_kept() -> None:
+    # x**a for a positive symbol a is exp(a*log(x)) with an exponent
+    # going to -oo, which was taken to be smaller than every power: the
+    # series of x**a + 1 came out as 1 + O(x**2), that of x**a as O(x**3)
+    # (SymPy 1.14 does the same); exp(-1/x) is smaller than every power
+    from sympy_extras.core import Integer
+    from sympy_extras.functions import exp
+    w, a = Symbol('w', positive=True), Symbol('a', positive=True)
+    assert (w**a + 1).series(w, 0, 2) == w**a + 1
+    assert (w**a + w).series(w, 0, 3) == w**a + w
+    assert (w**a).series(w, 0, 3) == w**a
+    assert (w**3 + 1).series(w, 0, 2) == 1 + order(w**2)
+    assert exp(-1/w)._eval_nseries(w, 3, None, Integer(0)) == order(w**3)
