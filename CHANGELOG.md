@@ -3761,7 +3761,8 @@ remove public functions. Breaking changes are listed here when they happen.
   - `re(f(y)).diff(y)` for an imaginary `y` is `I*im(f'(y))` (the sign was
     wrong, and with it the derivatives of `Abs` and `arg`) (V76, V77);
     `atan2(0, x)` is `pi` on the negative imaginary axis, in the value and
-    in `rewrite(atan)` (V85); the leading terms of the inverse
+    in `rewrite(atan)` (V85), and `atan2(y, -oo)` is `pi` for an imaginary
+    `y` (V84); the leading terms of the inverse
     trigonometric and hyperbolic functions at a branch point reached as a
     limit (`acos(sin(x)/x)` is `sqrt(3)*sqrt(x**2)/3`, not `acos(1) = 0`;
     `acosh` and `asech` at 1 no longer go through the logarithmic form,

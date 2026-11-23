@@ -1,13 +1,13 @@
 """Regression tests for the findings of sympy/sympy#31275 in the
 elementary functions which the ports shared with SymPy (V76, V77, V81,
-V82, V85, V86, V87), each checked against mpmath."""
+V82, V84-V87), each checked against mpmath."""
 from __future__ import annotations
 
 from typing import Callable
 
 import mpmath
 
-from sympy_extras.core import I, Integer, Rational, Symbol, pi
+from sympy_extras.core import I, Integer, Rational, Symbol, oo, pi
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import Function
 from sympy_extras.core.power import sqrt
@@ -60,6 +60,12 @@ def test_atan2_on_the_negative_imaginary_axis() -> None:
         expected = complex(-1j*mpmath.log(point/mpmath.sqrt(point**2)))
         ours = atan2(Integer(0), Integer(a) + Integer(b)*I)
         assert abs(complex(ours.evalf(20)) - expected) < 1e-14, (a, b)
+    # V84: at x = -oo the limit is pi for re(y) = 0 too (SymPy: 2*pi*Heaviside(re(y)) - pi = 0)
+    assert atan2(I, -oo) == pi and atan2(-3*I, -oo) == pi and atan2(Integer(0), -oo) == pi
+    assert atan2(Integer(1), -oo) == pi and atan2(Integer(-1), -oo) == -pi and atan2(u, -oo) == Atan2(u, -oo)
+    for b in (1, -3):
+        far = mpmath.mpc(-mpmath.mpf(10)**25, 0)
+        assert abs(-1j*mpmath.log((far + 1j*mpmath.mpc(0, b))/mpmath.sqrt(far**2 + mpmath.mpc(0, b)**2)) - mpmath.pi) < 1e-12
     rewritten = Atan2(Integer(0), y).rewrite(Atan)
     assert rewritten.subs(y, -2*I) == pi and rewritten.subs(y, 2*I) == 0
     generic = Atan2(u, x).rewrite(Atan)

@@ -803,7 +803,10 @@ class Atan2(DefinedFunction):
             if real_y.is_extended_negative:
                 return mul(MINUS_ONE, pi)
             if real_y.is_zero:
-                return ZERO  # Heaviside(0) = 1/2
+                # y = I*b: (x + I*y)/sqrt(x**2 + y**2) tends to -1 and the
+                # defining logarithm to pi, as for y = 0 (SymPy takes
+                # Heaviside(0) = 1/2 and returns 0)
+                return pi
             return None
         if isinstance(x, Infinity):
             return ZERO
