@@ -463,10 +463,18 @@ pub fn guess_algebraic_equation(
     }
 }
 
-/// A closed form of the sequence by its guessed recurrence
-/// (`guess_closed_form`): needs `rsolve_linear`, not ported.
+/// The seconds given to the solution of the guessed recurrence
+/// (`_SOLVE_SECONDS`).
+const SOLVE_SECONDS: f64 = 10.0;
+
+/// An expression in `n` whose values at `0, 1, ...` are the terms: the
+/// solution of the guessed recurrence with the first terms as initial
+/// values, when the recurrence has a full set of d'Alembertian solutions;
+/// `None` otherwise. The expression is checked on every term given
+/// (`guess_closed_form`).
 pub fn guess_closed_form(
     terms: &[Rat],
+    n: &Basic,
     max_order: Option<usize>,
     max_degree: Option<usize>,
     margin: usize,
@@ -474,14 +482,46 @@ pub fn guess_closed_form(
     let Some(recurrence) = guess_recurrence(terms, max_order, max_degree, margin)? else {
         return Ok(None);
     };
-    if recurrence.order() == 0 {
+    let r: usize = recurrence.order();
+    if r == 0 {
+        // p_0(n) a(n) = 0: zero outside the roots of p_0
         return Ok(if terms.iter().all(|t| *t == Rat::ZERO) {
             Some(Basic::int(0))
         } else {
             None
         });
     }
-    Err(crate::error::not_ported(
-        "guess_closed_form (solvers.recurr.rsolve_linear)",
-    ))
+    // the initial values are taken after the last zero of the leading
+    // coefficient, from where on the recurrence determines the sequence
+    let mut start: usize = 0;
+    for k in 0..terms.len().saturating_sub(r) {
+        if polynomial_value(&recurrence.coefficients[r], k as i64) == Int::ZERO {
+            start = k + 1;
+        }
+    }
+    if start + r > terms.len() {
+        return Ok(None);
+    }
+    let y: Arc<UndefinedFunction> = Arc::new(UndefinedFunction::new("y", None, &[]));
+    let mut initial: Vec<(Basic, Basic)> = Vec::new();
+    for (k, term) in terms.iter().enumerate().skip(start).take(r) {
+        initial.push((y.apply(vec![Basic::int(k as i64)])?, Basic::from_rational(term.clone())));
+    }
+    let equation: Basic = recurrence.as_expr(&y, n)?;
+    let unknown: Basic = y.apply(vec![n.clone()])?;
+    let solution: Option<Basic> = crate::timeout::attempt_within(Some(SOLVE_SECONDS), || {
+        crate::solvers::recurr::rsolve_linear(&equation, &unknown, Some(&initial))
+    })?
+    .flatten();
+    let Some(solution) = solution else {
+        return Ok(None);
+    };
+    for (k, value) in terms.iter().enumerate() {
+        let at: Basic = crate::core::subs::subs(&solution, n, &Basic::int(k as i64))?;
+        let evaluated: Basic = crate::core::function::expand_default(&crate::core::function::doit(&at)?)?;
+        if evaluated != Basic::from_rational(value.clone()) {
+            return Ok(None);
+        }
+    }
+    Ok(Some(solution))
 }

@@ -1000,6 +1000,39 @@ fn mrv(e: &Basic, x: &Basic) -> PolyResult<(SubsSet, Basic)> {
         let args: Vec<Basic> = found.iter().map(|(_, r)| ss.do_subs(r)).collect();
         return Ok((s, crate::core::function::rebuild_evaluated(&e, args)?));
     }
+    if matches!(e.head(), Head::Hyper | Head::MeijerG | Head::Piecewise) {
+        // a function of SymPy which is not an application of the core: its
+        // arguments which are not expressions (the parameter tuples) are
+        // free of x and kept
+        let is_expression =
+            |a: &Basic| !(crate::core::logic::is_boolean(a) || matches!(a.head(), Head::Tuple | Head::ExprCondPair));
+        let mut found: Vec<(SubsSet, Basic)> = Vec::new();
+        for argument in e.args() {
+            if is_expression(argument) {
+                found.push(mrv(argument, x)?);
+            } else if argument.has(x) {
+                return Err(PolyError::NotImplemented(format!(
+                    "Don't know how to calculate the mrv of '{}'",
+                    e
+                )));
+            } else {
+                found.push((SubsSet::default(), argument.clone()));
+            }
+        }
+        let nonempty: Vec<&SubsSet> = found.iter().filter(|(s, _)| !s.is_empty()).map(|(s, _)| s).collect();
+        if nonempty.len() != 1 {
+            return Err(PolyError::NotImplemented(
+                "MRV set computation for functions in several variables not implemented.".to_string(),
+            ));
+        }
+        let s: SubsSet = nonempty[0].clone();
+        let ss = SubsSet::default();
+        let args: Vec<Basic> = found
+            .iter()
+            .map(|(_, r)| if is_expression(r) { ss.do_subs(r) } else { r.clone() })
+            .collect();
+        return Ok((s, crate::core::function::rebuild_evaluated(&e, args)?));
+    }
     if matches!(e.head(), Head::Derivative) {
         return Err(PolyError::NotImplemented(
             "MRV set computation for derivatives not implemented yet.".to_string(),

@@ -142,7 +142,7 @@ fn sum_function(e: &Basic) -> Basic {
 
 /// The subexpressions of `expr` depending on `k` which are not rational
 /// operations (`_atoms`).
-fn atoms(expr: &Basic, k: &Basic) -> BTreeSet<Basic> {
+pub(crate) fn atoms(expr: &Basic, k: &Basic) -> BTreeSet<Basic> {
     if !expr.has(k) || expr == k {
         return BTreeSet::new();
     }
@@ -192,12 +192,12 @@ fn evaluate_at(expr: &Basic, k: &Basic, k0: i64) -> R2 {
 }
 
 /// Builds a ΠΣ-field containing given expressions (`_Builder`).
-struct Builder<Cs: Constants> {
-    k: Basic,
-    field: PiSigmaField<Cs>,
+pub(crate) struct Builder<Cs: Constants> {
+    pub(crate) k: Basic,
+    pub(crate) field: PiSigmaField<Cs>,
     /// atom -> expression in k and the generator symbols, in insertion
     /// order
-    known: Vec<(Basic, Basic)>,
+    pub(crate) known: Vec<(Basic, Basic)>,
 }
 
 impl<Cs: Constants> Builder<Cs> {
@@ -213,7 +213,7 @@ impl<Cs: Constants> Builder<Cs> {
 
     /// The element of the field equal to `expr`, adjoining generators as
     /// needed (`convert`).
-    fn convert(&mut self, expr: &Basic) -> PolyResult<PiSigmaElement> {
+    pub(crate) fn convert(&mut self, expr: &Basic) -> PolyResult<PiSigmaElement> {
         let mut found: Vec<(i64, String, Basic)> = Vec::new();
         for a in atoms(expr, &self.k) {
             found.push((ops(&a)?, a.to_string(), a));
@@ -442,7 +442,7 @@ fn harmonics(k: &Basic, upto: i64) -> PolyResult<Vec<Basic>> {
 
 /// Harmonic numbers to adjoin when the telescoping fails
 /// (`_auto_extensions`).
-fn auto_extensions(f: &Basic, k: &Basic) -> PolyResult<Vec<Basic>> {
+pub(crate) fn auto_extensions(f: &Basic, k: &Basic) -> PolyResult<Vec<Basic>> {
     let found: Vec<Basic> = atoms(f, k)
         .into_iter()
         .filter(|a| is_harmonic(a) || matches!(a.head(), Head::Sum))
@@ -484,14 +484,14 @@ fn auto_extensions(f: &Basic, k: &Basic) -> PolyResult<Vec<Basic>> {
 
 /// What a computation does with the field built for `f`: generic over the
 /// constants of the field.
-trait WithField {
+pub(crate) trait WithField {
     type Out;
     fn run<Cs: Constants>(&self, builder: Builder<Cs>) -> PolyResult<Self::Out>;
 }
 
 /// The field for the parameters (rational or parametric constants), the
 /// computation run in it.
-fn with_field<W: WithField>(k: &Basic, params: &[Basic], w: &W) -> PolyResult<W::Out> {
+pub(crate) fn with_field<W: WithField>(k: &Basic, params: &[Basic], w: &W) -> PolyResult<W::Out> {
     if params.is_empty() {
         let field = crate::concrete::pisigma::rational_pisigma_field(k)?;
         w.run(Builder {
@@ -1047,8 +1047,14 @@ fn karr_on_sums(expr: &Basic, extensions: &[Basic], auto: bool) -> R {
         limit_symbols.extend(b.free_symbols());
         limit_symbols.remove(k);
         if function.free_symbols().iter().any(|s| limit_symbols.contains(s)) {
-            // the summand depends on a limit: creative telescoping
-            return Err(crate::error::not_ported("concrete/creative (definite_sum)"));
+            // the summand depends on a limit: creative telescoping, within
+            // the time limit of the settings
+            let limits: [Basic; 3] = [k.clone(), a.clone(), b.clone()];
+            let found: Option<Basic> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+                crate::concrete::creative::definite_sum(&function, &limits, None, 4, extensions, false)
+            })?
+            .flatten();
+            return Ok(found.unwrap_or(rebuilt));
         }
     }
     Ok(value.unwrap_or(rebuilt))

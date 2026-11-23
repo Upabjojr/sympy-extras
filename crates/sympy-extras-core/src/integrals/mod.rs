@@ -30,6 +30,7 @@ pub mod recognize;
 pub mod residues;
 pub mod rewriting;
 pub mod risch;
+pub mod series;
 pub mod slater;
 pub mod summability;
 pub mod tables;

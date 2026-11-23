@@ -1,0 +1,272 @@
+[
+[
+"creative_telescoping",
+"binomial(n, k)",
+"k",
+"n",
+"4",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"binomial(n, k)**2",
+"k",
+"n",
+"4",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"binomial(n, k)",
+"k",
+"n",
+"0",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"binomial(n, k)**2*binomial(k + n, k)**2",
+"k",
+"n",
+"2",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(n, k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(n, k)**2",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"k*binomial(n, k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"x**k*binomial(n, k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"(-1)**k*binomial(2*n, k)**2",
+"(k, 0, 2*n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"(-1)**(k + 1)*binomial(n, k)/k",
+"(k, 1, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(2*n, k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(a, k)*binomial(b, -k + n)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"(-1)**k*binomial(n, k)**2",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(n, k)*harmonic(k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"harmonic(k)/(-k + n + 1)",
+"(k, 1, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(n, k)**2*harmonic(k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"(-1)**k*binomial(n, k)*harmonic(k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"(-1)**(k - 1)*binomial(n, k)/k**2",
+"(k, 1, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"(-1)**k*binomial(n, k)*harmonic(k)**2",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"k*binomial(n, k)*harmonic(k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(n, k)**2*binomial(k + n, k)**2",
+"(k, 0, n)",
+"NONE",
+"2",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(n, k)",
+"(k, 0, n**2)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(n, k)*harmonic(k + n)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"k*binomial(k + n, k)/2**k",
+"k",
+"n",
+"2",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"binomial(2*n, k)",
+"k",
+"n",
+"2",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"(-1)**k*k*binomial(n, k)*harmonic(k)",
+"k",
+"n",
+"2",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"3**k*k*binomial(n, k)*harmonic(k)",
+"k",
+"n",
+"2",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"k*binomial(n, k)**2*harmonic(k)",
+"k",
+"n",
+"2",
+"[]",
+"True"
+],
+[
+"creative_telescoping",
+"(-1)**k*binomial(n, k)*harmonic(k)",
+"k",
+"n",
+"2",
+"[]",
+"True"
+],
+[
+"definite_sum",
+"binomial(n, k)**2*harmonic(k)",
+"(k, 0, n)",
+"NONE",
+"4",
+"[]",
+"False"
+]
+]

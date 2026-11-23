@@ -557,6 +557,7 @@ pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, c
             }
             Ok(d)
         }
+        Head::Hyper => hyper_leading_term(e, x, logx, cdir),
         _ if e.is_atom() => Ok(e.clone()),
         _ => Err(not_ported(&format!("the leading term of {}", e.class_name()))),
     }
@@ -564,6 +565,30 @@ pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, c
 
 /// `Function._eval_as_leading_term`: the function itself, unless an
 /// argument vanishes at `x = 0`.
+// PORTED FROM SYMPY: sympy/functions/special/hyper.py:hyper._eval_as_leading_term
+/// 1 when the argument vanishes, otherwise SymPy's generic rule of
+/// functions on the argument (`Hyper._eval_as_leading_term`).
+fn hyper_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) -> R {
+    let zero: Basic = Basic::zero();
+    let arg: &Basic = &e.args()[2];
+    let mut x0: Basic = crate::core::subs::subs(arg, x, &zero)?;
+    if matches!(x0.head(), Head::NaN) {
+        let negative: bool = is(&crate::functions::elementary::complexes::re(cdir)?, Predicate::negative) == Some(true);
+        x0 = crate::core::limits::limit(arg, x, &zero, if negative { "-" } else { "+" })?;
+    }
+    if x0 == zero {
+        return Ok(Basic::one());
+    }
+    let lead: Basic = as_leading_term(arg, std::slice::from_ref(x), logx, &zero)?;
+    let o: Basic = order(&Basic::one(), &[(x.clone(), zero.clone())])?;
+    if lead.free_symbols().contains(x) && crate::core::order::contains(&o, &lead)? == Some(true) {
+        return Err(PolyError::NotImplemented(
+            "hyper has no _eval_as_leading_term routine".to_string(),
+        ));
+    }
+    Ok(e.clone())
+}
+
 pub(crate) fn generic_leading_term_pub(f: &Basic, x: &Basic, logx: Option<&Basic>) -> R {
     generic_leading_term(f, x, logx)
 }

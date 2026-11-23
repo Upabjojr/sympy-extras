@@ -650,13 +650,54 @@ fn pow_content_primitive(e: &Basic, radical: bool, clear: bool) -> PolyResult<(B
 // ---------------------------------------------------------------------
 // factor_terms
 
+// PORTED FROM SYMPY: sympy/core/exprtools.py:_factor_sum_int
+/// The factors free of the variables taken out of a sum, `None` when `e`
+/// is not a sum (`_FactorTerms._factor_sum`).
+fn factor_sum(e: &Basic, radical: bool, clear: bool, fraction: bool, sign: bool) -> PolyResult<Option<Basic>> {
+    if !matches!(e.head(), Head::Sum) {
+        return Ok(None);
+    }
+    let result: &Basic = &e.args()[0];
+    if *result == Basic::zero() {
+        return Ok(Some(Basic::zero()));
+    }
+    let wrt: Vec<Basic> = crate::concrete::expr_with_limits::limits(e)
+        .into_iter()
+        .map(|l| l.0)
+        .collect();
+    let f: Basic = factor_terms(result, radical, clear, fraction, sign)?;
+    let depends = |t: &Basic| wrt.iter().any(|w| t.has(w));
+    // as_independent(*wrt): the terms of a sum, the factors of a product
+    let (i, d) = if f.is_add() {
+        let (free, bound): (Vec<Basic>, Vec<Basic>) = f.args().iter().cloned().partition(|t| !depends(t));
+        (add(&free)?, add(&bound)?)
+    } else if f.is_mul() {
+        let (free, bound): (Vec<Basic>, Vec<Basic>) = f.args().iter().cloned().partition(|t| !depends(t));
+        (mul(&free)?, mul(&bound)?)
+    } else if depends(&f) {
+        (Basic::one(), f.clone())
+    } else {
+        (f.clone(), Basic::one())
+    };
+    let lims: Vec<Basic> = e.args()[1..].to_vec();
+    if f.is_add() {
+        let ones: Basic = crate::concrete::expr_with_limits::sum_(&Basic::one(), &lims)?;
+        return Ok(Some(add(&[
+            mul(&[i, ones])?,
+            crate::concrete::expr_with_limits::sum_(&d, &lims)?,
+        ])?));
+    }
+    Ok(Some(mul(&[i, crate::concrete::expr_with_limits::sum_(&d, &lims)?])?))
+}
+
 /// The common factors of the terms taken out, in every node
 /// (`factor_terms`).
 pub fn factor_terms(e: &Basic, radical: bool, clear: bool, fraction: bool, sign: bool) -> PolyResult<Basic> {
     if e.args().is_empty() {
         return Ok(e.clone());
     }
-    if e.is_pow() || matches!(e.head(), Head::Function(_)) {
+    let not_expr: bool = crate::core::logic::is_boolean(e) || crate::sets::sets::is_set(e);
+    if e.is_pow() || matches!(e.head(), Head::Function(_) | Head::Undefined(_) | Head::Tuple) || not_expr {
         let mut new: Vec<Basic> = Vec::new();
         for a in e.args() {
             new.push(factor_terms(a, radical, clear, fraction, sign)?);
@@ -666,6 +707,9 @@ pub fn factor_terms(e: &Basic, radical: bool, clear: bool, fraction: bool, sign:
         } else {
             rebuild_evaluated(e, new)
         };
+    }
+    if let Some(factored) = factor_sum(e, radical, clear, fraction, sign)? {
+        return Ok(factored);
     }
     let (mut content, mut p) = as_content_primitive(e, radical, clear)?;
     if p.is_add() {
