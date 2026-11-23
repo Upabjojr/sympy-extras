@@ -278,6 +278,7 @@ def deltasummation(f: Expr, limit: Limits, no_piecewise: bool = False) -> Expr:
     (unconditional with ``no_piecewise``)."""
     from sympy_extras.functions.elementary.piecewise import piecewise, piecewise_fold
     from sympy_extras.core.logic import and_
+    from sympy_extras.core.numbers import Infinity, NegativeInfinity
     from sympy_extras.sets import interval
     from sympy_extras.sets.fancysets import Integers
     from sympy_extras.sets.sets import contains
@@ -306,7 +307,8 @@ def deltasummation(f: Expr, limit: Limits, no_piecewise: bool = False) -> Expr:
     # no term of the sum. SymPy only asks for the range: its sum of
     # KroneckerDelta(x, y) over (x, -oo, oo) is 1 at y = 1/2
     # (sympy/sympy#31275, V47)
-    anchor = a if a.is_infinite is not True else (b if b.is_infinite is not True else ZERO)
+    infinite = (Infinity, NegativeInfinity)
+    anchor = a if not isinstance(a, infinite) else (b if not isinstance(b, infinite) else ZERO)
     on_lattice = (value - anchor).is_integer
     if on_lattice is False:
         return ZERO

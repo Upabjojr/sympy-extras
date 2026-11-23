@@ -915,6 +915,10 @@ def test_subs_of_subs_and_as_independent_match_sympy() -> None:
     for e in [sympy.Subs(g(sx), sx, 0), sympy.Subs(sympy.Derivative(g(sx), sx), sx, sy), sympy.Subs(g(sx)*sy, sx, sy + 1),
               sympy.Subs(g(sx, sy), (sx, sy), (1, sz))]:
         for old, new in [(sx, sz), (sx, 1/sx), (sy, 2), (sy, sx), (sz, sx + 1), (sx, sy)]:
+            if old in e.expr.free_symbols and set(e.variables) & sympy.sympify(new).free_symbols:
+                # SymPy lets the bound variable capture the new expression
+                # (sympy/sympy#31275, V59): test_subs_does_not_capture_a_bound_variable_of_subs
+                continue
             got = expr_from_sympy(e).subs(expr_from_sympy(old), expr_from_sympy(sympy.sympify(new)))
             assert str(to_sympy(got, evaluate=False)) == str(e.subs(old, new)), (e, old, new)
     s = sympy.Subs(sympy.Derivative(g(sx), sx), sx, 0)
