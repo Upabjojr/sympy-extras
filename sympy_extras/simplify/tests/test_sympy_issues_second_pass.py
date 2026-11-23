@@ -70,3 +70,45 @@ def test_hyperexpand_of_the_g_function_of_besselk_of_integer_order() -> None:
     # the functions of noninteger differences are Slater's, as before
     half = hyperexpand(meijerg([], [], [0, Rational(1, 2)], [], z))
     assert abs(complex(half.subs(z, Rational(7, 10)).evalf(25)) - _g([Rational(0), Rational(1, 2)], 0.7)) < 1e-12
+
+
+def test_combsimp_of_binomials_where_the_gamma_quotient_fails() -> None:
+    # combsimp(binomial(2*n + 1, n)/binomial(2*n + 1, n + 1)) was 1 for an integer n of any sign (SymPy's
+    # too): at n = -1 it is binomial(-1, -1)/binomial(-1, 0) = 0/1. binomial(n, k) is 0 for k <= n < 0 and
+    # the quotient of gamma functions has a nonzero limit there
+    from sympy_extras.core import eq
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    assert binomial(-1, -1) == 0 and binomial(-1, 0) == 1
+    quotient = binomial(2*n + 1, n)/binomial(2*n + 1, n + 1)
+    found = combsimp(quotient)
+    assert isinstance(found, Piecewise) and found.subs(n, -1) == 0 and found.subs(n, 3) == 1
+    assert found.args[0].args[1] == eq(n, -1)
+    cases = [quotient, binomial(2*n + 1, n) + binomial(2*n + 1, n + 1), quotient**2,
+             binomial(2*n + 3, n + 1)/binomial(2*n + 3, n + 2), binomial(4*n + 6, 2*n)/binomial(4*n + 6, 2*n + 6),
+             1/(binomial(2*n + 1, n) - binomial(2*n + 1, n + 1) + 2), binomial(n, 2)/binomial(n, 3),
+             binomial(2*n, n)/binomial(2*n, n + 1), binomial(2*n + 1, n)/binomial(2*n, n)]
+    for e in cases:
+        simplified = combsimp(e)
+        assert simplified != e, e
+        for value in range(-6, 7):
+            given = e.subs(n, value)
+            if given.is_finite is True:
+                assert simplified.subs(n, value) == given, (e, value)
+    # in two symbols the points are not isolated: no rewriting unless the expression is undefined there
+    two = [binomial(n, k)/binomial(n, k + 1), binomial(n, k)/binomial(n + 1, k + 1), binomial(n, k + 1)/binomial(n, k),
+           binomial(n + 1, k + 1)/binomial(n, k)]
+    assert combsimp(two[0]) == two[0] and combsimp(two[1]) == two[1]
+    assert (combsimp(two[2]) - (n - k)/(k + 1)).cancel() == 0 and combsimp(two[3]) == (n + 1)/(k + 1)
+    for e in two:
+        simplified = combsimp(e)
+        for upper in range(-5, 6):
+            for lower in range(-5, 6):
+                given = e.subs(n, upper).subs(k, lower)
+                if given.is_finite is True:
+                    assert simplified.subs(n, upper).subs(k, lower) == given, (e, upper, lower)
+    # the assumptions prove that there is no such point
+    m = Symbol('m', integer=True, nonnegative=True)
+    assert combsimp(binomial(2*m + 1, m)/binomial(2*m + 1, m + 1)) == 1
+    assert (combsimp(binomial(m, k)/binomial(m, k + 1)) - (k + 1)/(m - k)).cancel() == 0
+    x = Symbol('x')
+    assert combsimp(binomial(2*x + 1, x)/binomial(2*x + 1, x + 1)) == 1

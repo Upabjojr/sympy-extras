@@ -577,7 +577,150 @@ def combsimp(expr: ExprLike) -> Expr:
             # mirrored up to a shift: no form of the result is known to hold
             return given
         turned[b] = mirror[0]
-    return _expr(_expr(result.xreplace(turned)).xreplace(back))
+    found = _expr(_expr(result.xreplace(turned)).xreplace(back))
+    if found == given:
+        return given
+    # the quotient of gamma functions is not the binomial where k <= n < 0
+    # (binomial(-1, -1) is 0, the gamma functions have the limit 1):
+    # combsimp(binomial(2*n + 1, n)/binomial(2*n + 1, n + 1)) was 1, and the quotient is 0 at n = -1
+    checked = [b for b in risky if b not in conflicts]
+    checked.extend(b for b in _negative_upper_binomials(found) if b not in risky)
+    if not checked:
+        return found
+    poles, factorials = _undefined_factors(given)
+    points: list[tuple[Symbol, int]] = []
+    sound = True
+    for b in checked:
+        uncovered = _uncovered_points(b, poles, factorials)
+        if uncovered is None:
+            sound = False
+            break
+        points.extend(point for point in uncovered if point not in points)
+    if sound and not points:
+        return found
+    if sound and len({symbol for symbol, _ in points}) == 1:
+        from sympy_extras.core.logic import Boolean
+        from sympy_extras.core.relational import eq
+        from sympy_extras.functions.elementary.piecewise import piecewise
+        cases: list[tuple[Expr, Boolean]] = []
+        for symbol, value in sorted(points, key=lambda point: point[1]):
+            at_point = _expr(given.subs(symbol, Integer(value)))
+            if at_point.is_finite is True and at_point != _expr(found.subs(symbol, Integer(value))):
+                cases.append((at_point, eq(symbol, Integer(value))))
+        if not cases:
+            return found
+        return piecewise(*cases, (found, True))
+    if isinstance(given, Add):
+        # term by term: a binomial which stays as it is needs no proof
+        return add(*[combsimp(term) for term in given.args if isinstance(term, Expr)])
+    return given
+
+
+def _undefined_factors(e: Expr) -> tuple[list[Expr], list[Expr]]:
+    """The binomials which are factors of the denominator of a term of
+    ``e`` and the arguments of the factorials which are factors of the
+    numerator of a term: where such a binomial is zero, or such an
+    argument a negative integer, the term (and ``e``) is not finite."""
+    from sympy_extras.functions.combinatorial.factorials import Binomial, Factorial
+    poles: list[Expr] = []
+    factorials: list[Expr] = []
+    for term in Add.make_args(e):
+        for factor in Mul.make_args(term):
+            base, exponent = factor.as_base_exp()
+            if isinstance(base, Binomial) and exponent.is_negative is True:
+                poles.append(base)
+            elif isinstance(base, Factorial) and exponent.is_positive is True:
+                factorials.append(_expr(base.args[0]))
+    return poles, factorials
+
+
+def _linear(e: Expr, symbol: Symbol) -> Optional[tuple[Fraction, Fraction]]:
+    """``(a, b)`` of ``e = a*symbol + b`` with rational numbers."""
+    constant = _expr(e.subs(symbol, Integer(0)))
+    slope = add(_expr(e.subs(symbol, Integer(1))), mul(Integer(-1), constant))
+    if not isinstance(constant, Rational) or not isinstance(slope, Rational):
+        return None
+    if add(e, mul(Integer(-1), add(mul(slope, symbol), constant))).expand() != 0:
+        return None
+    return Fraction(slope.p, slope.q), Fraction(constant.p, constant.q)
+
+
+def _at_least(a: Fraction, b: Fraction, strict: bool,
+              bounds: tuple[Optional[int], Optional[int]]) -> Optional[tuple[Optional[int], Optional[int]]]:
+    """The integers of ``bounds`` (``None`` is no bound) with ``a*s + b >=
+    0`` (``> 0`` when ``strict``); ``None`` when there is none."""
+    low, high = bounds
+    if a == 0:
+        return bounds if (b > 0 or (b == 0 and not strict)) else None
+    root = -b/a
+    if a > 0:
+        least = root.numerator//root.denominator + 1 if strict else -((-root.numerator)//root.denominator)
+        low = least if low is None else max(low, least)
+    else:
+        most = -((-root.numerator)//root.denominator) - 1 if strict else root.numerator//root.denominator
+        high = most if high is None else min(high, most)
+    if low is not None and high is not None and low > high:
+        return None
+    return low, high
+
+
+def _uncovered_points(b: Expr, poles: list[Expr], factorials: list[Expr]) -> Optional[list[tuple[Symbol, int]]]:
+    """The points of the set ``k <= n < 0`` of the binomial ``b = binomial(n,
+    k)``, where it is not the quotient of gamma functions, at which the
+    expression with the ``poles`` and the ``factorials`` of
+    :func:`_undefined_factors` may be finite, as pairs of a symbol and
+    its value; ``None`` when the set is not known to be covered up to
+    finitely many points."""
+    upper, lower = _expr(b.args[0]), _expr(b.args[1])
+    if upper.is_nonnegative is True or add(upper, mul(Integer(-1), lower)).is_negative is True:
+        return []
+    # binomial(n', k') is 0 for a negative integer k', and k <= n < 0 is in k' < 0 for k' <= k or k' <= n
+    for pole in poles:
+        k_pole = _expr(pole.args[1])
+        if k_pole.is_integer is True and (add(lower, mul(Integer(-1), k_pole)).is_nonnegative is True
+                                          or add(upper, mul(Integer(-1), k_pole)).is_nonnegative is True):
+            return []
+    for m in factorials:
+        if m.is_integer is True and (add(lower, mul(Integer(-1), m)).is_nonnegative is True
+                                     or add(upper, mul(Integer(-1), m)).is_nonnegative is True):
+            return []
+    symbols = [x for x in (upper.free_symbols | lower.free_symbols) if isinstance(x, Symbol)]
+    if len(symbols) != 1 or symbols[0].is_integer is not True:
+        return None
+    symbol = symbols[0]
+    n_form, k_form = _linear(upper, symbol), _linear(lower, symbol)
+    if n_form is None or k_form is None:
+        return None
+    start: tuple[Optional[int], Optional[int]] = (None, None)
+    if symbol.is_positive is True:
+        start = (1, None)
+    elif symbol.is_nonnegative is True:
+        start = (0, None)
+    elif symbol.is_negative is True:
+        start = (None, -1)
+    elif symbol.is_nonpositive is True:
+        start = (None, 0)
+    # n - k >= 0 and -n > 0
+    first = _at_least(n_form[0] - k_form[0], n_form[1] - k_form[1], False, start)
+    if first is None:
+        return []
+    second = _at_least(-n_form[0], -n_form[1], True, first)
+    if second is None:
+        return []
+    low, high = second
+    if low is None or high is None or high - low > 16:
+        return None
+    uncovered: list[tuple[Symbol, int]] = []
+    for value in range(low, high + 1):
+        at = Integer(value)
+        if any(_expr(_expr(pole.args[1]).subs(symbol, at)).is_negative is True
+               and _expr(_expr(pole.args[1]).subs(symbol, at)).is_integer is True for pole in poles):
+            continue
+        if any(_expr(m.subs(symbol, at)).is_negative is True and _expr(m.subs(symbol, at)).is_integer is True
+               for m in factorials):
+            continue
+        uncovered.append((symbol, value))
+    return uncovered
 
 
 def _negative_upper_binomials(e: Expr) -> list[Expr]:
