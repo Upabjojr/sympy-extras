@@ -6336,6 +6336,38 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             };
             found.unwrap_or_else(none)
         }
+        "residues" => {
+            // (name, f, x, a, b, Tuple(assumptions), half|full) -> Tuple(value, condition) or NONE;
+            // the functions of integrals/residues, integrals/contours and integrals/periodic
+            // (to_laurent and laurent_coefficient give an expression or NONE, `a` being the
+            // symbol z or the power m)
+            use sympy_extras_core::integrals::{contours as ct, periodic as pd, residues as rs};
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let assumptions: &[Basic] = a[5].args();
+            let half: bool = a[6].to_string() == "half";
+            let value = |r: Option<sympy_extras_core::integrals::conditions::ConditionalValue>| match r {
+                None => none(),
+                Some(c) => Basic::new(Head::Tuple, vec![c.value, c.condition]),
+            };
+            match a[0].to_string().as_str() {
+                "to_laurent" => pd::to_laurent(&a[1], &a[2], &a[3]).map_err(e)?.unwrap_or_else(none),
+                "laurent_coefficient" => pd::laurent_coefficient(&a[1], &a[2], &a[3])
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "mean_value_integral" => value(pd::mean_value_integral(&a[1], &a[2], &a[3], &a[4]).map_err(e)?),
+                "rectangular_integral" => value(ct::rectangular_integral(&a[1], &a[2], assumptions).map_err(e)?),
+                "sector_integral" => value(ct::sector_integral(&a[1], &a[2]).map_err(e)?),
+                "indented_integral" => {
+                    value(ct::indented_integral(&a[1], &a[2], &a[3], &a[4], assumptions).map_err(e)?)
+                }
+                "contour_integral" => value(ct::contour_integral(&a[1], &a[2], &a[3], &a[4], assumptions).map_err(e)?),
+                "real_line_integral" => value(rs::real_line_integral(&a[1], &a[2], assumptions).map_err(e)?),
+                "fourier_integral" => value(rs::fourier_integral(&a[1], &a[2], assumptions, half).map_err(e)?),
+                "keyhole_integral" => value(rs::keyhole_integral(&a[1], &a[2], assumptions).map_err(e)?),
+                "period_integral" => value(rs::period_integral(&a[1], &a[2], &a[3], &a[4], assumptions).map_err(e)?),
+                _ => value(rs::residue_integral(&a[1], &a[2], &a[3], &a[4], assumptions).map_err(e)?),
+            }
+        }
         "definite" => {
             // (verify, value, f, x, a, b, Tuple(assumptions), samples, Tuple(inside)) -> True | False | NONE;
             // (quadrature, f, x, a, b, Tuple(inside)) -> Tuple(re, im) as rationals of the floats, or NONE;

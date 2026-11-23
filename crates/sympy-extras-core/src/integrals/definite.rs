@@ -3430,15 +3430,21 @@ impl Integrator {
         self.integrate(&g, &u, &zero, &Basic::one(), depth + 1, false, true)
     }
 
-    fn mean_value(&self, f: &Basic, _x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
+    fn mean_value(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
         if !has_trigonometric(f) || infinite(a) || infinite(b) {
             return Ok(None);
         }
-        Err(crate::error::not_ported("integrals/periodic (mean_value_integral)"))
+        self.finish(crate::integrals::periodic::mean_value_integral(f, x, a, b)?)
     }
 
-    fn residues(&self, _f: &Basic, _x: &Basic, _a: &Basic, _b: &Basic, _depth: usize) -> OptCV {
-        Err(crate::error::not_ported("integrals/residues (residue_integral)"))
+    fn residues(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
+        self.finish(crate::integrals::residues::residue_integral(
+            f,
+            x,
+            a,
+            b,
+            &self.assumptions,
+        )?)
     }
 
     fn real_parts(&self, condition: &Basic) -> R {
@@ -4322,8 +4328,14 @@ impl Integrator {
         Err(crate::error::not_ported("integrals/laplace (laplace_integral)"))
     }
 
-    fn contours(&self, _f: &Basic, _x: &Basic, _a: &Basic, _b: &Basic, _depth: usize) -> OptCV {
-        Err(crate::error::not_ported("integrals/contours (contour_integral)"))
+    fn contours(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, _depth: usize) -> OptCV {
+        self.finish(crate::integrals::contours::contour_integral(
+            f,
+            x,
+            a,
+            b,
+            &self.assumptions,
+        )?)
     }
 
     fn transformations(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
