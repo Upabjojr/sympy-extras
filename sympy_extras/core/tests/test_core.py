@@ -1055,3 +1055,15 @@ def test_function_of_a_hidden_zero_has_no_numeric_facts() -> None:
     # numbers which are not hidden zeros keep their facts
     assert (pi - 3).is_positive is True and (sqrt(2) - sqrt(3)).is_negative is True
     assert (sqrt(sqrt(2) - sqrt(3))).is_imaginary is True
+
+
+def test_srepr_keeps_exclusions_and_function_assumptions() -> None:
+    # (sympy/sympy#30844, srepr: both were dropped, so that the printed tree was another object)
+    from sympy_extras.core import Wild
+    x = Symbol('x')
+    w = Wild('w', exclude=[x])
+    assert srepr(w) == "Wild('w', exclude=[Symbol('x')])" and srepr(Wild('w')) == "Wild('w')"
+    f = Function('f', real=True)
+    assert srepr(f(x)) == "Function('f', real=True)(Symbol('x'))"
+    assert srepr(Function('f')(x)) == "Function('f')(Symbol('x'))"
+    assert f(x) != Function('f')(x)

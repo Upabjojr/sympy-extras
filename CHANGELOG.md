@@ -3859,6 +3859,30 @@ remove public functions. Breaking changes are listed here when they happen.
     (they wrote or read another row: `with_entry(0, 2, v)` on a 2 x 2
     matrix changed the entry `(1, 0)`) raise `ValueError`/`IndexError`.
 
+- `sympy_extras.core.printing` (review of the string printers against
+  sympy/sympy#30844): a power printed as a quotient (`1/x`, `1/sqrt(x)`)
+  has the precedence of a product, so that an unevaluated `1/(1/x)` is
+  no longer printed `1/1/x` (which reads as `1/x`), `x/(1/y)` no longer
+  `x/1/y`, and `(1/x)**2`, `1/(1/sqrt(x))` keep their parentheses.
+  `srepr` prints the exclusions of a `Wild` and the assumptions of an
+  undefined function (`Function('f', real=True)(Symbol('x'))`), which it
+  dropped.
+- `sympy_extras.core.parsing.parse`: `Mod(x, 3)` is the modulo (it was
+  read as an undefined function named `Mod`, so that a printed `Mod` did
+  not read back); with `evaluate=False`, `sqrt`, `cbrt` and `root` build
+  the unevaluated power (`sqrt(4)` stayed `2`). The names which SymPy
+  calls and the parser has not (`Eq(x, y)`, `Derivative(f(x), x)`,
+  `O(x)`, `S(1)`, `Float(1.5)`, `diff(x**2, x)`, ...: the list
+  `sympy_extras.core._foreign_names`) and the names `true`, `false`,
+  `Reals`, ... are `ParseUnsupported` instead of undefined functions and
+  symbols of those names: `sympify('Eq(x, y)')` was `Function('Eq')(x,
+  y)` and is now the equation, read by the bridge (a `SympifyError`
+  without one), so that the printed relations, Booleans, derivatives and
+  order terms read back. **Changed behaviour**: `sympify('N(t)')` follows
+  SymPy (`t`) instead of giving an undefined function `N`.
+- `sympy_extras.core.pow`: the power of an unevaluated product with a
+  zero coefficient lost the zero (`pow(Mul(0, 3), 1/2)` was `sqrt(3)`);
+  it stays unevaluated.
 - `sympy_extras.assumptions.solve` over the reals drops a candidate which
   is real only where its imaginary part vanishes when the condition fails
   there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`

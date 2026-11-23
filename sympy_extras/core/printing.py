@@ -59,7 +59,9 @@ def precedence(e: Basic) -> int:
     if isinstance(e, Mul):
         return PREC_ADD if e.could_extract_minus_sign() else PREC_MUL
     if isinstance(e, Pow):
-        return PREC_POW
+        # 1/x and 1/sqrt(x) are printed as quotients: as a base, or in a
+        # denominator, they need their parentheses (1/(1/x), (1/x)**2)
+        return PREC_MUL if _printed_as_quotient(e) else PREC_POW
     if isinstance(e, Relational):
         return PREC_FUNC if e.rel_op in ('==', '!=') else PREC_RELATIONAL
     if isinstance(e, And):
@@ -81,6 +83,12 @@ def precedence(e: Basic) -> int:
     if isinstance(e, NegativeInfinity):
         return PREC_ADD
     return PREC_ATOM
+
+
+def _printed_as_quotient(e: Pow) -> bool:
+    """Whether ``print_pow`` prints the power as ``1/...``."""
+    exp = e.exp
+    return isinstance(exp, Rational) and exp.p == -1 and exp.q in (1, 2) and e.base.is_commutative is not False
 
 
 class StrPrinter:
@@ -230,6 +238,9 @@ def srepr(e: Basic) -> str:
     from .numbers import Float
     from .symbol import Dummy, Symbol, Wild
     if isinstance(e, Wild):
+        # (the exclusions are part of the wild; the predicates cannot be printed)
+        if e.exclude:
+            return "Wild(%r, exclude=[%s])" % (e.name, ', '.join(srepr(a) for a in e.exclude))
         return "Wild(%r)" % e.name
     if isinstance(e, WildFunction):
         return "WildFunction(%r)" % e.name
@@ -247,7 +258,9 @@ def srepr(e: Basic) -> str:
     if isinstance(e, Float):
         return "Float(%r, precision=%d)" % (e.repr_str(), e.precision)
     if isinstance(e, AppliedUndef):
-        return "Function(%r)(%s)" % (e.name, ', '.join(srepr(a) for a in e.args))
+        # (with the assumptions of the function, as for a Symbol: f real is not f)
+        given = ''.join(', %s=%r' % kv for kv in sorted(e.function.assumptions.items()))
+        return "Function(%r%s)(%s)" % (e.name, given, ', '.join(srepr(a) for a in e.args))
     if isinstance(e, DefinedFunction):
         return "%s(%s)" % (e.name, ', '.join(srepr(a) for a in e.args))
     head = e._srepr_name()
