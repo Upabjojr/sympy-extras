@@ -3744,6 +3744,21 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- `sympy_extras.core.printing` (review of the string printers against
+  sympy/sympy#30844): a power printed as a quotient (`1/x`, `1/sqrt(x)`)
+  has the precedence of a product, so that an unevaluated `1/(1/x)` is
+  no longer printed `1/1/x` (which reads as `1/x`), `x/(1/y)` no longer
+  `x/1/y`, and `(1/x)**2`, `1/(1/sqrt(x))` keep their parentheses.
+  `srepr` prints the exclusions of a `Wild` and the assumptions of an
+  undefined function (`Function('f', real=True)(Symbol('x'))`), which it
+  dropped.
+- `sympy_extras.core.parsing.parse`: `Mod(x, 3)` is the modulo (it was
+  read as an undefined function named `Mod`, so that a printed `Mod` did
+  not read back); with `evaluate=False`, `sqrt`, `cbrt` and `root` build
+  the unevaluated power (`sqrt(4)` stayed `2`).
+- `sympy_extras.core.pow`: the power of an unevaluated product with a
+  zero coefficient lost the zero (`pow(Mul(0, 3), 1/2)` was `sqrt(3)`);
+  it stays unevaluated.
 - `sympy_extras.assumptions.solve` over the reals drops a candidate which
   is real only where its imaginary part vanishes when the condition fails
   there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`

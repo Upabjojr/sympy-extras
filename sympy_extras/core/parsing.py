@@ -171,6 +171,20 @@ class _Parser:
                 raise ParseUnsupported('%s of %s in %r' % (text, args, self.text))
             p, q = int(args[0]), (int(args[1]) if len(args) == 2 else 1)
             return Rational(p, q) if q != 1 else Integer(p)
+        if text == 'Mod' and len(args) == 2:
+            # Mod is an Application of the core, not a DefinedFunction: without
+            # this it would be read as an undefined function named Mod
+            from .mod import Mod, mod
+            return mod(args[0], args[1]) if self.evaluate else Mod(args[0], args[1])
+        if not self.evaluate:
+            # the roots are functions which build powers: unevaluated ones here
+            from .power import Pow
+            if text == 'sqrt' and len(args) == 1:
+                return Pow(args[0], Rational(1, 2))
+            if text == 'cbrt' and len(args) == 1:
+                return Pow(args[0], Rational(1, 3))
+            if text == 'root' and len(args) == 2 and isinstance(args[1], Integer) and int(args[1]) != 0:
+                return Pow(args[0], Rational(1, int(args[1])))
         f = _function_of(text, self.evaluate, len(args))
         if f is None:
             return as_expr_checked(Function(text)(*args), self.text)
