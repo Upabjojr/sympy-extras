@@ -54,6 +54,20 @@ _FULL_FACTORING_BITS = 64
 _TRIAL = 2**16
 
 
+def _undecided_side(e: Expr, imaginary: Expr) -> Expr:
+    """The factor of ``f**e`` for a negative ``f`` approached from a side
+    of the cut which the parameters decide: ``exp(-2*pi*I*e)`` from below
+    (``imaginary``, the imaginary part of the direction, negative), 1 from
+    above, as the Heaviside jump of the series of ``log``. SymPy takes the
+    upper side whenever the sign is not known: ``limit(sqrt(-1 + c*a), a,
+    0)`` is ``I`` for every ``c``, wrong for ``im(c) < 0``
+    (sympy/sympy#31275, V212)."""
+    from sympy_extras.functions.elementary.exponential import exp
+    from sympy_extras.functions.special.delta_functions import heaviside
+    from .numbers import I, pi
+    return exp(mul(Integer(-2), pi, I, e, heaviside(mul(Integer(-1), imaginary), Integer(0))))
+
+
 class Pow(Expr):
     """An unevaluated power.
 
@@ -331,6 +345,8 @@ class Pow(Expr):
                 inco, inex = coeff_exp(mul(pow(f, e), pow(Integer(-1), mul(Integer(-2), e))))
             elif im(ndir).is_zero is True:
                 inco, inex = coeff_exp(exp(mul(e, log(b))).as_leading_term(x, logx=logx, cdir=cdir))
+            elif im(ndir).is_negative is None:
+                inco, inex = coeff_exp(mul(pow(f, e), _undecided_side(e, im(ndir))))
             else:
                 inco, inex = coeff_exp(pow(f, e))
         else:
@@ -347,7 +363,8 @@ class Pow(Expr):
                 return exp(mul(e, log(b)))._eval_nseries(x, n, logx, cdir)
         return res
 
-    # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_as_leading_term
+    # PORTED FROM SYMPY: sympy/core/power.py:Pow._eval_as_leading_term (the
+    # side of the cut which the parameters decide is not SymPy's: _undecided_side)
     def _eval_as_leading_term(self, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
         from .coreerrors import PoleError
         from sympy_extras.functions.elementary.complexes import im
@@ -377,6 +394,8 @@ class Pow(Expr):
                 log_leadterm = log(b)._eval_as_leading_term(x, logx, cdir)
                 if log_leadterm.is_infinite is False:
                     return exp(mul(e, log_leadterm))
+            elif im(ndir).is_negative is None:
+                return mul(Pow(f, e).doit(), _undecided_side(e, im(ndir)))
         return pow(f, e)
 
     # PORTED FROM SYMPY: sympy/core/power.py:Pow.as_content_primitive

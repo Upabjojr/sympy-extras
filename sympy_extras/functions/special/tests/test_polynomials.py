@@ -41,6 +41,13 @@ def kept_at_infinity(ours: Expr, theirs: sympy.Basic) -> bool:
     return (', oo)' in text or ', -oo)' in text) and 'oo' in expected and 'oo)' not in expected
 
 
+def reflected_by_sympy_only(ours: Expr, theirs: sympy.Basic) -> bool:
+    """SymPy reflects ``f(s, -x)`` to ``(-1)**s*f(s, x)`` for the symbol ``s`` of no assumption:
+    the functions of a noninteger degree have no parity, the node is kept here
+    (test_sympy_issues_second_pass.test_reflection_of_the_polynomials_for_an_integer_degree_only)."""
+    return '(-1)**s' in str(theirs) and '(-1)**s' not in str(ours) and ('(s, ' in str(ours))
+
+
 def test_values_match_sympy() -> None:
     orders: list[Expr] = [Integer(k) for k in range(-4, 8)] + [n, -n, m, -m, -n - 1, -m - 2, s]
     points: list[Expr] = [x, -x, x + 1, 2*y, Integer(0), Integer(1), Integer(-1), Rational(1, 2), oo, -oo, I]
@@ -59,6 +66,8 @@ def test_values_match_sympy() -> None:
                 continue
             if f is laguerre and z == -oo and str(theirs) == 'nan' and ', -oo)' in str(f(order, z)):
                 continue  # exp(x)*laguerre(-n - 1, -x) at -oo is 0*oo for SymPy; the node is kept here
+            if reflected_by_sympy_only(f(order, z), theirs):
+                continue
             if not same(f(order, z), theirs):
                 different.append((f.__name__, str(order), str(z), str(f(order, z)), str(theirs)))
     for k in range(5):
@@ -146,6 +155,8 @@ def test_jacobi_gegenbauer_assoc_legendre_hermite_prob_match_sympy() -> None:
             return  # sympy/sympy#31275 (V107), see test_gegenbauer_at_minus_one
         if name == 'hermite_prob' and 'sqrt(pi)/gamma' in str(expected) and '2**' in str(value):
             return  # sympy/sympy#31275 (V110), see test_hermite_prob_at_zero
+        if reflected_by_sympy_only(value, expected):
+            return
         if not same(value, expected):
             different.append((name, str(value), str(expected)))
 

@@ -24,11 +24,11 @@ Examples
 
 >>> from sympy_extras.core import Symbol
 >>> from sympy_extras.functions.special.polynomials import legendre, chebyshevt, hermite, laguerre, assoc_laguerre
->>> x, n, a = Symbol('x'), Symbol('n'), Symbol('a')
+>>> x, n, a, k = Symbol('x'), Symbol('n'), Symbol('a'), Symbol('k', integer=True)
 >>> legendre(3, x), chebyshevt(4, x), hermite(3, x), laguerre(2, x), legendre(-3, x)
 (5*x**3/2 - 3*x/2, 8*x**4 - 8*x**2 + 1, 8*x**3 - 12*x, x**2/2 - 2*x + 1, 3*x**2/2 - 1/2)
->>> legendre(n, -x), chebyshevt(n, 0), assoc_laguerre(2, a, x), legendre(n, x).diff(x)
-((-1)**n*legendre(n, x), cos(pi*n/2), a**2/2 + 3*a/2 + x**2/2 + x*(-a - 2) + 1, n*(x*legendre(n, x) - legendre(n - 1, x))/(x**2 - 1))
+>>> legendre(k, -x), chebyshevt(n, 0), assoc_laguerre(2, a, x), legendre(n, x).diff(x)
+((-1)**k*legendre(k, x), cos(pi*n/2), a**2/2 + 3*a/2 + x**2/2 + x*(-a - 2) + 1, n*(x*legendre(n, x) - legendre(n - 1, x))/(x**2 - 1))
 """
 # ---------------------------------------------------------------------
 # PORTED FROM SYMPY: sympy/functions/special/polynomials.py (legendre, chebyshevt,
@@ -144,8 +144,11 @@ class OrthogonalPolynomial(DefinedFunction):
 
 
 def _minus_x(cls_function: Callable[[Expr, Expr], Expr], n: Expr, x: Expr) -> Optional[Expr]:
-    """``(-1)**n*f(n, -x)`` when ``x`` has a minus sign."""
-    if x.could_extract_minus_sign():
+    """``(-1)**n*f(n, -x)`` when ``x`` has a minus sign, for an integer
+    ``n`` only: the functions of a noninteger degree have no parity
+    (``legendre(1/2, -x)`` is real on (-1, 1), ``(-1)**(1/2)*legendre(1/2, x)``
+    is not; SymPy reflects for any symbolic ``n``)."""
+    if n.is_integer is True and x.could_extract_minus_sign():
         return mul(pow(MINUS_ONE, n), cls_function(n, mul(MINUS_ONE, x)))
     return None
 
@@ -541,7 +544,8 @@ class Jacobi(DefinedFunction):
             return _lmul(div(gamma(add(n, a, ONE)), gamma(add(n, ONE))), pow(add(ONE, x), half_a),
                          pow(pow(sub(ONE, x), half_a), MINUS_ONE), assoc_legendre(n, mul(MINUS_ONE, a), x))
         if not n.is_Number:
-            if x.could_extract_minus_sign():
+            if n.is_integer is True and x.could_extract_minus_sign():
+                # (an integer degree only: no parity otherwise)
                 return mul(pow(MINUS_ONE, n), jacobi(n, b, a, mul(MINUS_ONE, x)))
             if x.is_zero:
                 from .hyper import hyper
@@ -622,7 +626,8 @@ class Gegenbauer(DefinedFunction):
                     return None
                 return div(_lmul(cos(mul(pi, add(a, n))), sec(mul(pi, a)), gamma(add(two_a, n))),
                            _lmul(gamma(two_a), gamma(add(n, ONE))))
-            if x.could_extract_minus_sign():
+            if n.is_integer is True and x.could_extract_minus_sign():
+                # (an integer degree only: no parity otherwise)
                 return mul(pow(MINUS_ONE, n), gegenbauer(n, a, mul(MINUS_ONE, x)))
             if x.is_zero:
                 return div(_lmul(pow(Integer(2), n), sqrt(pi), gamma(add(a, mul(HALF, n)))),

@@ -7,11 +7,16 @@ quotient of two integers, ``Rational(1, 2)``); names are the constants
 (``pi``, ``E``, ``I``, ``oo``, ...), the functions (``sin(x)``,
 ``log(x, 2)``, ``besselj(n, x)``: SymPy's names) and otherwise symbols, or
 undefined functions when called (``f(x)``), except the other names which
-SymPy calls (``Eq(x, y)``, ``Derivative(f(x), x)``, ``O(x)``, ``S(1)``,
-``diff(x**2, x)``) and the names of the Booleans and of the sets (``true``,
+SymPy calls (``Eq(x, y)``, ``O(x)``, ``S(1)``, ``diff(x**2, x)``) and the names of the Booleans and of the sets (``true``,
 ``Reals``), which are outside the grammar; the operators are ``+``,
 ``-``, ``*``, ``/``, ``**`` (right associative, binding tighter than a
-unary sign: ``-x**2`` is ``-(x**2)``), with parentheses and calls.
+unary sign: ``-x**2`` is ``-(x**2)``), with parentheses and calls. The
+unevaluated nodes ``Integral``, ``Sum``, ``Product``, ``Limit`` and
+``Derivative`` are read with SymPy's argument forms (``(x, 0, 1)``,
+``x, 2``, ``(x, 2)``, ``dir='-'``) as far as the native nodes have them: an
+integral in several variables is the nested integrals; ``(x, a)`` of an
+integral, a symbolic order of differentiation and a variable which is not
+a symbol are outside the grammar.
 Anything else is :class:`ParseUnsupported`: ``sympify`` then asks the
 registered bridge, if any.
 
@@ -25,11 +30,16 @@ Examples
 (1.16666666666667, -x**2, 1/2, f(2*x + 4*y), 3)
 >>> parse('x + x', evaluate=False)
 x + x
+>>> parse('Integral(x**2, (x, 0, 1))'), parse('Sum(1/k**2, (k, 1, oo))'), parse('Derivative(f(x), x, 2)')
+(Integral(x**2, (x, 0, 1)), Sum(k**(-2), (k, 1, oo)), Derivative(f(x), (x, 2)))
+>>> parse("Limit(1/x, x, 0, dir='-')"), parse('Integral(x*y, x, (y, 0, 1))')
+(Limit(1/x, x, 0, dir='-'), Integral(Integral(x*y, x), (y, 0, 1)))
 """
 from __future__ import annotations
 
 import importlib
 import re
+from dataclasses import dataclass
 from typing import Callable, Optional, Union
 
 from ._foreign_names import SYMPY_CALLABLE_NAMES, SYMPY_CONSTANT_NAMES
@@ -37,6 +47,7 @@ from .basic import Basic
 from .expr import Expr
 # imported by sympify inside its function (the core is loaded by then)
 from .function import DefinedFunction
+from .symbol import Symbol
 
 __all__ = ['parse', 'ParseUnsupported']
 
@@ -46,10 +57,28 @@ class ParseUnsupported(ValueError):
 
 
 _TOKEN = re.compile(r'\s*(?:(?P<number>\d+\.\d*(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?|\d+[eE][-+]?\d+|\d+)'
-                    r'|(?P<name>[A-Za-z_][A-Za-z_0-9]*)|(?P<op>\*\*|[-+*/(),]))')
+                    r'|(?P<name>[A-Za-z_][A-Za-z_0-9]*)'
+                    r"""|(?P<string>'[^'\\]*'|"[^"\\]*")"""
+                    r'|(?P<op>\*\*|[-+*/(),=\[\]]))')
 
-#: a token: its kind ('number', 'name', 'op', 'end') and its text
+#: a token: its kind ('number', 'name', 'string', 'op', 'end') and its text
 Token = tuple[str, str]
+
+#: the unevaluated nodes read with SymPy's argument forms
+_NODE_NAMES = frozenset({'Integral', 'Sum', 'Product', 'Limit', 'Derivative'})
+
+
+@dataclass(frozen=True)
+class _Argument:
+    """An argument of ``Integral``, ``Sum``, ``Product``, ``Limit`` or
+    ``Derivative``: an expression (one item), a tuple or a list of
+    expressions (``grouped``), or a string (``Limit``'s direction), with
+    the name of its keyword if it has one."""
+
+    items: tuple[Expr, ...]
+    grouped: bool
+    string: Optional[str]
+    keyword: Optional[str]
 
 
 def _tokens(text: str) -> list[Token]:
@@ -138,6 +167,23 @@ class _Parser:
             return e
         if kind != 'name':
             raise ParseUnsupported('unexpected %r in %r' % (value, self.text))
+        if self.peek() == ('op', '(') and value in _NODE_NAMES:
+            self.take()
+            arguments: list[_Argument] = []
+            if self.peek() != ('op', ')'):
+                arguments.append(self.argument())
+                while self.peek() == ('op', ','):
+                    self.take()
+                    arguments.append(self.argument())
+            self.expect(')')
+            try:
+                return self.node(value, arguments)
+            except ParseUnsupported:
+                raise
+            except (TypeError, ValueError, NotImplementedError) as error:
+                # what the constructors refuse (a limit at a point depending
+                # on the variable, a negative order, ...)
+                raise ParseUnsupported('%s in %r' % (error, self.text)) from None
         if self.peek() == ('op', '('):
             self.take()
             args: list[Expr] = []
@@ -150,6 +196,149 @@ class _Parser:
             return self.function(value, args)
         return self.name(value)
 
+    # -- the arguments of Integral, Sum, Product, Limit and Derivative
+
+    def argument(self) -> _Argument:
+        keyword: Optional[str] = None
+        if self.peek()[0] == 'name' and self.tokens[self.position + 1] == ('op', '='):
+            keyword = self.take()[1]
+            self.take()
+        kind, value = self.peek()
+        if kind == 'string':
+            self.take()
+            return _Argument((), False, value[1:-1], keyword)
+        if kind == 'op' and value in ('(', '['):
+            group = self.group()
+            if group is not None:
+                return _Argument(group, True, None, keyword)
+        return _Argument((self.sum(),), False, None, keyword)
+
+    def group(self) -> Optional[tuple[Expr, ...]]:
+        """The items of a tuple or of a list which is a whole argument;
+        ``None``, with nothing consumed, for a parenthesised expression."""
+        start = self.position
+        close = ')' if self.take()[1] == '(' else ']'
+        items: list[Expr] = []
+        commas = 0
+        while self.peek() != ('op', close):
+            items.append(self.sum())
+            if self.peek() != ('op', ','):
+                break
+            self.take()
+            commas += 1
+        self.expect(close)
+        whole = self.peek() in (('op', ','), ('op', ')'))
+        if whole and (commas > 0 or close == ']'):
+            return tuple(items)
+        self.position = start
+        return None
+
+    def node(self, name: str, arguments: list[_Argument]) -> Expr:
+        if not arguments or arguments[0].grouped or arguments[0].string is not None \
+                or arguments[0].keyword is not None:
+            raise ParseUnsupported('%s(...) in %r' % (name, self.text))
+        expr = arguments[0].items[0]
+        rest = arguments[1:]
+        if name == 'Limit':
+            return self.limit_node(expr, rest)
+        if any(a.string is not None or a.keyword is not None for a in rest):
+            raise ParseUnsupported('%s(...) in %r' % (name, self.text))
+        if name == 'Integral':
+            return self.integral_node(expr, rest)
+        if name == 'Derivative':
+            return self.derivative_node(expr, rest)
+        return self.sum_node(name, expr, rest)
+
+    def the_symbol(self, e: Expr) -> Symbol:
+        if not isinstance(e, Symbol):
+            raise ParseUnsupported('%s is not a symbol in %r' % (e, self.text))
+        return e
+
+    def the_free_symbol(self, e: Expr) -> Symbol:
+        # SymPy's: without variables, the only free symbol of the expression
+        free = e.free_symbols
+        if len(free) != 1:
+            raise ParseUnsupported('the variable of %s is not given in %r' % (e, self.text))
+        return next(iter(free))
+
+    def limit_node(self, expr: Expr, rest: list[_Argument]) -> Expr:
+        from .limits import Limit
+        direction = '+'
+        if len(rest) == 3 and rest[2].string is not None and rest[2].keyword in (None, 'dir'):
+            direction = rest[2].string
+            rest = rest[:2]
+        if len(rest) != 2 or any(a.grouped or a.string is not None or a.keyword is not None for a in rest):
+            raise ParseUnsupported('Limit(...) in %r' % (self.text,))
+        return Limit(expr, self.the_symbol(rest[0].items[0]), rest[1].items[0], direction)
+
+    def integral_node(self, expr: Expr, rest: list[_Argument]) -> Expr:
+        integral = importlib.import_module('sympy_extras.integrals.integral')
+        build: Callable[..., Basic] = integral.Integral
+        if not rest:
+            return as_expr_checked(build(expr, self.the_free_symbol(expr)), self.text)
+        result = expr
+        for a in rest:
+            # SymPy's Integral(f, x, y) integrates over x first: the nested
+            # integrals (the native node has one variable)
+            if len(a.items) == 1:
+                result = as_expr_checked(build(result, self.the_symbol(a.items[0])), self.text)
+            elif len(a.items) == 3:
+                result = as_expr_checked(build(result, self.the_symbol(a.items[0]), a.items[1], a.items[2]),
+                                         self.text)
+            else:
+                # (x, a), the antiderivative at a: the native node has not this form
+                raise ParseUnsupported('the limit %s of an integral in %r' % (a.items, self.text))
+        return result
+
+    def sum_node(self, name: str, expr: Expr, rest: list[_Argument]) -> Expr:
+        limits = importlib.import_module('sympy_extras.concrete.expr_with_limits')
+        build: Callable[..., Basic]
+        if name == 'Sum':
+            build = limits.sum_ if self.evaluate else limits.Sum
+        else:
+            build = limits.product_ if self.evaluate else limits.Product
+        triples: list[tuple[Symbol, Expr, Expr]] = []
+        for a in rest:
+            if not a.grouped or len(a.items) != 3:
+                raise ParseUnsupported('%s requires values for lower and upper bounds in %r' % (name, self.text))
+            triples.append((self.the_symbol(a.items[0]), a.items[1], a.items[2]))
+        if not triples:
+            raise ParseUnsupported('%s requires limits in %r' % (name, self.text))
+        return as_expr_checked(build(expr, *triples), self.text)
+
+    def derivative_node(self, expr: Expr, rest: list[_Argument]) -> Expr:
+        from .function import Derivative
+        from .numbers import Integer
+        counts: list[tuple[Symbol, int]] = []
+        after_symbol = False
+        for a in rest:
+            if a.grouped:
+                if len(a.items) != 2 or not isinstance(a.items[1], Integer):
+                    # a symbolic order, (x, n): the native node counts with integers
+                    raise ParseUnsupported('the variable %s of a derivative in %r' % (a.items, self.text))
+                counts.append((self.the_symbol(a.items[0]), int(a.items[1])))
+                after_symbol = False
+            elif isinstance(a.items[0], Integer):
+                if not after_symbol:
+                    raise ParseUnsupported('the order %s must follow a variable in %r' % (a.items[0], self.text))
+                counts[-1] = (counts[-1][0], int(a.items[0]))
+                after_symbol = False
+            else:
+                counts.append((self.the_symbol(a.items[0]), 1))
+                after_symbol = True
+        if not rest:
+            counts.append((self.the_free_symbol(expr), 1))
+        if self.evaluate:
+            # SymPy's constructor: the orders 0 dropped, the derivative of a
+            # derivative merged
+            counts = [c for c in counts if c[1] != 0]
+            if isinstance(expr, Derivative):
+                counts = list(expr.variable_count) + counts
+                expr = expr.expr
+            if not counts:
+                return expr
+        return Derivative(expr, *counts)
+
     # -- the leaves and the nodes
 
     def number(self, text: str) -> Expr:
@@ -160,7 +349,6 @@ class _Parser:
 
     def name(self, text: str) -> Expr:
         from .numbers import Catalan, E, EulerGamma, GoldenRatio, I, TribonacciConstant, nan, oo, pi, zoo
-        from .symbol import Symbol
         constants: dict[str, Expr] = {'pi': pi, 'E': E, 'I': I, 'oo': oo, 'zoo': zoo, 'nan': nan,
                                       'EulerGamma': EulerGamma, 'Catalan': Catalan, 'GoldenRatio': GoldenRatio,
                                       'TribonacciConstant': TribonacciConstant}

@@ -183,6 +183,10 @@ def test_generic_leading_terms_match_sympy() -> None:
     for native, theirs in _native_to_sympy().items():
         if theirs._eval_as_leading_term is not SympyFunction._eval_as_leading_term:
             continue
+        if theirs is sympy.Abs:
+            # Abs has a rule of its own here (Abs(2*x + 1) is 1, SymPy returns the function:
+            # test_sympy_issues_second_pass.test_series_of_a_power_of_abs_from_the_left)
+            continue
         for k in sorted(native.nargs):
             for args in shapes.get(k, []):
                 try:

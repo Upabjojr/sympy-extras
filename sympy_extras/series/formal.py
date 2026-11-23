@@ -1831,7 +1831,7 @@ def fps(f: ExprLike, x: Optional[Symbol] = None, x0: ExprLike = 0, dir: Union[in
     >>> fps(atan(x), full=True).truncate()
     x - x**3/3 + x**5/5 + O(x**6)
     >>> fps(x**n*sin(x**2), x).truncate(8)
-    -x**(n + 6)/6 + x**(n + 2) + O(x**(n + 8))
+    -x**(n + 6)/6 + x**(n + 2) + O(x**(n + 8), x)
     """
     fe = to_expr(f)
     if x is None:

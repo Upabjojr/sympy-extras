@@ -198,12 +198,46 @@ class Hyper(Expr):
             x0 = limit(arg, x, Integer(0), '-' if re(cdir).is_negative is True else '+')
         if isinstance(x0, Integer) and x0 == 0:
             return Integer(1)
+        if _depends(self.ap + self.bq, x):
+            # not SymPy's (it raises AttributeError, sympy/sympy#31017 C5): the
+            # value at the limits of the parameters where the series converges
+            # locally uniformly in them, so that the function is continuous
+            value = self._value_at_parameters(x, x0)
+            if value is None:
+                raise NotImplementedError('hyper has no _eval_as_leading_term routine for these parameters')
+            return value
         lead = arg.as_leading_term(x, logx=logx)
         o = order(Integer(1), x)
         assert isinstance(o, Order)
         if x in lead.free_symbols and o.contains(lead):
             raise NotImplementedError('hyper has no _eval_as_leading_term routine')
         return self
+
+    def _value_at_parameters(self, x: Symbol, z0: Expr) -> Optional[Expr]:
+        """The function at ``x = 0`` when it is continuous there in its
+        parameters and its argument (of the value ``z0``): finite
+        parameters, no lower one a nonpositive integer, and ``p <= q``, or
+        ``p = q + 1`` with ``|z0| < 1`` or ``z0 = 1`` and
+        ``re(sum(bq) - sum(ap)) > 0``; ``None`` otherwise or for the value
+        zero (which is no leading term)."""
+        from sympy_extras.functions.elementary.complexes import abs_, re
+        ap0 = [a.subs(x, Integer(0)) for a in self.ap]
+        bq0 = [b.subs(x, Integer(0)) for b in self.bq]
+        if x in z0.free_symbols or not all(c.is_finite is True for c in ap0 + bq0 + [z0]):
+            return None
+        if any(not (b.is_integer is False or b.is_positive is True) for b in bq0):
+            return None
+        if len(ap0) > len(bq0) + 1:
+            return None
+        if len(ap0) == len(bq0) + 1:
+            inside = (ONE - abs_(z0)).is_positive is True
+            gauss = z0 == ONE and re(add(*bq0) - add(*ap0)).is_positive is True
+            if not (inside or gauss):
+                return None
+        if any(a.is_zero is True for a in ap0):
+            return ONE
+        value = hyper(ap0, bq0, z0)
+        return None if value.is_zero is True else value
 
     @property
     def ap(self) -> tuple[Expr, ...]:

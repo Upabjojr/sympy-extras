@@ -812,7 +812,8 @@ def add_formulae(formulae: list[Formula]) -> None:
 # PORTED FROM SYMPY: sympy/simplify/hyperexpand.py:add_meijerg_formulae
 def add_meijerg_formulae(formulae: list[MeijerFormula]) -> None:
     """The table of Meijer G formulas (the upper incomplete gamma
-    function, sine and cosine integrals)."""
+    function, sine and cosine integrals, the modified Bessel function of
+    the second kind of an integer order)."""
     from sympy_extras.functions.elementary.exponential import exp
     from sympy_extras.functions.elementary.trigonometric import cos, sin
     from sympy_extras.functions.special.error_functions import Ci, Si
@@ -876,6 +877,28 @@ def add_meijerg_formulae(formulae: list[MeijerFormula]) -> None:
         _rows([-2, 0, 0]),
         _rows([a - HALF, -1, 0], [z, a, HALF], [0, 0, a]),
         detect_3113)
+
+    def detect_besselk(func: GFunction) -> Optional[tuple[Repl, GFunction]]:
+        """G^{2,0}_{0,2}(z | b1, b2) with b1 - b2 an integer: Slater's
+        theorem has no formula for it (the poles are double)."""
+        u, v = func.bm
+        difference = simplify(u - v)
+        if not (isinstance(difference, Rational) and difference.q == 1):
+            return None
+        # the lower of the two: the other one is reached by raising it
+        y = v if difference.p >= 0 else u
+        return {rho: y}, GFunction([], [], [y, y], [])
+
+    # not in SymPy's table (hyperexpand(meijerg([], [], [0, 0], [], z)) stays
+    # there, sympy/sympy#31017): G^{2,0}_{0,2}(z | rho, rho) = 2*z**rho*K_0(2*sqrt(z)),
+    # DLMF 16.18.1 with 10.25; with t = z*d/dz, t(z**rho*K_0) = rho*z**rho*K_0 - z**(rho + 1/2)*K_1
+    # and t(z**(rho + 1/2)*K_1) = rho*z**(rho + 1/2)*K_1 - z*z**rho*K_0
+    from sympy_extras.functions.special.bessel import besselk
+    add([], [], [rho, rho], [],
+        _col(z**rho*besselk(0, 2*sqrt(z)), z**(rho + HALF)*besselk(1, 2*sqrt(z))),
+        _rows([2, 0]),
+        _rows([rho, -1], [-z, rho]),
+        detect_besselk)
 
 
 # ---------------------------------------------------------------------

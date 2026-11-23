@@ -549,8 +549,62 @@ def combsimp(expr: ExprLike) -> Expr:
     """The combinatorial expression (factorials, binomials, rising and
     falling factorials) simplified, as factorials and binomials; through
     :func:`gammasimp` when a gamma argument is not an integer."""
-    e = to_expr(expr).rewrite(_gamma_types()[0], piecewise=False)
+    given = to_expr(expr)
+    # binomial(n, k) is 0 for a negative integer k, whatever n: for an upper
+    # index which may be a negative integer the quotient of gamma functions,
+    # symmetric in k and n - k, is not both binomial(n, k) and binomial(n, n - k)
+    # (binomial(-3, 1) is -3, binomial(-3, -4) is 0). Binomials mirrored
+    # in the input are kept as they are, and one which comes back mirrored
+    # is turned again (SymPy: combsimp(binomial(n, n - k)) is binomial(n, k)
+    # for integers of any sign, sympy/sympy#31275 V225, sympy/sympy#14612)
+    risky = _negative_upper_binomials(given)
+    # (binomial(2*n, n) and binomial(2*n + 2, n + 1) are mirrored and aligned: one family)
+    conflicts = [b for b in risky if any(_mirrored(b, c) and not _aligned(b, c) for c in risky)]
+    kept: dict[Basic, Basic] = {b: Dummy('binomial') for b in conflicts}
+    back: dict[Basic, Basic] = {d: b for b, d in kept.items()}
+    e = _expr(given.xreplace(kept)).rewrite(_gamma_types()[0], piecewise=False)
     if any(_is_gamma(node) and _expr(node.args[0]).is_integer is not True for node in preorder_traversal(e)):
-        return gammasimp(e)
-    return _gamma_as_comb(_gammasimp(e, as_comb=True))
+        result = gammasimp(e)
+    else:
+        result = _gamma_as_comb(_gammasimp(e, as_comb=True))
+    turned: dict[Basic, Basic] = {}
+    for b in _negative_upper_binomials(result):
+        if any(_aligned(b, c) for c in risky) or not any(_mirrored(b, c) for c in risky):
+            continue
+        upper, lower = _expr(b.args[0]), _expr(b.args[1])
+        mirror = [c for c in risky if c.args[0] == upper and add(_expr(c.args[1]), lower) == upper]
+        if not mirror:
+            # mirrored up to a shift: no form of the result is known to hold
+            return given
+        turned[b] = mirror[0]
+    return _expr(_expr(result.xreplace(turned)).xreplace(back))
 
+
+def _negative_upper_binomials(e: Expr) -> list[Expr]:
+    """The binomials of ``e`` whose upper index is an integer which may be
+    negative."""
+    from sympy_extras.functions.combinatorial.factorials import Binomial
+    found: list[Expr] = []
+    for node in preorder_traversal(e):
+        if isinstance(node, Binomial) and node not in found:
+            upper = _expr(node.args[0])
+            if upper.is_integer is True and upper.is_nonnegative is not True:
+                found.append(node)
+    return found
+
+
+def _constant_difference(a: Expr, b: Expr) -> bool:
+    return isinstance(add(a, mul(Integer(-1), b)), Integer)
+
+
+def _aligned(b: Expr, c: Expr) -> bool:
+    """The upper and the lower indices of the binomials differ by integers."""
+    return _constant_difference(_expr(b.args[0]), _expr(c.args[0])) \
+        and _constant_difference(_expr(b.args[1]), _expr(c.args[1]))
+
+
+def _mirrored(b: Expr, c: Expr) -> bool:
+    """The lower index of one binomial is, up to integers, the upper
+    index minus the lower index of the other."""
+    return _constant_difference(_expr(b.args[0]), _expr(c.args[0])) \
+        and _constant_difference(add(_expr(b.args[1]), _expr(c.args[1])), _expr(b.args[0]))

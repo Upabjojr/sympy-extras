@@ -130,11 +130,19 @@ def test_meijerg_expansions_match_sympy() -> None:
              meijerg([], [], [a], [a + R(1, 2)], z), meijerg([1, 1], [], [], [0], z), meijerg([], [], [1, 1], [0, 0], z),
              meijerg([], [], [a], [], z), meijerg([], [], [0, R(1, 2)], [], z), meijerg([], [], [R(1, 2), 0], [], z**2/4),
              meijerg([], [], [a, b], [], z), meijerg([], [1], [a, b], [], z), meijerg([1 - a], [], [0], [-a], z),
-             meijerg([a], [], [b], [], z), meijerg([], [a], [b], [], z), meijerg([], [], [0, 0], [], z),
-             meijerg([], [R(1, 2)], [0], [], z), meijerg([], [], [-R(1, 2), R(1, 2)], [], z),
+             meijerg([a], [], [b], [], z), meijerg([], [a], [b], [], z),
+             meijerg([], [R(1, 2)], [0], [], z),
              meijerg([a], [a], [b], [b], z), meijerg([R(1, 2)], [1], [0, 0], [], z)]
     for e in cases:
         assert str(to_sympy(hyperexpand(expr_from_sympy(e)), evaluate=False)) == str(sympy.hyperexpand(e)), e
+    # G^{2,0}_{0,2} with lower parameters differing by an integer (they were in the list above):
+    # SymPy keeps the function, the table here has the formula in besselk
+    # (test_sympy_issues_second_pass.test_hyperexpand_of_the_g_function_of_besselk_of_integer_order)
+    for e in [meijerg([], [], [0, 0], [], z), meijerg([], [], [-R(1, 2), R(1, 2)], [], z)]:
+        assert sympy.hyperexpand(e) == e
+        ours = to_sympy(hyperexpand(expr_from_sympy(e)))
+        assert not ours.has(meijerg) and ours.has(sympy.besselk), e
+        assert abs(sympy.N(ours.subs(z, R(7, 10)) - e.subs(z, R(7, 10)), 20)) < 1e-15, e
 
 
 def test_divergent_meijerg_at_one_is_not_zero() -> None:

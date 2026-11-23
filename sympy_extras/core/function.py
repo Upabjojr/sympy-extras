@@ -641,6 +641,16 @@ class DefinedFunction(Application):
                 return cls(*expressions).evalf(prec_to_dps(max(precisions)))
         return cls(*expressions)
 
+    def is_evaluated(self) -> bool:
+        """Whether the evaluating function returns this node for these
+        arguments: ``Sin(x)`` is, ``Sin(0)`` and ``Sin(0.5)`` are not
+        (``srepr`` prints the first as ``sin(...)``, the others with the
+        class, so that the printed tree is the node)."""
+        expressions = [a for a in self.args if isinstance(a, Expr)]
+        if len(expressions) != len(self.args) or type(self).eval(*expressions) is not None:
+            return False
+        return not expressions or min(_float_precision(a) for a in expressions) <= 0
+
     # PORTED FROM SYMPY: sympy/core/function.py:Function.fdiff
     def fdiff(self, argindex: int) -> Expr:
         """The partial derivative with respect to the argument number
@@ -879,22 +889,36 @@ class Derivative(Expr):
     (Derivative(x**2, x), (x**2, (x, 1)), 2*x)
     >>> Derivative(x**3, (x, 2)).doit(), Derivative(x*y, x, y).doit()
     (6*x, 1)
+    >>> Derivative(x**3, x, 2), Derivative(x**3, x, x)
+    (Derivative(x**3, (x, 2)), Derivative(x**3, (x, 2)))
     """
 
     __slots__ = ('_expr', '_counts')
 
     is_Derivative = True
 
-    def __init__(self, expr: ExprLike, *variables: Union[Symbol, tuple[Symbol, int], Tuple]) -> None:
+    def __init__(self, expr: ExprLike, *variables: Union[Symbol, int, Integer, tuple[Symbol, int], Tuple]) -> None:
         self._expr: Final[Expr] = to_expr(expr)
         counts: list[VariableCount] = []
+        # SymPy's forms: a symbol, a symbol followed by its count
+        # (``x, 2``), a pair ``(x, 2)``
+        after_symbol = False
         for v in variables:
             if isinstance(v, Symbol):
                 counts.append((v, 1))
-            elif isinstance(v, Tuple):
+                after_symbol = True
+                continue
+            if isinstance(v, Tuple):
                 counts.append(_as_count(v))
-            else:
+            elif isinstance(v, tuple):
                 counts.append((v[0], v[1]))
+            else:
+                if not after_symbol:
+                    raise TypeError("the count %s must follow a symbol" % (v,))
+                counts[-1] = (counts[-1][0], int(v))
+            after_symbol = False
+            if counts[-1][1] < 0:
+                raise ValueError("order of differentiation must be nonnegative")
         self._counts: Final[tuple[VariableCount, ...]] = _merge_counts(counts)
         Basic.__init__(self)
 
@@ -2293,9 +2317,10 @@ _SYMPY_OWN_ASERIES: Final[frozenset[str]] = frozenset({
 
 
 #: the classes whose SymPy counterpart has an _eval_as_leading_term of its
-#: own (the others use Function._eval_as_leading_term, ported below)
+#: own (the others use Function._eval_as_leading_term, ported below), and
+#: Abs, whose rule is not SymPy's
 _SYMPY_OWN_LEADING_TERM: Final[frozenset[str]] = frozenset({
-    'Acos', 'Acosh', 'Acot', 'Acoth', 'Acsc', 'Acsch', 'Arg', 'Asec', 'Asech', 'Asin', 'Asinh', 'Atan', 'Atanh',
+    'Abs', 'Acos', 'Acosh', 'Acot', 'Acoth', 'Acsc', 'Acsch', 'Arg', 'Asec', 'Asech', 'Asin', 'Asinh', 'Atan', 'Atanh',
     'BesselI', 'BesselJ', 'BesselK', 'BesselY', 'Binomial', 'Ceiling', 'ChiNode', 'CiNode', 'Cos', 'Cosh', 'Cot',
     'Coth', 'Csc', 'Csch', 'DiGamma', 'EiNode', 'Erf', 'Erfc', 'Erfi', 'Exp', 'Factorial', 'Floor', 'Frac',
     'FresnelC', 'FresnelS', 'Gamma', 'LambertW', 'Log', 'PolyGamma', 'Sec', 'Sech', 'ShiNode', 'SiNode', 'Sin',
