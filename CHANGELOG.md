@@ -10,6 +10,32 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.printing.pretty`: a native pretty printer, `pretty(expr,
+  use_unicode=..., wrap_line=..., num_columns=..., order=...,
+  root_notation=..., use_unicode_sqrt_char=..., imaginary_unit=...)` and
+  `pprint`, which draw the nodes of the typed core (numbers, sums,
+  products, powers, roots, relations, logic, functions and special
+  functions, `Piecewise`, `Sum`, `Product`, `Integral`, `Derivative`,
+  `Limit`, `Subs`, `Order`, sets, `AccumBounds`, sequences and series),
+  `ExprMatrix`, `Poly` and the Python containers as two-dimensional text
+  in Unicode or ASCII, without importing SymPy. It is a typed port of
+  SymPy's `printing/pretty` with another design: the rules are
+  dispatched by class from a table (`RULES`), each rule returns the
+  picture with the binding of its outermost operator as printed
+  (`PrettyResult`), each parent hands its children a typed immutable
+  `Context`, and the brackets are decided in one place
+  (`needs_brackets`). The pictures are SymPy's character by character on
+  a corpus of 359 expressions; the pretty-printer defects of
+  sympy/sympy#30844 which concern these classes are not reproduced:
+  `(2/3)**x`, `(-1/2)**n` and `(-2.5)**n` keep their brackets, `Not`
+  brackets relations, `Mod` and the set operations bracket their
+  operands, a sum sign, a product sign or a limit which is not the last
+  factor is bracketed, the direction mark of a limit applies to the whole
+  point, `Product(k + 1, ...)` and `Product(k, ...) + 1` differ, the
+  names of defined functions are not mangled into subscripts, `x_` is not
+  printed as `x`. `pretty_repr` is the body of an IPython
+  `_repr_pretty_` method for `init_printing`; `pretty_use_unicode` sets
+  the default of `use_unicode`. See `docs/pretty.md`.
 - `sympy_extras.integrals.definite`: rational functions of `sin` and
   `cos` with parameters over whole periods (issue #53). The driver tries
   the residues inside the unit circle before cutting the range into
