@@ -62,6 +62,7 @@ from __future__ import annotations
 
 from typing import Generic, Optional, Sequence, TypeVar
 
+from sympy_extras.core.basic import TextSink
 from sympy_extras.polys.domains.domain import Domain
 
 __all__ = ['DomainMatrix']
@@ -116,6 +117,39 @@ class DomainMatrix(Generic[T]):
         K = self.domain
         body = ', '.join('[' + ', '.join(K.to_str(a) for a in row) + ']' for row in self.rows)
         return 'DomainMatrix([%s], %s)' % (body, K.name)
+
+    def _repr_latex_(self) -> Optional[str]:
+        """What a notebook shows: the LaTeX of the matrix of the elements
+        as expressions (see :mod:`sympy_extras.printing.interactive`);
+        ``None``, which leaves the notebook with the text, for a matrix
+        without elements and over a domain whose elements have no
+        expression."""
+        from sympy_extras.matrices.dense import ExprMatrix
+        from sympy_extras.printing.interactive import repr_latex
+        if self.nrows == 0 or self.ncols == 0:
+            return None
+        K = self.domain
+        try:
+            return repr_latex(ExprMatrix.from_rows([[K.to_expr(a) for a in row] for row in self.rows]))
+        except NotImplementedError:
+            return None
+
+    def _repr_pretty_(self, p: TextSink, cycle: bool) -> None:
+        """What IPython shows as text: the pretty form of the matrix of
+        the elements as expressions once ``init_printing`` was called,
+        the string form before."""
+        from sympy_extras.matrices.dense import ExprMatrix
+        from sympy_extras.printing.interactive import pretty_printer, printing_state, repr_pretty
+        if cycle or self.nrows == 0 or self.ncols == 0 or pretty_printer() is None or not printing_state().pretty_print:
+            p.text('...' if cycle else repr(self))
+            return
+        K = self.domain
+        try:
+            matrix = ExprMatrix.from_rows([[K.to_expr(a) for a in row] for row in self.rows])
+        except NotImplementedError:
+            p.text(repr(self))
+            return
+        repr_pretty(matrix, p, cycle)
 
     def _square(self) -> int:
         if self.nrows != self.ncols:

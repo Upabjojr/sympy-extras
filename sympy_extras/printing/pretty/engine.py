@@ -1,23 +1,30 @@
-"""The pretty printer: typed dispatch, the one place where brackets are
-inserted, and the layouts shared by the rules.
+"""The pretty printer on the typed framework of the printers, and the
+layouts shared by its rules.
 
 Design
 ======
 
 SymPy's ``PrettyPrinter`` finds the method ``_print_<ClassName>`` by the
 name of the class and lets each parent decide on brackets from the class
-of the child. Here
+of the child. This printer is a
+:class:`~sympy_extras.printing.framework.TreePrinter` of pictures, as the
+LaTeX printer is one of strings:
 
-* the dispatch is by class: a table of :class:`RuleEntry` (a class and
-  the rule which prints its instances) is searched with ``isinstance``,
-  the most specific class winning; in a statically typed language it is
-  a ``match`` on the kind of the node. There is no lookup by name;
+* the dispatch is by class: the rules are in a
+  :class:`~sympy_extras.printing.framework.Dispatcher`, filled from tables
+  of :class:`RuleEntry` (a class and the rule which prints its
+  instances); in a statically typed language it is a ``match`` on the
+  kind of the node. There is no lookup by name;
 * a rule is a function ``(printer, node, context) -> PrettyResult``: it
-  receives the :class:`~.layout.Context` its parent made for it and
-  returns the picture with the binding of its outermost operator;
+  receives the context its parent made for it and returns the picture
+  with the binding of its outermost operator;
 * a rule prints a child with :meth:`PrettyPrinter.operand`, giving the
-  context of the child, and :meth:`PrettyPrinter.bracketed` is the only
-  code which adds brackets, when :func:`~.layout.needs_brackets` says so;
+  context of the child; the brackets are added by the
+  :meth:`~sympy_extras.printing.framework.TreePrinter.enclose` of the
+  framework, when its ``needs_brackets`` says so, and nowhere else;
+* a function application takes the exponent which its parent offers in
+  the context (``sin²(x)``), a connective the negation, as in the LaTeX
+  printer;
 * the settings are immutable.
 
 References
@@ -41,10 +48,11 @@ from typing import Callable, Optional, Sequence, TypeVar
 
 from ...core.basic import Basic
 from ...core.printing import sstr
-from .layout import Applied, Binding, Context, Picture, PrettyResult, needs_brackets
+from ..framework import Binding, Dispatcher, TreePrinter
+from .layout import Picture, PrettyContext, PrettyResult
 from .symbology import Symbology
 
-__all__ = ['PrettySettings', 'PrettyPrinter', 'RuleEntry', 'Rule', 'rule_for']
+__all__ = ['PrettySettings', 'PrettyPrinter', 'PrettyRules', 'RuleEntry', 'Rule', 'rule_for', 'rule_table']
 
 
 @dataclass(frozen=True)
@@ -59,6 +67,9 @@ class PrettySettings:
     root_notation: bool = True
     use_unicode_sqrt_char: bool = True
     imaginary_unit: str = 'i'
+    #: the floats with all the digits of their precision; ``None`` (SymPy's
+    #: ``'auto'``) for a float which is the whole expression only
+    full_prec: Optional[bool] = None
 
     def __post_init__(self) -> None:
         if self.imaginary_unit not in ('i', 'j'):
@@ -67,30 +78,52 @@ class PrettySettings:
             raise ValueError("'order' must be None, 'lex' or 'none', not '%s'" % self.order)
 
 
-Rule = Callable[['PrettyPrinter', Basic, Context], PrettyResult]
+Rule = Callable[['PrettyPrinter', Basic, PrettyContext], PrettyResult]
+
+#: the rules of a pretty printer by the class of the node
+PrettyRules = Dispatcher['PrettyPrinter', Basic, Picture]
 
 
 @dataclass(frozen=True)
 class RuleEntry:
-    """A class and the rule which prints its instances."""
+    """A class and how the rule which prints its instances is put into a
+    table of rules."""
 
     cls: type[Basic]
-    rule: Rule
+    install: Callable[[PrettyRules], None]
 
 
 N = TypeVar('N', bound=Basic)
 
 
-def rule_for(cls: type[N], rule: Callable[[PrettyPrinter, N, Context], PrettyResult]) -> RuleEntry:
-    """The table entry of a rule written for the class ``cls``."""
-    def narrowed(printer: PrettyPrinter, e: Basic, context: Context) -> PrettyResult:
-        if not isinstance(e, cls):
-            raise TypeError('%s is not a %s' % (type(e).__name__, cls.__name__))
-        return rule(printer, e, context)
-    return RuleEntry(cls, narrowed)
+def rule_for(cls: type[N], rule: Callable[[PrettyPrinter, N, PrettyContext], PrettyResult]) -> RuleEntry:
+    """The entry of a rule written for the class ``cls``."""
+    def install(table: PrettyRules) -> None:
+        table.register(cls, rule)
+    return RuleEntry(cls, install)
 
 
-class PrettyPrinter:
+def rule_table(entries: Sequence[RuleEntry]) -> PrettyRules:
+    """The dispatcher of the rules of ``entries``.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Integer, Symbol
+    >>> from sympy_extras.printing.pretty.engine import PrettyPrinter, PrettySettings, rule_for, rule_table
+    >>> from sympy_extras.printing.pretty.layout import TOP
+    >>> rules = rule_table([rule_for(Symbol, lambda p, e, context: p.atom('<%s>' % e.name))])
+    >>> printer = PrettyPrinter(PrettySettings(), rules)
+    >>> str(printer.operand(Symbol('x'), TOP)), printer.has_rule(Integer)
+    ('<x>', False)
+    """
+    table: PrettyRules = Dispatcher()
+    for entry in entries:
+        entry.install(table)
+    return table
+
+
+class PrettyPrinter(TreePrinter[Basic, Picture]):
     """Prints nodes as pictures with the rules of a table.
 
     Examples
@@ -99,16 +132,15 @@ class PrettyPrinter:
     >>> from sympy_extras.core import symbols
     >>> from sympy_extras.printing.pretty import PrettyPrinter, PrettySettings, RULES, TOP
     >>> x, y = symbols('x y')
-    >>> result = PrettyPrinter(PrettySettings(), RULES).result(-x*y, TOP)
-    >>> str(result.picture), result.binding.name, str(result.magnitude)
-    ('-x*y', 'NEG', 'x*y')
+    >>> result = PrettyPrinter(PrettySettings(), RULES).rule(-x*y, TOP)
+    >>> str(result.output), result.binding.name, str(result.unsigned)
+    ('-x*y', 'NEGATION', 'x*y')
     """
 
-    def __init__(self, settings: PrettySettings, rules: Sequence[RuleEntry]) -> None:
+    def __init__(self, settings: PrettySettings, rules: PrettyRules) -> None:
         self.settings: PrettySettings = settings
         self.symbology: Symbology = Symbology(settings.use_unicode, settings.imaginary_unit)
-        self._rules: tuple[RuleEntry, ...] = tuple(rules)
-        self._by_class: dict[type[Basic], Optional[Rule]] = {}
+        self._rules: PrettyRules = rules
 
     @property
     def unicode(self) -> bool:
@@ -117,32 +149,20 @@ class PrettyPrinter:
     # ------------------------------------------------------------------
     # dispatch
 
-    def _rule(self, cls: type[Basic]) -> Optional[Rule]:
-        if cls in self._by_class:
-            return self._by_class[cls]
-        best: Optional[RuleEntry] = None
-        for entry in self._rules:
-            if issubclass(cls, entry.cls) and (best is None or (entry.cls is not best.cls
-                                                                 and issubclass(entry.cls, best.cls))):
-                best = entry
-        rule = None if best is None else best.rule
-        self._by_class[cls] = rule
-        return rule
-
     def has_rule(self, cls: type[Basic]) -> bool:
         """Whether the table has a rule for the instances of ``cls``
         (they are printed by :meth:`generic` otherwise)."""
-        return self._rule(cls) is not None
+        return self._rules.lookup(cls) is not None
 
-    def result(self, e: Basic, context: Context) -> PrettyResult:
-        """``e`` printed in ``context``, without the brackets the context
-        may require (see :meth:`operand`)."""
-        rule = self._rule(type(e))
-        if rule is None:
-            return self.generic(e, context)
-        return rule(self, e, context)
+    def rule(self, node: Basic, context: PrettyContext) -> PrettyResult:
+        """``node`` printed in ``context``, without the brackets the
+        context may require (see :meth:`operand`)."""
+        found = self._rules.lookup(type(node))
+        if found is None:
+            return self.generic(node, context)
+        return found(self, node, context)
 
-    def generic(self, e: Basic, context: Context) -> PrettyResult:
+    def generic(self, e: Basic, context: PrettyContext) -> PrettyResult:
         """A node without a rule: its string form (what SymPy's printer
         does too), on one row."""
         return self.opaque(sstr(e))
@@ -153,20 +173,18 @@ class PrettyPrinter:
         it is then bracketed wherever it is an operand."""
         if _is_token(text):
             return PrettyResult(Picture.text(text), Binding.ATOM)
-        return PrettyResult(Picture.text(text), Binding.FUNC if _is_application(text) else Binding.OPEN)
+        return PrettyResult(Picture.text(text), Binding.APPLICATION if _is_application(text) else Binding.LOWEST)
 
     # ------------------------------------------------------------------
-    # brackets: the only place
+    # brackets: drawn here, decided by the framework
 
-    def bracketed(self, result: PrettyResult, context: Context) -> PrettyResult:
-        """``result``, between parentheses when its place requires them."""
-        if not needs_brackets(result, context):
-            return result
-        return PrettyResult(result.picture.parens(self.symbology), Binding.ATOM)
+    def bracket(self, result: PrettyResult, context: PrettyContext) -> Picture:
+        """The picture of ``result`` between parentheses."""
+        return result.output.parens(self.symbology)
 
-    def operand(self, e: Basic, context: Context) -> Picture:
+    def operand(self, e: Basic, context: PrettyContext) -> Picture:
         """The picture of the child ``e`` in ``context``, bracketed if needed."""
-        return self.bracketed(self.result(e, context), context).picture
+        return self.print(e, context).output
 
     # ------------------------------------------------------------------
     # layouts
@@ -193,24 +211,30 @@ class PrettyPrinter:
         these are not the brackets of precedence."""
         return picture.parens(self.symbology, left, right, one_row_in_ascii)
 
-    def arguments(self, args: Sequence[Basic], context: Context, delimiter: str = ', ') -> Picture:
-        """The arguments in a row, each one in the context of an argument."""
-        return self.join([self.operand(a, context.argument()) for a in args], delimiter)
+    def arguments(self, args: Sequence[Basic], context: PrettyContext, delimiter: str = ', ') -> Picture:
+        """The arguments in a row, each one delimited by its parent."""
+        return self.join([self.operand(a, context.delimited()) for a in args], delimiter)
 
-    def sequence(self, args: Sequence[Basic], context: Context, left: str, right: str, delimiter: str = ', '
+    def sequence(self, args: Sequence[Basic], context: PrettyContext, left: str, right: str, delimiter: str = ', '
                  ) -> PrettyResult:
         """A delimited sequence: ``(a, b)``, ``[a, b]``, ``{a, b}``."""
         return PrettyResult(self.parens(self.arguments(args, context, delimiter), left, right, True), Binding.ATOM)
 
-    def applied(self, head: Picture, arguments: Picture) -> PrettyResult:
-        """``head(arguments)``: a function application, which a power
-        may print as ``head^n(arguments)``."""
+    def applied(self, head: Picture, arguments: Picture, context: PrettyContext) -> PrettyResult:
+        """``head(arguments)``: a function application. The exponent
+        which the parent offers in ``context`` goes between the function
+        and its arguments (``sin²(x)``); the result then stands for the
+        power and binds as one: nothing is attached to it."""
         inside = self.parens(arguments)
-        return PrettyResult(Picture.beside(head, inside), Binding.FUNC, applied=Applied(head, inside))
+        exponent = context.exponent_offered
+        if exponent is not None:
+            raised = exponent.with_baseline(head.baseline + exponent.height())
+            return PrettyResult(Picture.beside(head, raised, inside), Binding.POWER, absorbed=True)
+        return PrettyResult(Picture.beside(head, inside), Binding.APPLICATION)
 
-    def function(self, name: str, args: Sequence[Basic], context: Context) -> PrettyResult:
+    def function(self, name: str, args: Sequence[Basic], context: PrettyContext) -> PrettyResult:
         """``name(args)``."""
-        return self.applied(Picture.text(name), self.arguments(args, context))
+        return self.applied(Picture.text(name), self.arguments(args, context), context)
 
     def fraction(self, numerator: Picture, denominator: Picture) -> Picture:
         """A fraction with a horizontal bar."""

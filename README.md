@@ -1197,13 +1197,15 @@ function, as formulas in the index:
 
 ```
 
-### Printing: LaTeX (`sympy_extras.printing`)
+### Printing: LaTeX and pretty printing (`sympy_extras.printing`)
 
-`latex` prints the native objects with the settings of SymPy's `latex`;
-every native object has a `_repr_latex_`, so notebooks render them, and
-`init_printing` chooses the settings. The brackets follow what is
-printed, not the class of the node, so the defects of SymPy's printer
-collected in sympy/sympy#30844 do not occur:
+`latex` prints the native objects with the settings of SymPy's `latex`,
+`pretty` and `pprint` draw them as two-dimensional text in Unicode or in
+ASCII; every native object has a `_repr_latex_` and a `_repr_pretty_`,
+so notebooks and IPython render them, and `init_printing` chooses the
+settings. The two printers share one typed framework: the brackets
+follow what is printed, not the class of the node, so the defects of
+SymPy's printers collected in sympy/sympy#30844 do not occur:
 
 ```python
 >>> from sympy_extras.core import symbols, Mod, Not, Rational
@@ -1215,6 +1217,17 @@ collected in sympy/sympy#30844 do not occur:
 \sqrt[3]{x} + \frac{\sin^{2}{\left(x \right)}}{2 y}
 >>> print(latex(Mod(-x, y)), latex(Not(x > y)), latex(Limit(sin(x), x, a + b)))
 \left(- x\right) \bmod y \neg \left(x > y\right) \lim_{x \to \left(a + b\right)^+} \sin{\left(x \right)}
+>>> from sympy_extras.printing import pprint, pretty
+>>> pprint(sin(x)**2/(2*y) + x**Rational(1, 3), use_unicode=True)  # doctest: +NORMALIZE_WHITESPACE
+           2
+3 ___   sin (x)
+╲╱ x  + ───────
+          2⋅y
+>>> print(pretty(Mod(-x, y)), '|', pretty(Not(x > y), use_unicode=True))
+(-x) mod y | ¬(x > y)
+>>> pprint(Rational(2, 3)**x)  # doctest: +NORMALIZE_WHITESPACE
+     x
+(2/3)
 
 ```
 

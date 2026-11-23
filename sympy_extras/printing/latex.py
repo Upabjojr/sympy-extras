@@ -67,7 +67,7 @@ from sympy_extras.core.numbers import (AlgebraicNumber, CatalanType, ComplexInfi
     TribonacciConstantType, fraction_to_mpf, number_from_fraction)
 from sympy_extras.core.order import Order
 from sympy_extras.core.power import Pow
-from sympy_extras.core.printing import _generators, _in_compare_order, _monomial_key, _printing_order, ordered_terms
+from sympy_extras.core.printing import printed_factors, printed_terms
 from sympy_extras.core.relational import Relational
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
@@ -209,9 +209,7 @@ class LatexPrinter(TreePrinter[LatexInput, str]):
     def place(self, result: Res, context: Ctx) -> Res:
         """A result which was not printed by :meth:`print` (a product of
         some of the factors of a node) put in a position."""
-        if needs_brackets(result, context):
-            return Result(self.bracket(result, context), Binding.ATOM)
-        return result
+        return self.enclose(result, context)
 
     # ------------------------------------------------------------------
     # helpers of the rules
@@ -304,21 +302,7 @@ class LatexPrinter(TreePrinter[LatexInput, str]):
 
     def ordered(self, e: Add) -> Sequence[Expr]:
         """The terms of a sum in the order of the settings."""
-        order = self.settings.order
-        if order == 'none' or not _in_compare_order(e.args):
-            return e.args
-        if order in (None, 'lex'):
-            return ordered_terms(e.args)
-        gens: set[Expr] = set()
-        for t in e.args:
-            gens.update(_generators(t))
-        ordered_gens = sorted(gens, key=default_sort_key)
-        keyed = [(_monomial_key(t, ordered_gens), t) for t in ordered_terms(e.args)]
-        if order == 'grlex':
-            keyed.sort(key=lambda kt: (sum(kt[0]), kt[0]))
-        else:
-            keyed.sort(key=lambda kt: (sum(kt[0]), tuple(-x for x in reversed(kt[0]))))
-        return [t for _, t in keyed]
+        return printed_terms(e.args, self.settings.order)
 
     def float_string(self, e: Float) -> str:
         """The digits of a float as SymPy's LaTeX printer shows them."""
@@ -602,7 +586,7 @@ def _mul(p: LatexPrinter, e: Mul, ctx: Ctx) -> Res:
     if _is_one(args[0]) or any(isinstance(a, Number) for a in args[1:]):
         # an unevaluated product: the factors as they are
         return p.product(args, ctx, ctx.factor(False))
-    factors = list(args) if p.settings.order == 'none' else _printing_order(args)
+    factors = printed_factors(args, p.settings.order)
     negative, numerator, denominator = _split_fraction(factors)
     if not denominator:
         return _signed(negative, p.place(p.product(numerator, ctx, ctx.factor(False)), ctx.factor(False)))

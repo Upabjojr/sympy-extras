@@ -63,7 +63,10 @@ def test_evalf_of_a_function_of_bounds() -> None:
     # evalf recursed without end on the product -atan(AccumBounds(0, oo)),
     # a number without a value; SymPy leaves it as it is
     e = b - atan(b)
-    assert str(e.evalf(30)) == 'AccumBounds(0, oo) - atan(AccumBounds(0, oo))'
+    # (the terms in SymPy's order: str(Add(AB(0, oo), -atan(AB(0, oo)), evaluate=False)); a factor without
+    # a value is a generator of the printing order, not a coefficient)
+    assert str(e.evalf(30)) == str(s.Add(AB(0, s.oo), -s.atan(AB(0, s.oo)), evaluate=False)) \
+        == '-atan(AccumBounds(0, oo)) + AccumBounds(0, oo)'
     assert str((-atan(b)).evalf(30)) == str((-s.atan(AB(0, s.oo))).evalf(30)) == '-atan(AccumBounds(0, oo))'
 
 

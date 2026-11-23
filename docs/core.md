@@ -669,7 +669,8 @@ sympy_extras/core/
     containers.py    Tuple, Dict
     singleton.py     S
     sympify.py       sympify
-    printing.py      sstr, srepr, the printing order of the terms
+    printing.py      sstr, srepr, the printing order of the terms and factors (ordered_terms, printed_terms,
+                     printed_factors: what the LaTeX and the pretty printer use too)
     evalf.py         evalf, N, float(), complex()
     interop.py       to_sympy, from_sympy, through_sympy, the generic wrappers SymPyNode/SymPyExprNode
     parameters.py    global_parameters, evaluate, distribute

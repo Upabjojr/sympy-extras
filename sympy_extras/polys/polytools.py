@@ -96,7 +96,7 @@ from typing import Final, Literal, Optional, Sequence, TypeVar, Union
 import mpmath
 
 from sympy_extras.core.add import Add, add
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, TextSink
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.exprtools import decompose_power
 from sympy_extras.core.function import expand
@@ -701,6 +701,12 @@ class Poly:
         :mod:`sympy_extras.printing.interactive`)."""
         from sympy_extras.printing.interactive import repr_latex
         return repr_latex(self)
+
+    def _repr_pretty_(self, p: TextSink, cycle: bool) -> None:
+        """What IPython shows as text: the pretty form of the polynomial
+        once ``init_printing`` was called, its string form before."""
+        from sympy_extras.printing.interactive import repr_pretty
+        repr_pretty(self, p, cycle)
 
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_Poly
     def __str__(self) -> str:

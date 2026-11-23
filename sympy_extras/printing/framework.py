@@ -1,14 +1,18 @@
 """The typed framework of the two-dimensional printers (LaTeX, pretty).
 
-A printer walks the tree with three typed pieces, none of which knows the
-output type (a string for LaTeX, a picture for the pretty printer):
+Both printers (:mod:`sympy_extras.printing.latex`, whose output is a
+string, and :mod:`sympy_extras.printing.pretty`, whose output is a
+:class:`~sympy_extras.printing.pretty.layout.Picture`) walk the tree with
+the three typed pieces of this module, none of which knows the output
+type:
 
 - a :class:`Result`: what a rule returns, the output together with the
   **binding strength of its outermost operator as printed** (a negative
   number binds as a negation, a power printed as a fraction as a product,
   a function which took the exponent of its parent as a power) and the few
   flags a parent needs (the output without its leading minus sign, an
-  open-ended construct on the right, a superscript at the end);
+  open-ended construct on the right, a superscript at the end, a fraction
+  bar drawn in two dimensions);
 - a :class:`Context`: what a parent passes down to each child, immutable:
   the position of the child, the binding strength the position requires,
   what follows the child, the operator the child may render itself (an
@@ -23,6 +27,14 @@ The rules are found by the class of the node in a :class:`Dispatcher`
 (a table from classes to typed functions, looked up along the bases of
 the class), never by the name of the class: in a statically typed
 language this is a ``match`` on the node.
+
+There is one scale of binding strengths (:class:`Binding`) and one list
+of positions (:class:`Position`) for both printers. A printer says how
+**its own notation** binds, so that the same node may bind differently in
+the two: a quotient is a built-up ``\\frac`` in LaTeX, which binds as a
+product, and a fraction bar in a picture, which binds as a
+:attr:`Binding.FRACTION`; some levels and flags are produced by one
+printer only (they are marked below).
 
 SymPy's printers decide the brackets in the parent from a precedence
 number computed from the *class* of the child (``precedence_traditional``),
@@ -69,8 +81,10 @@ class Binding(IntEnum):
     LOWEST = 0
     #: a block which is bracketed wherever it is not delimited (cases)
     BLOCK = 5
-    #: ``a => b``, ``a <=> b``, ``a xor b``
+    #: ``a => b``, ``a <=> b`` (and ``a xor b`` in LaTeX)
     IMPLICATION = 10
+    #: ``a xor b`` in a picture
+    XOR = 15
     #: ``a or b``
     OR = 20
     #: ``a and b``
@@ -87,13 +101,19 @@ class Binding(IntEnum):
     NEGATION = 45
     #: ``a / b`` on one line
     QUOTIENT = 48
-    #: ``a b``, a built-up fraction, an operator with its body (a sum, an integral, a derivative)
+    #: ``a b``, a built-up fraction of LaTeX, an operator with its body (a sum, an integral, a derivative)
     PRODUCT = 50
+    #: a fraction with a bar drawn in a picture
+    FRACTION = 55
+    #: the one-character root sign of a picture (``√x``), which no bar closes
+    ROOT = 58
     #: ``a^b``, a function with an exponent attached to its name
     POWER = 60
-    #: ``f(x)``, ``x!``
+    #: a prefix or postfix sign in a picture: ``¬x``, ``x!``
+    AFFIX = 65
+    #: ``f(x)``, and ``x!`` in LaTeX
     APPLICATION = 70
-    #: ``not a``
+    #: ``\neg a`` in LaTeX
     NOT = 100
     #: a name, a number, anything delimited
     ATOM = 1000
@@ -105,7 +125,7 @@ class Position(Enum):
     #: the whole expression
     TOP = 'top'
     #: delimited by its parent: an argument of a function, an element of a
-    #: container, a bound, the body of a root, the content of brackets
+    #: container, a bound, the body of a root under its bar, the content of brackets
     DELIMITED = 'delimited'
     #: a term of a sum
     TERM = 'term'
@@ -125,7 +145,7 @@ class Position(Enum):
     SUPERSCRIPT = 'superscript'
     #: the argument of a function printed without brackets (``sin x``)
     BARE_ARGUMENT = 'bare argument'
-    #: the operand of a postfix or prefix operator (``x!``)
+    #: the operand of a postfix or prefix operator (``x!``, the variable after the ``d`` of an integral)
     OPERAND = 'operand'
     #: the left operand of a non-associative infix operator (``mod``, a set difference)
     LEFT = 'left'
@@ -177,12 +197,43 @@ class Context(Generic[T]):
     in_exponent: bool = False
     #: on a line of text: no built-up constructs where a flat one exists
     inline: bool = False
+    #: a result binding exactly as this is bracketed too, whatever
+    #: ``level`` is (a power in a raised exponent of a picture)
+    excluded: Optional[Binding] = None
+    #: the parent asks for the built-up form of a number which has a flat
+    #: one (a fraction among the tall terms of a sum in a picture); not inherited
+    display: bool = False
 
     def _child(self, position: Position, level: Binding, strict: bool = False, followed: bool = False,
                scripts_follow: bool = False, exponent_offered: Optional[T] = None, negation_offered: bool = False,
-               in_exponent: Optional[bool] = None) -> Context[T]:
+               in_exponent: Optional[bool] = None, excluded: Optional[Binding] = None) -> Context[T]:
         return Context(position, level, strict, followed, scripts_follow, exponent_offered, negation_offered,
-                       self.in_exponent if in_exponent is None else in_exponent, self.inline)
+                       self.in_exponent if in_exponent is None else in_exponent, self.inline, excluded)
+
+    def at(self, position: Position, level: Binding, strict: bool = False, followed: bool = False,
+           exponent_offered: Optional[T] = None, negation_offered: bool = False,
+           excluded: Optional[Binding] = None) -> Context[T]:
+        """A position whose requirements are those of the notation of one
+        printer rather than the ones of the methods below (the base of a
+        power in a picture takes a function application, the one of LaTeX
+        an atom): the child must bind at least as ``level``. The inherited
+        state is kept; an exponent, a subscript, a superscript and the
+        point of a limit are inside an exponent.
+
+        Examples
+        ========
+
+        >>> from sympy_extras.printing.framework import Binding, Context, Position, Result, needs_brackets
+        >>> top: Context[str] = Context()
+        >>> raised = top.at(Position.EXPONENT, Binding.LOWEST, excluded=Binding.POWER)
+        >>> raised.in_exponent, needs_brackets(Result('y**z', Binding.POWER), raised)
+        (True, True)
+        >>> needs_brackets(Result('y + z', Binding.SUM), raised)
+        False
+        """
+        scripts = position in (Position.EXPONENT, Position.SUBSCRIPT, Position.SUPERSCRIPT, Position.POINT)
+        return self._child(position, level, strict, followed, False, exponent_offered, negation_offered,
+                           True if scripts else None, excluded)
 
     def delimited(self) -> Context[T]:
         """A position delimited by the parent: nothing is required."""
@@ -271,6 +322,10 @@ class Context(Generic[T]):
         """The context without the exponent and the negation offered."""
         return replace(self, exponent_offered=None, negation_offered=False)
 
+    def displayed(self) -> Context[T]:
+        """The context asking for the built-up form of a number."""
+        return replace(self, display=True)
+
 
 @dataclass(frozen=True)
 class Result(Generic[T]):
@@ -300,6 +355,11 @@ class Result(Generic[T]):
     absorbed: bool = False
     #: contains a function applied to its arguments outside any brackets
     applies: bool = False
+    #: the outermost layout is a fraction bar drawn in two dimensions
+    #: (also under a minus sign): as a part of another fraction it is
+    #: bracketed, two bars of the same length do not say which one is the
+    #: main one. Never set for LaTeX, which sizes the nested fractions.
+    stacked: bool = False
 
 
 def needs_brackets(result: Result[T], context: Context[T]) -> bool:
@@ -317,6 +377,9 @@ def needs_brackets(result: Result[T], context: Context[T]) -> bool:
     >>> series = Result('sum x', Binding.PRODUCT, open_ended=True)
     >>> needs_brackets(series, top.factor(followed=True)), needs_brackets(series, top.factor(followed=False))
     (True, False)
+    >>> bar = Result('a over b', Binding.FRACTION, stacked=True)
+    >>> needs_brackets(bar, top.numerator(False)), needs_brackets(bar, top.factor(False))
+    (True, False)
     """
     if result.absorbed:
         return False
@@ -327,6 +390,10 @@ def needs_brackets(result: Result[T], context: Context[T]) -> bool:
     if result.scripted and context.scripts_follow:
         return True
     if result.applies and context.position is Position.BARE_ARGUMENT:
+        return True
+    if context.excluded is not None and result.binding == context.excluded:
+        return True
+    if result.stacked and context.position in (Position.NUMERATOR, Position.DENOMINATOR):
         return True
     return False
 
@@ -401,10 +468,16 @@ class TreePrinter(Generic[E, T]):
         """The output of ``result`` in brackets."""
         raise NotImplementedError
 
-    def print(self, node: E, context: Context[T]) -> Result[T]:
-        """The node printed in the context, in brackets when its position
-        requires them."""
-        result = self.rule(node, context)
+    def enclose(self, result: Result[T], context: Context[T]) -> Result[T]:
+        """A result put in a position: in brackets, an atom then, when
+        :func:`needs_brackets` says so. For the rules which look at the
+        result of a child before it is bracketed (a sum takes the term
+        without its sign), and for results which are not those of a node."""
         if needs_brackets(result, context):
             return Result(self.bracket(result, context), Binding.ATOM)
         return result
+
+    def print(self, node: E, context: Context[T]) -> Result[T]:
+        """The node printed in the context, in brackets when its position
+        requires them."""
+        return self.enclose(self.rule(node, context), context)

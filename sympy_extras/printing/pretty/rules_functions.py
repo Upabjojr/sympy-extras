@@ -28,7 +28,8 @@ from typing import Callable, Optional, Sequence
 
 from ...core.expr import Expr
 from ...core.function import Application, AppliedUndef, DefinedFunction, WildFunction
-from ...core.logic import BooleanTrue
+from ...core.basic import Basic
+from ...core.logic import ITE, BooleanTrue, true
 from ...core.numbers import E, Rational
 from ...functions.combinatorial.factorials import Binomial, Factorial, Factorial2, Subfactorial
 from ...functions.combinatorial.numbers import (Bell, Bernoulli, Catalan, Euler, Fibonacci, Lucas, PrimeNu,
@@ -49,34 +50,35 @@ from ...functions.special.singularity_functions import SingularityFunctionNode
 from ...functions.special.tensor_functions import KroneckerDeltaNode
 from ...functions.special.zeta_functions import DirichletEta, LerchPhi, PolyLog, Stieltjes
 from .engine import PrettyPrinter, RuleEntry, rule_for
-from .layout import Binding, Context, Picture, Position, PrettyResult
+from ..framework import Binding, Position
+from .layout import Picture, PrettyContext, PrettyResult
 from .rules_core import exponent_picture, raised
 from .symbology import greek_unicode, sub
 
 __all__ = ['FUNCTION_RULES']
 
-ApplicationRule = Callable[[PrettyPrinter, Application, Context], PrettyResult]
+ApplicationRule = Callable[[PrettyPrinter, Application, PrettyContext], PrettyResult]
 
 
-def _application(p: PrettyPrinter, e: Application, context: Context) -> PrettyResult:
+def _application(p: PrettyPrinter, e: Application, context: PrettyContext) -> PrettyResult:
     # an applied undefined function (or a foreign one): its name is a symbol name
-    return p.applied(Picture.text(p.symbology.symbol(e.name)), p.arguments(e.args, context))
+    return p.applied(Picture.text(p.symbology.symbol(e.name)), p.arguments(e.args, context), context)
 
 
-def _defined(p: PrettyPrinter, e: DefinedFunction, context: Context) -> PrettyResult:
+def _defined(p: PrettyPrinter, e: DefinedFunction, context: PrettyContext) -> PrettyResult:
     name = e.name
     if p.unicode and name in greek_unicode:
         name = greek_unicode[name]  # zeta
     return p.function(name, e.args, context)
 
 
-def _wild_function(p: PrettyPrinter, e: WildFunction, context: Context) -> PrettyResult:
+def _wild_function(p: PrettyPrinter, e: WildFunction, context: PrettyContext) -> PrettyResult:
     return p.atom(e.name + '_')
 
 
 def _named(unicode_name: str, ascii_name: str) -> ApplicationRule:
     """The rule of a function printed under another name."""
-    def rule(p: PrettyPrinter, e: Application, context: Context) -> PrettyResult:
+    def rule(p: PrettyPrinter, e: Application, context: PrettyContext) -> PrettyResult:
         return p.function(unicode_name if p.unicode else ascii_name, e.args, context)
     return rule
 
@@ -88,64 +90,76 @@ def _greek(letter: str, ascii_name: str) -> ApplicationRule:
 # ----------------------------------------------------------------------
 # elementary functions
 
-def _exp(p: PrettyPrinter, e: Exp, context: Context) -> PrettyResult:
+def _exp(p: PrettyPrinter, e: Exp, context: PrettyContext) -> PrettyResult:
     return raised(p, E, exponent_picture(p, e.args[0], context), context)
 
 
-def _factorial(p: PrettyPrinter, e: Factorial, context: Context) -> PrettyResult:
-    operand = p.operand(e.args[0], context.child(Position.AFFIX_OPERAND, Binding.FUNC))
+def _factorial(p: PrettyPrinter, e: Factorial, context: PrettyContext) -> PrettyResult:
+    operand = p.operand(e.args[0], context.at(Position.OPERAND, Binding.APPLICATION))
     return PrettyResult(operand.rtext('!'), Binding.AFFIX)
 
 
-def _factorial2(p: PrettyPrinter, e: Factorial2, context: Context) -> PrettyResult:
-    operand = p.operand(e.args[0], context.child(Position.AFFIX_OPERAND, Binding.FUNC))
+def _factorial2(p: PrettyPrinter, e: Factorial2, context: PrettyContext) -> PrettyResult:
+    operand = p.operand(e.args[0], context.at(Position.OPERAND, Binding.APPLICATION))
     return PrettyResult(operand.rtext('!!'), Binding.AFFIX)
 
 
-def _subfactorial(p: PrettyPrinter, e: Subfactorial, context: Context) -> PrettyResult:
-    operand = p.operand(e.args[0], context.child(Position.AFFIX_OPERAND, Binding.FUNC))
+def _subfactorial(p: PrettyPrinter, e: Subfactorial, context: PrettyContext) -> PrettyResult:
+    operand = p.operand(e.args[0], context.at(Position.OPERAND, Binding.APPLICATION))
     return PrettyResult(operand.ltext('!'), Binding.AFFIX)
 
 
-def _binomial(p: PrettyPrinter, e: Binomial, context: Context) -> PrettyResult:
-    n = p.operand(e.args[0], context.argument())
-    k = p.operand(e.args[1], context.argument())
+def _binomial(p: PrettyPrinter, e: Binomial, context: PrettyContext) -> PrettyResult:
+    n = p.operand(e.args[0], context.delimited())
+    k = p.operand(e.args[1], context.delimited())
     bar = Picture.blank(max(n.width(), k.width()))
     picture = p.parens(k.above(n, bar))
     return PrettyResult(picture.with_baseline((picture.baseline + 1)//2), Binding.ATOM)
 
 
-def _conjugate(p: PrettyPrinter, e: Conjugate, context: Context) -> PrettyResult:
+def _conjugate(p: PrettyPrinter, e: Conjugate, context: PrettyContext) -> PrettyResult:
     # the bar covers the operand: it needs no brackets and the result is closed
-    operand = p.operand(e.args[0], context.argument())
+    operand = p.operand(e.args[0], context.delimited())
     return PrettyResult(operand.above(Picture.text(p.symbology.hobj('_', operand.width()))), Binding.ATOM)
 
 
-def _abs(p: PrettyPrinter, e: Abs, context: Context) -> PrettyResult:
-    return PrettyResult(p.parens(p.operand(e.args[0], context.argument()), '|', '|'), Binding.ATOM)
+def _abs(p: PrettyPrinter, e: Abs, context: PrettyContext) -> PrettyResult:
+    return PrettyResult(p.parens(p.operand(e.args[0], context.delimited()), '|', '|'), Binding.ATOM)
 
 
-def _floor(p: PrettyPrinter, e: Floor, context: Context) -> PrettyResult:
+def _floor(p: PrettyPrinter, e: Floor, context: PrettyContext) -> PrettyResult:
     if not p.unicode:
         return p.function('floor', e.args, context)
-    return PrettyResult(p.parens(p.operand(e.args[0], context.argument()), 'lfloor', 'rfloor'), Binding.ATOM)
+    return PrettyResult(p.parens(p.operand(e.args[0], context.delimited()), 'lfloor', 'rfloor'), Binding.ATOM)
 
 
-def _ceiling(p: PrettyPrinter, e: Ceiling, context: Context) -> PrettyResult:
+def _ceiling(p: PrettyPrinter, e: Ceiling, context: PrettyContext) -> PrettyResult:
     if not p.unicode:
         return p.function('ceiling', e.args, context)
-    return PrettyResult(p.parens(p.operand(e.args[0], context.argument()), 'lceil', 'rceil'), Binding.ATOM)
+    return PrettyResult(p.parens(p.operand(e.args[0], context.delimited()), 'lceil', 'rceil'), Binding.ATOM)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Piecewise
-def _piecewise(p: PrettyPrinter, e: Piecewise, context: Context) -> PrettyResult:
+def _piecewise(p: PrettyPrinter, e: Piecewise, context: PrettyContext) -> PrettyResult:
+    return _cases(p, [(pair.expr, pair.cond) for pair in e.args], context)
+
+
+# PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_ITE
+def _ite(p: PrettyPrinter, e: ITE, context: PrettyContext) -> PrettyResult:
+    # as SymPy: the cases of ITE(c, a, b).rewrite(Piecewise)
+    condition, then, otherwise = e.args
+    return _cases(p, [(then, condition), (otherwise, true)], context)
+
+
+def _cases(p: PrettyPrinter, pairs: Sequence[tuple[Basic, Basic]], context: PrettyContext) -> PrettyResult:
+    """The values with their conditions behind a brace."""
     rows: list[tuple[Picture, Picture]] = []
-    for pair in e.args:
-        value = p.operand(pair.expr, context.argument())
-        if isinstance(pair.cond, BooleanTrue):
+    for expr, cond in pairs:
+        value = p.operand(expr, context.delimited())
+        if isinstance(cond, BooleanTrue):
             condition = Picture.text('otherwise')
         else:
-            condition = p.operand(pair.cond, context.argument()).ltext('for ')
+            condition = p.operand(cond, context.delimited()).ltext('for ')
         rows.append((value, condition))
     widths = [max(row[j].width() for row in rows) for j in range(2)]
     table: Optional[Picture] = None
@@ -161,17 +175,17 @@ def _piecewise(p: PrettyPrinter, e: Piecewise, context: Context) -> PrettyResult
         return p.function('Piecewise', (), context)
     picture = p.parens(table, '{', '')
     # the brace is open on the right: the result is bracketed everywhere
-    return PrettyResult(picture.with_baseline(picture.height()//2), Binding.OPEN)
+    return PrettyResult(picture.with_baseline(picture.height()//2), Binding.LOWEST)
 
 
-def _expr_cond_pair(p: PrettyPrinter, e: ExprCondPair, context: Context) -> PrettyResult:
+def _expr_cond_pair(p: PrettyPrinter, e: ExprCondPair, context: PrettyContext) -> PrettyResult:
     return p.sequence([e.expr, e.cond], context, '(', ')')
 
 
 # ----------------------------------------------------------------------
 # special functions
 
-def _vector(p: PrettyPrinter, items: Sequence[Expr], context: Context) -> Picture:
+def _vector(p: PrettyPrinter, items: Sequence[Expr], context: PrettyContext) -> Picture:
     if not items:
         return Picture.text(' ')
     return p.arguments(items, context)
@@ -185,7 +199,7 @@ def _lettered(p: PrettyPrinter, letter: str, table: Picture, left: Picture, righ
     sign = Picture.text('\n'*(above - drawing.top) + drawing.image + '\n'*(below - drawing.bottom),
                         above + drawing.size)
     return PrettyResult(_indices(sign, left, right, above, drawing.add, drawing.size, letter)
-                        .right(Picture.text(' '), table), Binding.FUNC)
+                        .right(Picture.text(' '), table), Binding.APPLICATION)
 
 
 def _indices(sign: Picture, left: Picture, right: Picture, above: int, add: int, size: int, letter: str) -> Picture:
@@ -197,8 +211,8 @@ def _indices(sign: Picture, left: Picture, right: Picture, above: int, add: int,
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_hyper
-def _hyper(p: PrettyPrinter, e: Hyper, context: Context) -> PrettyResult:
-    argument = p.operand(e.argument, context.argument())
+def _hyper(p: PrettyPrinter, e: Hyper, context: PrettyContext) -> PrettyResult:
+    argument = p.operand(e.argument, context.delimited())
     argument = argument.with_baseline(argument.height()//2).ltext(' ')
     table = _vector(p, e.ap, context).below(Picture.text(' '), _vector(p, e.bq, context))
     table = table.with_baseline(table.height()//2).rtext(' ')
@@ -207,8 +221,8 @@ def _hyper(p: PrettyPrinter, e: Hyper, context: Context) -> PrettyResult:
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_meijerg
-def _meijerg(p: PrettyPrinter, e: MeijerG, context: Context) -> PrettyResult:
-    argument = p.operand(e.argument, context.argument())
+def _meijerg(p: PrettyPrinter, e: MeijerG, context: PrettyContext) -> PrettyResult:
+    argument = p.operand(e.argument, context.delimited())
     argument = argument.with_baseline(argument.height()//2).ltext(' ')
     cells = [[_vector(p, e.an, context), _vector(p, e.aother, context)],
              [_vector(p, e.bm, context), _vector(p, e.bother, context)]]
@@ -239,23 +253,23 @@ def _same_width(a: Picture, b: Picture) -> tuple[Picture, Picture]:
     return a, b
 
 
-def _polylog(p: PrettyPrinter, e: PolyLog, context: Context) -> PrettyResult:
+def _polylog(p: PrettyPrinter, e: PolyLog, context: PrettyContext) -> PrettyResult:
     return _subscripted_name(p, e, context, 'Li', 'polylog')
 
 
-def _expint(p: PrettyPrinter, e: Expint, context: Context) -> PrettyResult:
+def _expint(p: PrettyPrinter, e: Expint, context: PrettyContext) -> PrettyResult:
     return _subscripted_name(p, e, context, 'E', 'expint')
 
 
-def _subscripted_name(p: PrettyPrinter, e: Application, context: Context, letter: str, name: str) -> PrettyResult:
+def _subscripted_name(p: PrettyPrinter, e: Application, context: PrettyContext, letter: str, name: str) -> PrettyResult:
     """``Li₂(z)`` when the first argument has a Unicode subscript form."""
-    index = str(p.operand(e.args[0], context.argument()))
+    index = str(p.operand(e.args[0], context.delimited()))
     if p.symbology.subscriptable(index):
         return p.function(letter + ''.join(sub[c] for c in index), e.args[1:], context)
     return p.function(name, e.args, context)
 
 
-def _heaviside(p: PrettyPrinter, e: Heaviside, context: Context) -> PrettyResult:
+def _heaviside(p: PrettyPrinter, e: Heaviside, context: PrettyContext) -> PrettyResult:
     name = p.symbology.greek('theta', 'Heaviside')
     half = e.args[1]
     if isinstance(half, Rational) and half.p == 1 and half.q == 2:
@@ -263,66 +277,66 @@ def _heaviside(p: PrettyPrinter, e: Heaviside, context: Context) -> PrettyResult
     return p.function(name, e.args, context)
 
 
-def _singularity(p: PrettyPrinter, e: SingularityFunctionNode, context: Context) -> PrettyResult:
+def _singularity(p: PrettyPrinter, e: SingularityFunctionNode, context: PrettyContext) -> PrettyResult:
     # <x - a> raised to n; the angle brackets close the shift
-    shift = p.parens(p.operand(e.args[0] - e.args[1], context.argument()), '<', '>')
-    return PrettyResult(p.power(shift, exponent_picture(p, e.args[2], context)), Binding.POW)
+    shift = p.parens(p.operand(e.args[0] - e.args[1], context.delimited()), '<', '>')
+    return PrettyResult(p.power(shift, exponent_picture(p, e.args[2], context)), Binding.POWER)
 
 
-def _dirac_delta(p: PrettyPrinter, e: DiracDelta, context: Context) -> PrettyResult:
+def _dirac_delta(p: PrettyPrinter, e: DiracDelta, context: PrettyContext) -> PrettyResult:
     if not p.unicode:
         return p.function('DiracDelta', e.args, context)
     delta = Picture.text(greek_unicode['delta'])
     if len(e.args) == 2:
         # the order of the derivative, between parentheses, as an exponent
-        order = p.parens(p.operand(e.args[1], context.argument()))
-        return p.applied(p.power(delta, order).rtext(' '), p.operand(e.args[0], context.argument()))
-    return p.applied(delta, p.operand(e.args[0], context.argument()))
+        order = p.parens(p.operand(e.args[1], context.delimited()))
+        return p.applied(p.power(delta, order).rtext(' '), p.operand(e.args[0], context.delimited()), context)
+    return p.applied(delta, p.operand(e.args[0], context.delimited()), context)
 
 
-def _elliptic_k(p: PrettyPrinter, e: EllipticK, context: Context) -> PrettyResult:
+def _elliptic_k(p: PrettyPrinter, e: EllipticK, context: PrettyContext) -> PrettyResult:
     return p.function('K', e.args, context)
 
 
-def _bar_separated(p: PrettyPrinter, left: Expr, right: Expr, context: Context) -> Picture:
-    return p.separated(p.operand(left, context.argument()), p.operand(right, context.argument()), '', '')
+def _bar_separated(p: PrettyPrinter, left: Expr, right: Expr, context: PrettyContext) -> Picture:
+    return p.separated(p.operand(left, context.delimited()), p.operand(right, context.delimited()), '', '')
 
 
-def _elliptic_e(p: PrettyPrinter, e: EllipticE, context: Context) -> PrettyResult:
+def _elliptic_e(p: PrettyPrinter, e: EllipticE, context: PrettyContext) -> PrettyResult:
     if len(e.args) == 1:
         return p.function('E', e.args, context)
-    return p.applied(Picture.text('E'), _bar_separated(p, e.args[0], e.args[1], context))
+    return p.applied(Picture.text('E'), _bar_separated(p, e.args[0], e.args[1], context), context)
 
 
-def _elliptic_f(p: PrettyPrinter, e: EllipticF, context: Context) -> PrettyResult:
-    return p.applied(Picture.text('F'), _bar_separated(p, e.args[0], e.args[1], context))
+def _elliptic_f(p: PrettyPrinter, e: EllipticF, context: PrettyContext) -> PrettyResult:
+    return p.applied(Picture.text('F'), _bar_separated(p, e.args[0], e.args[1], context), context)
 
 
-def _elliptic_pi(p: PrettyPrinter, e: EllipticPi, context: Context) -> PrettyResult:
+def _elliptic_pi(p: PrettyPrinter, e: EllipticPi, context: PrettyContext) -> PrettyResult:
     name = Picture.text(p.symbology.greek('Pi', 'Pi'))
     if len(e.args) == 2:
-        return p.applied(name, _bar_separated(p, e.args[0], e.args[1], context))
+        return p.applied(name, _bar_separated(p, e.args[0], e.args[1], context), context)
     inside = _bar_separated(p, e.args[1], e.args[2], context).ltext('; ')
-    return p.applied(name, inside.left(p.operand(e.args[0], context.argument())))
+    return p.applied(name, inside.left(p.operand(e.args[0], context.delimited())), context)
 
 
 def _number_function(unicode_name: str, ascii_name: str) -> ApplicationRule:
     """``B_n``, and ``B_n(x)`` with a second argument: the first argument
     is a subscript."""
-    def rule(p: PrettyPrinter, e: Application, context: Context) -> PrettyResult:
+    def rule(p: PrettyPrinter, e: Application, context: PrettyContext) -> PrettyResult:
         name = Picture.text(unicode_name if p.unicode else ascii_name)
-        index = p.operand(e.args[0], context.child(Position.SUBSCRIPT, Binding.OPEN))
+        index = p.operand(e.args[0], context.subscript())
         head = name.right(Picture.blank(index.width()).below(index))
         if len(e.args) == 1:
-            return PrettyResult(head, Binding.FUNC)
-        return p.applied(head, p.arguments(e.args[1:], context))
+            return PrettyResult(head, Binding.APPLICATION)
+        return p.applied(head, p.arguments(e.args[1:], context), context)
     return rule
 
 
-def _kronecker_delta(p: PrettyPrinter, e: KroneckerDeltaNode, context: Context) -> PrettyResult:
-    c = context.child(Position.SUBSCRIPT, Binding.OPEN)
+def _kronecker_delta(p: PrettyPrinter, e: KroneckerDeltaNode, context: PrettyContext) -> PrettyResult:
+    c = context.subscript()
     indices = Picture.beside(p.operand(e.args[0], c), Picture.text(','), p.operand(e.args[1], c))
-    return PrettyResult(p.subscripted(Picture.text(p.symbology.greek('delta', 'd')), indices), Binding.FUNC)
+    return PrettyResult(p.subscripted(Picture.text(p.symbology.greek('delta', 'd')), indices), Binding.APPLICATION)
 
 
 FUNCTION_RULES: tuple[RuleEntry, ...] = (
@@ -340,6 +354,7 @@ FUNCTION_RULES: tuple[RuleEntry, ...] = (
     rule_for(Floor, _floor),
     rule_for(Ceiling, _ceiling),
     rule_for(Piecewise, _piecewise),
+    rule_for(ITE, _ite),
     rule_for(ExprCondPair, _expr_cond_pair),
     rule_for(Hyper, _hyper),
     rule_for(MeijerG, _meijerg),

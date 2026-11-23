@@ -35,7 +35,8 @@ from ...core.numbers import Infinity, NegativeInfinity
 from ...core.order import Order
 from ...integrals.integral import Integral
 from .engine import PrettyPrinter, RuleEntry, rule_for
-from .layout import Binding, Context, Picture, Position, PrettyResult
+from ..framework import Binding, Position
+from .layout import Picture, PrettyContext, PrettyResult
 
 __all__ = ['CALCULUS_RULES', 'requires_partial']
 
@@ -59,18 +60,18 @@ def requires_partial(expr: Expr) -> bool:
     return sum(1 for s in expr.free_symbols if s.is_integer is not True) > 1
 
 
-def _body(p: PrettyPrinter, e: Expr, context: Context, minimum: Binding) -> PrettyResult:
-    c = context.child(Position.BODY, minimum)
-    return p.bracketed(p.result(e, c), c)
+def _body(p: PrettyPrinter, e: Expr, context: PrettyContext, minimum: Binding) -> PrettyResult:
+    c = context.at(Position.BODY, minimum)
+    return p.enclose(p.rule(e, c), c)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Derivative
-def _derivative(p: PrettyPrinter, e: Derivative, context: Context) -> PrettyResult:
+def _derivative(p: PrettyPrinter, e: Derivative, context: PrettyContext) -> PrettyResult:
     d = p.symbology.atom('Partial', 'd') if requires_partial(e.expr) else 'd'
     below: list[Picture] = []
     total = 0
     for symbol, count in reversed(e.variable_count):
-        ds = p.operand(symbol, context.child(Position.DIFFERENTIAL, Binding.ATOM)).ltext(d)
+        ds = p.operand(symbol, context.operand()).ltext(d)
         total += count
         if count > 1:
             ds = p.power(ds, Picture.text(str(count)))
@@ -83,12 +84,12 @@ def _derivative(p: PrettyPrinter, e: Derivative, context: Context) -> PrettyResu
     operator = top.below(Picture.text(p.symbology.hobj('-', width)), denominator)
     operator = operator.with_baseline(operator.baseline + 1)
     # the operand between the parentheses of the notation
-    operand = p.parens(p.operand(e.expr, context.argument()))
-    return PrettyResult(Picture.beside(operator, operand), Binding.MUL)
+    operand = p.parens(p.operand(e.expr, context.delimited()))
+    return PrettyResult(Picture.beside(operator, operand), Binding.PRODUCT)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Integral
-def _integral(p: PrettyPrinter, e: Integral, context: Context) -> PrettyResult:
+def _integral(p: PrettyPrinter, e: Integral, context: PrettyContext) -> PrettyResult:
     # an integral of an integral is a multiple integral: the signs in a
     # row, the innermost variable first after the integrand
     chain: list[Integral] = [e]
@@ -96,9 +97,9 @@ def _integral(p: PrettyPrinter, e: Integral, context: Context) -> PrettyResult:
         chain.append(chain[-1].function)
     chain.reverse()
     # a sum is bracketed; the differential closes the integrand
-    arg = _body(p, chain[0].function, context, Binding.NEG).picture
+    arg = _body(p, chain[0].function, context, Binding.NEGATION).output
     for integral in chain:
-        variable = p.operand(integral.variable, context.child(Position.DIFFERENTIAL, Binding.ATOM))
+        variable = p.operand(integral.variable, context.operand())
         if variable.width() > 1:
             variable = p.parens(variable)
         arg = Picture.beside(arg, Picture.text(' d'), variable)
@@ -110,8 +111,8 @@ def _integral(p: PrettyPrinter, e: Integral, context: Context) -> PrettyResult:
         sign = Picture.text(p.symbology.vobj('int', height), arg.baseline + (height - h)//2)
         bounds = integral.bounds
         if bounds is not None:
-            lower = p.operand(bounds[0], context.child(Position.BOUND, Binding.OPEN))
-            upper = p.operand(bounds[1], context.child(Position.BOUND, Binding.OPEN))
+            lower = p.operand(bounds[0], context.delimited())
+            upper = p.operand(bounds[1], context.delimited())
             if ascii_mode:
                 # room, so that a bound is seen to belong to its sign
                 upper = upper.left(Picture.blank(max(1, 3 - upper.width())))
@@ -121,13 +122,13 @@ def _integral(p: PrettyPrinter, e: Integral, context: Context) -> PrettyResult:
             sign = sign.rtext(' ')
         signs = sign if signs is None else signs.left(sign)
     if signs is None:
-        return PrettyResult(arg, Binding.MUL)
-    return PrettyResult(arg.left(signs), Binding.MUL)
+        return PrettyResult(arg, Binding.PRODUCT)
+    return PrettyResult(arg.left(signs), Binding.PRODUCT)
 
 
-def _limits_pictures(p: PrettyPrinter, limit: Limits, context: Context) -> tuple[Picture, Picture]:
+def _limits_pictures(p: PrettyPrinter, limit: Limits, context: PrettyContext) -> tuple[Picture, Picture]:
     """``variable = lower`` and the upper bound."""
-    c = context.child(Position.BOUND, Binding.OPEN)
+    c = context.delimited()
     lower = Picture.beside(p.operand(limit[0], c), Picture.text(' = '), p.operand(limit[1], c))
     return lower, p.operand(limit[2], c)
 
@@ -177,12 +178,12 @@ def _sum_sign(required: int, ascii_mode: bool) -> tuple[int, int, list[str], int
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Sum
-def _sum(p: PrettyPrinter, e: Sum, context: Context) -> PrettyResult:
+def _sum(p: PrettyPrinter, e: Sum, context: PrettyContext) -> PrettyResult:
     ascii_mode = not p.unicode
     # the operand of the sign: a sum is bracketed, so that what follows
     # the sign up to the next + or - is the operand
     limits, function = _flattened(e)
-    picture = _body(p, function, context, Binding.NEG).picture
+    picture = _body(p, function, context, Binding.NEGATION).output
     required = picture.height() + 2
     first = True
     max_upper = 0
@@ -205,15 +206,15 @@ def _sum(p: PrettyPrinter, e: Sum, context: Context) -> PrettyResult:
     # an ASCII sign of odd height has its middle on a row
     ascii_adjustment = 1 if ascii_mode and not adjustment else 0
     picture = picture.with_baseline(max_upper + sign_height//2 + ascii_adjustment)
-    return PrettyResult(picture, Binding.MUL, open_right=True)
+    return PrettyResult(picture, Binding.PRODUCT, open_ended=True)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Product
-def _product(p: PrettyPrinter, e: Product, context: Context) -> PrettyResult:
+def _product(p: PrettyPrinter, e: Product, context: PrettyContext) -> PrettyResult:
     # (SymPy does not bracket a sum under a product sign: Product(k + 1, ...)
     # and Product(k, ...) + 1 print the same, sympy/sympy#30844)
     limits, function = _flattened(e)
-    picture = _body(p, function, context, Binding.NEG).picture
+    picture = _body(p, function, context, Binding.NEGATION).output
     symbology = p.symbology
     horizontal = symbology.xobj('-', 1)[0] if p.unicode else '_'
     corner = symbology.xobj('UpTack', 1)[0] if p.unicode else '_'
@@ -239,23 +240,23 @@ def _product(p: PrettyPrinter, e: Product, context: Context) -> PrettyResult:
         padding = Picture([' ']*(sign.height() - 1), 1)
         picture = Picture.beside(sign, padding, picture)
     picture = picture.with_baseline(max_upper + sign_height//2)
-    return PrettyResult(picture, Binding.MUL, open_right=True)
+    return PrettyResult(picture, Binding.PRODUCT, open_ended=True)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Limit
-def _limit(p: PrettyPrinter, e: Limit, context: Context) -> PrettyResult:
+def _limit(p: PrettyPrinter, e: Limit, context: PrettyContext) -> PrettyResult:
     # the operand is bracketed unless it is a power, a function or an atom
-    c_body = context.child(Position.BODY, Binding.ROOT)
-    found = p.result(e.expr, c_body)
-    closed = p.bracketed(found, c_body)
-    body = closed.picture
+    c_body = context.at(Position.BODY, Binding.ROOT)
+    found = p.rule(e.expr, c_body)
+    closed = p.enclose(found, c_body)
+    body = closed.output
     arrow = p.symbology.xobj('-', 1)[0] + p.symbology.atom('Arrow', '>') if p.unicode else '->'
     point = e.point
     marked = e.direction != '+-' and not isinstance(point, (Infinity, NegativeInfinity))
     # the direction mark applies to the whole point: x -> (a + b)+, not
     # a + b+ (sympy/sympy#30844, root cause 6)
-    c = context.child(Position.LIMIT_POINT, Binding.FUNC if marked else Binding.OPEN)
-    below = Picture.beside(p.operand(e.variable, context.argument()), Picture.text(arrow), p.operand(point, c))
+    c = context.at(Position.POINT, Binding.APPLICATION if marked else Binding.LOWEST)
+    below = Picture.beside(p.operand(e.variable, context.delimited()), Picture.text(arrow), p.operand(point, c))
     if marked:
         if p.unicode:
             mark = p.symbology.atom('SuperscriptPlus' if e.direction == '+' else 'SuperscriptMinus', e.direction)
@@ -268,53 +269,53 @@ def _limit(p: PrettyPrinter, e: Limit, context: Context) -> PrettyResult:
         # variable and the point: a column keeps them apart (SymPy
         # prints x -> oo and the denominator x of 1/x as "x─→∞x")
         sign = sign.rtext(' ')
-    return PrettyResult(Picture.beside(sign, body), Binding.MUL, open_right=True)
+    return PrettyResult(Picture.beside(sign, body), Binding.PRODUCT, open_ended=True)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Subs
-def _subs(p: PrettyPrinter, e: Subs, context: Context) -> PrettyResult:
-    picture = p.parens(p.operand(e.expr, context.argument()))
+def _subs(p: PrettyPrinter, e: Subs, context: PrettyContext) -> PrettyResult:
+    picture = p.parens(p.operand(e.expr, context.delimited()))
     height = picture.height() if picture.height() > 1 else 2
     bar = Picture.text(p.symbology.vobj('|', height), picture.baseline)
     picture = picture.right(bar)
     baseline = picture.baseline
     assignments: list[Picture] = []
     for variable, value in zip(e.variables, e.point):
-        assignments.append(Picture.beside(p.operand(variable, context.argument()), Picture.text('='),
-                                          p.operand(value, context.argument())))
+        assignments.append(Picture.beside(p.operand(variable, context.delimited()), Picture.text('='),
+                                          p.operand(value, context.delimited())))
     picture = picture.with_baseline(picture.height() - 1).right(p.join(assignments, ', '))
-    return PrettyResult(picture.with_baseline(baseline), Binding.MUL)
+    return PrettyResult(picture.with_baseline(baseline), Binding.PRODUCT)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Order
-def _order(p: PrettyPrinter, e: Order, context: Context) -> PrettyResult:
-    picture = p.operand(e.expr, context.argument())
+def _order(p: PrettyPrinter, e: Order, context: PrettyContext) -> PrettyResult:
+    picture = p.operand(e.expr, context.delimited())
     variables, point = e.variables, e.point
     if any(not (v.is_Number and v == 0) for v in point) or len(variables) > 1:
         picture = picture.rtext('; ')
         if len(variables) > 1:
-            picture = picture.right(p.sequence(variables, context, '(', ')').picture)
+            picture = picture.right(p.sequence(variables, context, '(', ')').output)
         elif variables:
-            picture = picture.right(p.operand(variables[0], context.argument()))
+            picture = picture.right(p.operand(variables[0], context.delimited()))
         picture = picture.rtext(' %s ' % p.symbology.atom('Arrow', '->'))
         if len(point) > 1:
-            picture = picture.right(p.sequence(point, context, '(', ')').picture)
+            picture = picture.right(p.sequence(point, context, '(', ')').output)
         else:
-            picture = picture.right(p.operand(point[0], context.argument()))
-    return PrettyResult(p.parens(picture).ltext('O'), Binding.FUNC)
+            picture = picture.right(p.operand(point[0], context.delimited()))
+    return PrettyResult(p.parens(picture).ltext('O'), Binding.APPLICATION)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_Lambda
-def _lambda(p: PrettyPrinter, e: Lambda, context: Context) -> PrettyResult:
+def _lambda(p: PrettyPrinter, e: Lambda, context: PrettyContext) -> PrettyResult:
     arrow = ' %s ' % p.symbology.atom('ArrowFromBar', '->')
     signature = e.signature
     if len(signature) == 1:
-        variables = p.operand(signature[0], context.argument())
+        variables = p.operand(signature[0], context.delimited())
     else:
-        variables = p.sequence(signature, context, '(', ')').picture
+        variables = p.sequence(signature, context, '(', ')').output
     # nothing closes the body: the result is open
-    body = p.operand(e.expr, context.child(Position.INFIX_LAST, Binding.OPEN))
-    return PrettyResult(Picture.beside(variables, Picture.text(arrow), body), Binding.OPEN)
+    body = p.operand(e.expr, context.at(Position.BODY, Binding.LOWEST))
+    return PrettyResult(Picture.beside(variables, Picture.text(arrow), body), Binding.LOWEST)
 
 
 CALCULUS_RULES: tuple[RuleEntry, ...] = (

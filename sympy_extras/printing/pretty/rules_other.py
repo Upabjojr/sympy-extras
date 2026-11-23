@@ -30,53 +30,54 @@ from ...series.formal import FiniteFormalPowerSeries, FormalPowerSeries
 from ...series.fourier import FiniteFourierSeries, FourierSeries
 from ...series.sequences import EmptySequence, RecursiveSeq, SeqBase
 from .engine import PrettyPrinter, RuleEntry, rule_for
-from .layout import Binding, Context, Picture, Position, PrettyResult
+from ..framework import Binding, Position
+from .layout import Picture, PrettyContext, PrettyResult
 
 __all__ = ['OTHER_RULES']
 
 
-def _quantifier(p: PrettyPrinter, e: Quantifier, context: Context) -> PrettyResult:
+def _quantifier(p: PrettyPrinter, e: Quantifier, context: PrettyContext) -> PrettyResult:
     if not p.unicode or not isinstance(e, (ForAll, Exists)):
         variables = e.variables
-        first = p.operand(variables[0], context.argument()) if len(variables) == 1 else \
-            p.sequence(variables, context, '(', ')').picture
+        first = p.operand(variables[0], context.delimited()) if len(variables) == 1 else \
+            p.sequence(variables, context, '(', ')').output
         return p.applied(Picture.text(type(e).__name__),
-                         p.join([first, p.operand(e.formula, context.argument())], ', '))
+                         p.join([first, p.operand(e.formula, context.delimited())], ', '), context)
     sign = p.symbology.atom('ForAll' if isinstance(e, ForAll) else 'Exists', type(e).__name__)
     head = p.arguments(e.variables, context).ltext(sign)
     # a prefix operator: its operand is bracketed unless it is an atom,
     # an application, a negation or another quantified formula
-    formula = p.operand(e.formula, context.child(Position.AFFIX_OPERAND, Binding.AFFIX))
+    formula = p.operand(e.formula, context.at(Position.OPERAND, Binding.AFFIX))
     return PrettyResult(Picture.beside(head, Picture.text(' '), formula), Binding.AFFIX)
 
 
-def _complex_root_of(p: PrettyPrinter, e: ComplexRootOf, context: Context) -> PrettyResult:
-    inside = p.join([p.operand(e.expr, context.argument()), Picture.text(str(e.index))], ', ')
-    return p.applied(Picture.text('CRootOf'), inside)
+def _complex_root_of(p: PrettyPrinter, e: ComplexRootOf, context: PrettyContext) -> PrettyResult:
+    inside = p.join([p.operand(e.expr, context.delimited()), Picture.text(str(e.index))], ', ')
+    return p.applied(Picture.text('CRootOf'), inside, context)
 
 
-def _root_sum(p: PrettyPrinter, e: RootSum, context: Context) -> PrettyResult:
-    return p.applied(Picture.text('RootSum'), p.join([p.operand(e.expr, context.argument()),
-                                                      p.operand(e.fun, context.argument())], ', '))
+def _root_sum(p: PrettyPrinter, e: RootSum, context: PrettyContext) -> PrettyResult:
+    return p.applied(Picture.text('RootSum'), p.join([p.operand(e.expr, context.delimited()),
+                                                      p.operand(e.fun, context.delimited())], ', '), context)
 
 
-def _indexed_root(p: PrettyPrinter, e: IndexedRoot, context: Context) -> PrettyResult:
-    inside = p.join([p.operand(e.expr, context.argument()), p.operand(e.variable, context.argument()),
+def _indexed_root(p: PrettyPrinter, e: IndexedRoot, context: PrettyContext) -> PrettyResult:
+    inside = p.join([p.operand(e.expr, context.delimited()), p.operand(e.variable, context.delimited()),
                      Picture.text(str(e.index))], ', ')
-    return p.applied(Picture.text('IndexedRoot'), inside)
+    return p.applied(Picture.text('IndexedRoot'), inside, context)
 
 
-def _non_elementary_integral(p: PrettyPrinter, e: NonElementaryIntegral, context: Context) -> PrettyResult:
+def _non_elementary_integral(p: PrettyPrinter, e: NonElementaryIntegral, context: PrettyContext) -> PrettyResult:
     # an integral which is proved not to be elementary is written as an integral
-    return p.result(Integral(e.function, e.variable), context)
+    return p.rule(Integral(e.function, e.variable), context)
 
 
-def _empty_sequence(p: PrettyPrinter, e: EmptySequence, context: Context) -> PrettyResult:
+def _empty_sequence(p: PrettyPrinter, e: EmptySequence, context: PrettyContext) -> PrettyResult:
     return p.atom('EmptySequence')
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_SeqFormula
-def _sequence(p: PrettyPrinter, e: SeqBase, context: Context) -> PrettyResult:
+def _sequence(p: PrettyPrinter, e: SeqBase, context: PrettyContext) -> PrettyResult:
     start, stop = e.start, e.stop
     if isinstance(e, RecursiveSeq) or start.free_symbols or stop.free_symbols:
         # (SymPy raises NotImplementedError for symbolic bounds)
@@ -95,7 +96,7 @@ def _sequence(p: PrettyPrinter, e: SeqBase, context: Context) -> PrettyResult:
         trailing = True
     else:
         items = list(e)
-    pictures = [p.operand(item, context.argument()) for item in items]
+    pictures = [p.operand(item, context.delimited()) for item in items]
     if leading:
         pictures.insert(0, dots)
     if trailing:
@@ -104,29 +105,29 @@ def _sequence(p: PrettyPrinter, e: SeqBase, context: Context) -> PrettyResult:
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_FormalPowerSeries
-def _formal_power_series(p: PrettyPrinter, e: FormalPowerSeries, context: Context) -> PrettyResult:
-    return p.result(e.infinite, context)
+def _formal_power_series(p: PrettyPrinter, e: FormalPowerSeries, context: PrettyContext) -> PrettyResult:
+    return p.rule(e.infinite, context)
 
 
-def _finite_formal_power_series(p: PrettyPrinter, e: FiniteFormalPowerSeries, context: Context) -> PrettyResult:
+def _finite_formal_power_series(p: PrettyPrinter, e: FiniteFormalPowerSeries, context: PrettyContext) -> PrettyResult:
     # a product, a composition or an inverse of series has no closed
     # form: its first terms with the order term
-    return p.result(e.truncate(), context)
+    return p.rule(e.truncate(), context)
 
 
-def _finite_fourier_series(p: PrettyPrinter, e: FiniteFourierSeries, context: Context) -> PrettyResult:
-    return p.result(e.truncate(oo), context)
+def _finite_fourier_series(p: PrettyPrinter, e: FiniteFourierSeries, context: PrettyContext) -> PrettyResult:
+    return p.rule(e.truncate(oo), context)
 
 
 # PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_FourierSeries
-def _fourier_series(p: PrettyPrinter, e: FourierSeries, context: Context) -> PrettyResult:
+def _fourier_series(p: PrettyPrinter, e: FourierSeries, context: PrettyContext) -> PrettyResult:
     an, bn = e.an.formula, e.bn.formula
     if an.is_Number and an == 0 and bn.is_Number and bn == 0:
-        return p.result(e.a0, context)
-    c = context.child(Position.INFIX_FIRST, Binding.ADD)
-    partial = p.bracketed(p.result(e.truncate(), c), c).picture
+        return p.rule(e.a0, context)
+    c = context.at(Position.TERM, Binding.SUM)
+    partial = p.enclose(p.rule(e.truncate(), c), c).output
     dots = p.symbology.atom('Dots', '...')
-    return PrettyResult(partial.rtext(' + ' + dots), Binding.ADD)
+    return PrettyResult(partial.rtext(' + ' + dots), Binding.SUM)
 
 
 OTHER_RULES: tuple[RuleEntry, ...] = (

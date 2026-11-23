@@ -5,16 +5,23 @@ The native objects have a ``_repr_latex_`` method, which Jupyter calls to
 show a result: it returns what :func:`repr_latex` gives, the LaTeX of the
 object in display style with the settings chosen by :func:`init_printing`
 (``None``, so that the notebook falls back on the text, once LaTeX is
-switched off).
+switched off). They have a ``_repr_pretty_`` method too, which IPython
+calls for the text of a result: it writes what :func:`repr_pretty` gives,
+the text form of the session.
 
-In a plain Python session :func:`init_printing` installs a display hook
-which prints the results with the text printer: the string form of
-:func:`~sympy_extras.core.printing.sstr`, or a two-dimensional printer
-once one is plugged in with :func:`set_pretty_printer` (the hook the
-pretty printer of this package uses).
+The text form (:func:`text_form`) is the string form of
+:func:`~sympy_extras.core.printing.sstr` until :func:`init_printing` is
+called; ``init_printing(pretty_print=True)`` plugs in the pretty printer
+of this package (:func:`native_pretty`, the two-dimensional text of
+:func:`~sympy_extras.printing.pretty.pretty.pretty`), in Unicode or in
+ASCII as ``use_unicode`` says, unless another two-dimensional printer was
+plugged in with :func:`set_pretty_printer`. In a plain Python session
+:func:`init_printing` also installs a display hook which prints the
+results in their text form.
 
 Unlike SymPy's ``init_printing`` nothing of IPython is imported or
-configured: the notebook finds the ``_repr_latex_`` methods by itself.
+configured: the notebook finds the ``_repr_latex_`` and ``_repr_pretty_``
+methods by itself.
 
 References
 ==========
@@ -30,17 +37,21 @@ import builtins
 import sys
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Callable, Mapping, Optional
+from fractions import Fraction
+from typing import AbstractSet, Callable, Mapping, Optional
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, TextSink
+from sympy_extras.core.numbers import Rational
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.matrices.dense import ExprMatrix
 from sympy_extras.polys.polytools import Poly
 
 from .latex import LatexInput, LatexPrinter, LatexSettings
+from .pretty.engine import PrettySettings
+from .pretty.pretty import Printable, pretty_picture, pretty_use_unicode
 
-__all__ = ['init_printing', 'reset_printing', 'set_pretty_printer', 'pretty_printer', 'text_form', 'repr_latex',
-           'printing_state', 'printing', 'PrintingState', 'PrettyPrinter']
+__all__ = ['init_printing', 'reset_printing', 'set_pretty_printer', 'pretty_printer', 'native_pretty', 'text_form',
+           'repr_latex', 'repr_pretty', 'printing_state', 'printing', 'PrintingState', 'PrettyPrinter']
 
 #: a two-dimensional text printer: the object, whether Unicode may be used
 PrettyPrinter = Callable[[LatexInput, bool], str]
@@ -70,6 +81,8 @@ class _Session:
         self.pretty: Optional[PrettyPrinter] = None
         self.previous_hook: Optional[Callable[[object], None]] = None
         self.hook: Optional[Callable[[object], None]] = None
+        #: the default of ``use_unicode`` of the pretty printer before the first ``init_printing``
+        self.previous_unicode: Optional[bool] = None
 
 
 _SESSION = _Session()
@@ -114,9 +127,73 @@ def pretty_printer() -> Optional[PrettyPrinter]:
     return _SESSION.pretty
 
 
+def _printable(obj: LatexInput) -> Printable:
+    """What the LaTeX printer prints as what the pretty printer prints."""
+    if obj is None or isinstance(obj, (Basic, ExprMatrix, Poly, bool, int, float, str)):
+        return obj
+    if isinstance(obj, Fraction):
+        return Rational(obj.numerator, obj.denominator)
+    if isinstance(obj, Mapping):
+        items: dict[Printable, Printable] = {key: _printable(value) for key, value in obj.items()}
+        return items
+    elements = [_printable(item) for item in obj]
+    if isinstance(obj, AbstractSet):
+        return frozenset(elements) if isinstance(obj, frozenset) else set(elements)
+    return tuple(elements) if isinstance(obj, tuple) else elements
+
+
+def native_pretty(obj: LatexInput, use_unicode: bool) -> str:
+    """The pretty printer of this package as a session uses it: the
+    two-dimensional text of ``obj``, with the order of the terms, the
+    notation of the roots and the imaginary unit which
+    :func:`init_printing` chose for the LaTeX where the pretty printer
+    has them. :func:`init_printing` plugs it in.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.printing.interactive import native_pretty
+    >>> x = symbols('x')
+    >>> print(native_pretty(x**2/2, False))  # doctest: +NORMALIZE_WHITESPACE
+     2
+    x
+    --
+    2
+    >>> print(native_pretty([x**2, 1/x], True))  # doctest: +NORMALIZE_WHITESPACE
+    ⎡ 2  1⎤
+    ⎢x , ─⎥
+    ⎣    x⎦
+    """
+    chosen = _SESSION.state.latex_settings
+    settings = PrettySettings(use_unicode=use_unicode,
+                              order=chosen.order if chosen.order in (None, 'lex', 'none') else None,
+                              root_notation=chosen.root_notation,
+                              imaginary_unit=chosen.imaginary_unit if chosen.imaginary_unit in ('i', 'j') else 'i',
+                              full_prec=True if chosen.full_prec else None)
+    return pretty_picture(_printable(obj), settings).render(settings.wrap_line, settings.num_columns,
+                                                            settings.use_unicode)
+
+
 def text_form(obj: LatexInput) -> str:
     """The text a result is shown with: the form of the pretty printer
-    when one is plugged in and ``pretty_print`` is on, ``str`` otherwise."""
+    when one is plugged in and ``pretty_print`` is on, ``str`` otherwise.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.printing.interactive import init_printing, reset_printing, text_form
+    >>> x = symbols('x')
+    >>> text_form(1/x)
+    1/x
+    >>> init_printing(use_unicode=False, display_hook=False)
+    >>> print(text_form(1/x))
+    1
+    -
+    x
+    >>> reset_printing()
+    """
     state = _SESSION.state
     if state.pretty_print and _SESSION.pretty is not None:
         return _SESSION.pretty(obj, state.use_unicode)
@@ -143,6 +220,38 @@ def repr_latex(obj: LatexInput) -> Optional[str]:
     if not state.use_latex:
         return None
     return state.latex_wrapper % LatexPrinter(state.latex_settings).doprint(obj)
+
+
+def repr_pretty(obj: LatexInput, sink: TextSink, cycle: bool) -> None:
+    """What the ``_repr_pretty_(self, p, cycle)`` methods of the native
+    objects do, which IPython calls for the text of a result: the text
+    form of ``obj`` (:func:`text_form`) is written to ``sink``. A form of
+    several rows starts on a new line, so that its first row is not
+    shifted by the prompt.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import symbols
+    >>> from sympy_extras.printing.interactive import init_printing, reset_printing
+    >>> class Sink:
+    ...     def text(self, s: str) -> None:
+    ...         print(s)
+    >>> x = symbols('x')
+    >>> (x**2)._repr_pretty_(Sink(), False)
+    x**2
+    >>> init_printing(use_unicode=False, display_hook=False)
+    >>> (x**2)._repr_pretty_(Sink(), False)  # doctest: +NORMALIZE_WHITESPACE
+    <BLANKLINE>
+     2
+    x
+    >>> reset_printing()
+    """
+    if cycle:
+        sink.text('...')
+        return
+    text = text_form(obj)
+    sink.text('\n' + text if '\n' in text else text)
 
 
 def _display(value: object) -> None:
@@ -174,11 +283,15 @@ def init_printing(*, pretty_print: bool = True, use_latex: bool = True, use_unic
     Parameters
     ==========
 
-    pretty_print : show the results with the pretty printer plugged in
-        by :func:`set_pretty_printer` (the string form when there is none)
+    pretty_print : show the text of the results with the pretty printer:
+        the one of this package (:func:`native_pretty`), or the one
+        plugged in by :func:`set_pretty_printer`; ``False`` shows the
+        string form
     use_latex : whether ``_repr_latex_`` returns LaTeX, which a notebook
         renders; ``False`` leaves the notebook with the text
-    use_unicode : whether the pretty printer may use Unicode
+    use_unicode : whether the pretty printer uses Unicode; it becomes the
+        default of :func:`~sympy_extras.printing.pretty.pretty.pretty`
+        and ``pprint`` too (see ``pretty_use_unicode``)
     display_hook : install the display hook of a plain Python session;
         by default only in an interactive session which is not IPython
     latex_mode : the mode of the LaTeX ('plain', 'inline', 'equation',
@@ -201,6 +314,15 @@ def init_printing(*, pretty_print: bool = True, use_latex: bool = True, use_unic
     >>> init_printing(use_latex=False, display_hook=False)
     >>> print((2*x)._repr_latex_())
     None
+    >>> from sympy_extras.printing.interactive import text_form
+    >>> print(text_form(x**2/2))  # doctest: +NORMALIZE_WHITESPACE
+     2
+    x
+    ──
+    2
+    >>> init_printing(pretty_print=False, display_hook=False)
+    >>> print(text_form(x**2/2))
+    x**2/2
     >>> reset_printing()
     """
     settings = LatexSettings(mode=latex_mode, fold_frac_powers=fold_frac_powers,
@@ -217,6 +339,11 @@ def init_printing(*, pretty_print: bool = True, use_latex: bool = True, use_unic
         wrapper = r'$\displaystyle %s$' if latex_mode == 'plain' else '%s'
     _SESSION.state = PrintingState(use_latex=use_latex, pretty_print=pretty_print, use_unicode=use_unicode,
                                    latex_settings=settings, latex_wrapper=wrapper)
+    if pretty_print and _SESSION.pretty is None:
+        _SESSION.pretty = native_pretty
+    previous = pretty_use_unicode(use_unicode)
+    if _SESSION.previous_unicode is None:
+        _SESSION.previous_unicode = previous
     install = display_hook
     if install is None:
         install = _interactive() and 'IPython' not in sys.modules
@@ -239,8 +366,14 @@ def _install_hook() -> None:
 
 def reset_printing() -> None:
     """Undo :func:`init_printing`: the default state, the display hook
-    which was there before."""
+    which was there before, the string form as the text of the results
+    (a printer plugged in with :func:`set_pretty_printer` stays)."""
     _SESSION.state = PrintingState()
+    if _SESSION.pretty is native_pretty:
+        _SESSION.pretty = None
+    if _SESSION.previous_unicode is not None:
+        pretty_use_unicode(_SESSION.previous_unicode)
+        _SESSION.previous_unicode = None
     if _SESSION.hook is not None and sys.displayhook is _SESSION.hook and _SESSION.previous_hook is not None:
         sys.displayhook = _SESSION.previous_hook
     _SESSION.hook = None

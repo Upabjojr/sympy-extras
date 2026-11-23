@@ -3,10 +3,12 @@ letters and modifiers, the names of functions, text.
 
 A typed port of the name handling of SymPy's ``printing/latex.py``
 (``translate``, ``latex_escape``, the tables of Greek letters and
-modifiers) and of ``printing/conventions.py`` (``split_super_sub``).
+modifiers); the reading of a name (``split_super_sub``, the walk over the
+modifiers) is shared with the pretty printer:
+:mod:`sympy_extras.printing.conventions`.
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/printing/latex.py, sympy/printing/conventions.py (SymPy 1.14)
+# PORTED FROM SYMPY: sympy/printing/latex.py (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: strict typing; the characters which are special in TeX are escaped
@@ -15,9 +17,9 @@ modifiers) and of ``printing/conventions.py`` (``split_super_sub``).
 from __future__ import annotations
 
 import re
-from typing import Callable
+from typing import Callable, Optional
 
-from sympy_extras.core.alphabets import greeks
+from .conventions import GREEK_LETTERS, split_super_sub, translate_name
 
 __all__ = ['ACCEPTED_FUNCTIONS', 'translate', 'split_super_sub', 'escape_text', 'escape_name', 'name_latex',
            'operator_name', 'text']
@@ -39,8 +41,6 @@ _GREEK = {
 }
 
 _OTHER_SYMBOLS = frozenset(['aleph', 'beth', 'daleth', 'gimel', 'ell', 'eth', 'hbar', 'hslash', 'mho', 'wp'])
-
-_GREEK_LETTERS = frozenset(greeks)
 
 
 def _wrap(command: str) -> Callable[[str], str]:
@@ -69,7 +69,22 @@ _MODIFIERS: dict[str, Callable[[str], str]] = {
     'mag': _delimiters('|', '|'),
 }
 
-_MODIFIER_NAMES = sorted(_MODIFIERS, key=len, reverse=True)
+#: the modifiers, the longest names first
+_MODIFIER_TABLE: list[tuple[str, Callable[[str], str]]] = [
+    (key, _MODIFIERS[key]) for key in sorted(_MODIFIERS, key=len, reverse=True)]
+
+
+def _letter(s: str) -> Optional[str]:
+    """The command of a name which is a letter."""
+    greek = _GREEK.get(s)
+    if greek is not None:
+        return greek
+    if s.lower() in GREEK_LETTERS:
+        return '\\' + s.lower()
+    if s in _OTHER_SYMBOLS:
+        return '\\' + s
+    return None
+
 
 #: the characters which are special in TeX wherever they stand (``_``, ``^``,
 #: ``{``, ``}`` and ``\`` have a meaning in the names)
@@ -88,68 +103,7 @@ def translate(s: str) -> str:
     >>> translate('alpha'), translate('Gamma'), translate('xdot'), translate('alphahat'), translate('y')
     ('\\alpha', '\\Gamma', '\\dot{x}', '\\hat{\\alpha}', 'y')
     """
-    greek = _GREEK.get(s)
-    if greek is not None:
-        return greek
-    if s.lower() in _GREEK_LETTERS:
-        return '\\' + s.lower()
-    if s in _OTHER_SYMBOLS:
-        return '\\' + s
-    for key in _MODIFIER_NAMES:
-        if s.lower().endswith(key) and len(s) > len(key):
-            return _MODIFIERS[key](translate(s[:-len(key)]))
-    return s
-
-
-_NAME_WITH_DIGITS = re.compile(r'^([^\W\d_]+)(\d+)$', re.UNICODE)
-
-
-# PORTED FROM SYMPY: sympy/printing/conventions.py:split_super_sub
-def split_super_sub(text: str) -> tuple[str, list[str], list[str]]:
-    """The name, the superscripts (after ``^`` or ``__``) and the
-    subscripts (after ``_``, or the digits at the end of the name).
-
-    Examples
-    ========
-
-    >>> from sympy_extras.printing._latex_names import split_super_sub
-    >>> split_super_sub('a_x^1'), split_super_sub('var_sub1__sup_sub2'), split_super_sub('x12')
-    (('a', ['1'], ['x']), ('var', ['sup'], ['sub1', 'sub2']), ('x', [], ['12']))
-    """
-    if not text:
-        return (text, [], [])
-    pos = 0
-    name = ''
-    first = True
-    supers: list[str] = []
-    subs: list[str] = []
-    while pos < len(text):
-        start = pos + 1
-        if text[pos:pos + 2] == '__':
-            start += 1
-        pos_hat = text.find('^', start)
-        if pos_hat < 0:
-            pos_hat = len(text)
-        pos_usc = text.find('_', start)
-        if pos_usc < 0:
-            pos_usc = len(text)
-        pos_next = min(pos_hat, pos_usc)
-        part = text[pos:pos_next]
-        pos = pos_next
-        if first:
-            name = part
-            first = False
-        elif part.startswith('^'):
-            supers.append(part[1:])
-        elif part.startswith('__'):
-            supers.append(part[2:])
-        else:
-            subs.append(part[1:])
-    m = _NAME_WITH_DIGITS.match(name)
-    if m is not None:
-        name = m.group(1)
-        subs.insert(0, m.group(2))
-    return (name, supers, subs)
+    return translate_name(s, _letter, _MODIFIER_TABLE)
 
 
 def _balanced(s: str) -> bool:

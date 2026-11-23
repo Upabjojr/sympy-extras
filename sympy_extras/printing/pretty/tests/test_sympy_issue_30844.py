@@ -17,8 +17,8 @@ from sympy_extras.functions.elementary.trigonometric import Sin
 from sympy_extras.functions.special.singularity_functions import SingularityFunctionNode
 from sympy_extras.functions.special.zeta_functions import RiemannXi
 from sympy_extras.matrices.dense import ExprMatrix
-from sympy_extras.printing.pretty import (TOP, Binding, Context, Picture, Position, PrettyPrinter, PrettyResult,
-    PrettySettings, RULES, needs_brackets, pretty)
+from sympy_extras.printing.pretty import (TOP, Binding, Picture, PrettyPrinter, PrettyResult, PrettySettings, RULES,
+    needs_brackets, pretty)
 from sympy_extras.printing.pretty.tests.test_sympy_agree import _ascii_only, _corpus, _unicode_only
 from sympy_extras.sets.sets import Complement, Contains, FiniteSet, Interval, ProductSet, Union
 
@@ -48,10 +48,10 @@ def test_root_cause_3_the_sides_of_a_relation_are_bracketed() -> None:
     # SymPy: Eq(Eq(x, y), Eq(y, z)) prints "x = y = y = z", Eq(And(p, q), r) "p ∧ q = r".
     # The sides of a relation of this package are expressions, so the
     # trees cannot be built; the rule of the brackets is checked itself.
-    side = Context(Position.RELATION_LEFT, Binding.RELATION, strict=True)
+    side = TOP.side()
     assert needs_brackets(PrettyResult(Picture.text('x = y'), Binding.RELATION), side)
     assert needs_brackets(PrettyResult(Picture.text('p ∧ q'), Binding.AND), side)
-    assert not needs_brackets(PrettyResult(Picture.text('x + y'), Binding.ADD), side)
+    assert not needs_brackets(PrettyResult(Picture.text('x + y'), Binding.SUM), side)
     # a membership is a relation too: its element is a side
     assert pretty(Contains(x + 1, X), use_unicode=True) == 'x + 1 ∈ [0, 1]'
     assert pretty(Not(Contains(x, X)), use_unicode=True) == '¬(x ∈ [0, 1])'
@@ -85,10 +85,10 @@ def test_root_cause_5_no_composite_result_is_an_atom() -> None:
     for unicode in (True, False):
         printer = PrettyPrinter(PrettySettings(use_unicode=unicode), RULES)
         for e in _corpus() + _unicode_only() + _ascii_only():
-            result = printer.result(e, TOP)
-            if result.binding is not Binding.ATOM or result.picture.height() != 1:
+            result = printer.rule(e, TOP)
+            if result.binding is not Binding.ATOM or result.output.height() != 1:
                 continue
-            text = str(result.picture)
+            text = str(result.output)
             token = all(c.isalnum() or c in '._^' or ord(c) > 127 for c in text) and ' ' not in text
             closed = text[0] in opening and text[-1] in closing
             assert token or closed, (e, text)

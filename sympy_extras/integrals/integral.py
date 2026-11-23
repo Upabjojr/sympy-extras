@@ -38,12 +38,13 @@ port of SymPy's ``evalf_integral``).
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Final, Optional
 
 import mpmath
 
 from sympy_extras.core.basic import Basic, NodePrinter
-from sympy_extras.core.expr import Expr
+from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.numbers import Integer
 from sympy_extras.core.symbol import Symbol
 
@@ -58,18 +59,20 @@ class Integral(Expr):
 
     __slots__ = ('_function', '_variable', '_bounds')
 
-    def __init__(self, function: Expr, variable: Symbol, lower: Optional[Expr] = None,
-                 upper: Optional[Expr] = None) -> None:
-        if not isinstance(function, Expr):
+    def __init__(self, function: ExprLike, variable: Symbol, lower: Optional[ExprLike] = None,
+                 upper: Optional[ExprLike] = None) -> None:
+        if not isinstance(function, (Expr, int, float, Fraction)):
             raise TypeError("an expression is expected, got %s" % (function,))
         if not isinstance(variable, Symbol):
             raise TypeError("a symbol is expected, got %s" % (variable,))
         if (lower is None) != (upper is None):
             raise TypeError("both bounds or neither are expected")
-        self._function: Final[Expr] = function
+        # the Python numbers are converted: Integral(x, x, 0, 1) has the
+        # bounds Integer(0) and Integer(1), as Sum, Product and Limit have
+        self._function: Final[Expr] = to_expr(function)
         self._variable: Final[Symbol] = variable
         self._bounds: Final[Optional[tuple[Expr, Expr]]] = \
-            None if lower is None or upper is None else (lower, upper)
+            None if lower is None or upper is None else (to_expr(lower), to_expr(upper))
         Basic.__init__(self)
 
     @property

@@ -26,14 +26,15 @@ References
 from __future__ import annotations
 
 import sys
-from typing import AbstractSet, Mapping, Optional, Protocol, Sequence, Union
+from typing import AbstractSet, Mapping, Optional, Sequence, Union
 
-from ...core.basic import Basic
+from ...core.basic import Basic, TextSink
 from ...core.sorting import default_sort_key
 from ...matrices.dense import ExprMatrix
 from ...polys.polytools import Poly
-from .engine import PrettyPrinter, PrettySettings, RuleEntry
-from .layout import TOP, Binding, Context, Picture, PrettyResult
+from .engine import PrettyPrinter, PrettyRules, PrettySettings, rule_table
+from ..framework import Binding
+from .layout import TOP, Picture, PrettyContext, PrettyResult
 from .rules_calculus import CALCULUS_RULES
 from .rules_core import CORE_RULES, integer_result
 from .rules_functions import FUNCTION_RULES
@@ -45,7 +46,7 @@ __all__ = ['pretty', 'pprint', 'pretty_print', 'pretty_picture', 'pretty_use_uni
            'pretty_repr', 'Printable', 'TextSink', 'RULES', 'matrix_picture']
 
 #: every rule of the pretty printer
-RULES: tuple[RuleEntry, ...] = CORE_RULES + CALCULUS_RULES + FUNCTION_RULES + SET_RULES + OTHER_RULES
+RULES: PrettyRules = rule_table(CORE_RULES + CALCULUS_RULES + FUNCTION_RULES + SET_RULES + OTHER_RULES)
 
 #: what can be pretty printed: a node, a matrix, a polynomial, and the
 #: Python numbers, strings and containers of them
@@ -123,19 +124,19 @@ def matrix_picture(p: PrettyPrinter, rows: Sequence[Sequence[Picture]]) -> Pictu
     return grid.with_baseline(grid.height()//2)
 
 
-def _printable(p: PrettyPrinter, obj: Printable, context: Context) -> PrettyResult:
+def _printable(p: PrettyPrinter, obj: Printable, context: PrettyContext) -> PrettyResult:
     if isinstance(obj, Basic):
-        return p.result(obj, context)
+        return p.rule(obj, context)
     if isinstance(obj, ExprMatrix):
         if obj.rows == 0 or obj.cols == 0:
             return p.atom('[]')
-        cells = [[p.operand(e, context.argument()) for e in obj.row(i)] for i in range(obj.rows)]
+        cells = [[p.operand(e, context.delimited()) for e in obj.row(i)] for i in range(obj.rows)]
         return PrettyResult(p.parens(matrix_picture(p, cells), '[', ']'), Binding.ATOM)
     if isinstance(obj, Poly):
-        parts = [p.operand(obj.as_expr(), context.argument())]
-        parts.extend(p.operand(g, context.argument()) for g in obj.gens)
+        parts = [p.operand(obj.as_expr(), context.delimited())]
+        parts.extend(p.operand(g, context.delimited()) for g in obj.gens)
         parts.append(Picture.text("domain='%s'" % obj.domain))
-        return p.applied(Picture.text('Poly'), p.join(parts, ', '))
+        return p.applied(Picture.text('Poly'), p.join(parts, ', '), context)
     if obj is None or isinstance(obj, bool):
         return p.atom(str(obj))
     if isinstance(obj, int):
@@ -144,7 +145,7 @@ def _printable(p: PrettyPrinter, obj: Printable, context: Context) -> PrettyResu
         return p.opaque(repr(obj))
     if isinstance(obj, str):
         # (as SymPy: a string is printed as it is)
-        return PrettyResult(Picture.text(obj), Binding.ATOM if obj.isalnum() else Binding.OPEN)
+        return PrettyResult(Picture.text(obj), Binding.ATOM if obj.isalnum() else Binding.LOWEST)
     if isinstance(obj, Mapping):
         items: list[Picture] = []
         for key in sorted(obj, key=_sort_key):
@@ -156,7 +157,7 @@ def _printable(p: PrettyPrinter, obj: Printable, context: Context) -> PrettyResu
         inside = p.parens(p.join([_closed(p, item, context) for item in sorted(obj, key=_sort_key)], ', '),
                           '{', '}', True)
         if isinstance(obj, frozenset):
-            return PrettyResult(p.parens(inside, '(', ')', True).ltext('frozenset'), Binding.FUNC)
+            return PrettyResult(p.parens(inside, '(', ')', True).ltext('frozenset'), Binding.APPLICATION)
         return PrettyResult(inside, Binding.ATOM)
     pictures = [_closed(p, item, context) for item in obj]
     if isinstance(obj, tuple):
@@ -166,16 +167,18 @@ def _printable(p: PrettyPrinter, obj: Printable, context: Context) -> PrettyResu
     return PrettyResult(p.parens(p.join(pictures, ', '), '[', ']', True), Binding.ATOM)
 
 
-def _closed(p: PrettyPrinter, obj: Printable, context: Context) -> Picture:
-    c = context.argument()
-    return p.bracketed(_printable(p, obj, c), c).picture
+def _closed(p: PrettyPrinter, obj: Printable, context: PrettyContext) -> Picture:
+    c = context.delimited()
+    return p.enclose(_printable(p, obj, c), c).output
 
 
 def _settings(use_unicode: Optional[bool], wrap_line: bool, num_columns: Optional[int], order: Optional[str],
-              root_notation: bool, use_unicode_sqrt_char: bool, imaginary_unit: str) -> PrettySettings:
+              root_notation: bool, use_unicode_sqrt_char: bool, imaginary_unit: str,
+              full_prec: Optional[bool]) -> PrettySettings:
     return PrettySettings(use_unicode=_defaults.use_unicode if use_unicode is None else use_unicode,
                           wrap_line=wrap_line, num_columns=num_columns, order=order, root_notation=root_notation,
-                          use_unicode_sqrt_char=use_unicode_sqrt_char, imaginary_unit=imaginary_unit)
+                          use_unicode_sqrt_char=use_unicode_sqrt_char, imaginary_unit=imaginary_unit,
+                          full_prec=full_prec)
 
 
 def pretty_picture(expr: Printable, settings: PrettySettings) -> Picture:
@@ -191,12 +194,12 @@ def pretty_picture(expr: Printable, settings: PrettySettings) -> Picture:
     >>> picture.rows, picture.baseline
     (('x', '-', 'y'), 1)
     """
-    return _printable(PrettyPrinter(settings, RULES), expr, TOP).picture
+    return _printable(PrettyPrinter(settings, RULES), expr, TOP).output
 
 
 def pretty(expr: Printable, use_unicode: Optional[bool] = None, wrap_line: bool = True,
            num_columns: Optional[int] = None, order: Optional[str] = None, root_notation: bool = True,
-           use_unicode_sqrt_char: bool = True, imaginary_unit: str = 'i') -> str:
+           use_unicode_sqrt_char: bool = True, imaginary_unit: str = 'i', full_prec: Optional[bool] = None) -> str:
     """``expr`` as two-dimensional text.
 
     ``use_unicode`` chooses between Unicode and ASCII (``None``: the
@@ -207,7 +210,11 @@ def pretty(expr: Printable, use_unicode: Optional[bool] = None, wrap_line: bool 
     order of the arguments; ``root_notation=False`` writes ``x**(1/n)``
     as a power instead of a root; ``use_unicode_sqrt_char=False`` draws
     the root sign of a square root always with its bar; ``imaginary_unit``
-    is the letter of the imaginary unit in Unicode, ``'i'`` or ``'j'``.
+    is the letter of the imaginary unit in Unicode, ``'i'`` or ``'j'``;
+    ``full_prec`` prints the floats with all the digits of their precision
+    (``True``), without the trailing zeros (``False``), or with all the
+    digits when the float is the whole expression (``None``, SymPy's
+    ``'auto'``).
     The rows of the result have the same width (they end with spaces).
 
     Examples
@@ -239,13 +246,14 @@ def pretty(expr: Printable, use_unicode: Optional[bool] = None, wrap_line: bool 
     x mod (n + y) | -(x mod y)
     """
     settings = _settings(use_unicode, wrap_line, num_columns, order, root_notation, use_unicode_sqrt_char,
-                         imaginary_unit)
+                         imaginary_unit, full_prec)
     return pretty_picture(expr, settings).render(settings.wrap_line, settings.num_columns, settings.use_unicode)
 
 
 def pretty_print(expr: Printable, use_unicode: Optional[bool] = None, wrap_line: bool = True,
                  num_columns: Optional[int] = None, order: Optional[str] = None, root_notation: bool = True,
-                 use_unicode_sqrt_char: bool = True, imaginary_unit: str = 'i') -> None:
+                 use_unicode_sqrt_char: bool = True, imaginary_unit: str = 'i', full_prec: Optional[bool] = None
+                 ) -> None:
     """Print :func:`pretty` of ``expr`` (``pprint`` is the same function).
 
     Examples
@@ -260,17 +268,10 @@ def pretty_print(expr: Printable, use_unicode: Optional[bool] = None, wrap_line:
     x + 1
     """
     print(pretty(expr, use_unicode, wrap_line, num_columns, order, root_notation, use_unicode_sqrt_char,
-                 imaginary_unit))
+                 imaginary_unit, full_prec))
 
 
 pprint = pretty_print
-
-
-class TextSink(Protocol):
-    """What IPython hands to ``_repr_pretty_``: its ``text`` method
-    receives the output."""
-
-    def text(self, s: str) -> None: ...
 
 
 def pretty_repr(expr: Printable, sink: TextSink, cycle: bool, settings: Optional[PrettySettings] = None) -> None:

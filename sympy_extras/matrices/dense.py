@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import Callable, Iterator, Optional, Sequence, Union
 
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, TextSink
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
 from sympy_extras.core.numbers import Integer
 from sympy_extras.core.symbol import Symbol
@@ -118,6 +118,12 @@ class ExprMatrix:
         :mod:`sympy_extras.printing.interactive`)."""
         from sympy_extras.printing.interactive import repr_latex
         return repr_latex(self)
+
+    def _repr_pretty_(self, p: TextSink, cycle: bool) -> None:
+        """What IPython shows as text: the pretty form of the matrix once
+        ``init_printing`` was called, its string form before."""
+        from sympy_extras.printing.interactive import repr_pretty
+        repr_pretty(self, p, cycle)
 
     def transpose(self) -> ExprMatrix:
         return ExprMatrix(self.cols, self.rows, [self.entries[i*self.cols + j] for j in range(self.cols) for i in range(self.rows)])

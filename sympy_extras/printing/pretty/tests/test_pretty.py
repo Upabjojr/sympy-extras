@@ -20,9 +20,10 @@ from sympy_extras.integrals.regions import IntegralByRanges
 from sympy_extras.matrices.dense import ExprMatrix
 from sympy_extras.polys.complexrootof import ComplexRootOf
 from sympy_extras.polys.polytools import Poly
-from sympy_extras.printing.pretty import (RULES, TOP, Binding, Context, Picture, Position, PrettyPrinter,
-    PrettyResult, PrettySettings, Symbology, needs_brackets, pprint, pretty, pretty_picture, pretty_repr,
+from sympy_extras.printing.pretty import (RULES, TOP, Binding, Picture, Position, PrettyPrinter,
+    PrettyResult, PrettySettings, Symbology, needs_brackets, pprint, pretty, pretty_picture, pretty_repr, rule_table,
     pretty_use_unicode)
+from sympy_extras.printing.pretty.rules_core import CORE_RULES
 from sympy_extras.printing.pretty.symbology import line_width, split_super_sub
 from sympy_extras.series.formal import fps
 from sympy_extras.series.fourier import fourier_series
@@ -196,23 +197,24 @@ def test_pictures() -> None:
 
 def test_the_binding_decides_the_brackets() -> None:
     printer = PrettyPrinter(PrettySettings(), RULES)
-    assert printer.result(-x*y, TOP).binding is Binding.NEG
-    assert printer.result(x/y, TOP).binding is Binding.DIV and printer.result(x/y, TOP).stacked
-    assert printer.result(Rational(1, 2), TOP).binding is Binding.INLINE_QUOTIENT
-    assert printer.result(sin(x), TOP).binding is Binding.FUNC
-    assert printer.result(sin(x)**2, TOP).binding is Binding.POW
-    assert printer.result(x, TOP).binding is Binding.ATOM
-    base = Context(Position.BASE, Binding.POW, strict=True)
-    assert needs_brackets(PrettyResult(Picture.text('x**y'), Binding.POW), base)
-    assert not needs_brackets(PrettyResult(Picture.text('f(x)'), Binding.FUNC), base)
+    assert printer.rule(-x*y, TOP).binding is Binding.NEGATION
+    assert printer.rule(x/y, TOP).binding is Binding.FRACTION and printer.rule(x/y, TOP).stacked
+    assert printer.rule(Rational(1, 2), TOP).binding is Binding.QUOTIENT
+    assert printer.rule(sin(x), TOP).binding is Binding.APPLICATION
+    assert printer.rule(sin(x)**2, TOP).binding is Binding.POWER
+    assert printer.rule(x, TOP).binding is Binding.ATOM
+    base = TOP.at(Position.BASE, Binding.POWER, strict=True)
+    assert needs_brackets(PrettyResult(Picture.text('x**y'), Binding.POWER), base)
+    assert not needs_brackets(PrettyResult(Picture.text('f(x)'), Binding.APPLICATION), base)
     # an operand which is open to the right is bracketed when something follows it
-    factor = Context(Position.INFIX_FIRST, Binding.MUL, closed=True)
-    assert needs_brackets(PrettyResult(Picture.text('lim x'), Binding.MUL, open_right=True), factor)
-    assert not needs_brackets(PrettyResult(Picture.text('lim x'), Binding.MUL, open_right=True),
-                              Context(Position.INFIX_LAST, Binding.MUL))
-    # the contexts are immutable and count the depth
-    child = TOP.child(Position.EXPONENT, Binding.OPEN)
-    assert child.depth == 1 and child.in_exponent and child.argument().in_exponent and not TOP.in_exponent
+    factor = TOP.factor(followed=True)
+    assert needs_brackets(PrettyResult(Picture.text('lim x'), Binding.PRODUCT, open_ended=True), factor)
+    assert not needs_brackets(PrettyResult(Picture.text('lim x'), Binding.PRODUCT, open_ended=True),
+                              TOP.factor(followed=False))
+    # the contexts are immutable and know whether they are the top one
+    child = TOP.at(Position.EXPONENT, Binding.LOWEST)
+    assert child.position is not Position.TOP and child.in_exponent and child.delimited().in_exponent \
+        and not TOP.in_exponent
 
 
 # ----------------------------------------------------------------------
@@ -290,12 +292,13 @@ def test_every_node_class_is_printed_by_a_rule() -> None:
 
 
 def test_a_node_without_a_rule_is_printed_in_its_string_form() -> None:
-    printer = PrettyPrinter(PrettySettings(), RULES[:3])
+    printer = PrettyPrinter(PrettySettings(), rule_table(CORE_RULES[:3]))
     f = Function('f')
-    result = printer.result(f(x, x), TOP)
-    assert str(result.picture) == 'f(x, x)' and result.binding is Binding.FUNC
+    result = printer.rule(f(x, x), TOP)
+    assert str(result.output) == 'f(x, x)' and result.binding is Binding.APPLICATION
     # a string of unknown structure is bracketed everywhere
-    assert printer.opaque('a + b').binding is Binding.OPEN and printer.opaque('ab').binding is Binding.ATOM
-    assert printer.opaque('f(x) + g(y)').binding is Binding.OPEN and printer.opaque('f((x), y)').binding is Binding.FUNC
+    assert printer.opaque('a + b').binding is Binding.LOWEST and printer.opaque('ab').binding is Binding.ATOM
+    assert printer.opaque('f(x) + g(y)').binding is Binding.LOWEST \
+        and printer.opaque('f((x), y)').binding is Binding.APPLICATION
     rows = pretty(Pow(TranscendentalRoot(cos(x) - x, x, 0, 1), Integer(2))).split('\n')
     assert rows[0].strip() == '2' and rows[1] == 'TranscendentalRoot(-x + cos(x), x, 0, 1) '

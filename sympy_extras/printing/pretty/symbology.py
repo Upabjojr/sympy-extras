@@ -3,7 +3,9 @@
 A typed port of SymPy's ``sympy/printing/pretty/pretty_symbology.py``. A
 :class:`Symbology` holds the choice between Unicode and ASCII (SymPy
 keeps it in a module-level flag which ``pretty`` sets and restores); the
-printer carries one and nothing here is global state.
+printer carries one and nothing here is global state. The reading of a
+name (``split_super_sub``, the walk over the modifiers) is shared with
+the LaTeX printer: :mod:`sympy_extras.printing.conventions`.
 
 References
 ==========
@@ -15,7 +17,7 @@ References
        the bracket pieces), https://www.unicode.org/versions/latest/
 """
 # ---------------------------------------------------------------------
-# PORTED FROM SYMPY: sympy/printing/pretty/pretty_symbology.py, sympy/printing/conventions.py (split_super_sub) (SymPy 1.14)
+# PORTED FROM SYMPY: sympy/printing/pretty/pretty_symbology.py (SymPy 1.14)
 # Copyright (c) 2006-2023 SymPy Development Team. BSD 3-clause license,
 # see sympy_extras/LICENSE-SymPy.
 # Changes: strict typing; the Unicode/ASCII choice is a field of a
@@ -25,12 +27,11 @@ References
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
-import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from ...core.alphabets import greeks
+from ..conventions import GREEK_NAMES, split_super_sub, translate_name
 
 __all__ = ['Symbology', 'Extensible', 'Annotated', 'line_width', 'center', 'center_pad', 'split_super_sub',
            'greek_unicode', 'sub', 'sup']
@@ -41,7 +42,7 @@ def _u(name: str) -> str:
 
 
 def _greek_table() -> dict[str, str]:
-    letters = ['lamda' if name == 'lambda' else name for name in greeks]
+    letters = ['lamda' if name == 'lambda' else name for name in GREEK_NAMES]
     table: dict[str, str] = {name: _u('GREEK SMALL LETTER %s' % name.upper()) for name in letters}
     for name in letters:
         table[name[0].upper() + name[1:]] = _u('GREEK CAPITAL LETTER %s' % name.upper())
@@ -329,67 +330,8 @@ def center(string: str, width: int, fillchar: str = ' ') -> str:
     return left + string + right
 
 
-_NAME_WITH_DIGITS = re.compile(r'^([^\W\d_]+)(\d+)$', re.U)
-
-
-# PORTED FROM SYMPY: sympy/printing/conventions.py:split_super_sub
-def split_super_sub(text: str) -> tuple[str, list[str], list[str]]:
-    """The name, the superscripts and the subscripts of a symbol name.
-
-    Examples
-    ========
-
-    >>> from sympy_extras.printing.pretty.symbology import split_super_sub
-    >>> split_super_sub('a_x^1'), split_super_sub('var_sub1__sup_sub2'), split_super_sub('x12')
-    (('a', ['1'], ['x']), ('var', ['sup'], ['sub1', 'sub2']), ('x', [], ['12']))
-    """
-    if not text:
-        return text, [], []
-    pos = 0
-    name: Optional[str] = None
-    supers: list[str] = []
-    subs: list[str] = []
-    while pos < len(text):
-        start = pos + 1
-        if text[pos:pos + 2] == "__":
-            start += 1
-        pos_hat = text.find("^", start)
-        if pos_hat < 0:
-            pos_hat = len(text)
-        pos_usc = text.find("_", start)
-        if pos_usc < 0:
-            pos_usc = len(text)
-        pos_next = min(pos_hat, pos_usc)
-        part = text[pos:pos_next]
-        pos = pos_next
-        if name is None:
-            name = part
-        elif part.startswith("^"):
-            supers.append(part[1:])
-        elif part.startswith("__"):
-            supers.append(part[2:])
-        elif part.startswith("_"):
-            subs.append(part[1:])
-        else:
-            raise RuntimeError("This should never happen.")
-    if name is None:
-        name = text
-    # a name ending in digits has them as a subscript: x12 is x with the subscript 12
-    m = _NAME_WITH_DIGITS.match(name)
-    if m:
-        name = m.group(1)
-        subs.insert(0, m.group(2))
-    return name, supers, subs
-
-
 def _translate(s: str) -> str:
-    letter = greek_unicode.get(s)
-    if letter is not None:
-        return letter
-    for key, modifier in _MODIFIERS:
-        if s.lower().endswith(key) and len(s) > len(key):
-            return modifier(_translate(s[:-len(key)]))
-    return s
+    return translate_name(s, greek_unicode.get, _MODIFIERS)
 
 
 def _scripts(parts: list[str], mapping: dict[str, str]) -> Optional[list[str]]:
