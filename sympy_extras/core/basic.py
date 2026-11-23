@@ -38,7 +38,8 @@ from .kind import Kind, UndefinedKind
 from .sorting import ArgsKey, ClassKey, CompareItem, CompareKey, SortKey, class_rank
 
 __all__ = ['Basic', 'Atom', 'preorder_traversal', 'SubsValue', 'SubsMapping', 'SubsRules',
-    'SubsArg', 'ReplacementRule', 'NodePrinter', 'MatchDict', 'Query', 'Replacement', 'register_singleton']
+    'SubsArg', 'ReplacementRule', 'NodePrinter', 'TextSink', 'MatchDict', 'Query', 'Replacement',
+    'register_singleton']
 
 #: a type pattern for :meth:`Basic.atoms` and :meth:`Basic.has`
 TypePattern = type['Basic']
@@ -92,6 +93,13 @@ class ReplacementRule(Protocol):
     def __contains__(self, item: Basic) -> bool: ...
 
     def __getitem__(self, item: Basic) -> Basic: ...
+
+
+class TextSink(Protocol):
+    """What IPython hands to ``_repr_pretty_``: its ``text`` method
+    receives the output."""
+
+    def text(self, s: str) -> None: ...
 
 
 class NodePrinter(Protocol):
@@ -309,6 +317,19 @@ class Basic:
 
     def __repr__(self) -> str:
         return str(self)
+
+    def _repr_latex_(self) -> Optional[str]:
+        """What a notebook shows: the LaTeX of the node (see
+        :mod:`sympy_extras.printing.interactive`)."""
+        from sympy_extras.printing.interactive import repr_latex
+        return repr_latex(self)
+
+    def _repr_pretty_(self, p: TextSink, cycle: bool) -> None:
+        """What IPython shows as text: the pretty form of the node once
+        ``init_printing`` was called, its string form before (see
+        :mod:`sympy_extras.printing.interactive`)."""
+        from sympy_extras.printing.interactive import repr_pretty
+        repr_pretty(self, p, cycle)
 
     def _sympystr(self, printer: NodePrinter) -> str:
         """The printed form; subclasses with a special form override it."""

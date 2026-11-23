@@ -620,6 +620,35 @@ sympy_extras/
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     vector/                  orthogonal.py: OrthogonalCoordinates (gradient, divergence, curl, laplacian), cartesian, cylindrical, spherical
+    printing/                printers of the native objects (no SymPy): the typed framework, the LaTeX printer and the
+                             pretty printer; exports latex, pretty, pprint, init_printing; see docs/printing.md
+        framework.py         Binding, Position, Context, Result, needs_brackets (the only place where brackets are decided),
+                             Dispatcher (rules by class, never by name), TreePrinter: generic over the output type; BOTH
+                             printers use it (one scale of bindings, one list of positions): a new level or flag goes here
+        conventions.py       split_super_sub, GREEK_NAMES, GREEK_LETTERS, translate_name: the reading of names shared by the printers,
+                             PORTED FROM SYMPY (printing/conventions.py)
+        latex.py             latex(expr, **settings), LatexSettings, LatexPrinter, RULES: the rules of the core classes, the
+                             matrices, the polynomials, the Python values, PORTED FROM SYMPY (printing/latex.py)
+        _latex_names.py      symbols with scripts, Greek letters, modifiers, escaping, PORTED FROM SYMPY
+        _latex_functions.py  the rules of the functions with a notation of their own, PORTED FROM SYMPY
+        _latex_objects.py    the rules of Piecewise, Sum, Product, Integral, the sets, quantifiers, sequences, series, roots, PORTED FROM SYMPY
+        interactive.py       init_printing, reset_printing, repr_latex and repr_pretty (what _repr_latex_ and _repr_pretty_
+                             of Basic, ExprMatrix, Poly, DomainMatrix do), native_pretty (the pretty printer of the session),
+                             text_form, set_pretty_printer (another two-dimensional text printer)
+        pretty/              the pretty printer: pretty, pprint, pretty_picture, pretty_use_unicode, pretty_repr
+          layout.py          Picture (rows of text with a baseline), PrettyResult = Result[Picture], PrettyContext, TOP,
+                             PORTED FROM SYMPY (printing/pretty/stringpict.py)
+          symbology.py       Symbology: the characters in Unicode and ASCII, the names of symbols, PORTED FROM SYMPY
+          engine.py          PrettyPrinter (a TreePrinter of pictures), PrettySettings, rule_for/rule_table, the layouts
+                             (fraction, power, root, parens, applied: a function takes the exponent offered by its parent)
+          rules_core.py, rules_calculus.py, rules_functions.py, rules_sets.py, rules_other.py
+                             the rules, PORTED FROM SYMPY (printing/pretty/pretty.py)
+          pretty.py          RULES (the Dispatcher of all rules), the Python values, matrices and polynomials, the entry points
+          tests/             test_sympy_agree.py (pictures equal to SymPy's), test_semantics.py (different trees never
+                             print alike), test_sympy_issue_30844.py
+        tests/               corpus.py (expressions printed as in SymPy), latex_reader.py (a LaTeX reader for the semantic
+                             test), test_latex_issue_30844.py (one test per item of sympy/sympy#30844), test_unified.py
+                             (both printers on the one framework, the interactive session)
     series/                  residue; limit_seq, difference_delta, dominant (limitseq.py); fps, FormalPowerSeries,
                              FormalPowerSeriesProduct/Compose/Inverse (formal.py: the rational and hypergeometric
                              algorithms, the full partial fractions by Taylor coefficients at the roots, rsolve_linear);

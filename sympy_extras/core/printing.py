@@ -16,7 +16,7 @@ References
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Sequence
+from typing import Optional, Sequence
 
 from .basic import Basic
 from .expr import Expr
@@ -32,7 +32,7 @@ from .mul import Mul  # noqa: E402
 from .power import Pow  # noqa: E402
 from .relational import Relational  # noqa: E402
 
-__all__ = ['sstr', 'srepr', 'StrPrinter', 'ordered_terms']
+__all__ = ['sstr', 'srepr', 'StrPrinter', 'ordered_terms', 'printed_terms', 'printed_factors']
 
 PREC_XOR = 10
 PREC_IMPLIES = 10
@@ -135,9 +135,8 @@ class StrPrinter:
     def print_add(self, terms: Sequence[Expr]) -> str:
         # an evaluated sum (a number first, then the terms in the compare
         # order) is printed in the printing order; an unevaluated one as given
-        canonical = _in_compare_order(terms)
         parts: list[str] = []
-        for i, term in enumerate(ordered_terms(terms) if canonical else terms):
+        for i, term in enumerate(printed_terms(terms)):
             s = self.parenthesize(term, PREC_ADD)
             if i == 0:
                 parts.append(s)
@@ -148,7 +147,7 @@ class StrPrinter:
         return ''.join(parts)
 
     def print_mul(self, factors: Sequence[Expr]) -> str:
-        factors = _printing_order(factors)
+        factors = printed_factors(factors)
         sign = ''
         numerator: list[str] = []
         denominator: list[str] = []
@@ -280,7 +279,8 @@ def _decompose_power(f: Expr) -> tuple[Expr, int]:
     """``(b, n)`` with ``f == b**n`` and ``n`` an integer: ``x**(2*y)`` is
     ``(x**y, 2)``, ``exp(-x)`` is ``(exp(x), -1)``, ``x**(3/2)`` is
     ``(sqrt(x), 3)`` (the generator of a radical is its root, as in
-    SymPy's ``as_terms``), ``(f, 1)`` when the exponent has no integer
+    SymPy's ``decompose_power``) and likewise ``exp(-2*z/3)`` is
+    ``(exp(z/3), -2)``; ``(f, 1)`` when the exponent has no rational
     coefficient."""
     from .power import pow
     b, e = f.as_base_exp()
@@ -289,18 +289,25 @@ def _decompose_power(f: Expr) -> tuple[Expr, int]:
             return (b, e.p)
         return (pow(b, Rational(1, e.q)), e.p)
     c, rest = e.as_coeff_Mul()
-    if isinstance(c, Rational) and c.q == 1 and c.p != 1:
-        return (pow(b, rest), c.p)
+    if isinstance(c, Rational) and not (c.p == 1 and c.q == 1):
+        if c.q == 1:
+            return (pow(b, rest), c.p)
+        from .mul import mul
+        return (pow(b, mul(Rational(1, c.q), rest)), c.p)
+    if isinstance(c, Float) and c.as_fraction() < 0:
+        # SymPy's as_coeff_Mul(rational=True) takes the sign of a float: exp(-2.5*z) is (exp(2.5*z), -1)
+        from .mul import mul
+        return (pow(b, mul(Float(number_from_fraction(-c.as_fraction()), precision=c.precision), rest)), -1)
     return (f, 1)
 
 
-def _monomial_key(term: Expr, gens: list[Expr]) -> tuple[Fraction, ...]:
+def _monomial_key(term: Expr, gens: list[Expr], values: NumericValues) -> tuple[Fraction, ...]:
     exponents: dict[Expr, Fraction] = {}
     _, rest = term.as_coeff_Mul()
     factors = rest.args if rest.is_Mul else (rest,)
     from .expr import UnevaluatedExpr
     for f in factors:
-        if not isinstance(f, Expr) or isinstance(f, (ImaginaryUnit, NumberSymbol, UnevaluatedExpr)) or f.is_number:
+        if not isinstance(f, Expr) or isinstance(f, (ImaginaryUnit, NumberSymbol, UnevaluatedExpr)) or _is_numeric(f, values):
             continue
         b, n = _decompose_power(f)
         if isinstance(b, NumberSymbol):
@@ -309,16 +316,47 @@ def _monomial_key(term: Expr, gens: list[Expr]) -> tuple[Fraction, ...]:
     return tuple(-exponents.get(g, Fraction(0)) for g in gens)
 
 
-def _generators(term: Expr) -> list[Expr]:
+#: the values of the factors without free symbols met while the terms of
+#: one sum are ordered (the value of an integral is computed once)
+NumericValues = dict[Expr, Optional[complex]]
+
+
+def _numeric_value(f: Expr, values: NumericValues) -> Optional[complex]:
+    """The value of a factor without free symbols, ``None`` when it has
+    none (``Sum(f(k), (k, 0, 1))``, an integral of an undefined function)."""
+    if f in values:
+        return values[f]
+    from .evalf import to_complex
+    value: Optional[complex] = None
+    try:
+        value = to_complex(f)
+    except (TypeError, ValueError, OverflowError):
+        pass
+    values[f] = value
+    return value
+
+
+def _is_numeric(f: Expr, values: NumericValues) -> bool:
+    """Whether the factor counts in the numerical coefficient of its
+    term: SymPy's ``as_terms`` takes the factors without free symbols
+    which have a numerical value; one which has none is a generator
+    (``sqrt(2)*Sum(f(k), (k, 0, 1)) - 4/3``, the number last)."""
+    return f.is_number and _numeric_value(f, values) is not None
+
+
+def _generators(term: Expr, values: NumericValues) -> list[Expr]:
     _, rest = term.as_coeff_Mul()
     factors = rest.args if rest.is_Mul else (rest,)
     gens: list[Expr] = []
     from .expr import UnevaluatedExpr
     for f in factors:
-        if not isinstance(f, Expr) or isinstance(f, (Number, ImaginaryUnit, NumberSymbol, UnevaluatedExpr)) or f.is_number:
+        if not isinstance(f, Expr) or isinstance(f, (Number, ImaginaryUnit, NumberSymbol, UnevaluatedExpr)) or _is_numeric(f, values):
             continue
-        if f.is_commutative is False:
-            continue  # SymPy's as_terms: the noncommutative factors are not generators
+        if f.is_commutative is not True:
+            # SymPy's as_terms: the factors which are not known to commute
+            # (the noncommutative ones, and a Limit, whose commutativity is
+            # unknown) are not generators
+            continue
         b, _ = _decompose_power(f)
         if isinstance(b, NumberSymbol):
             continue
@@ -349,10 +387,12 @@ def _printing_order(factors: Sequence[Expr]) -> list[Expr]:
     compare order) in the printing order (``default_sort_key``: the
     numbers, then ``sqrt(2)``, ``x``, ``sin(x)``, ``cos(x)``); the factors
     of an unevaluated product as given."""
-    commutative = [f for f in factors if f.is_commutative is not False]
+    # (SymPy's args_cnc: the factors which are not known to commute, a
+    # Limit among them, follow the commutative ones in their order)
+    commutative = [f for f in factors if f.is_commutative is True]
     if not _in_compare_order(commutative):
         return list(factors)
-    tail = [f for f in factors if f.is_commutative is False]
+    tail = [f for f in factors if f.is_commutative is not True]
     return sorted(commutative, key=default_sort_key) + tail
 
 
@@ -371,12 +411,13 @@ def ordered_terms(terms: Sequence[Expr]) -> list[Expr]:
     """
     if len(terms) == 2 and _leads_a_difference(terms[0], terms[1]):
         return list(terms)  # SymPy's special case: 1 - x, 2 - pi (but -x - 2, -pi*x + 1, -x*y + 1)
+    values: NumericValues = {}
     gens: set[Expr] = set()
     for t in terms:
-        gens.update(_generators(t))
+        gens.update(_generators(t, values))
     ordered_gens = sorted(gens, key=default_sort_key)
     keys: dict[Expr, tuple[tuple[Fraction, ...], tuple[SortKey, ...], CoefficientRank, SortKey]] = {
-        t: (_monomial_key(t, ordered_gens), _noncommutative_key(t), _coefficient_rank(t), t.sort_key())
+        t: (_monomial_key(t, ordered_gens, values), _noncommutative_key(t), _coefficient_rank(t, values), t.sort_key())
         for t in terms}
     plain = sorted([t for t in terms if not t.is_Order], key=lambda t: keys[t])
     orders = sorted([t for t in terms if t.is_Order], key=lambda t: keys[t])
@@ -385,42 +426,113 @@ def ordered_terms(terms: Sequence[Expr]) -> list[Expr]:
     return plain + orders
 
 
+def printed_terms(terms: Sequence[Expr], order: Optional[str] = None) -> list[Expr]:
+    """The terms of a sum in the order in which the printers (``sstr``,
+    the LaTeX and the pretty printer) write them: the terms of an
+    unevaluated sum, and all terms under the order ``'none'``, as they
+    are given; the terms of an evaluated sum (a number first, then the
+    compare order) in the printing order of :func:`ordered_terms`
+    (``None`` or ``'lex'``), by decreasing total degree (``'grlex'``) or
+    by decreasing total degree with the last generators first
+    (``'grevlex'``).
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Add, Integer, symbols
+    >>> from sympy_extras.core.printing import printed_terms
+    >>> x, y = symbols('x y')
+    >>> printed_terms((x + y**2 + x*y + 1).args), printed_terms((x + y**2 + x*y + 1).args, 'grlex')
+    ([x*y, x, y**2, 1], [x*y, y**2, x, 1])
+    >>> printed_terms(Add(Integer(1), y, x).args), printed_terms((x + y + 1).args, 'none') == list((x + y + 1).args)
+    ([1, y, x], True)
+    """
+    if order not in (None, 'lex', 'grlex', 'grevlex', 'none'):
+        raise ValueError("the order of the terms must be None, 'lex', 'grlex', 'grevlex' or 'none', not %r" % (order,))
+    if order == 'none' or not _in_compare_order(terms):
+        return list(terms)
+    if order is None or order == 'lex':
+        return ordered_terms(terms)
+    values: NumericValues = {}
+    gens: set[Expr] = set()
+    for t in terms:
+        gens.update(_generators(t, values))
+    ordered_gens = sorted(gens, key=default_sort_key)
+    keyed = [(_monomial_key(t, ordered_gens, values), t) for t in ordered_terms(terms)]
+    if order == 'grlex':
+        keyed.sort(key=lambda kt: (sum(kt[0]), kt[0]))
+    else:
+        keyed.sort(key=lambda kt: (sum(kt[0]), tuple(-x for x in reversed(kt[0]))))
+    return [t for _, t in keyed]
+
+
+def printed_factors(factors: Sequence[Expr], order: Optional[str] = None) -> list[Expr]:
+    """The factors of a product in the order in which the printers write
+    them: the factors of an unevaluated product, and all factors under
+    the order ``'none'``, as they are given; the commutative factors of
+    an evaluated product by ``default_sort_key`` (the numbers, then
+    ``sqrt(2)``, ``x``, ``sin(x)``, ``cos(x)``), the others after them.
+
+    Examples
+    ========
+
+    >>> from sympy_extras.core import Integer, Mul, sqrt, symbols
+    >>> from sympy_extras.core.printing import printed_factors
+    >>> x, y = symbols('x y')
+    >>> printed_factors((2*y*x*sqrt(Integer(2))).args), printed_factors(Mul(y, x, Integer(2)).args)
+    ([2, sqrt(2), x, y], [y, x, 2])
+    """
+    if order == 'none':
+        return list(factors)
+    return _printing_order(factors)
+
+
 #: (UnevaluatedExpr last, (has an imaginary part, its value), (real part, imaginary part))
 CoefficientRank = tuple[int, tuple[bool, float], tuple[float, float]]
 
 
-def _coefficient_rank(term: Expr) -> CoefficientRank:
+def _coefficient_rank(term: Expr, values: NumericValues) -> CoefficientRank:
     """Among the terms with the same monomial, SymPy's order: by the
     increasing numerical coefficient (``-3*pi*x - x``, ``x + sqrt(2)*x``,
     ``1 + sqrt(2) + E + pi``), the terms with an imaginary coefficient
     after the others (``x + I*x``), the ``UnevaluatedExpr`` terms last."""
-    from .evalf import to_complex
     from .expr import UnevaluatedExpr
-    from .mul import mul
     if isinstance(term, UnevaluatedExpr) or any(isinstance(f, UnevaluatedExpr) for f in term.args):
         return (1, (False, 0.0), (0.0, 0.0))
     from .expr import factors_of
-    coefficient = mul(*[f for f in factors_of(term) if f.is_number])
-    try:
-        value = to_complex(coefficient)
-    except (TypeError, ValueError, OverflowError):
-        return (0, (False, 0.0), (0.0, 0.0))
+    value = complex(1.0)
+    for f in factors_of(term):
+        if f.is_number:
+            # (the product of the values, as SymPy's as_terms: a factor without a value is a generator)
+            found = _numeric_value(f, values)
+            if found is not None:
+                try:
+                    value *= found
+                except OverflowError:
+                    return (0, (False, 0.0), (0.0, 0.0))
     return (0, (value.imag != 0, value.imag), (value.real, value.imag))
 
 
 def _noncommutative_key(term: Expr) -> tuple[SortKey, ...]:
-    """The keys of the noncommutative factors, in order (``A*B`` before ``B*A``)."""
+    """The keys of the factors which are not known to commute, in order
+    (``A*B`` before ``B*A``; a term with such a factor after the ones
+    without: ``1 + Limit(f(x), x, 0)``, as SymPy's ``as_terms`` has it)."""
     from .expr import factors_of
-    return tuple(f.sort_key() for f in factors_of(term) if f.is_commutative is False)
+    return tuple(f.sort_key() for f in factors_of(term) if f.is_commutative is not True)
 
 
 def _leads_a_difference(number: Expr, term: Expr) -> bool:
     """SymPy's special case of a sum of two terms printed as ``1 - x``: a
     positive finite number (``pi`` too) and a single factor with a
-    negative rational coefficient (``-x``, ``-2*x**2``, ``-sqrt(2)``, but
+    negative numerical coefficient (``-x``, ``-2*x**2``, ``-2.5*x``, ``-sqrt(2)``, but
     not ``-pi*x`` or ``-x*y``)."""
     if not isinstance(number, (Number, NumberSymbol)) or number.is_positive is not True \
             or number.is_finite is not True:
         return False
     c, rest = term.as_coeff_Mul()
-    return isinstance(c, Rational) and c.p < 0 and not rest.is_Mul
+    if rest.is_Mul:
+        return False
+    if isinstance(c, Rational):
+        return c.p < 0
+    # a negative float times a single factor (SymPy: 6.25 - 2.5*x); a float alone is not a product
+    return isinstance(c, Float) and c.as_fraction() < 0 and not rest.is_Number

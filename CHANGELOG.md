@@ -10,6 +10,122 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.printing`: the LaTeX printer and the pretty printer stand
+  on **one typed framework** (`sympy_extras.printing.framework`). The
+  pretty printer had copies of its own (`Binding`, `Position`, `Context`,
+  `PrettyResult`, `needs_brackets` in `pretty/layout.py`, a table search
+  in `pretty/engine.py`): it is now a `TreePrinter` of pictures with its
+  rules in a `Dispatcher`, its results are `Result[Picture]`
+  (`PrettyResult`), its contexts `Context[Picture]`. There is one scale
+  of bindings (the framework gained `XOR`, `FRACTION`, `ROOT`, `AFFIX`
+  for the notations of pictures; the names of the pretty printer `OPEN`,
+  `IMPLIES`, `SET`, `MOD`, `ADD`, `NEG`, `INLINE_QUOTIENT`, `MUL`, `DIV`,
+  `POW`, `FUNC` are now `LOWEST`, `IMPLICATION`, `SET_OPERATION`,
+  `MODULO`, `SUM`, `NEGATION`, `QUOTIENT`, `PRODUCT`, `FRACTION`,
+  `POWER`, `APPLICATION`), one list of positions (the positions of the
+  pretty printer `INFIX_*`, `AFFIX_OPERAND`, `RADICAND`, `RELATION_*`,
+  `ARGUMENT`, `BOUND`, `LIMIT_POINT`, `DIFFERENTIAL` are the framework's
+  `TERM`, `FACTOR`, `LEFT`, `RIGHT`, `CONNECTIVE`, `OPERAND`, `NEGATED`,
+  `DELIMITED`, `SIDE`, `POINT`) and a single `needs_brackets`, which
+  gained the two rules of pictures (`Result.stacked`: a fraction bar in a
+  fraction; `Context.excluded`: a power in a raised exponent).
+  `Context.at(position, level, ...)` makes a position with the
+  requirements of one notation, `Context.display` asks for the built-up
+  form of a number, `TreePrinter.enclose` is the second half of `print`.
+  In the pretty printer a function application now takes the exponent
+  its parent *offers* in the context (`sin²(x)`) and an implication or an
+  equivalence the negation (`a ↛ b`), as in the LaTeX printer: the
+  `applied` field of its results and the test of the class of the operand
+  in the rule of `Not` are gone. `PrettyResult.picture`, `.magnitude` and
+  `.open_right` are `Result.output`, `.unsigned` and `.open_ended`;
+  `PrettyPrinter.result` and `.bracketed` are `TreePrinter.rule` and
+  `.enclose`; `pretty.RULES` is a `Dispatcher` (`rule_table` builds one
+  from the `rule_for` entries). The output of neither printer changed:
+  13252 expressions (the corpora of both test suites, 3900 random trees,
+  every corpus expression inside eleven parents) under nine LaTeX and
+  five pretty settings print as before.
+- `sympy_extras.printing.conventions`: `split_super_sub`, the names of
+  the Greek letters and `translate_name` (the walk over the modifiers at
+  the end of a name), which the two printers had each a copy of.
+- `sympy_extras.core.printing.printed_terms(terms, order)` and
+  `printed_factors(factors, order)`: the order in which `sstr`, `latex`
+  and `pretty` write the terms of a sum and the factors of a product
+  (`None`/`'lex'`, `'grlex'`, `'grevlex'`, `'none'`); the printers
+  imported private helpers of the core for it.
+- `init_printing(pretty_print=True, use_unicode=True, use_latex=True)`
+  shows the text of the results with the pretty printer of this package
+  (`interactive.native_pretty`; a printer plugged in with
+  `set_pretty_printer` is kept), in Unicode or in ASCII, with the order
+  of the terms, the notation of the roots, the imaginary unit and
+  `full_prec` chosen for the LaTeX; `use_unicode` becomes the default of
+  `pretty` and `pprint`; `reset_printing` undoes it. `Basic`,
+  `ExprMatrix` and `Poly` have a `_repr_pretty_` method (IPython's text
+  of a result: `interactive.repr_pretty`), `DomainMatrix` a
+  `_repr_latex_` and a `_repr_pretty_` (the matrix of its elements as
+  expressions). `sympy_extras.printing` exports `pretty` and `pprint`
+  beside `latex` and `init_printing`.
+- `pretty(expr, full_prec=None)`: all the digits of the floats (`True`),
+  none of the trailing zeros (`False`), or all of them for a float which
+  is the whole expression (`None`, SymPy's `'auto'`, the behaviour so
+  far). `ITE` is drawn as its cases, as SymPy's pretty printer does.
+- `sympy_extras.printing`: a native LaTeX printer, `latex(expr,
+  **settings)`, for every node class of the typed core (numbers, symbols,
+  sums, products, powers, relations, logic, functions and special
+  functions, `Piecewise`, `Sum`, `Product`, `Integral`, `Derivative`,
+  `Limit`, `Subs`, `Order`, sets, `AccumBounds`, sequences, series,
+  roots), `ExprMatrix`, `Poly` and Python containers, with SymPy's
+  settings (`mode`, `fold_frac_powers`, `fold_func_brackets`,
+  `fold_short_frac`, `inv_trig_style`, `itex`, `ln_notation`,
+  `long_frac_ratio`, `mat_delim`, `mat_str`, `mul_symbol`, `order`,
+  `symbol_names`, `root_notation`, `imaginary_unit`, `gothic_re_im`,
+  `decimal_separator`, `parenthesize_super`, `min`, `max`, `full_prec`,
+  `diff_operator`) as typed keyword arguments. A typed port of SymPy's
+  `printing/latex.py` on a different design
+  (`sympy_extras.printing.framework`, shared with the pretty printer):
+  rules found by the class of the node in a table, never by its name;
+  every rule returns its output with the binding strength of what it
+  *printed*; parents pass an immutable context down (term, factor, base
+  with the exponent offered, side of a relation, point of a limit, ...);
+  brackets are decided in one place. The defects of SymPy's LaTeX
+  printer listed in sympy/sympy#30844 which concern these classes are not
+  reproduced (`Mod(-x, y)` against `-Mod(x, y)`, `\neg x > y`,
+  `\lim_{x \to a + b^+}`, double superscripts, `\sigma_k + 1`, names with
+  `%`, `fold_func_brackets` printing `fx`, ...). The output is SymPy's on
+  a corpus of 390 expressions under 14 settings; 2100 random unevaluated
+  trees are read back from their LaTeX and evaluated; 1800 formulas
+  compile with pdflatex. See `docs/printing.md`.
+- `sympy_extras.printing.init_printing` and `_repr_latex_` on `Basic`,
+  `ExprMatrix` and `Poly`: notebooks render the native objects;
+  `init_printing` chooses the LaTeX settings, switches LaTeX off, and
+  installs a display hook in a plain Python session;
+  `interactive.set_pretty_printer` plugs in a two-dimensional text
+  printer.
+- `sympy_extras.printing.pretty`: a native pretty printer, `pretty(expr,
+  use_unicode=..., wrap_line=..., num_columns=..., order=...,
+  root_notation=..., use_unicode_sqrt_char=..., imaginary_unit=...)` and
+  `pprint`, which draw the nodes of the typed core (numbers, sums,
+  products, powers, roots, relations, logic, functions and special
+  functions, `Piecewise`, `Sum`, `Product`, `Integral`, `Derivative`,
+  `Limit`, `Subs`, `Order`, sets, `AccumBounds`, sequences and series),
+  `ExprMatrix`, `Poly` and the Python containers as two-dimensional text
+  in Unicode or ASCII, without importing SymPy. It is a typed port of
+  SymPy's `printing/pretty` with another design: the rules are
+  dispatched by class from a table (`RULES`), each rule returns the
+  picture with the binding of its outermost operator as printed
+  (`PrettyResult`), each parent hands its children a typed immutable
+  `Context`, and the brackets are decided in one place
+  (`needs_brackets`). The pictures are SymPy's character by character on
+  a corpus of 359 expressions; the pretty-printer defects of
+  sympy/sympy#30844 which concern these classes are not reproduced:
+  `(2/3)**x`, `(-1/2)**n` and `(-2.5)**n` keep their brackets, `Not`
+  brackets relations, `Mod` and the set operations bracket their
+  operands, a sum sign, a product sign or a limit which is not the last
+  factor is bracketed, the direction mark of a limit applies to the whole
+  point, `Product(k + 1, ...)` and `Product(k, ...) + 1` differ, the
+  names of defined functions are not mangled into subscripts, `x_` is not
+  printed as `x`. `pretty_repr` is the body of an IPython
+  `_repr_pretty_` method for `init_printing`; `pretty_use_unicode` sets
+  the default of `use_unicode`. See `docs/printing.md`.
 - `sympy_extras.integrals.definite`: rational functions of `sin` and
   `cos` with parameters over whole periods (issue #53). The driver tries
   the residues inside the unit circle before cutting the range into
@@ -3789,6 +3905,27 @@ remove public functions. Breaking changes are listed here when they happen.
   at the precisions they ask).
 
 ### Fixed
+
+- `Integral(x, x, 0, 1)` stored the Python numbers of its bounds as they
+  were given, so that `str()` failed with `'int' object has no attribute
+  '_sympystr'`: the constructor converts its function and its bounds
+  with the core's `to_expr`, as `Sum`, `Product` and `Limit` do.
+- `sstr` (and with it `latex`, `pretty`, `as_ordered_terms` and the sort
+  key of a sum) wrote some evaluated sums and products in another order
+  than SymPy's `str`; 108 of 3000 random sums differed, none does now.
+  The root causes, in `sympy_extras.core.printing`: the generator of a
+  power with a rational coefficient in its exponent is the root with the
+  integer exponent (`exp(-2*z/3)` is `exp(z/3)**-2`, as SymPy's
+  `decompose_power`; `cos(x) + exp(-2*z/3)`), and the sign of a float
+  coefficient is taken out (`cos(x) + exp(-2.5*z)`); a factor whose
+  commutativity is unknown (a `Limit`) goes with the noncommutative ones,
+  the test was `is False` where SymPy's is "not known to commute"
+  (`1 + Limit(f(x), x, 0)`, `Sum(...)*Limit(...)`); a factor without free
+  symbols which has no numerical value (`Sum(f(k), (k, 0, 1))`) is a
+  generator and not a coefficient (`sqrt(2)*Sum(f(k), (k, 0, 1)) - 4/3`);
+  the special case of two terms `1 - x` holds for a float coefficient
+  (`6.25 - 2.5*x`). The numerical value of such a factor is computed
+  once per sum.
 
 - Bugs shared with SymPy, found by checking the items V112-V152 and
   V193-V234 of sympy/sympy#31275 against the native code (the ports had
