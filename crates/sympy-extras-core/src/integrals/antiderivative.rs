@@ -172,7 +172,7 @@ fn fresh(name: &str, assumptions: &[(Predicate, bool)]) -> Basic {
 }
 
 /// The methods of the indefinite dispatcher tried for a definite integral.
-const METHODS: [&str; 9] = [
+pub const METHODS: [&str; 9] = [
     "rational",
     "radicals",
     "exponential",

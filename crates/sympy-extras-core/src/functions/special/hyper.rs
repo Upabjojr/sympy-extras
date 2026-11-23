@@ -621,7 +621,11 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
     }
     if terms.is_none() {
         let fits: bool =
-            (ap.len() <= bq.len() && (one_f_one || size <= 40.0)) || (ap.len() == bq.len() + 1 && size < 0.75);
+            // (p <= q: the series converges everywhere, and the loss of
+            // precision to cancellation is measured below; mpmath's
+            // asymptotic expansions for a large argument, not ported, fall
+            // back to it when they do not converge)
+            (ap.len() <= bq.len() && (one_f_one || size <= 1.0e4)) || (ap.len() == bq.len() + 1 && size < 0.75);
         if !fits {
             return None;
         }

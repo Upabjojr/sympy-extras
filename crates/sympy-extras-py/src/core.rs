@@ -6374,6 +6374,32 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 },
                 "converges" => truth(df::quadrature_converges(&a[1], &a[2], &a[3], &a[4], a[5].args()).map_err(e)?),
                 "crossings" => tuple(df::axis_crossings(&a[1], &a[2]).map_err(e)?),
+                "integral" => {
+                    // (integral, f, x, a, b, Tuple(assumptions), Tuple(options as symbols)):
+                    // options among piecewise|none, recognize, principal_value, finite_part,
+                    // regularize, no_special_values
+                    let flags: Vec<String> = a[6].args().iter().map(|s| s.to_string()).collect();
+                    let has = |name: &str| flags.iter().any(|f| f == name);
+                    let options = df::Options {
+                        piecewise: !has("none"),
+                        recognize: has("recognize"),
+                        principal_value: has("principal_value"),
+                        finite_part: has("finite_part"),
+                        regularize: has("regularize"),
+                        special_values: !has("no_special_values"),
+                        ..df::Options::default()
+                    };
+                    df::definite_integral(&a[1], &a[2], &a[3], &a[4], a[5].args(), &options).map_err(e)?
+                }
+                "conditional" => {
+                    // (conditional, f, x, a, b, Tuple(assumptions)) -> Tuple(value, condition) or NONE
+                    match df::conditional_integral(&a[1], &a[2], &a[3], &a[4], a[5].args(), false, false, false)
+                        .map_err(e)?
+                    {
+                        None => none(),
+                        Some(c) => tuple(vec![c.value, c.condition]),
+                    }
+                }
                 "helper" => {
                     // (helper, name, args...): the module-level helpers of the integrator
                     let b: &[Basic] = &a[2..];
