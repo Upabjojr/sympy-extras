@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import itertools
 
+import mpmath
 import sympy
 
 from sympy_extras._typing_sympy import as_expr as sympy_expr
 from sympy_extras.core import I, Integer, Rational, Symbol, oo
 from sympy_extras.interop import to_sympy
 from sympy_extras.core.expr import Expr
-from sympy_extras.core.numbers import Float, nan
+from sympy_extras.core.numbers import Float, nan, zoo
 from sympy_extras.functions import Beta, Catalan, beta, catalan
 
 x, y = Symbol('x'), Symbol('y')
@@ -38,6 +39,26 @@ def test_catalan_matches_sympy() -> None:
     assert not different, different
 
 
+def _is_pole(a: Expr, b: Expr) -> bool:
+    def nonpositive_integer(v: Expr) -> bool:
+        return isinstance(v, Integer) and v.p <= 0
+    total = a + b
+    return (nonpositive_integer(a) or nonpositive_integer(b)) and total.is_Number and not nonpositive_integer(total)
+
+
+def test_beta_at_its_poles() -> None:
+    # sympy/sympy#31275 (V93): beta(5, -3) = gamma(5)*gamma(-3)/gamma(2) is a pole, not a real number
+    assert beta(Integer(5), Integer(-3)) == zoo and beta(Integer(-1), Rational(1, 2)) == zoo
+    assert Beta(Integer(5), Integer(-3)).is_real is False and Beta(Integer(5), Integer(-3)).is_finite is False
+    assert abs(mpmath.beta(5, mpmath.mpf(-3) + mpmath.mpf(10)**-8)) > 1e8
+    # the poles of the numerator cancelled by one of the denominator: not decided here
+    assert beta(Integer(2), Integer(-3)) == Beta(Integer(2), Integer(-3))
+    assert beta(Integer(-3), Integer(1)) == Rational(-1, 3)
+    # real arguments which may be poles: not known to be real
+    r = Symbol('r', real=True)
+    assert Beta(r, p).is_real is None and Beta(p, p).is_real is True
+
+
 def test_beta_matches_sympy() -> None:
     different = []
     for a in values():
@@ -45,6 +66,10 @@ def test_beta_matches_sympy() -> None:
             different.append((str(a), str(beta(a)), str(sympy.beta(sympy_value(a)))))
     for a, b in itertools.product(values(), repeat=2):
         ours, theirs = str(to_sympy(beta(a, b), evaluate=False)), str(sympy.beta(sympy_value(a), sympy_value(b)))
+        if ours == 'zoo' and theirs.startswith('beta('):
+            # sympy/sympy#31275 (V93): a pole of gamma(a)*gamma(b)/gamma(a + b), which SymPy leaves alone
+            assert _is_pole(a, b), (a, b)
+            continue
         if ours != theirs:
             different.append((str((a, b)), ours, theirs))
     assert not different, different[:20]

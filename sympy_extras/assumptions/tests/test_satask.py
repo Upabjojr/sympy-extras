@@ -99,3 +99,19 @@ def test_a_zero_factor_in_the_facts_of_a_product() -> None:
     # with the other factors nonzero the facts hold as before
     assert not predicates_consistent(and_(Q.imaginary(x), Q.real(y), Q.nonzero(y), not_(Q.imaginary(x*y))))
     assert not predicates_consistent(and_(Q.irrational(x), Q.rational(y), Q.nonzero(y), not_(Q.irrational(x*y))))
+
+
+def test_sympy_issue_31275_zero_power_and_abs_of_infinite_arguments() -> None:
+    # V33: SymPy states Q.zero(x**y) equivalent to Q.zero(x) & Q.positive(y),
+    # but 2**(-oo) and oo**(-1) are 0; V7: it states Q.nonnegative(Abs(x)),
+    # but Abs(oo) is oo
+    from sympy_extras.core import ask
+    assert predicates_consistent(and_(Q.zero(x**y), not_(Q.zero(x))))
+    assert not predicates_consistent(and_(Q.zero(x**y), not_(Q.zero(x)), Q.real(x), Q.real(y)))
+    assert not predicates_consistent(and_(not_(Q.zero(x**y)), Q.zero(x), Q.positive(y)))
+    assert ask(Q.zero(x), Q.zero(x**y)) is None
+    assert ask(Q.zero(x), Q.zero(x**y) & Q.real(x) & Q.real(y)) is True
+    assert ask(Q.zero(x**2), Q.zero(x)) is True
+    assert predicates_consistent(not_(Q.nonnegative(Abs(x))))
+    assert not predicates_consistent(not_(Q.extended_nonnegative(Abs(x))))
+    assert not predicates_consistent(and_(Q.complex(x), not_(Q.nonnegative(Abs(x)))))

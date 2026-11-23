@@ -88,7 +88,7 @@ def test_symbolic_powers() -> None:
     fibonacci = matrix_power(ExprMatrix.from_rows([[1, 1], [1, 0]]), n)
     values = [sympy.simplify(sympy_expr(to_sympy(fibonacci[0, 1])).subs(sn, k)) for k in range(8)]
     assert values == [0, 1, 1, 2, 3, 5, 8, 13]
-    assert matrix_power(ExprMatrix.from_rows([[a, 1], [0, a]]), n)[0, 1] == a**n*n/a
+    assert matrix_power(ExprMatrix.from_rows([[a, 1], [0, a]]), n)[0, 1] == a**(n - 1)*n
 
 
 def test_functions_and_components() -> None:
@@ -115,3 +115,48 @@ def test_functions_and_components() -> None:
                 assert sympy.simplify((S - value*sympy.eye(matrix.rows))**len(group.components)*E) == sympy.zeros(matrix.rows, matrix.rows)
                 total += E
         assert sympy.simplify(total - sympy.eye(matrix.rows)) == sympy.zeros(matrix.rows, matrix.rows)
+
+
+def test_integer_powers_are_products() -> None:
+    # sympy/sympy#30900 M1-2, M1-3: a negative power is the power of the inverse (SymPy's method='jordan' returned M**2
+    # for M**-2), and a singular matrix has none (SymPy's M**-1 has zoo entries)
+    M = ExprMatrix.from_rows([[1, 2], [3, 4]])
+    inverse = M.inv()
+    assert matrix_power(M, -2) == inverse*inverse == ExprMatrix.from_rows([[Rational(11, 2), Rational(-5, 2)],
+                                                                         [Rational(-15, 4), Rational(7, 4)]])
+    assert matrix_power(M, -1) == inverse and matrix_power(M, 0) == ExprMatrix.eye(2) and matrix_power(M, 1) == M
+    assert matrix_power(M, 5) == M*M*M*M*M
+    S = _sympy_matrix(matrix_power(ExprMatrix.from_rows([[a, 1], [2, a]]), -3))
+    assert (S*sympy.Matrix([[sympy.Symbol('a'), 1], [2, sympy.Symbol('a')]])**3).applyfunc(sympy.cancel) == sympy.eye(2)
+    for rows in ([[0, 0], [0, 1]], [[1, 2], [2, 4]], [[0, 1], [0, 0]]):
+        with pytest.raises(ValueError):
+            matrix_power(ExprMatrix.from_rows(rows), -1)
+        with pytest.raises(ValueError):
+            matrix_function(ExprMatrix.from_rows(rows), 1/x, x)
+    with pytest.raises(ValueError):
+        matrix_power(M.row_insert(2, ExprMatrix.from_rows([[5, 6]])), 2)
+
+
+def test_powers_with_the_eigenvalue_zero() -> None:
+    # the closed forms had nan and zoo entries: the derivative n*x**n/x of x**n was evaluated at 0, and the zero
+    # components of an eigenvalue of smaller index than its multiplicity were multiplied by it
+    zero = sympy.Integer(0)
+    sn = sympy.Symbol('n')
+    for rows in ([[0, 0], [0, 0]], [[0, 1], [0, 0]], [[0, 1, 0], [0, 0, 1], [0, 0, 0]], [[0, 1, 0], [0, 0, 0], [0, 0, 2]],
+                 [[1, 2], [2, 4]]):
+        M = ExprMatrix.from_rows(rows)
+        P = _sympy_matrix(matrix_power(M, n))
+        assert not P.has(sympy.nan, sympy.zoo)
+        S = sympy.Matrix(rows)
+        for k in range(len(rows), len(rows) + 3):
+            assert P.subs(sn, k) == S**k
+    assert matrix_power(ExprMatrix.zeros(2, 2), n) == ExprMatrix.from_rows([[Integer(0)**n, 0], [0, Integer(0)**n]])
+    assert _sympy_matrix(matrix_power(ExprMatrix.zeros(2, 2), n)).subs(sn, zero) == sympy.eye(2)
+    # the square root of the zero matrix is the zero matrix; a nilpotent block has none
+    assert matrix_function(ExprMatrix.zeros(2, 2), sqrt(x), x) == ExprMatrix.zeros(2, 2)
+    with pytest.raises(ValueError):
+        matrix_function(ExprMatrix.from_rows([[0, 1], [0, 0]]), sqrt(x), x)
+    with pytest.raises(ValueError):
+        matrix_power(ExprMatrix.from_rows([[0, 1], [0, 0]]), Rational(1, 2))
+    root = matrix_power(ExprMatrix.from_rows([[5, 4], [4, 5]]), Rational(1, 2))
+    assert root == ExprMatrix.from_rows([[2, 1], [1, 2]])

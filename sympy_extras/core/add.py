@@ -183,6 +183,12 @@ class Add(AssocOp):
             res: Expr = order(Integer(1))
             incr = 1
             while res.is_Order:
+                if incr > 64:
+                    # every term cancels up to a high order: a sum which
+                    # vanishes on this side without simplifying to 0 (the
+                    # singularity functions of a beam on the right of their
+                    # points), for which SymPy's loop does not end
+                    return Integer(0)
                 res = old._eval_nseries(x, _ceiling_int(add(n0, Integer(incr))), logx, cdir)
                 res = res.cancel().powsimp().trigsimp()
                 incr *= 2

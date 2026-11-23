@@ -46,6 +46,21 @@ def _inv(e: Expr) -> Expr:
     return pow(e, MINUS_ONE)
 
 
+def _for_nonnegative(formula: Expr, n: Expr, node: Expr) -> Expr:
+    """``formula``, which holds for the nonnegative integers ``n`` and for
+    the ``n`` which are not integers but is ``nan`` (``zoo*0``) at the
+    negative integers, where ``node`` has a value: guarded by ``n >= 0``
+    when ``n`` is an integer of unknown sign (SymPy returns the bare
+    formula), and ``node`` itself for a negative integer."""
+    from sympy_extras.core.relational import ge
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    if n.is_integer is not True or n.is_nonnegative is True:
+        return formula
+    if n.is_negative is True:
+        return node
+    return piecewise((formula, ge(n, Integer(0))), (node, true))
+
+
 def _factorial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from sympy_extras.functions import gamma
     return gamma(add(args[0], ONE))
@@ -77,6 +92,10 @@ def _rising(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional
     x, k = args
     positive = mul(gamma(add(x, k)), _inv(gamma(x)))
     other = mul(mul(pow(MINUS_ONE, k), gamma(add(ONE, neg(x)))), _inv(gamma(add(neg(k), neg(x), ONE))))
+    if k.is_integer is not True:
+        # the reflected form is the rising factorial only at the integers k (their quotient is
+        # sin(pi*(x + k))/((-1)**k*sin(pi*x))); SymPy gives it for every k (sympy/sympy#31275, V230)
+        return positive
     if not hints.piecewise:
         return other if le(x, Integer(0)) == true else positive
     return piecewise((positive, gt(x, Integer(0))), (other, true))
@@ -89,6 +108,9 @@ def _falling(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optiona
     x, k = args
     nonnegative = mul(gamma(add(x, ONE)), _inv(gamma(add(x, neg(k), ONE))))
     other = mul(mul(pow(MINUS_ONE, k), gamma(add(k, neg(x)))), _inv(gamma(neg(x))))
+    if k.is_integer is not True:
+        # as in _rising: the reflected form holds at the integers k only
+        return nonnegative
     if not hints.piecewise:
         return other if lt(x, Integer(0)) == true else nonnegative
     return piecewise((nonnegative, ge(x, Integer(0))), (other, true))
@@ -165,7 +187,7 @@ def _rising_as_binomial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints)
     x, k = args
     if not k.is_integer:
         return None
-    return mul(factorial(k), binomial(add(x, k, MINUS_ONE), k))
+    return _for_nonnegative(mul(factorial(k), binomial(add(x, k, MINUS_ONE), k)), k, node)
 
 
 # PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:FallingFactorial._eval_rewrite_as_RisingFactorial
@@ -181,7 +203,7 @@ def _falling_as_binomial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints
     x, k = args
     if not k.is_integer:
         return None
-    return mul(factorial(k), binomial(x, k))
+    return _for_nonnegative(mul(factorial(k), binomial(x, k)), k, node)
 
 
 # PORTED FROM SYMPY: sympy/functions/combinatorial/factorials.py:binomial._eval_rewrite_as_FallingFactorial
@@ -413,14 +435,14 @@ def _euler_as_genocchi(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) 
 def _catalan_as_binomial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from sympy_extras.functions.combinatorial.factorials import binomial
     n = args[0]
-    return binomial(2 * n, n) / (n + 1)
+    return _for_nonnegative(binomial(2 * n, n) / (n + 1), n, node)
 
 
 # PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:catalan._eval_rewrite_as_factorial
 def _catalan_as_factorial(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from sympy_extras.functions.combinatorial.factorials import factorial
     n = args[0]
-    return factorial(2 * n) / (factorial(n + 1) * factorial(n))
+    return _for_nonnegative(factorial(2 * n) / (factorial(n + 1) * factorial(n)), n, node)
 
 
 # PORTED FROM SYMPY: sympy/functions/combinatorial/numbers.py:catalan._eval_rewrite_as_hyper

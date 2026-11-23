@@ -85,7 +85,7 @@ from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
 
 __all__ = ['normal', 'det', 'adjugate', 'inverse', 'rank', 'rref', 'nullspace', 'linear_solve', 'LinearSolution', 'charpoly',
-           'charpoly_coefficients', 'pseudoinverse']
+           'charpoly_coefficients', 'pseudoinverse', 'conjugate_transpose']
 
 T = TypeVar('T')
 
@@ -727,13 +727,32 @@ def linear_solve(A: ExprMatrix, B: ExprMatrix) -> Optional[LinearSolution]:
     return _linear_solve(_PolynomialLift(kernels), A, B) if kernels else _linear_solve(_IntegerLift(), A, B)
 
 
-def pseudoinverse(M: ExprMatrix) -> ExprMatrix:
-    r"""The Moore–Penrose pseudoinverse of a real matrix (symbols taken
-    to be real, the rank the generic one), by a full rank factorisation
-    [3]_: with $B$ the pivot columns of $M$ and $C$ the nonzero rows of
-    its reduced row echelon form, $M = B C$ and
+def conjugate_transpose(M: ExprMatrix) -> ExprMatrix:
+    """The conjugate transpose, the symbols being real: the transpose,
+    for a matrix without ``I``.
 
-    .. math:: M^+ = C^T (C C^T)^{-1} (B^T B)^{-1} B^T.
+    >>> from sympy_extras.core import I
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.linalg import conjugate_transpose
+    >>> conjugate_transpose(ExprMatrix.from_rows([[1, 2 + I], [3*I, 4]]))
+    ExprMatrix([[1, -3*I], [2 - I, 4]])
+    """
+    transposed = M.transpose()
+    if not transposed.has(ImaginaryUnit):
+        return transposed
+    return transposed.xreplace({I: -I}).applyfunc(normal)
+
+
+def pseudoinverse(M: ExprMatrix) -> ExprMatrix:
+    r"""The Moore–Penrose pseudoinverse (symbols taken to be real, the
+    rank the generic one), by a full rank factorisation [3]_: with $B$
+    the pivot columns of $M$ and $C$ the nonzero rows of its reduced row
+    echelon form, $M = B C$ and
+
+    .. math:: M^+ = C^* (C C^*)^{-1} (B^* B)^{-1} B^*,
+
+    the star being the conjugate transpose (the transpose, for a matrix
+    without ``I``).
 
     ``pseudoinverse(M) * b`` is the least squares solution of ``M x = b``
     of least norm.
@@ -742,6 +761,9 @@ def pseudoinverse(M: ExprMatrix) -> ExprMatrix:
     >>> from sympy_extras.matrices.linalg import pseudoinverse
     >>> pseudoinverse(ExprMatrix.from_rows([[1, 1], [1, 1]])), pseudoinverse(ExprMatrix.from_rows([[1, 0], [0, 1], [1, 1]]))
     (ExprMatrix([[1/4, 1/4], [1/4, 1/4]]), ExprMatrix([[2/3, -1/3, 1/3], [-1/3, 2/3, 1/3]]))
+    >>> from sympy_extras.core import I
+    >>> pseudoinverse(ExprMatrix.from_rows([[1], [2*I]]))
+    ExprMatrix([[1/5, -2*I/5]])
 
     .. [3] A. Ben-Israel, T. N. E. Greville, *Generalized Inverses: Theory
            and Applications*, 2nd ed., Springer, 2003, Chapter 1, Section
@@ -753,6 +775,6 @@ def pseudoinverse(M: ExprMatrix) -> ExprMatrix:
         return ExprMatrix.zeros(M.cols, M.rows)
     B = ExprMatrix(M.rows, r, [M[i, j] for i in range(M.rows) for j in pivots])
     C = ExprMatrix(r, M.cols, [reduced[i, j] for i in range(r) for j in range(M.cols)])
-    Bt, Ct = B.transpose(), C.transpose()
+    Bt, Ct = conjugate_transpose(B), conjugate_transpose(C)
     product = Ct * inverse(C * Ct) * inverse(Bt * B) * Bt
     return product.applyfunc(normal)

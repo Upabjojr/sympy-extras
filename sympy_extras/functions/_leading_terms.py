@@ -418,11 +418,29 @@ def _singularity(f: Expr, x: Symbol, logx: Optional[Expr], cdir: Expr) -> Expr:
     shift = _e((z - a).subs(x, Integer(0)))
     if n.is_negative is True:
         return Integer(0)
-    if n.is_zero is True and shift.is_zero is True:
-        return Integer(0) if cdir == -1 else Integer(1)
+    if shift.is_zero is True:
+        # at the singular point the side decides: <d>**n is d**n where d
+        # is positive and 0 where it is negative (SymPy looks at the side
+        # for n = 0 only, and there at cdir without the sign of d: the
+        # leading term of <x + l - l>**1 is 0 for it)
+        if not singularity_side_positive(z - a, x, cdir):
+            return Integer(0)
+        return Integer(1) if n.is_zero is True else ((z - a)**n).as_leading_term(x, logx=logx, cdir=cdir)
     if shift.is_positive is True:
         return shift**n
     return Integer(0)
+
+
+def singularity_side_positive(d: Expr, x: Symbol, cdir: Expr) -> bool:
+    """Whether ``d``, which vanishes at ``x = 0``, is positive on the side
+    of ``cdir`` (the right one unless ``cdir`` is ``-1``)."""
+    try:
+        coefficient, exponent = d.leadterm(x)
+    except (ValueError, NotImplementedError):
+        return cdir != -1
+    if cdir == -1:
+        coefficient = coefficient * Integer(-1)**exponent
+    return coefficient.is_negative is not True
 
 
 def rules() -> dict[str, Rule]:

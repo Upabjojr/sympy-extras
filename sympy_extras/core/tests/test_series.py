@@ -297,7 +297,7 @@ def test_special_function_series_rules() -> None:
     cases = [S.LambertW(sx), S.LambertW(2*sx + sx**2), S.LambertW(sx + 1), S.Abs(-sx + sx**2), S.Abs(S.sin(sx)),
              S.sign(-sx), S.sign(sx + 1), S.arg(-sx), S.sinc(sx), S.gamma(sx - 1), S.gamma(sx + half), S.gamma(2*sx - 2),
              S.loggamma(sx), S.loggamma(sx + 2), S.expint(1, sx), S.expint(half, sx), S.Ei(sx), S.Ei(-sx), S.Ei(sx + 1),
-             S.Si(2*sx), S.Ci(sx**2), S.Shi(sx), S.Chi(sx), S.Ci(sx + 1), S.li(sx + 2), S.Li(sx + 3), S.li(sx),
+             S.Si(2*sx), S.Ci(sx**2), S.Shi(sx), S.Chi(sx), S.Ci(sx + 1),
              S.SingularityFunction(sx, 1, 2), S.SingularityFunction(sx, 0, 0), S.elliptic_k(2*sx), S.elliptic_e(sx**2),
              S.elliptic_e(sx, half),
              S.floor(-sx), S.floor(sx + half), S.floor(S.sin(sx)), S.ceiling(2 - sx), S.ceiling(sx), S.frac(-sx),
@@ -305,7 +305,7 @@ def test_special_function_series_rules() -> None:
              S.polylog(sympy.Symbol('y'), sx), S.polylog(2, S.sqrt(sx)), S.polylog(2, S.sin(sx)), S.polylog(-1, sx),
              S.besselj(0, sx), S.besselj(2, sx**2), S.besselj(half, S.sqrt(sx)), S.besselj(3, 2*sx),
              S.besseli(1, 2*sx), S.besseli(sympy.Rational(1, 3), sx), S.bessely(0, sx), S.bessely(2, 2*sx),
-             S.bessely(3, sx**2), S.besselk(0, sx), S.besselk(1, S.sqrt(sx)), S.besselk(3, 2*sx), S.besselk(half, sx),
+             S.besselk(0, sx), S.besselk(1, S.sqrt(sx)), S.besselk(3, 2*sx), S.besselk(half, sx),
              S.besselk(sympy.Rational(1, 3), sx**2), S.besselj(1, sx + 1)]
     for e in cases:
         for n in (3, 6):
@@ -313,6 +313,15 @@ def test_special_function_series_rules() -> None:
             want = str(e.series(sx, 0, n))
             clear_cache()
             assert ours(e, n) == want, (e, n)
+    # where SymPy is wrong (sympy/sympy#31275, V98): the series of li in log(z), truncated, is an
+    # expansion at z = 1 only; SymPy returns it at any point
+    assert ours(S.li(sx + 2), 3) == 'li(2) + x/log(2) - x**2/(4*log(2)**2) + O(x**3)'
+    assert ours(S.Li(sx + 3), 3) == 'li(3) - li(2) + x/log(3) - x**2/(6*log(3)**2) + O(x**3)'
+    assert ours(S.li(sx + 1), 3) == 'EulerGamma + log(x) + x/2 - x**2/24 + O(x**3)'
+    assert ours(S.li(sx), 3) == 'li(x)'
+    # ... and the terms of bessely between the leading one and x**n (the square of the argument
+    # was truncated at O(x**n) before it met the negative power)
+    assert ours(S.bessely(3, sx**2), 3) == '-16/(pi*x**6) - 2/(pi*x**2) - x**2/(4*pi) + O(x**3*(-2*log(x) + log(2)))'
     # where SymPy is wrong (issue #25): sinc expands in x, SingularityFunction
     # to the order asked, expint(2, x) is real for x > 0
     assert ours(S.sinc(2*sx), 6) == '1 - 2*x**2/3 + 2*x**4/15 + O(x**6)'
@@ -459,3 +468,49 @@ def test_is_meromorphic_of_special_functions_matches_sympy() -> None:
                     assert want is None or got == want, (e, a, got, want)
                     checked += 1
     assert checked == 12 * 7 * 6 * 3
+
+
+def test_series_of_a_power_keeps_the_parameters_as_they_are() -> None:
+    # SymPy denests the power with force=True before it expands it, which takes every symbol for
+    # positive: re(a) becomes a, im(a) zero, Abs(a) and sqrt(a**2) a (found with sympy/sympy#31275,
+    # V215). SymPy 1.14: ((x + re(a))**2).series(x, 0, 3) is a**2 + 2*a*x + x**2
+    from sympy_extras.core import Integer, Rational
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import abs_, im, re, sqrt
+    a = Symbol('a')
+    assert ((X + re(a))**2).series(X, 0, 3) == X**2 + 2*X*re(a) + re(a)**2
+    assert ((X + im(a))**3).series(X, 0, 2).removeO() == im(a)**3 + 3*X*im(a)**2
+    assert ((X + abs_(a))**2).series(X, 0, 3) == X**2 + 2*X*abs_(a) + abs_(a)**2
+    root = sqrt(a**2 + X).series(X, 0, 2).removeO()
+    assert abs(to_complex(root.subs({a: Integer(-2), X: Rational(1, 1000)})) - 2.00025) < 1e-6   # sqrt(4.001)
+
+
+def test_series_of_the_absolute_value_of_a_complex_argument() -> None:
+    # sympy/sympy#31275, V215: sign(1 - a)*(x - a) is Abs(x - a) for a real a only; SymPy gives it
+    # for every a (at a = 2 + I, x = 11/10: -0.07 + 1.34*I for 1.34536...)
+    from sympy_extras.core import I, Integer, Rational
+    from sympy_extras.core.evalf import to_complex
+    from sympy_extras.functions import abs_, sign, sqrt
+    a, r = Symbol('a'), Symbol('r', real=True)
+    found = abs_(X - a).series(X, 1, 3).removeO()
+    value = to_complex(found.subs({a: Integer(2) + I, X: Rational(11, 10)}))
+    assert abs(value - abs(1.1 - (2 + 1j))) < 1e-3 and abs(value.imag) < 1e-12
+    assert abs_(X - I).series(X, 1, 2).removeO() == sqrt(2) + sqrt(2)*(X - 1)/2
+    # a real argument as before
+    assert abs_(X - r).series(X, 1, 3) == -r*sign(1 - r) + (X - 1)*sign(1 - r) + sign(1 - r)
+    assert abs_(X).series(X, 0, 3) == X
+
+
+def test_powers_with_a_positive_symbolic_exponent_are_kept() -> None:
+    # x**a for a positive symbol a is exp(a*log(x)) with an exponent
+    # going to -oo, which was taken to be smaller than every power: the
+    # series of x**a + 1 came out as 1 + O(x**2), that of x**a as O(x**3)
+    # (SymPy 1.14 does the same); exp(-1/x) is smaller than every power
+    from sympy_extras.core import Integer
+    from sympy_extras.functions import exp
+    w, a = Symbol('w', positive=True), Symbol('a', positive=True)
+    assert (w**a + 1).series(w, 0, 2) == w**a + 1
+    assert (w**a + w).series(w, 0, 3) == w**a + w
+    assert (w**a).series(w, 0, 3) == w**a
+    assert (w**3 + 1).series(w, 0, 2) == 1 + order(w**2)
+    assert exp(-1/w)._eval_nseries(w, 3, None, Integer(0)) == order(w**3)

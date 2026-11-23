@@ -116,11 +116,19 @@ def _difference_delta(e: Expr, n: Symbol, h: Expr) -> Optional[Expr]:
         return None
     if isinstance(e, Sum):
         # PORTED FROM SYMPY: sympy/concrete/summations.py:Sum._eval_difference_delta
+        # SymPy takes the new terms of the last limit only, with the summand at n: wrong when the
+        # summand (an inner sum to n) or the lower limit depends on n too, as for
+        # Sum(1/k, (k, 1, n), (m, 1, n)), which is n*harmonic(n) (sympy/sympy#31275, V213)
         limits = e.limits
-        k, _, upper = limits[-1]
+        k, lower, upper = limits[-1]
+        if k == n or lower.has(n):
+            return None
         new_upper = as_expr(upper.subs(n, n + h))
         f = e.function if len(limits) == 1 else sum_(e.function, *limits[:-1])
-        return as_expr(sum_(f, (k, upper + 1, new_upper)).doit())
+        new_terms = as_expr(sum_(as_expr(f.subs(n, n + h)), (k, upper + 1, new_upper)).doit())
+        if not f.has(n):
+            return new_terms
+        return new_terms + as_expr(sum_(difference_delta(f, n, h), (k, lower, upper)).doit())
     return None
 
 

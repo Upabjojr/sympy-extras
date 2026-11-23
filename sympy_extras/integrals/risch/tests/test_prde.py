@@ -304,7 +304,10 @@ def test_prde_cancel_liouvillian() -> None:
     V = A.nullspace()
     assert h == [p0, p0, p1, p0, p0, p0, p0, p0, p0, p0, p2, p3, p0, p0, p0, p0]
     assert A.rank() == 16
-    assert (FieldMatrix.row_vector([hi.as_element() for hi in h])*V[0][:16, :]) == M([[0]])
+    # the columns of A are the two constants c1, c2 and then the sixteen d's: the combination of h
+    # is over the rows from 2 on. SymPy's test takes the rows [:16], which pick a zero entry of h
+    # whatever V is (sympy/sympy#31275, V135); the solution of Dy - y/(x - 1) = 0 is y = x - 1
+    assert (FieldMatrix.row_vector([hi.as_element() for hi in h])*V[0][2:, :]) == M([[x - 1]])
 
     ### 2. case == 'exp'
     # used when integrating log(x/exp(x) + 1)
@@ -430,7 +433,11 @@ def test_param_rischDE() -> None:
     assert len(V) == 3
     assert V[0] == col([0, 0, 0, 0, 1, 0, 0])
     yv = 0*p[0] + 0*p[1] + 1*p[2] + 0*p[3] + 0*p[4]
-    assert yv.diff(t) - yv/R(t + x) == 0   # Dy + f*y = 0*G0 + 0*G1
+    # Dy + f*y = 0*G0 + 0*G1 with D = d/dx + t*d/dt (t = exp(x)) and f = (-t - 1)/(t + x). SymPy's
+    # test takes d/dt alone, which every multiple g(x)*(t + x) passes (sympy/sympy#31275, V136)
+    assert yv.diff(x) + R(t)*yv.diff(t) + R((-t - 1)/(t + x))*yv == 0
+    wrong = R(x)*yv
+    assert wrong.diff(x) + R(t)*wrong.diff(t) + R((-t - 1)/(t + x))*wrong != 0
 
 
 def test_limited_integrate_reduce() -> None:

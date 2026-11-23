@@ -1626,7 +1626,8 @@ def rsolve_linear(equation: Union[Expr, Eq], y: AppliedUndef,
     d'Alembertian solutions do not span the solutions (fewer than the
     order), or when the right-hand side is not a sum of hypergeometric
     terms with a d'Alembertian particular solution. With ``init``, the
-    values ``{y(0): ..., y(1): ...}`` determine the constants.
+    values ``{y(0): ..., y(1): ...}`` determine the constants; they must
+    not depend on the index (``ValueError``).
 
     Examples
     ========
@@ -1686,6 +1687,11 @@ def rsolve_linear(equation: Union[Expr, Eq], y: AppliedUndef,
         at = point.args[0] if len(point.args) == 1 else None
         if not isinstance(at, Integer):
             raise ValueError("the initial values must be given at integers: %s" % (point,))
+        if to_expr(value).has(n):
+            # a value depending on the index is not a constant of the
+            # solution: substituting it gives a sequence which does not
+            # satisfy the recurrence
+            raise ValueError("the initial value of %s depends on %s: %s" % (point, n, value))
         evaluated = _value(general, n, at.p)
         rows.append([diff(evaluated, c) for c in constants])
         values.append(to_expr(value) - evaluated.subs(zeros))

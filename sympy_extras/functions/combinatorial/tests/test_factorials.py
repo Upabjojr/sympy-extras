@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 
+import mpmath
 import sympy
 
 from sympy_extras._typing_sympy import as_expr as sympy_expr
@@ -48,9 +49,21 @@ def test_binary_functions_match_sympy() -> None:
             if 'gamma' in theirs:
                 continue
             ours = str(to_sympy(ours_f(a, b), evaluate=False))
+            if name != 'binomial' and a in (oo, -oo) and isinstance(b, Integer) and b.p < 0:
+                # sympy/sympy#31275 (V70): the reciprocal of a polynomial tends to 0, SymPy has oo
+                assert (ours, theirs) == ('0', 'oo'), (name, a, b)
+                continue
             if ours != theirs:
                 different.append((name, str(a), str(b), ours, theirs))
     assert not different, different[:20]
+
+
+def test_factorial_powers_of_negative_order_at_infinity() -> None:
+    # sympy/sympy#31275 (V70): rf(x, -k) = 1/((x - 1)...(x - k)), ff(x, -k) = 1/((x + 1)...(x + k))
+    for f in (rf, ff):
+        assert f(oo, Integer(-6)) == 0 and f(-oo, Integer(-7)) == 0
+        assert f(oo, Integer(3)) == oo and f(-oo, Integer(3)) == -oo and f(-oo, Integer(2)) == oo
+    assert abs(float(mpmath.rf(1e8, -6)) - 1e-48) < 1e-50
 
 
 def test_facts_agree_with_sympy() -> None:

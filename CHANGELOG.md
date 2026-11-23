@@ -3790,6 +3790,180 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- Bugs shared with SymPy, found by checking the items V112-V152 and
+  V193-V234 of sympy/sympy#31275 against the native code (the ports had
+  them too; each has a regression test):
+  - `simplify.fu.TR12i` (V228, V229): the denominators `tan(a)*tan(b) - 1`
+    no numerator used were written back as `tan(a) + tan(b) - 1`, a power
+    `(tan(a) + tan(b))**p` gave one tangent of the sum and lost the other
+    `p - 1` factors, two denominators with the same sum of arguments were
+    mixed up, and a sum of tangents without its denominator was a
+    `KeyError` in SymPy.
+  - the rewriting of `RisingFactorial(x, k)` and `FallingFactorial(x, k)`
+    in gamma functions (V230) has the reflected branch
+    `(-1)**k*gamma(1 - x)/gamma(1 - x - k)` only for an integer `k`, for
+    which it holds; `gammasimp(rf(x + n, k)*binomial(n, k))` has no wrong
+    `Piecewise` branch any more.
+  - `simplify.powsimp.powdenest` (V232): `exp(y*(log(a) + log(b)))` is
+    `a**y*b**y`, not `(a*b)**y` (wrong at `a = b = -1`, `y = 1/2`); the
+    power is taken out of the exponential only for an integer exponent or
+    when the imaginary part of the logarithms is in `(-pi, pi]`.
+  - `simplify.radsimp.radsimp` (V233): `1/sqrt(y)**3` is `sqrt(y)/y**2`,
+    not `sqrt(y**3)/y**3` (the other sign at `y = -1`).
+  - `series.formal.fps`: the sum of two series on different powers
+    (`x**(n - 2)*sin(x) + x**n*exp(x)`, V210; `FormalPowerSeries.__add__`
+    too) added the coefficients place by place; the coefficients after a
+    logarithmic term of a series in `x**2` were halved (`fps(asech(x))`
+    had `-3*x**4/64` for `-3*x**4/32`, V209); and `fps(x*asech(x))`,
+    `fps(asech(sqrt(x)))` were the series of `asech(x)`.
+  - `series.limitseq.difference_delta` of a `Sum` whose summand or lower
+    limit contains the index (V213): `Sum(1/k, (k, 1, n), (m, 1, n))` has
+    the difference `harmonic(n) + 1`, not `harmonic(n)`.
+  - the series of `Abs` of a complex argument (V215) is that of
+    `sqrt(re**2 + im**2)`, not `sign(...)` times the argument, so that
+    `limit((Abs(x + y) - Abs(x - y))/(2*x), x, 0)` is `re(y)/Abs(y)` for a
+    symbol `y` of no assumption (V211; `sign(y)` for a real `y` as before).
+  - the series of a power no longer takes the parameters for positive
+    (SymPy denests with `force=True`): `((x + re(a))**2).series(x)` was
+    `a**2 + 2*a*x + x**2`, `((x + im(a))**3).series(x, 0, 3)` was
+    `O(x**3)`.
+  - `AccumBounds(-1, 3)**(-2)` is `AccumBounds(1/9, oo)`, not `(0, oo)`
+    (V222; sound before, tighter now).
+  - the ported tests which could not fail or pinned a wrong value are
+    corrected: `test_formal.py` (V207, V208, V210), `test_prde.py` (V135,
+    V136).
+
+- Bugs shared with SymPy, from the review of its test suite
+  (sympy/sympy#31275, items V1-V69), fixed in the native code:
+  - the core's `ask` (`sympy_extras.assumptions.handlers`, `satask`):
+    `Q.complex` and `Q.real` of `exp(x)`, `Abs(x)`, `re(x)`, `im(x)`,
+    `sin(x)`, `cos(x)`, `log(x)` are `None` for a symbol which may be
+    infinite (`Abs(oo)` is `oo`) and `True` for a complex one (`log`: a
+    nonzero one); `Q.complex(x**y)` for complex `x`, `y` needs a nonzero
+    base or a positive exponent (`0**(-1)` is `zoo`);
+    `Q.extended_real(x**y)` is no closed group (`(-1)**(1/2)`);
+    `Q.imaginary` of a sum is `None` when the imaginary terms may cancel
+    or the one real term may be zero (`x + I` for a real or an imaginary
+    `x`); `Q.imaginary(x**y)` for a negative `x` and `Q.integer(2*y)` is
+    `None` unless `y` is known not to be an integer; `Q.real` and
+    `Q.imaginary` of `b**x` for an imaginary `x` no longer answer `False`
+    from `log(b)` not being imaginary; `Q.nonzero(b**x)` asks for a real
+    power (`5**(I*n)`); `Q.positive(acos(x))` on `[-1, 1]` is `None`
+    (`acos(1) = 0`), `Q.positive(acot(x))` follows the sign of `x`
+    (`acot(-1) = -pi/4`); the facts of the SAT step state
+    `Q.extended_nonnegative(Abs(x))` (nonnegative for a complex `x`) and
+    `Q.zero(x**y)` implies `Q.zero(x)` only for finite `x`, `y`
+    (`2**(-oo)`, `oo**(-1)`). `ask(Q.real(Abs(x)))`, `ask(Q.real(re(x)))`
+    without assumptions are now `None`: say `Q.complex(x)`;
+  - `AccumBounds(-1, 3)**(-2)` is `AccumBounds(1/9, oo)`, not
+    `AccumBounds(0, oo)` (a negative even power of bounds around 0);
+  - `summation` and `Sum.doit` of a reversed infinite sum follow Karr's
+    convention with the sign: `Sum(1/(x**2 + 1), (x, oo, 0))` is
+    `1/2 - pi/(2*tanh(pi))` (it was the opposite), also in
+    `eval_sum_residue` and the zeta sums;
+  - `deltasummation`: the solution of the delta must lie on the lattice of
+    the index, `Sum(KroneckerDelta(x, 1/2), (x, -oo, oo))` is 0 and the
+    sum of `KroneckerDelta(x, y)` has `Contains(y, Integers)` in its
+    condition when `y` is not known to be an integer;
+  - `Subs(x, y, 2).subs(x, y)` renames the bound variable instead of
+    letting it capture the new `y` (`doit` gave 2 instead of `y`);
+  - `Floor(...).evalf()` and `Ceiling(...).evalf()` settle an argument next
+    to an integer with more precision (up to 8192 bits) or by a proof:
+    `Floor(log(8)/log(2) - exp(-1000)).evalf()` is 2, not 3;
+  - `simplify` no longer gives the value 0 to `sign(u)*g` where `g` has a
+    pole at `u = 0` (`sign(r + 3)/Abs(r + 3)**(3/5)` keeps its `sign`).
+- Defects reported against SymPy (sympy/sympy#31017 and the solver items
+  V235–V278 of sympy/sympy#31275) which the native code shared:
+  - `core.gruntz` (`limit`): the limit of `log(n**a + n**b)/log(n)` at
+    infinity for positive symbols `a`, `b` was `b` (it is `max(a, b)`),
+    and `(exp(a*x) + exp(b*x))*exp(-b*x)` gave `1`: when the leading term
+    in the most rapidly varying `w` depends on the sign of a symbolic
+    exponent (`w + w**(a/b)`), the fallback series wrote `w**(a/b)` as a
+    coefficient `exp(-a*x)`; `NotImplementedError` is raised now, as for
+    `(n**a + n**b)/n**b` (#31017 W7).
+  - `Pow._eval_nseries`, `Mul._eval_nseries`: `(x**a + 1).series(x, 0, 2)`
+    for a positive symbol `a` was `1 + O(x**2)` and `(x**a).series(x)` was
+    `O(x**6)` (SymPy 1.14 too): `x**a` is kept, and a product keeps the
+    terms whose exponent is not known to reach the order.
+  - `solvers.transcendental` (`solveset`, `assumptions.solve` over the
+    reals): a relation with a negative power of a root included the zero
+    of the radicand, `1/sqrt(x) > 1` was `[0, 1)` and
+    `sqrt(x) + 1/x**(1/3) > 1` was `[0, oo)`; they are `(0, 1)` and
+    `(0, oo)` (#31275 V252: the expected value of SymPy's XFAIL test is
+    wrong in another way).
+  - `solvers.recurr.rsolve_linear`: an initial value depending on the
+    index (`{y(1): binomial(2*n + 1, 3)}`) was substituted for the
+    constant, giving a sequence which does not satisfy the recurrence
+    (SymPy's test pins that value, #31275 V255); `ValueError` now.
+
+- The findings of sympy/sympy#31275 (V70-V111, `sympy.functions`) which
+  the native ports shared with SymPy 1.14, each checked against mpmath
+  (`test_sympy_issue_31275.py` in the tests of `functions.combinatorial`,
+  `functions.elementary`, `functions.special` and `core`). The values now
+  differ from SymPy's:
+  - `rf(oo, -k)`, `ff(oo, -k)` (and at `-oo`) are `0`, not `oo` (V70);
+    `rf(x, k).rewrite(binomial)`, `ff(x, k).rewrite(binomial)`,
+    `catalan(n).rewrite(factorial)` and `.rewrite(binomial)` are guarded by
+    `k >= 0` for an integer of unknown sign, where the bare formula is
+    `nan` at the negative integers (V72, V74); `mobius(n**2)`,
+    `mobius(n**(k + 1))` stay unevaluated for a positive integer `n`
+    which may be 1, and `mobius(3*n)`, `mobius(6*p)` do too (SymPy
+    multiplies the signs of the numeric factors and forgets the symbols)
+    (V75).
+  - `re(f(y)).diff(y)` for an imaginary `y` is `I*im(f'(y))` (the sign was
+    wrong, and with it the derivatives of `Abs` and `arg`) (V76, V77);
+    `atan2(0, x)` is `pi` on the negative imaginary axis, in the value and
+    in `rewrite(atan)` (V85), and `atan2(y, -oo)` is `pi` for an imaginary
+    `y` (V84); the leading terms of the inverse
+    trigonometric and hyperbolic functions at a branch point reached as a
+    limit (`acos(sin(x)/x)` is `sqrt(3)*sqrt(x**2)/3`, not `acos(1) = 0`;
+    `acosh` and `asech` at 1 no longer go through the logarithmic form,
+    which failed there) (V81, V82, V86, V87).
+  - The series of `besselj`, `bessely`, `besseli`, `besselk` at 0: an
+    argument which is not a monomial (`sin(x)`, `x + x**2`) is put into
+    the series in the argument and expanded, where the truncated series
+    of `z/2` under a negative or fractional power lost terms
+    (`bessely(1, sin(x))` missed `x**3/(60*pi)`) (V88); for a monomial,
+    the terms lost for a negative order, for a small `n`
+    (`bessely(2, x)` to `O(x**2)` had no `-1/pi`) and for `besselk` of a
+    noninteger order in `x**2`. The asymptotic series of `besseli` and
+    `besselk` have the coefficients of DLMF 10.40.1-2 (`1 +- 1/(8*x) +
+    9/(128*x**2) +- ...`; every coefficient after the first was wrong)
+    (V89, V90). `jn(nu, z).rewrite(bessely)`, `jn.rewrite(yn)`,
+    `yn.rewrite(jn)` and `hn1`, `hn2` to `jn`, `yn` only for an integer
+    order (V91). `airybiprime(-oo)` and `digamma(-oo)`,
+    `polygamma(0, -oo)` stay unevaluated (no limit) (V92, V103).
+  - `beta(5, -3)` is `zoo` and `Beta(x, y).is_real` is no longer `True`
+    at or possibly at a pole (V93); `erf2inv(x, oo)` stays unevaluated
+    (V94); `Ei(2*log(x)).rewrite(li)` only for a real argument (V95);
+    `conjugate(li(z))` is `li(conjugate(z))` only for a `z` known to be
+    off the cut (V97); `li(z).series(z)` is the series in `log(z)` at 1
+    only (expanded there), the Taylor series at the other finite points
+    and the function itself at 0 (V98).
+  - `hyper(...).radius_of_convergence` when a nonpositive integer
+    numerator ends the series (`hyper((-1, 1, 2), (-4,), z)` is a
+    polynomial: `oo`, not 0), with cases (`Piecewise`) for the integer
+    parameters of unknown sign, and `convergence_statement` by those
+    cases, simplified (V104, V105): the sums evaluated through a
+    hypergeometric series state their condition in that form
+    (`n > -1` for SymPy's `(n > 0) | ((n <= 0) & (n > -1))` in the sum of
+    `binomial(n, i)`), and `Sum(x**i/factorial(i), (i, 0, n))` has the
+    condition `n > -2` (SymPy's formula is `exp(x)` at `n = -2`, where
+    the sum is 0); the leading term and the series of
+    `SingularityFunction` at its point follow the side (V106).
+  - `gegenbauer(n, a, -1)` for `re(a) > 1/2` is `zoo` for a noninteger
+    order only (the value for a nonnegative integer one, unevaluated
+    otherwise) (V107); `legendre`, `chebyshevt`, `chebyshevu`, `hermite`,
+    `hermite_prob`, `laguerre` at `oo`, `-oo` evaluate for a positive
+    order only (and `laguerre(n, oo)` for a positive integer), and
+    `laguerre(-n, +-oo)` is not reflected into a product `exp(x)*...`
+    (V108); `hermite_prob(n, 0)` is `2**(n/2)*sqrt(pi)/gamma((1 - n)/2)`
+    (V110).
+  - In the core: the series of a power whose base is replaced by its
+    series (`1/Abs(sin(x))`, hence `(sin(x)**2)**(-1/2)` in any symbol)
+    takes the base to the relative order needed (SymPy: `1/x + x/6 +
+    x**3/36 + O(x**4)`, the coefficient is `7/360`); the leading term of
+    a sum whose terms cancel to every order is 0 instead of a loop.
 - Issue #72, the equations which are not polynomial in their leading
   derivative (`sympy_extras.solvers.lie` and its SymPy face): they were
   solved for it and the first root kept, so that `symmetries` returned the
@@ -3820,6 +3994,69 @@ remove public functions. Breaking changes are listed here when they happen.
   New handlers: `atan(x)` is negative exactly when `x` is (extended)
   negative and real when `x` is extended real, so
   `ask(Eq(atan(1/x) + atan(x), pi/2), x < 0)` is False.
+- `sympy_extras.matrices`, from the review of SymPy's matrices in
+  sympy/sympy#30900 (the items we share; matrix and array expressions,
+  the subject of most of it and of sympy/sympy#30902, do not exist
+  here):
+  - `matrix_power(M, n)` for an integer `n` is the product itself, the
+    power of the inverse for a negative `n`, and raises `ValueError` for
+    a singular matrix: `matrix_power([[0, 0], [0, 1]], -1)` was a matrix
+    of `zoo` and `nan` (M1-3), and `matrix_power([[1, 2], [3, 4]], -2)`
+    came out in nested radicals instead of `[[11/2, -5/2], [-15/4,
+    7/4]]`.
+  - `matrix_power` with a symbolic exponent and the eigenvalue zero:
+    `matrix_power(zeros(2, 2), n)` and `matrix_power([[0, 1], [0, 0]],
+    n)` had `nan` and `zoo` entries (the derivative `n*x**n/x` evaluated
+    at 0, and zero components multiplied by it); they are `0**n*eye(2)`
+    and `[[0**n, n*0**(n - 1)], [0, 0**n]]`.
+  - `matrix_function(M, f, x)` raises `ValueError` when `f` or a
+    derivative it needs is not finite at an eigenvalue (`1/x` for a
+    singular matrix, `sqrt(x)` for a nilpotent block) instead of
+    returning `zoo`/`nan` entries; the square root of the zero matrix is
+    the zero matrix.
+  - `pseudoinverse` (`M.pinv()`) and `singular_values` use the conjugate
+    transpose for matrices with `I` (the slip of M2-2/M2-5 in SymPy):
+    `pseudoinverse([[1], [2*I]])` was `[[-1/3, -2*I/3]]` (it is `[[1/5,
+    -2*I/5]]`), `pseudoinverse([[1, I], [I, -1]])` raised "singular",
+    `singular_values([[1, I], [0, 1]])` raised `TypeError`. New
+    `linalg.conjugate_transpose` (`equations.adjoint` is the same
+    function).
+  - `singular_values` and `svd` no longer raise `TypeError: cannot
+    convert the complex number ...` when the squares of the singular
+    values are the real roots of a cubic or quartic written through
+    complex radicals (`[[-2, 1, 3], [3, 3, -3], [-1, -3, 0]]`, M2-10;
+    4 x 4 matrices in `svd`): the order is taken from the real parts,
+    and `singular_values` of a matrix of rationals writes the three
+    real roots of a cubic in trigonometric form, as `svd` does.
+  - `ExprMatrix` checks its data: a negative shape (`ExprMatrix(-1, -1,
+    [1])` was accepted), `with_entry(i, j, v)` and `row(i)` out of range
+    (they wrote or read another row: `with_entry(0, 2, v)` on a 2 x 2
+    matrix changed the entry `(1, 0)`) raise `ValueError`/`IndexError`.
+
+- `sympy_extras.core.printing` (review of the string printers against
+  sympy/sympy#30844): a power printed as a quotient (`1/x`, `1/sqrt(x)`)
+  has the precedence of a product, so that an unevaluated `1/(1/x)` is
+  no longer printed `1/1/x` (which reads as `1/x`), `x/(1/y)` no longer
+  `x/1/y`, and `(1/x)**2`, `1/(1/sqrt(x))` keep their parentheses.
+  `srepr` prints the exclusions of a `Wild` and the assumptions of an
+  undefined function (`Function('f', real=True)(Symbol('x'))`), which it
+  dropped.
+- `sympy_extras.core.parsing.parse`: `Mod(x, 3)` is the modulo (it was
+  read as an undefined function named `Mod`, so that a printed `Mod` did
+  not read back); with `evaluate=False`, `sqrt`, `cbrt` and `root` build
+  the unevaluated power (`sqrt(4)` stayed `2`). The names which SymPy
+  calls and the parser has not (`Eq(x, y)`, `Derivative(f(x), x)`,
+  `O(x)`, `S(1)`, `Float(1.5)`, `diff(x**2, x)`, ...: the list
+  `sympy_extras.core._foreign_names`) and the names `true`, `false`,
+  `Reals`, ... are `ParseUnsupported` instead of undefined functions and
+  symbols of those names: `sympify('Eq(x, y)')` was `Function('Eq')(x,
+  y)` and is now the equation, read by the bridge (a `SympifyError`
+  without one), so that the printed relations, Booleans, derivatives and
+  order terms read back. **Changed behaviour**: `sympify('N(t)')` follows
+  SymPy (`t`) instead of giving an undefined function `N`.
+- `sympy_extras.core.pow`: the power of an unevaluated product with a
+  zero coefficient lost the zero (`pow(Mul(0, 3), 1/2)` was `sqrt(3)`);
+  it stays unevaluated.
 - `sympy_extras.assumptions.solve` over the reals drops a candidate which
   is real only where its imaginary part vanishes when the condition fails
   there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`

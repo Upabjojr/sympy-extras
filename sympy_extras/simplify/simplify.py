@@ -53,7 +53,7 @@ import mpmath
 
 from sympy_extras.concrete.expr_with_limits import Limits, Sum
 from sympy_extras.core.add import Add, add
-from sympy_extras.core.basic import Basic
+from sympy_extras.core.basic import Basic, preorder_traversal
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
 from sympy_extras.core.mul import Mul, mul
 from sympy_extras.core.numbers import Integer, Number, Rational
@@ -661,6 +661,31 @@ def _eval_simplify(e: Expr, ratio: float, measure: Measure, rational: Optional[b
     return None
 
 
+def _zero_case_at_a_pole(e: Expr, rewritten: Expr) -> bool:
+    """Whether folding ``rewritten`` (``e`` with ``sign(u)`` as ``Piecewise((0,
+    Eq(u, 0)), (u/Abs(u), True))``) gives a value to ``e`` at a point where
+    it has none: the case ``0`` of the sign multiplied by a factor with a
+    pole there. SymPy folds all the same: its ``simplify`` of
+    ``sign(r + 3)/Abs(r + 3)**(3/5)`` is ``0`` at ``r = -3``, where the
+    expression is ``0/0`` and tends to infinity on both sides
+    (sympy/sympy#31275, V66)."""
+    from sympy_extras.core.numbers import ComplexInfinity, Infinity, NaN, NegativeInfinity
+    from sympy_extras.core.relational import Equality
+    from sympy_extras.functions.elementary.piecewise import Piecewise, piecewise_fold
+    folded = piecewise_fold(rewritten)
+    for node in preorder_traversal(folded):
+        if not isinstance(node, Piecewise):
+            continue
+        for pair in node.args:
+            cond = pair.cond
+            if not (isinstance(cond, Equality) and isinstance(cond.lhs, Symbol) and cond.rhs.is_number):
+                continue
+            value = e.subs(cond.lhs, cond.rhs)
+            if isinstance(value, Expr) and value.has(NaN, ComplexInfinity, Infinity, NegativeInfinity):
+                return True
+    return False
+
+
 # PORTED FROM SYMPY: sympy/simplify/simplify.py:simplify
 def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, rational: Optional[bool] = False,
              inverse: bool = False, doit: bool = True) -> Expr:
@@ -753,7 +778,9 @@ def simplify(expr: ExprLike, ratio: float = 1.7, measure: Measure = _ops, ration
     e = expr2 if ratio == math.inf else shorter(expr2, expr1, e)
     e = factor_terms(e, sign=False)
     if e.has(Sign):
-        e = _expr(e.rewrite(Abs))
+        rewritten = _expr(e.rewrite(Abs))
+        if not _zero_case_at_a_pole(e, rewritten):
+            e = rewritten
     if e.has(Piecewise):
         e = done(piecewise_fold(e))
         if e.has(Piecewise):

@@ -43,6 +43,8 @@ class ExprMatrix:
     __slots__ = ('rows', 'cols', 'entries')
 
     def __init__(self, rows: int, cols: int, entries: Sequence[ExprLike]) -> None:
+        if rows < 0 or cols < 0:
+            raise ValueError('a matrix of shape %d x %d' % (rows, cols))
         if len(entries) != rows * cols:
             raise ValueError('%d entries for a %d x %d matrix' % (len(entries), rows, cols))
         self.rows: int = rows
@@ -87,10 +89,14 @@ class ExprMatrix:
         return len(self.entries)
 
     def row(self, i: int) -> tuple[Expr, ...]:
+        if not 0 <= i < self.rows:
+            raise IndexError('row %d of a %d x %d matrix' % (i, self.rows, self.cols))
         return self.entries[i * self.cols:(i + 1) * self.cols]
 
     def with_entry(self, i: int, j: int, value: ExprLike) -> ExprMatrix:
         """The matrix with the entry ``(i, j)`` replaced (SymPy's ``M[i, j] = v``)."""
+        if not (0 <= i < self.rows and 0 <= j < self.cols):
+            raise IndexError('entry %s of a %d x %d matrix' % ((i, j), self.rows, self.cols))
         entries = list(self.entries)
         entries[i * self.cols + j] = to_expr(value)
         return ExprMatrix(self.rows, self.cols, entries)
@@ -231,7 +237,7 @@ class ExprMatrix:
         return solution.particular
 
     def pinv(self) -> ExprMatrix:
-        """The Moore-Penrose pseudoinverse (real entries)."""
+        """The Moore-Penrose pseudoinverse (the conjugate transpose is used with ``I`` in the entries)."""
         from .linalg import pseudoinverse
         return pseudoinverse(self)
 
