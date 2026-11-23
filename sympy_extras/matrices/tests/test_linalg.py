@@ -229,3 +229,40 @@ def test_square_roots_are_exact() -> None:
     assert det(hidden) == 0 and rank(hidden) == 1 and nullspace(hidden) == [ExprMatrix.column([-sqrt(Integer(6))/2, 1])]
     hadamard = ExprMatrix.from_rows([[1, 1], [1, -1]])/sqrt(two)
     assert inverse(hadamard) == hadamard and det(hadamard) == -1
+
+
+def test_pseudoinverse_of_complex_matrices() -> None:
+    # the conjugate transpose, not the transpose: [[1], [2*I]] gave [[-1/3, -2*I/3]] and [[1, I], [I, -1]] raised
+    # "singular" (sympy/sympy#30900 M2-2, M2-5 are the same slip in SymPy's QRsolve and sparse least squares)
+    assert pseudoinverse(ExprMatrix.from_rows([[1], [2*I]])) == ExprMatrix.from_rows([[Rational(1, 5), -2*I/5]])
+    zero: Expr = Integer(0)
+    one, two = zero + 1, zero + 2
+    cases: list[list[list[Expr]]] = [[[one, I], [I, -one]], [[one], [2*I]], [[one, I], [I, two]],
+                                     [[1 + I, two, zero], [zero, I, 3 - I]], [[I, one], [one, -I], [two, zero]],
+                                     [[zero, zero], [zero, zero]]]
+    for rows in cases:
+        M = ExprMatrix.from_rows(rows)
+        P = pseudoinverse(M)
+        S, T = _sympy_matrix(M), _sympy_matrix(P)
+        # the four conditions of Moore and Penrose
+        assert (S*T*S - S).applyfunc(sympy.expand) == sympy.zeros(*S.shape)
+        assert (T*S*T - T).applyfunc(sympy.expand) == sympy.zeros(*T.shape)
+        assert ((S*T).H - S*T).applyfunc(sympy.expand) == sympy.zeros(S.rows, S.rows)
+        assert ((T*S).H - T*S).applyfunc(sympy.expand) == sympy.zeros(S.cols, S.cols)
+
+
+def test_matrix_data_is_checked() -> None:
+    M = ExprMatrix.from_rows([[1, 2], [3, 4]])
+    with pytest.raises(ValueError):
+        ExprMatrix(-1, -1, [1])
+    with pytest.raises(ValueError):
+        ExprMatrix.from_rows([[1, 2], []])
+    # these wrote and read the entries of another row
+    for i, j in ((0, 2), (-1, 0), (2, 0), (0, -1)):
+        with pytest.raises(IndexError):
+            M.with_entry(i, j, 9)
+    with pytest.raises(IndexError):
+        M.row(2)
+    with pytest.raises(IndexError):
+        M.row(-1)
+    assert M.with_entry(1, 0, 9) == ExprMatrix.from_rows([[1, 2], [9, 4]]) and M.row(1) == (Integer(3), Integer(4))

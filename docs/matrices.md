@@ -65,10 +65,12 @@ True
 
 ```
 
-The Moore–Penrose pseudoinverse of a real matrix comes from a full rank
+The Moore–Penrose pseudoinverse comes from a full rank
 factorisation `M = B*C` (the pivot columns and the nonzero rows of the
 echelon form): `M.pinv()` is `C.T*(C*C.T)**-1*(B.T*B)**-1*B.T`, and
-`M.pinv()*b` is the least squares solution of least norm.
+`M.pinv()*b` is the least squares solution of least norm. With `I` in
+the entries the transposes are conjugate transposes (the symbols stand
+for real numbers).
 
 ```python
 >>> ExprMatrix.from_rows([[1, 0], [0, 1], [1, 1]]).pinv()
@@ -287,8 +289,11 @@ of the characteristic polynomial, over the field it defines: no matrix of
 eigenvectors is inverted. `matrix_exp(M, t)` (or `M.exp(t)`) is the
 fundamental matrix of $y' = M y$, with cosines and sines for complex
 pairs of eigenvalues; `matrix_power(M, n)` (or `M.power(n)`) is a closed
-form of the powers; `matrix_function(M, f, x)` takes any expression `f`
-in `x`.
+form of the powers for a symbolic `n` and the product itself for an
+integer (the power of the inverse for a negative one, `ValueError` for a
+singular matrix); `matrix_function(M, f, x)` takes any expression `f`
+in `x`, and raises `ValueError` when `f` or a derivative it needs is not
+defined at an eigenvalue (`1/x` for a singular matrix).
 
 ```python
 >>> from sympy_extras.functions import sqrt
@@ -339,7 +344,8 @@ True
 
 ```
 
-`singular_values` also accepts symbols (taken to be real); `svd` raises
+`singular_values` also accepts symbols (taken to be real) and `I` (the
+eigenvalues of the conjugate transpose times the matrix); `svd` raises
 `NotImplementedError` for them and when the singular values are not
 expressed in radicals.
 

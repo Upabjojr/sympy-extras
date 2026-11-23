@@ -3820,6 +3820,45 @@ remove public functions. Breaking changes are listed here when they happen.
   New handlers: `atan(x)` is negative exactly when `x` is (extended)
   negative and real when `x` is extended real, so
   `ask(Eq(atan(1/x) + atan(x), pi/2), x < 0)` is False.
+- `sympy_extras.matrices`, from the review of SymPy's matrices in
+  sympy/sympy#30900 (the items we share; matrix and array expressions,
+  the subject of most of it and of sympy/sympy#30902, do not exist
+  here):
+  - `matrix_power(M, n)` for an integer `n` is the product itself, the
+    power of the inverse for a negative `n`, and raises `ValueError` for
+    a singular matrix: `matrix_power([[0, 0], [0, 1]], -1)` was a matrix
+    of `zoo` and `nan` (M1-3), and `matrix_power([[1, 2], [3, 4]], -2)`
+    came out in nested radicals instead of `[[11/2, -5/2], [-15/4,
+    7/4]]`.
+  - `matrix_power` with a symbolic exponent and the eigenvalue zero:
+    `matrix_power(zeros(2, 2), n)` and `matrix_power([[0, 1], [0, 0]],
+    n)` had `nan` and `zoo` entries (the derivative `n*x**n/x` evaluated
+    at 0, and zero components multiplied by it); they are `0**n*eye(2)`
+    and `[[0**n, n*0**(n - 1)], [0, 0**n]]`.
+  - `matrix_function(M, f, x)` raises `ValueError` when `f` or a
+    derivative it needs is not finite at an eigenvalue (`1/x` for a
+    singular matrix, `sqrt(x)` for a nilpotent block) instead of
+    returning `zoo`/`nan` entries; the square root of the zero matrix is
+    the zero matrix.
+  - `pseudoinverse` (`M.pinv()`) and `singular_values` use the conjugate
+    transpose for matrices with `I` (the slip of M2-2/M2-5 in SymPy):
+    `pseudoinverse([[1], [2*I]])` was `[[-1/3, -2*I/3]]` (it is `[[1/5,
+    -2*I/5]]`), `pseudoinverse([[1, I], [I, -1]])` raised "singular",
+    `singular_values([[1, I], [0, 1]])` raised `TypeError`. New
+    `linalg.conjugate_transpose` (`equations.adjoint` is the same
+    function).
+  - `singular_values` and `svd` no longer raise `TypeError: cannot
+    convert the complex number ...` when the squares of the singular
+    values are the real roots of a cubic or quartic written through
+    complex radicals (`[[-2, 1, 3], [3, 3, -3], [-1, -3, 0]]`, M2-10;
+    4 x 4 matrices in `svd`): the order is taken from the real parts,
+    and `singular_values` of a matrix of rationals writes the three
+    real roots of a cubic in trigonometric form, as `svd` does.
+  - `ExprMatrix` checks its data: a negative shape (`ExprMatrix(-1, -1,
+    [1])` was accepted), `with_entry(i, j, v)` and `row(i)` out of range
+    (they wrote or read another row: `with_entry(0, 2, v)` on a 2 x 2
+    matrix changed the entry `(1, 0)`) raise `ValueError`/`IndexError`.
+
 - `sympy_extras.assumptions.solve` over the reals drops a candidate which
   is real only where its imaginary part vanishes when the condition fails
   there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`

@@ -9,7 +9,7 @@ import mpmath
 import pytest
 import sympy
 
-from sympy_extras.core import Integer, Rational, Symbol, sqrt
+from sympy_extras.core import I, Integer, Rational, Symbol, sqrt
 from sympy_extras.interop import sympy_expr, to_sympy
 from sympy_extras.matrices import ExprMatrix
 from sympy_extras.matrices.svd import singular_values, svd
@@ -80,3 +80,32 @@ def test_singular_values() -> None:
     hard = ExprMatrix.from_rows([[1, 1, 0, 0, 0], [0, 1, 1, 0, 0], [0, 0, 1, 1, 0], [0, 0, 0, 1, 1], [1, 0, 0, 0, 2]])
     with pytest.raises(NotImplementedError):
         svd(hard)
+
+
+def test_singular_values_are_ordered_numerically() -> None:
+    # sympy/sympy#30900 M2-10, M3-3: three real roots of a cubic (the radical form goes through complex numbers, and
+    # float() of them raised TypeError), four of a quartic; the order is the numerical one
+    for rows in ([[-2, 1, 3], [3, 3, -3], [-1, -3, 0]], [[1, 2, 0, 0], [0, 1, 3, 0], [0, 0, 1, 1], [1, 0, 0, 1]]):
+        M = ExprMatrix.from_rows(rows)
+        values = [complex(sympy_expr(to_sympy(v)).evalf(30)) for v in singular_values(M)]
+        assert all(abs(v.imag) < 1e-12 for v in values)
+        found = [v.real for v in values]
+        assert found == sorted(found, reverse=True)
+        gram = sympy.Matrix(rows).T*sympy.Matrix(rows)
+        x = sympy.Symbol('x')
+        expected = sorted((float(sympy.sqrt(r)) for r in sympy.Poly(gram.charpoly(x).as_expr(), x).nroots(n=30)), reverse=True)
+        assert all(abs(u - v) < 1e-9 for u, v in zip(found, expected))
+        U, S, V = svd(M)
+        diagonal = [complex(sympy_expr(to_sympy(S[i, i])).evalf(30)).real for i in range(S.rows)]
+        assert all(abs(u - v) < 1e-9 for u, v in zip(diagonal, expected))
+    assert singular_values(ExprMatrix.from_rows([[3, 0], [0, sqrt(Integer(2))]])) == [3, sqrt(Integer(2))]
+
+
+def test_singular_values_of_complex_matrices() -> None:
+    # the eigenvalues of the conjugate transpose times the matrix, not of the transpose times it (which is not
+    # Hermitian: sympy/sympy#30900 M2-2, M2-5 are the same slip in SymPy's solvers)
+    assert singular_values(ExprMatrix.from_rows([[1, I], [0, 1]])) == [sqrt(sqrt(Integer(5))/2 + Rational(3, 2)),
+                                                                     sqrt(Rational(3, 2) - sqrt(Integer(5))/2)]
+    assert singular_values(ExprMatrix.from_rows([[1, I], [I, -1]])) == [2, 0]
+    assert singular_values(ExprMatrix.from_rows([[1], [I]])) == [sqrt(Integer(2))]
+    assert singular_values(ExprMatrix.from_rows([[3*I, 0], [0, 4]])) == [4, 3]
