@@ -3744,6 +3744,30 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- Defects reported against SymPy (sympy/sympy#31017 and the solver items
+  V235–V278 of sympy/sympy#31275) which the native code shared:
+  - `core.gruntz` (`limit`): the limit of `log(n**a + n**b)/log(n)` at
+    infinity for positive symbols `a`, `b` was `b` (it is `max(a, b)`),
+    and `(exp(a*x) + exp(b*x))*exp(-b*x)` gave `1`: when the leading term
+    in the most rapidly varying `w` depends on the sign of a symbolic
+    exponent (`w + w**(a/b)`), the fallback series wrote `w**(a/b)` as a
+    coefficient `exp(-a*x)`; `NotImplementedError` is raised now, as for
+    `(n**a + n**b)/n**b` (#31017 W7).
+  - `Pow._eval_nseries`, `Mul._eval_nseries`: `(x**a + 1).series(x, 0, 2)`
+    for a positive symbol `a` was `1 + O(x**2)` and `(x**a).series(x)` was
+    `O(x**6)` (SymPy 1.14 too): `x**a` is kept, and a product keeps the
+    terms whose exponent is not known to reach the order.
+  - `solvers.transcendental` (`solveset`, `assumptions.solve` over the
+    reals): a relation with a negative power of a root included the zero
+    of the radicand, `1/sqrt(x) > 1` was `[0, 1)` and
+    `sqrt(x) + 1/x**(1/3) > 1` was `[0, oo)`; they are `(0, 1)` and
+    `(0, oo)` (#31275 V252: the expected value of SymPy's XFAIL test is
+    wrong in another way).
+  - `solvers.recurr.rsolve_linear`: an initial value depending on the
+    index (`{y(1): binomial(2*n + 1, 3)}`) was substituted for the
+    constant, giving a sequence which does not satisfy the recurrence
+    (SymPy's test pins that value, #31275 V255); `ValueError` now.
+
 - `sympy_extras.assumptions.solve` over the reals drops a candidate which
   is real only where its imaginary part vanishes when the condition fails
   there: the zeros `-I*y, I*y` of `x**2 + y**2` on `(p, q)` for `p > 0`

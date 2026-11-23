@@ -129,3 +129,24 @@ def test_one_sided_limit_of_a_positive_variable() -> None:
     # the same from the right of a variable without assumptions
     w = Symbol('w')
     assert limit(sqrt(w - 1)/sqrt(1 - w), w, one, '-') == I
+
+
+def test_exponentials_of_one_class_with_symbolic_ratio() -> None:
+    # exp(a*x) and exp(b*x) are of one comparability class and the
+    # leading term of their sum depends on the sign of a - b: the limit of
+    # log(n**a + n**b)/log(n) is max(a, b), and b was returned (so that
+    # a = 3, b = 2 gave 2); SymPy does the same (sympy/sympy#31017, W7)
+    from sympy.testing.pytest import raises
+    from sympy_extras.core import oo
+    from sympy_extras.core.gruntz import gruntz
+    from sympy_extras.functions import exp, log
+    n, a, b = Symbol('n', positive=True), Symbol('a', positive=True), Symbol('b', positive=True)
+    raises(NotImplementedError, lambda: gruntz(log(n**a + n**b)/log(n), n, oo))
+    raises(NotImplementedError, lambda: gruntz((exp(a*n) + exp(b*n))*exp(-b*n), n, oo))
+    raises(NotImplementedError, lambda: gruntz(log(exp(a*n) + exp(b*n)) - b*n, n, oo))
+    raises(NotImplementedError, lambda: limit(log(n**a + n**b)/log(n), n, oo))
+    # with numbers, and where the symbolic ratio does not matter
+    assert limit(log(n**3 + n**2)/log(n), n, oo) == 3
+    assert limit(log(n**a + n**(2*a))/log(n), n, oo) == 2*a
+    assert limit(exp(a*n)*exp(b*n)/(exp((a + b)*n) + 1), n, oo) == 1
+    assert limit(n**a*exp(-b*n), n, oo) == 0

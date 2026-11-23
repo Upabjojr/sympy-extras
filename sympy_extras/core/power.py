@@ -211,6 +211,13 @@ class Pow(Expr):
                 via_log = logarithmic._eval_nseries(x, n, logx, cdir)
                 if via_log == logarithmic:
                     return me
+                if via_log.is_Order and add(mul(m, e), Integer(-n)).is_nonnegative is not True:
+                    # not SymPy's: exp(e*log(b)) with an exponent going to
+                    # -oo is taken to be smaller than every power, which
+                    # holds for exp(-1/x) and not for x**a = exp(a*log(x)):
+                    # the series of x**a + 1 for a positive symbol a came out
+                    # as 1 + O(x**2), that of x**a as O(x**n)
+                    return me
                 return via_log
         f = b.as_leading_term(x, logx=logx)
         g = add(mexpand(b), mul(Integer(-1), f)).cancel()

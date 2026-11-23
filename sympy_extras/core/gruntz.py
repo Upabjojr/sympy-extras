@@ -381,6 +381,14 @@ def moveup2(s: SubsSet, x: Symbol) -> SubsSet:
     return r
 
 
+def _has_symbolic_power(f: Expr, w: Symbol) -> bool:
+    """Whether ``f`` has a power of ``w`` whose exponent is not a number
+    (the quotient of the exponents of two exponentials of the same
+    comparability class, ``a/b`` for ``exp(a*x)`` and ``exp(b*x)``)."""
+    from .traversal import preorder_traversal
+    return any(isinstance(t, Pow) and t.base == w and bool(t.exp.free_symbols) for t in preorder_traversal(f))
+
+
 # PORTED FROM SYMPY: sympy/series/gruntz.py:mrv_leadterm
 @cacheit
 def mrv_leadterm(e: Expr, x: Symbol) -> tuple[Expr, Expr]:
@@ -406,7 +414,15 @@ def mrv_leadterm(e: Expr, x: Symbol) -> tuple[Expr, Expr]:
     lt: tuple[Expr, Expr]
     try:
         lt = f.leadterm(w, logx=logw)
-    except (NotImplementedError, PoleError, ValueError):
+    except (NotImplementedError, PoleError, ValueError) as error:
+        if isinstance(error, NotImplementedError) and _has_symbolic_power(f, w):
+            # not SymPy's: the series below writes a power w**c with a
+            # symbolic c as exp(c*log(w)), a coefficient which varies as
+            # rapidly as w, and orders the terms by the other powers of w:
+            # w + w**(a/b) had the leading term exp(-a*x) whatever a/b, and
+            # the limit of log(n**a + n**b)/log(n) came out as b, which is
+            # max(a, b) (sympy/sympy#31017, W7)
+            raise
         n0 = 1
         _series: Expr = order(Integer(1))
         incr = 1
