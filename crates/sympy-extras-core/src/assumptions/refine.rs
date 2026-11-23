@@ -300,7 +300,7 @@ impl Refiner {
 
     /// `expr` with its symbols and relevant subexpressions replaced by
     /// dummies, and the substitutions undoing it (`abstract`).
-    fn abstract_(&self, expr: &Basic) -> PolyResult<(Basic, HashMap<Basic, Basic>, HashMap<Basic, Basic>)> {
+    pub(crate) fn abstract_(&self, expr: &Basic) -> PolyResult<(Basic, HashMap<Basic, Basic>, HashMap<Basic, Basic>)> {
         let mut syms: HashMap<Basic, Basic> = HashMap::new();
         for s in sorted_symbols(expr) {
             let props: Properties = self.properties(&s)?;

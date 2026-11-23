@@ -6336,6 +6336,39 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
             };
             found.unwrap_or_else(none)
         }
+        "eulersums" => {
+            // (euler_sum, p, q) | (polygamma_series, term, n, lower) |
+            // (polygamma_integral_representation, term, n) -> an expression or NONE
+            use sympy_extras_core::concrete::eulersums as eu;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let small = |b: &Basic| -> i64 { b.to_string().parse().unwrap_or(0) };
+            let found = match a[0].to_string().as_str() {
+                "euler_sum" => eu::euler_sum(small(&a[1]), small(&a[2])),
+                "polygamma_series" => eu::polygamma_series(&a[1], &a[2], &a[3]),
+                _ => eu::polygamma_integral_representation(&a[1], &a[2]),
+            }
+            .map_err(e)?;
+            found.unwrap_or_else(none)
+        }
+        "convergence" => {
+            // (sum_convergence | product_convergence | is_convergent, term, n, Tuple(assumptions), lower)
+            // -> a Boolean (True / False for is_convergent) or NONE
+            use sympy_extras_core::concrete::convergence as cv;
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let (term, n, assumptions, lower) = (&a[1], &a[2], a[3].args(), &a[4]);
+            match a[0].to_string().as_str() {
+                "is_convergent" => match cv::is_convergent(term, n, assumptions, lower).map_err(e)? {
+                    None => none(),
+                    Some(b) => sympy_extras_core::core::logic::boolean(b),
+                },
+                "product_convergence" => cv::product_convergence(term, n, assumptions, lower)
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                _ => cv::sum_convergence(term, n, assumptions, lower)
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+            }
+        }
         "residues" => {
             // (name, f, x, a, b, Tuple(assumptions), half|full) -> Tuple(value, condition) or NONE;
             // the functions of integrals/residues, integrals/contours and integrals/periodic
