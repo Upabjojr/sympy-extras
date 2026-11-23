@@ -106,14 +106,15 @@ def test_check_ode_solution() -> None:
     assert check_ode_solution(Eq(y.diff(x), y), Eq(C1*exp(x), y), y)
     # an implicit solution, solved for y or differentiated
     assert check_ode_solution(y*y.diff(x) + x, Eq(x**2 + y**2, C1), y)
-    # a relation which SymPy's solve gives up on is not checked
-    # (checkodesol raises NotImplementedError)
-    assert not check_ode_solution((1 + cos(y))*y.diff(x) - 1, Eq(y + sin(y), x + C1), y)
-    # SymPy's order of the passes: the relation solved by LambertW is
-    # checked in that form only, which simplify does not prove
-    # (checkodesol gives False too)
-    assert not check_ode_solution(y.diff(x) - 1/(y*exp(y)), Eq(x - (y - 1)*exp(y), C1), y)
-    assert not check_ode_solution(y*y.diff(x) - x, Eq(x**2 + y**2, C1), y)
+    # a relation which SymPy's solve gives up on is checked through its
+    # derivative (checkodesol raises NotImplementedError; the verdict
+    # was None)
+    assert check_ode_solution((1 + cos(y))*y.diff(x) - 1, Eq(y + sin(y), x + C1), y) is True
+    # the relation solved by LambertW was checked in that form only, which
+    # simplify does not prove (None; checkodesol gives False); its
+    # derivative proves it
+    assert check_ode_solution(y.diff(x) - 1/(y*exp(y)), Eq(x - (y - 1)*exp(y), C1), y) is True
+    assert check_ode_solution(y*y.diff(x) - x, Eq(x**2 + y**2, C1), y) is False
 
 
 def test_unproved_correct_solutions_are_not_rejected() -> None:
@@ -133,9 +134,11 @@ def test_unproved_correct_solutions_are_not_rejected() -> None:
     assert check_ode_solution(y.diff(x) - y, Eq(y, Symbol('C1')*exp(2*x)), y) is False
     with configure(numerical_checks=False):
         assert check_ode_solution(y.diff(x) - y, Eq(y, Symbol('C1')*exp(2*x)), y) is None
-    # correct implicit solutions which are not proved: unknown, not wrong
-    assert check_ode_solution((1 + cos(y))*y.diff(x) - 1, Eq(y + sin(y), x + Symbol('C1')), y) is None
-    assert check_ode_solution(y.diff(x) - 1/(y*exp(y)), Eq(x - (y - 1)*exp(y), Symbol('C1')), y) is None
+    # an implicit solution which is not proved (no point of the relation
+    # is sampled: it is linear in no symbol): unknown, not wrong
+    cubic = Eq(x**2*y**2 + y**3 - x**3, 0)
+    assert check_ode_solution(y.diff(x)*(2*x**2*y + 3*y**2) - 2*x*y**2 - 3*x**2, cubic, y,
+                              solve_for_func=False) is None
 
 
 def test_every_branch_of_an_implicit_solution_is_checked() -> None:
@@ -145,3 +148,43 @@ def test_every_branch_of_an_implicit_solution_is_checked() -> None:
     # y' = 1/(2 sqrt(x)), whose branch y = -sqrt(x) is not
     assert not check_ode_solution(y.diff(x) - 1/(2*sqrt(x)), Eq(y**2, x), y)
     assert check_ode_solution(2*y*y.diff(x) - 1, Eq(y**2, x), y)
+
+
+def test_implicit_solutions_are_checked() -> None:
+    # relations which the native solve gives up on (or solves into
+    # branches which simplify does not prove) were None, right or
+    # wrong; they are checked through their derivatives now, a wrong one
+    # shown wrong at a point of the relation
+    C1, C2, a = Symbol('C1'), Symbol('C2'), Symbol('a')
+    cases: list[tuple[Expr, Eq, bool]] = [
+        ((1 + cos(y))*y.diff(x) + 1, Eq(y + sin(y), x + C1), False),
+        ((5*y**4 + 1)*y.diff(x) - 1, Eq(y**5 + y, x + C1), True),
+        ((5*y**4 + 1)*y.diff(x) - 2, Eq(y**5 + y, x + C1), False),
+        ((1 + exp(y))*y.diff(x) - 2*x, Eq(y + exp(y), x**2 + C1), True),
+        # a parameter of the equation in the relation
+        ((1 + a*cos(y))*y.diff(x) - 1, Eq(y + a*sin(y), x + C1), True),
+        ((1 + a*cos(y))*y.diff(x) - a, Eq(y + a*sin(y), x + C1), False),
+        # the residual y' - y/x = C1*x/y - y/x vanishes modulo the
+        # relation only
+        (y.diff(x) - y/x, Eq(y**2, C1*x**2), True),
+        (y.diff(x) - 2*y/x, Eq(y**2, C1*x**2), False),
+        # second order: (y**2)'' = 0, and y'' = -exp(y)*y'**2/(1 + exp(y))
+        (y*y.diff(x, 2) + y.diff(x)**2, Eq(y**2, C1*x + C2), True),
+        (y*y.diff(x, 2) - y.diff(x)**2, Eq(y**2, C1*x + C2), False),
+        ((1 + exp(y))*y.diff(x, 2) + exp(y)*y.diff(x)**2, Eq(y + exp(y), C1*x + C2), True),
+        ((1 + exp(y))*y.diff(x, 2) - exp(y)*y.diff(x)**2, Eq(y + exp(y), C1*x + C2), False),
+        # a relation without constants which is linear in no symbol: the
+        # derivative proves it (solve gives three Cardano branches, and
+        # their checks ran out of time: None)
+        (y.diff(x)*(2*x**2*y + 3*y**2) + 2*x*y**2 - 3*x**2, Eq(x**2*y**2 + y**3 - x**3, 0), True),
+    ]
+    for ode, relation, verdict in cases:
+        for solve_for_func in (True, False):
+            assert check_ode_solution(ode, relation, y, solve_for_func=solve_for_func) is verdict, (ode, relation)
+    # without the numerical checks a wrong relation is not shown wrong
+    with configure(numerical_checks=False):
+        assert check_ode_solution((1 + cos(y))*y.diff(x) + 1, Eq(y + sin(y), x + C1), y) is None
+    # the branch y = -sqrt(x) of y**2 = x does not solve y' = 1/(2*sqrt(x));
+    # the points sampled have y > 0, where the relation is right: unknown
+    # without solving
+    assert check_ode_solution(y.diff(x) - 1/(2*sqrt(x)), Eq(y**2, x), y, solve_for_func=False) is None

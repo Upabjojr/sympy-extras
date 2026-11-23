@@ -1218,6 +1218,7 @@ fn taylor_series(f: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> R {
 /// The classes with a ported rule (`functions/series_rules.rs`): when it
 /// falls back, the generic expansion follows as in Python.
 const SERIES_RULES: &[&str] = &[
+    "Eis",
     "LambertW",
     "Abs",
     "Sign",

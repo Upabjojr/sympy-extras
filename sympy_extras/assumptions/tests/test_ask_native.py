@@ -3,7 +3,7 @@ checked against hand computations (the SymPy faces are tested in
 test_ask.py, test_refine.py and test_resolve.py)."""
 from __future__ import annotations
 
-from sympy_extras.core import Eq, Integer, Q, Rational, Symbol, mod, pi, sqrt
+from sympy_extras.core import Eq, Integer, Ne, Q, Rational, Symbol, mod, pi, sqrt
 from sympy_extras.core.logic import BooleanTrue, and_
 from sympy_extras.core.relational import Gt
 from sympy_extras.functions import abs_, atan, atan2, exp, floor, log, max_, piecewise, sign, sin
@@ -94,6 +94,29 @@ def test_native_simplification_of_a_relation() -> None:
     assert simplify_relational(Lt(sin(x), 0), 1.7, False, False, True) == Lt(sin(x), 0)
 
 
+def test_real_and_imaginary_parts() -> None:
+    # sympy-extras#74: relations of complex variables decided by their real
+    # and imaginary parts in real variables; every answer here was None,
+    # and the undecided ones must stay None (checked at sample points in
+    # the comments)
+    from sympy_extras.functions import im, re
+    z, w = Symbol('z'), Symbol('w')
+    A = re(z)*im(z) > pi/2
+    assert ask(Ne(log(exp(z**2)), z**2), A) is True
+    assert ask(Eq(log(exp(z**2)), z**2), re(z)*im(z) < -pi/2) is False
+    # re(z)*im(z) = pi/2 gives Im(z**2) = pi, where log(exp(z**2)) = z**2
+    assert ask(Eq(log(exp(z**2)), z**2), re(z)*im(z) >= pi/2) is None
+    # z = 1/2 + I/2: Im(z**2) = 1/2 and log(exp(z**2)) = z**2
+    assert ask(Eq(log(exp(z**2)), z**2), re(z)*im(z) < pi/4) is None
+    assert ask(Q.real(z), (re(z) > 0) & (im(z) > 1)) is False
+    assert ask(Q.real(z), (re(z) > 0) & (im(z) >= 0)) is None     # z = 1
+    assert ask(Q.real(z), re(z) > 0) is None                      # im(z) may be infinite
+    assert ask(Eq(z**2, -1), (re(z) > 0) & (im(z) > 0)) is False
+    assert ask(Eq(z**2, -1), (re(z) >= 0) & (im(z) > 0)) is None  # z = I
+    assert ask(Eq(abs_(z), 1), re(z)**2 + im(z)**2 < Rational(1, 2)) is False
+    assert ask(Eq(z*w, 1), (re(z) > 0) & (im(z) > 0)) is None     # w = 1/z
+
+
 def test_issue_74_native() -> None:
     # sympy-extras#74: the reports on the SymPy face, here on the core
     from sympy_extras.core.logic import not_, or_
@@ -103,8 +126,10 @@ def test_issue_74_native() -> None:
     # arg, conjugate are not real: z = 2 + I satisfies re(z)*im(z) > pi/2
     # and log(exp(z**2)) - z**2 is -2*I*pi there
     A = re(z)*im(z) > pi/2
-    assert ask(Eq(log(exp(z**2)), z**2), A) is not True
-    assert ask(Q.real(z), A) is None and ask(Eq(im(z), 0), A) is False
+    # and the two answers None before are False: the imaginary part of
+    # z**2 is 2*re(z)*im(z) > pi, that of log(exp(z**2)) is in (-pi, pi]
+    assert ask(Eq(log(exp(z**2)), z**2), A) is False
+    assert ask(Q.real(z), A) is False and ask(Eq(im(z), 0), A) is False
     assert ask(Q.real(z), abs_(z) < 1) is None
     assert ask(Q.real(x), x*y > 0) is True                # x appears algebraically
     # (2) p | ~p with a membership

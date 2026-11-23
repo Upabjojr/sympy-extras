@@ -287,10 +287,92 @@ fn sum_next(
     Some((at(&(&h * &sr), p), at(&(&h * &si), p)))
 }
 
+/// The quadrature rules of mpmath's `quad`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rule {
+    TanhSinh,
+    GaussLegendre,
+}
+
+thread_local! {
+    static LEGENDRE: RefCell<HashMap<(usize, usize), Vec<(Real, Real)>>> = RefCell::new(HashMap::new());
+}
+
+/// `GaussLegendre.calc_nodes`: the roots of the Legendre polynomial of
+/// degree `3*2**(degree - 1)` by Newton's method from the asymptotic
+/// formula, at one and a half times the precision.
+fn legendre_nodes(degree: usize, prec: usize) -> Vec<(Real, Real)> {
+    if let Some(found) = LEGENDRE.with(|c| c.borrow().get(&(degree, prec)).cloned()) {
+        return found;
+    }
+    let p: usize = prec * 3 / 2;
+    let epsilon: Real = two_pow(-(prec as isize) - 8, p);
+    let one: Real = int(1, p);
+    let mut nodes: Vec<(Real, Real)> = Vec::new();
+    if degree == 1 {
+        let x: Real = (int(3, p) / int(5, p)).sqrt();
+        let w: Real = int(5, p) / int(9, p);
+        nodes.push((-x.clone(), w.clone()));
+        nodes.push((int(0, p), int(8, p) / int(9, p)));
+        nodes.push((x, w));
+    } else {
+        let n: usize = 3 * (1usize << (degree - 1));
+        let upto: usize = n / 2 + 1;
+        for j in 1..upto {
+            // the asymptotic formula for the roots
+            let guess: f64 = (std::f64::consts::PI * (j as f64 - 0.25) / (n as f64 + 0.5)).cos();
+            let mut r: Real = at(&Real::try_from(guess).expect("a finite float"), p);
+            let mut t4: Real;
+            loop {
+                let (mut t1, mut t2): (Real, Real) = (one.clone(), int(0, p));
+                for j1 in 1..=n {
+                    let t3: Real = t2;
+                    t2 = t1.clone();
+                    t1 = (int(2 * j1 as i64 - 1, p) * &r * &t1 - int(j1 as i64 - 1, p) * &t3) / int(j1 as i64, p);
+                }
+                t4 = int(n as i64, p) * (&r * &t1 - &t2) / (&r * &r - &one);
+                let a: Real = &t1 / &t4;
+                r = &r - &a;
+                if abs_real(&a) < epsilon {
+                    break;
+                }
+            }
+            let w: Real = int(2, p) / ((&one - &r * &r) * &t4 * &t4);
+            nodes.push((r.clone(), w.clone()));
+            nodes.push((-r, w));
+        }
+    }
+    LEGENDRE.with(|c| c.borrow_mut().insert((degree, prec), nodes.clone()));
+    nodes
+}
+
+/// `QuadratureRule.sum_next` (Gauss-Legendre): `fdot((w, f(x)))`.
+fn plain_sum(f: &mut dyn FnMut(&Real) -> Option<Value>, nodes: &[(Real, Real)], p: usize) -> Option<Value> {
+    let wide: usize = 2 * p + 64;
+    let (mut dr, mut di): (Real, Real) = (int(0, wide), int(0, wide));
+    for (x, w) in nodes {
+        let (vr, vi) = f(x)?;
+        let w2: Real = at(w, wide);
+        dr += &w2 * at(&vr, wide);
+        di += &w2 * at(&vi, wide);
+    }
+    Some((at(&dr, p), at(&di, p)))
+}
+
 /// `quad(f, points, method='tanh-sinh', error=True)` at `prec` bits: the
 /// integral over the consecutive intervals and the estimated error;
 /// `None` when the integrand has no value at a node.
 pub fn quad(f: &mut dyn FnMut(&Real) -> Option<Value>, points: &[Point], prec: usize) -> Option<(Value, Real)> {
+    quad_rule(f, points, prec, Rule::TanhSinh)
+}
+
+/// `quad(f, points, method=..., error=True)` with the rule given.
+pub fn quad_rule(
+    f: &mut dyn FnMut(&Real) -> Option<Value>,
+    points: &[Point],
+    prec: usize,
+    rule: Rule,
+) -> Option<(Value, Real)> {
     let p: usize = prec + 20;
     let epsilon: Real = two_pow(-(prec as isize) - 2, p);
     let max_degree: usize = guess_degree(prec);
@@ -317,8 +399,16 @@ pub fn quad(f: &mut dyn FnMut(&Real) -> Option<Value>, points: &[Point], prec: u
         let mut results: Vec<Value> = Vec::new();
         let mut err: Real = int(0, p);
         for degree in 1..=max_degree {
-            let nodes: Vec<(Real, Real)> = transform_nodes(&calc_nodes(degree, prec), &a, &b, p);
-            let result: Value = sum_next(&mut g, &nodes, degree, results.last(), p)?;
+            let result: Value = match rule {
+                Rule::TanhSinh => {
+                    let nodes: Vec<(Real, Real)> = transform_nodes(&calc_nodes(degree, prec), &a, &b, p);
+                    sum_next(&mut g, &nodes, degree, results.last(), p)?
+                }
+                Rule::GaussLegendre => {
+                    let nodes: Vec<(Real, Real)> = transform_nodes(&legendre_nodes(degree, prec), &a, &b, p);
+                    plain_sum(&mut g, &nodes, p)?
+                }
+            };
             results.push(result);
             if degree > 1 {
                 err = estimate_error(&results, prec, &epsilon, p);
