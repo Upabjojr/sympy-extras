@@ -15,7 +15,7 @@ use crate::core::function::{rebuild_evaluated, xreplace_evaluated};
 use crate::core::logic::{and_, boolean, ite, not_, or_};
 use crate::core::relational::{canonical, eq, ge, gt, le, lt, ne, reversed};
 use crate::core::sorting::ordered;
-use crate::error::{not_ported, PolyError, PolyResult};
+use crate::error::{PolyError, PolyResult};
 use crate::functions::elementary::complexes::abs_;
 use crate::functions::elementary::miscellaneous::{max_, min_};
 use crate::numbers::Rat;
@@ -916,9 +916,7 @@ pub fn simplify_univariate(expr: &Basic, sympy_intervals: bool) -> R {
         return Ok(expr.clone());
     }
     if sympy_intervals {
-        return Err(not_ported(
-            "simplify_univariate(sympy_intervals=True): Piecewise._intervals",
-        ));
+        return sympy_univariate(expr, &x);
     }
     let Some(truth) = truth else { return Ok(expr.clone()) };
     if truth.intervals.is_empty() {
@@ -938,6 +936,56 @@ pub fn simplify_univariate(expr: &Basic, sympy_intervals: bool) -> R {
             let lower: Basic = relation(if incl_a { RelOp::Le } else { RelOp::Lt }, &a, &x)?;
             let upper: Basic = relation(if incl_b { RelOp::Le } else { RelOp::Lt }, &x, &b)?;
             and_(&[lower, upper])
+        };
+        args.push(c);
+    }
+    Ok(or_(&args))
+}
+
+/// SymPy's `simplify_univariate` on the intervals of `Piecewise._intervals`,
+/// the endpoints included as the formula says (`_sympy_univariate`).
+fn sympy_univariate(expr: &Basic, x: &Basic) -> R {
+    use crate::core::relational::{ge, gt, le, lt};
+    use crate::functions::elementary::piecewise::{expr_cond_pair, piecewise_intervals, piecewise_node};
+    let pw: Basic = piecewise_node(vec![expr_cond_pair(&Basic::zero(), expr)]);
+    let Ok(pieces) = piecewise_intervals(&pw, x, true)? else {
+        return Ok(expr.clone());
+    };
+    if pieces.is_empty() {
+        return Ok(boolean(false));
+    }
+    let holds = |at: &Basic| -> PolyResult<bool> { Ok(crate::core::subs::subs(expr, x, at)? == boolean(true)) };
+    let mut args: Vec<Basic> = Vec::new();
+    for (a, b, _, _) in pieces {
+        let b_infinite: bool = crate::core::expr::is(&b, crate::core::assumptions::Predicate::infinite) == Some(true);
+        let c: Basic = if matches!(a.head(), Head::NegativeInfinity) {
+            if matches!(b.head(), Head::Infinity) {
+                boolean(true)
+            } else if holds(&b)? {
+                le(x, &b)?
+            } else {
+                lt(x, &b)?
+            }
+        } else {
+            let incl_a: bool = holds(&a)?;
+            let incl_b: bool = holds(&b)?;
+            if incl_a && incl_b {
+                if b_infinite {
+                    ge(x, &a)?
+                } else {
+                    and_(&[le(&a, x)?, le(x, &b)?])
+                }
+            } else if incl_a {
+                and_(&[le(&a, x)?, lt(x, &b)?])
+            } else if incl_b {
+                if b_infinite {
+                    gt(x, &a)?
+                } else {
+                    and_(&[lt(&a, x)?, le(x, &b)?])
+                }
+            } else {
+                and_(&[lt(&a, x)?, lt(x, &b)?])
+            }
         };
         args.push(c);
     }

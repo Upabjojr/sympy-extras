@@ -1,10 +1,10 @@
-//! Port of `sympy_extras/integrals/algebraic.py` (the parts which need no
-//! definite integration): the rationalising substitutions of algebraic
-//! integrands (Euler's substitutions, the roots of a Möbius function),
-//! the binomial differentials `x**m*(a + b*x**n)**p` (Chebyshev's cases)
-//! and their antiderivatives by `2F1` where they are not elementary.
-//! `rationalised_integral` and `algebraic_integral` need
-//! `integrals/definite` (not ported).
+//! Port of `sympy_extras/integrals/algebraic.py`: the rationalising
+//! substitutions of algebraic integrands (Euler's substitutions, the
+//! roots of a Möbius function), the binomial differentials
+//! `x**m*(a + b*x**n)**p` (Chebyshev's cases) and their antiderivatives by
+//! `2F1` where they are not elementary, and the definite integrals through
+//! them (`rationalised_integral`, `algebraic_integral`, by the definite
+//! integrator of `integrals/definite`).
 
 #![allow(clippy::too_many_arguments, clippy::mutable_key_type)]
 
@@ -761,4 +761,216 @@ fn joined(
         )?,
     )?;
     Ok(Some(s2(&first, &second)?))
+}
+
+// -- the transformed integral
+
+fn bound(t_of_x: &Basic, x: &Basic, point: &Basic, assumptions: &[Basic]) -> PolyResult<Option<Basic>> {
+    let value: Option<Basic> = crate::timeout::attempt_within(crate::settings::settings().timeout, || {
+        crate::assumptions::limits::limit(t_of_x, x, point, "+", assumptions, None)
+    })?;
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let bad: bool = value
+        .preorder()
+        .iter()
+        .any(|n| matches!(n.head(), Head::NaN | Head::ComplexInfinity | Head::Limit));
+    let free = t_of_x.free_symbols();
+    if bad || value.free_symbols().iter().any(|s| !free.contains(s)) {
+        return Ok(None);
+    }
+    Ok(Some(value))
+}
+
+fn is_rational_in(g: &Basic, t: &Basic) -> bool {
+    for node in g.atoms(Some(&|n: &Basic| n.is_pow())) {
+        if node.has(t) && !is_integer_node(&node.args()[1]) {
+            return false;
+        }
+    }
+    crate::core::expr::polynomial_like(g, std::slice::from_ref(t), crate::core::expr::PolynomialKind::Rational)
+        == Some(true)
+}
+
+/// The integral of the transformed integrand over the image of the range
+/// (`_transformed`).
+fn transformed(
+    f: &Basic,
+    x: &Basic,
+    a: &Basic,
+    b: &Basic,
+    substitution: &Rationalisation,
+    assumptions: &[Basic],
+    g: Option<Basic>,
+) -> PolyResult<Option<crate::integrals::conditions::ConditionalValue>> {
+    let t: &Basic = &substitution.t;
+    let g: Basic = match g {
+        Some(g) => g,
+        None => {
+            let rule: std::collections::HashMap<Basic, Basic> = substitution.radicals.iter().cloned().collect();
+            let replaced: Basic = crate::core::function::xreplace_evaluated(f, &rule)?;
+            if !radical_atoms(&replaced, x).is_empty() {
+                return Ok(None);
+            }
+            m2(
+                &crate::core::subs::subs(&replaced, x, &substitution.x_of_t)?,
+                &crate::core::function::derivative(&substitution.x_of_t, t)?,
+            )?
+        }
+    };
+    let g: Basic = cancel(&g)?;
+    if !is_rational_in(&g, t) {
+        return Ok(None);
+    }
+    let (Some(lower), Some(upper)) = (
+        bound(&substitution.t_of_x, x, a, assumptions)?,
+        bound(&substitution.t_of_x, x, b, assumptions)?,
+    ) else {
+        return Ok(None);
+    };
+    if lower == upper {
+        return Ok(None);
+    }
+    let Some(found) =
+        crate::integrals::definite::conditional_integral(&g, t, &lower, &upper, assumptions, false, false, false)?
+    else {
+        return Ok(None);
+    };
+    let value: Basic = crate::integrals::marichev::tidy(&found.value, assumptions, &found.condition)?;
+    if crate::settings::settings().numerical_checks
+        && crate::integrals::definite::verify_numerically(&value, f, x, a, b, assumptions, 2, &[])? == Some(false)
+    {
+        return Ok(None);
+    }
+    Ok(Some(crate::integrals::conditions::ConditionalValue::new(
+        value,
+        found.condition,
+    )))
+}
+
+/// `Integral(f, (x, a, b))` through a rationalising substitution
+/// (`rationalised_integral`).
+pub fn rationalised_integral(
+    f: &Basic,
+    x: &Basic,
+    a: &Basic,
+    b: &Basic,
+    substitution: &Rationalisation,
+    assumptions: &[Basic],
+) -> PolyResult<Option<crate::integrals::conditions::ConditionalValue>> {
+    transformed(f, x, a, b, substitution, assumptions, None)
+}
+
+/// Chebyshev's three cases (`_binomial_integral`).
+fn binomial_integral(
+    f: &Basic,
+    x: &Basic,
+    a: &Basic,
+    b: &Basic,
+    assumptions: &[Basic],
+) -> PolyResult<Option<crate::integrals::conditions::ConditionalValue>> {
+    let Some([c, m, a_, b_, n, p]) = binomial_differential(f, x)? else {
+        return Ok(None);
+    };
+    let (Some(m_), Some(n_), Some(p_)) = (rational_of(&m), rational_of(&n), rational_of(&p)) else {
+        return Ok(None);
+    };
+    if n_ == Rat::ZERO {
+        return Ok(None);
+    }
+    let t: Basic = fresh("t", &[(Predicate::positive, true)]);
+    let q: Rat = (&m_ + Rat::ONE) / &n_;
+    let (g, t_of_x): (Basic, Basic) = if is_whole(&p_) {
+        let k: i64 = lcm(to_i64(&denominator(&m_))?, to_i64(&denominator(&n_))?);
+        let kr: Rat = Rat::from(k);
+        let g: Basic = chain(&[
+            c.clone(),
+            pw(&t, &rat(&(&m_ * &kr)))?,
+            pw(&a2(&a_, &m2(&b_, &pw(&t, &rat(&(&n_ * &kr)))?)?)?, &p)?,
+            int(k),
+            pw(&t, &int(k - 1))?,
+        ])?;
+        (g, pw(x, &rat(&(Rat::ONE / kr)))?)
+    } else if is_whole(&q) {
+        let s: i64 = to_i64(&denominator(&p_))?;
+        let qm1: i64 = to_i64(&numerator(&(&q - Rat::ONE)))?;
+        let g: Basic = chain(&[
+            d2(&m2(&c, &int(s))?, &m2(&n, &b_)?)?,
+            pw(&t, &int(s - 1))?,
+            pw(&t, &rat(&(Rat::from(s) * &p_)))?,
+            pw(&d2(&s2(&pw(&t, &int(s))?, &a_)?, &b_)?, &int(qm1))?,
+        ])?;
+        (
+            g,
+            pw(&a2(&a_, &m2(&b_, &pw(x, &n)?)?)?, &rat(&(Rat::ONE / Rat::from(s))))?,
+        )
+    } else if is_whole(&(&q + &p_)) {
+        let s: i64 = to_i64(&denominator(&p_))?;
+        let exponent: i64 = -to_i64(&numerator(&(&q + &p_)))? - 1;
+        let g: Basic = chain(&[
+            d2(&m2(&neg(&c)?, &int(s))?, &m2(&n, &a_)?)?,
+            pw(&t, &rat(&(Rat::from(s - 1) + Rat::from(s) * &p_)))?,
+            pw(&d2(&s2(&pw(&t, &int(s))?, &b_)?, &a_)?, &int(exponent))?,
+        ])?;
+        let t_of_x: Basic = pw(
+            &a2(&m2(&a_, &pw(x, &neg(&n)?)?)?, &b_)?,
+            &rat(&(Rat::ONE / Rat::from(s))),
+        )?;
+        (g, t_of_x)
+    } else {
+        return Ok(None);
+    };
+    let substitution: Rationalisation = Rationalisation {
+        t,
+        x_of_t: Basic::zero(),
+        t_of_x,
+        radicals: Vec::new(),
+    };
+    transformed(f, x, a, b, &substitution, assumptions, Some(g))
+}
+
+/// `Integral(f, (x, a, b))` for an algebraic integrand of genus zero
+/// (`algebraic_integral`): Möbius roots, Euler's substitutions, Chebyshev's
+/// binomial differentials.
+pub fn algebraic_integral(
+    f: &Basic,
+    x: &Basic,
+    a: &Basic,
+    b: &Basic,
+    assumptions: &[Basic],
+) -> PolyResult<Option<crate::integrals::conditions::ConditionalValue>> {
+    if radical_atoms(f, x).is_empty() {
+        return Ok(None);
+    }
+    if let Some(substitution) = moebius_root(f, x)? {
+        if let Some(found) = transformed(f, x, a, b, &substitution, assumptions, None)? {
+            return Ok(Some(found));
+        }
+    }
+    let mut best: Option<(i64, crate::integrals::conditions::ConditionalValue)> = None;
+    for candidate in euler_substitutions(f, x, assumptions)? {
+        if let Some(found) = transformed(f, x, a, b, &candidate, assumptions, None)? {
+            let size: i64 = crate::core::function::count_ops(&found.value)?;
+            if best.as_ref().is_none_or_larger(size) {
+                best = Some((size, found));
+            }
+        }
+    }
+    if let Some((_, found)) = best {
+        return Ok(Some(found));
+    }
+    binomial_integral(f, x, a, b, assumptions)
+}
+
+trait Larger {
+    fn is_none_or_larger(&self, size: i64) -> bool;
+}
+impl Larger for Option<&(i64, crate::integrals::conditions::ConditionalValue)> {
+    fn is_none_or_larger(&self, size: i64) -> bool {
+        match self {
+            None => true,
+            Some((s, _)) => size < *s,
+        }
+    }
 }

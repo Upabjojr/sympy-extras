@@ -66,7 +66,10 @@ fn gives_up(e: &PolyError) -> bool {
             return false;
         }
     }
-    !matches!(e, PolyError::Index(_) | PolyError::TimeLimit(_))
+    // Python's attempt gives up on NotImplementedError, ValueError,
+    // TypeError, RecursionError, ArithmeticError and the polynomial errors;
+    // an IndexError or a PoleError (a BaseCoreError) goes on
+    !matches!(e, PolyError::Index(_) | PolyError::TimeLimit(_) | PolyError::Pole(_))
 }
 
 /// The value of `f()`, or `None` when it gives up (`attempt` without a

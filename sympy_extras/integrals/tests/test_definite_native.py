@@ -13,6 +13,7 @@ from sympy_extras.core.evalf import numeric_value, to_float
 from sympy_extras.core.logic import Boolean, and_, not_
 from sympy_extras.core.relational import eq
 from sympy_extras.functions import Piecewise, abs_, asin, atan, cos, exp, gamma, log, sin
+from sympy_extras.functions.elementary.integers import ceiling, floor, frac
 from sympy_extras.integrals.conditions import ConditionalValue
 from sympy_extras.integrals.definite import (DefiniteIntegrator, _coefficients, _numeric_function, _pairs, _quadrature,
                                              _singular_points, conditional_integral, definite_integral,
@@ -257,3 +258,35 @@ def test_cases_of_singularities_against_symbolic_endpoints() -> None:
     # a kink at an endpoint: the closed cases of Abs(x) by a weak sign
     value = definite_integral(abs_(x), (x, p, q))
     assert len(_branches_check(value, abs_(x), p, q, [], (Integer(0),))) == 4
+
+
+def test_rational_trigonometric_integrands_over_whole_periods() -> None:
+    # 1/(c + cos(x)) over (0, 2*pi) under c > 1 came back unevaluated: the
+    # range was cut into quarter periods first, which spent the time limit,
+    # and the residues inside the unit circle came after them
+    value = definite_integral(1 / (c + cos(x)), (x, 0, 2 * pi), c > 1)
+    assert not is_unevaluated(value)
+    expected = mpmath.quad(lambda t: 1 / (3 + mpmath.cos(t)), [0, mpmath.pi, 2 * mpmath.pi])
+    assert abs(_number(value.subs(c, 3)) - complex(expected)) < 1e-12
+    f = (1 - k**2) / (1 - 2 * k * cos(x) + k**2)
+    assert definite_integral(f, (x, 0, 2 * pi), [k > 0, k < 1]) == 2 * pi
+
+
+def test_integer_parts_over_numeric_ranges() -> None:
+    # floor, ceiling and frac came back unevaluated: the range is cut where
+    # their argument crosses an integer (each value against a sum by hand,
+    # or mpmath with the cuts)
+    third = Rational(1, 3)
+    assert definite_integral(floor(x), (x, 0, Rational(7, 2))) == Rational(9, 2)
+    assert definite_integral(x * ceiling(x), (x, -1, 2)) == Rational(7, 2)
+    assert definite_integral(frac(x), (x, 0, 3)) == Rational(3, 2)
+    value = definite_integral(floor(x**2), (x, 0, 2))
+    assert abs(_number(value) - _number(5 - sqrt(2) - sqrt(3))) < 1e-20
+    # not monotone: the critical point of 3*sin(x) at pi/2 bounds the levels
+    value = definite_integral(floor(3 * sin(x)), (x, 0, pi))
+    assert abs(_number(value) - _number(2 * pi - 2 * asin(third) - 2 * asin(2 * third))) < 1e-20
+    value = definite_integral(frac(x)**2 * exp(x), (x, 0, 2))
+    expected = mpmath.quad(lambda t: (t - mpmath.floor(t))**2 * mpmath.exp(t), [0, 1, 2])
+    assert abs(_number(value) - complex(expected)) < 1e-12
+    # a symbolic endpoint is not cut
+    assert is_unevaluated(definite_integral(floor(x), (x, 0, a)))

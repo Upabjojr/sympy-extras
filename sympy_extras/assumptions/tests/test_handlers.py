@@ -56,7 +56,23 @@ def test_order_of_functions() -> None:
     assert ask(Q.positive(log(x)), Q.real(x) & Q.positive(x - 1)) is True
     assert ask(Q.positive(atan(x)), Q.positive(x)) is True
     assert ask(Q.positive(asin(x)), Q.positive(x) & Q.nonpositive(x - 1)) is True
-    assert ask(Q.positive(acos(x)), Q.nonpositive(x - 1) & Q.nonnegative(x + 1)) is True
+    # acos(1) = 0: positive on [-1, 1) only (SymPy 1.14 answers True on [-1, 1])
+    assert ask(Q.positive(acos(x)), Q.nonpositive(x - 1) & Q.nonnegative(x + 1)) is None
+    assert ask(Q.positive(acos(x)), Q.negative(x - 1) & Q.nonnegative(x + 1)) is True
+    assert ask(Q.positive(acos(x)), Q.zero(x - 1)) is False
+    assert ask(Q.positive(acos(x)), Q.positive(x - 1)) is False     # not real
+    # asin(0) = 0, asin(1) = pi/2
+    assert ask(Q.positive(asin(x)), Q.nonnegative(x) & Q.nonpositive(x - 1)) is None
+    assert ask(Q.positive(asin(x)), Q.zero(x)) is False
+    assert ask(Q.positive(asin(x)), Q.negative(x + 1)) is False     # not real
+    # atan(oo) = pi/2 (SymPy 1.14 answers False), atan(0) = 0
+    assert ask(Q.positive(atan(x)), Q.positive_infinite(x)) is True
+    assert ask(Q.positive(atan(x)), Q.zero(x)) is False
+    assert ask(Q.negative(atan(x)), Q.negative(x)) is True
+    assert ask(Q.negative(atan(x)), Q.nonnegative(x)) is False
+    assert ask(Q.real(atan(x) + atan(1/x)), Q.negative(x)) is True
+    # log(1) = 0
+    assert ask(Q.positive(log(x)), Q.zero(x - 1)) is False
     n = Symbol('n')
     assert ask(Q.positive(factorial(n)), Q.integer(n) & Q.positive(n)) is True
     assert ask(Q.negative(x * Symbol('y')), Q.positive(x) & Q.negative(Symbol('y'))) is True

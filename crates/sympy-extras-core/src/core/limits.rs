@@ -545,17 +545,6 @@ fn tractable_hyperbolic(f: Function, arg: &Basic) -> PolyResult<Option<Basic>> {
     })
 }
 
-/// The classes whose tractable form needs the helpers `Erfs` and `Eis`
-/// (not ported yet).
-const SPECIAL_TRACTABLE: &[Function] = &[
-    Function::Erf,
-    Function::Erfc,
-    Function::Erfi,
-    Function::Ei,
-    Function::LogIntegral,
-    Function::OffsetLogIntegral,
-];
-
 /// `e.rewrite('tractable', deep=True)` (or `'intractable'`) without the
 /// limit variable (`rewrite_tractable(e, None)`).
 pub fn rewrite_tractable(e: &Basic, intractable: bool) -> R {
@@ -639,6 +628,68 @@ fn tractable_special(e: &Basic, f: Function, args: &[Basic], limitvar: Option<&B
             }
         }
         // PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:uppergamma._eval_rewrite_as_tractable
+        // PORTED FROM SYMPY: sympy/functions/special/error_functions.py:erf._eval_rewrite_as_tractable
+        Function::Erf => {
+            use crate::functions::special::error_functions::erfs;
+            let z: &Basic = &args[0];
+            let gauss: Basic = exp(&neg(&pow(z, &Basic::int(2))?)?)?;
+            if let Some(var) = limitvar {
+                let at: Basic = limit(z, var, &Basic::oo(), "+")?;
+                if matches!(at.head(), Head::NegativeInfinity) {
+                    return Ok(Some(add2(
+                        &Basic::negative_one(),
+                        &crate::core::mul::mul(&[erfs(&neg(z)?)?, gauss])?,
+                    )?));
+                }
+            }
+            Some(sub(&Basic::one(), &crate::core::mul::mul(&[erfs(z)?, gauss])?)?)
+        }
+        // PORTED FROM SYMPY: erfc._eval_rewrite_as_tractable, erfi._eval_rewrite_as_tractable
+        // (self.rewrite(erf).rewrite("tractable", deep=True))
+        Function::Erfc | Function::Erfi => {
+            let as_erf: Basic =
+                crate::core::rewriting::rewrite(e, &[], "erf", &crate::core::rewriting::RewriteHints::default())?;
+            Some(tractable(&as_erf, limitvar)?)
+        }
+        // PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Ei._eval_rewrite_as_tractable
+        Function::Ei => Some(crate::core::mul::mul(&[
+            exp(&args[0])?,
+            crate::functions::special::error_functions::eis(&args[0])?,
+        ])?),
+        // PORTED FROM SYMPY: sympy/functions/special/error_functions.py:li._eval_rewrite_as_tractable
+        Function::LogIntegral => Some(crate::core::mul::mul(&[
+            args[0].clone(),
+            crate::functions::special::error_functions::eis(&log(&args[0])?)?,
+        ])?),
+        // PORTED FROM SYMPY: Li._eval_rewrite_as_tractable (self.rewrite(li).rewrite("tractable", deep=True))
+        Function::OffsetLogIntegral => {
+            let as_li: Basic =
+                crate::core::rewriting::rewrite(e, &[], "li", &crate::core::rewriting::RewriteHints::default())?;
+            Some(tractable(&as_li, None)?)
+        }
+        // not SymPy's (sympy-extras#25): for a positive integer order and a
+        // positive argument, E_1(z) = -exp(-z)*eis(-z) and E_n(z) =
+        // (exp(-z) - z*E_(n-1)(z))/(n - 1)
+        Function::Expint => {
+            let (nu, z) = (&args[0], &args[1]);
+            match nu
+                .as_rational()
+                .filter(|q| q.is_int())
+                .and_then(|q| i64::try_from(crate::numbers::numer(q)).ok())
+            {
+                Some(order) if order >= 1 && is(z, Predicate::positive) == Some(true) => {
+                    let mut factor: Basic = neg(&crate::functions::special::error_functions::eis(&neg(z)?)?)?;
+                    for k in 2..=order {
+                        factor = div(
+                            &sub(&Basic::one(), &crate::core::mul::mul(&[z.clone(), factor])?)?,
+                            &Basic::int(k - 1),
+                        )?;
+                    }
+                    Some(crate::core::mul::mul(&[exp(&neg(z)?)?, factor])?)
+                }
+                _ => None,
+            }
+        }
         Function::UpperGamma => Some(sub(&exp(&loggamma(&args[0])?)?, &lowergamma(&args[0], &args[1])?)?),
         // PORTED FROM SYMPY: sympy/functions/special/bessel.py:besseli._eval_rewrite_as_tractable,
         // besselk._eval_rewrite_as_tractable
@@ -676,6 +727,9 @@ fn intractable_special(f: Function, args: &[Basic]) -> PolyResult<Option<Basic>>
     Ok(match f {
         // PORTED FROM SYMPY: sympy/functions/special/gamma_functions.py:loggamma._eval_rewrite_as_intractable
         Function::LogGamma => Some(log(&crate::functions::special::gamma_functions::gamma(&args[0])?)?),
+        Function::Erfs | Function::Eis => Some(crate::functions::special::error_functions::helper_intractable(
+            f, &args[0],
+        )?),
         Function::BesselIs => {
             let value: Basic = crate::functions::apply_function(Function::BesselI, args)?;
             Some(crate::core::mul::mul(&[exp(&neg(&args[1])?)?, value])?)
@@ -700,19 +754,6 @@ pub fn rewrite_tractable_at(e: &Basic, limitvar: Option<&Basic>, intractable: bo
         .map(|a| rewrite_tractable_at(a, limitvar, intractable))
         .collect::<PolyResult<_>>()?;
     if let Head::Function(f) = e.head() {
-        if !intractable && SPECIAL_TRACTABLE.contains(f) {
-            return Err(not_ported(&format!("the tractable form of {}", e.class_name())));
-        }
-        // not SymPy's: expint of a positive integer order at a positive
-        // argument goes through eis (sympy-extras#25), which needs the
-        // helper `Eis`
-        if !intractable
-            && *f == Function::Expint
-            && args[0].as_rational().is_some_and(|q| q.is_int() && *q >= Rat::ONE)
-            && is(&args[1], Predicate::positive) == Some(true)
-        {
-            return Err(not_ported("the tractable form of expint (through eis)"));
-        }
         if !intractable {
             if matches!(
                 f,

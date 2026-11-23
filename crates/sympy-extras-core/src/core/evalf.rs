@@ -431,6 +431,22 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
         // mpmath's meijerg is not ported
         Head::MeijerG => None,
         Head::Function(
+            g @ (super::basic::Function::Legendre
+            | super::basic::Function::ChebyshevT
+            | super::basic::Function::ChebyshevU
+            | super::basic::Function::Laguerre
+            | super::basic::Function::AssocLaguerre
+            | super::basic::Function::Jacobi
+            | super::basic::Function::Gegenbauer),
+        ) => {
+            // mpmath's hypergeometric definitions (a non-integer order)
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::polynomials::orthogonal_value(*g, &values, prec)
+        }
+        Head::Function(
             g @ (super::basic::Function::Zeta
             | super::basic::Function::DirichletEta
             | super::basic::Function::PolyLog
@@ -638,11 +654,13 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 super::basic::Function::Legendre
                 | super::basic::Function::ChebyshevT
                 | super::basic::Function::ChebyshevU
-                | super::basic::Function::Hermite
                 | super::basic::Function::Laguerre
                 | super::basic::Function::AssocLaguerre
                 | super::basic::Function::Jacobi
-                | super::basic::Function::Gegenbauer
+                | super::basic::Function::Gegenbauer => {
+                    unreachable!("evaluated above with all their arguments")
+                }
+                super::basic::Function::Hermite
                 | super::basic::Function::AssocLegendre
                 | super::basic::Function::HermiteProb => return None,
                 // mpmath's appellf1 is not ported
@@ -681,6 +699,8 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::MathieuC
                 | super::basic::Function::MathieuSPrime
                 | super::basic::Function::MathieuCPrime => return None,
+                // SymPy's helpers of the Gruntz algorithm: no numerical value
+                super::basic::Function::Erfs | super::basic::Function::Eis => return None,
                 // no value of its own (Python asks SymPy)
                 super::basic::Function::Mod
                 | super::basic::Function::KroneckerDelta

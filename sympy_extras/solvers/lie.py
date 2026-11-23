@@ -29,10 +29,12 @@ derivatives, the linear system of the ansatz is solved over ``QQ`` or the
 field of rational functions of the parameters
 (:class:`~sympy_extras.polys.domains.sparsefractionfield.SparseFractionField`),
 and the Janet basis of the determining system is the native one of
-:mod:`sympy_extras.polys.differential`; an equation which is neither
-linear nor quadratic in its leading derivative is solved for it by the
-native port of SymPy's ``solve``
-(:func:`~sympy_extras.solvers.solvers.solve_equation`). The face
+:mod:`sympy_extras.polys.differential`. An equation which is not linear
+in its leading derivative is never solved for it (one root would
+describe one branch of the equation only): its denominators are cleared,
+and an equation which is a polynomial in the leading derivative, or in a
+root or an exponential of it, reduces the invariance conditions by
+pseudo-division; any other one raises ``NotImplementedError``. The face
 :mod:`sympy_extras.solvers.lie_sympy` keeps the API on SymPy objects.
 
 References
@@ -47,6 +49,7 @@ References
 """
 from __future__ import annotations
 
+from math import lcm
 from typing import Callable, Final, Optional, Sequence, TypeVar, Union
 
 from sympy_extras.core.add import Add, add
@@ -59,6 +62,7 @@ from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.relational import Eq
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Dummy, Symbol
+from sympy_extras.functions.elementary.exponential import Exp, exp
 from sympy_extras.polys.differential.janet import JanetBasis, janet_basis
 from sympy_extras.polys.domains.domain import Domain
 from sympy_extras.polys.domains.rationalfield import QQ
@@ -504,25 +508,169 @@ def _degree_in(eq: Expr, s: Symbol) -> int:
     return max((m[0] for m in terms), default=0)
 
 
-def _leading_derivatives(jets: JetSpace, eqs: list[Expr],
-                         polynomial: Optional[dict[int, Symbol]] = None) -> dict[Basic, Basic]:
-    """Solve every equation for its highest derivative, preferring one it
-    is linear in.
+def _top_jets(jets: JetSpace, eq: Expr) -> list[Symbol]:
+    """The jet coordinates of the highest order occurring in ``eq``, the
+    candidates for its leading derivative (in the order they are tried)."""
+    candidates = sorted(jets.jets_in(eq), key=lambda aJ: (sum(aJ[1]), aJ[1], aJ[0]), reverse=True)
+    top = sum(candidates[0][1]) if candidates else 0
+    return [jets.jet(a, J) for a, J in candidates if sum(J) == top]
 
-    With ``polynomial``, an equation which is a polynomial of degree at
-    least two in a highest derivative is not solved: the derivative is
-    recorded in ``polynomial`` under the index of the equation, and the
-    invariance condition is reduced modulo the equation instead (keeping
-    a single root would describe one branch of the equation only)."""
+
+def _cleared(jets: JetSpace, eq: Expr) -> Expr:
+    """``eq`` with its denominators cleared when a highest derivative
+    occurs in one (``1/y' - x``, ``y' + 1/y'``): the numerator `N` of
+    `F = N/D` has the same solutions where `D \\ne 0`, and on them
+    `\\mathrm{pr} X(F) = \\mathrm{pr} X(N)/D`, so that the invariance
+    conditions are the same; a numerator which is a polynomial of degree
+    at least two in the derivative has all its branches taken into
+    account by the pseudo-remainder."""
+    top = _top_jets(jets, eq)
+    if not top or _polynomial_terms(eq, top) is not None:
+        return eq
+    cleared = numer(eq.together())
+    if _polynomial_terms(cleared, top) is not None:
+        return cleared
+    return eq
+
+
+class _Modulus:
+    """An equation `F = 0` which is not solved for its leading derivative
+    ``s``: it is a polynomial in ``gen``, which is ``s`` itself
+    (``y*y'**2 - x``), or a symbol `w` with `s = w^L` (``sqrt(y') - y``,
+    `F` a polynomial in roots of `s`) or `w = \\exp(s/L)` (``exp(y') -
+    y``). Every invariance condition, written in ``gen`` by
+    :meth:`forward`, is reduced modulo `F`; the remainder must vanish
+    identically in ``gen`` (and in ``s`` for an exponential), so that the
+    condition holds on every branch of `F = 0`, not on one root only."""
+
+    def __init__(self, s: Symbol, gen: Symbol, root: int, exponential: int) -> None:
+        self.s: Final[Symbol] = s
+        self.gen: Final[Symbol] = gen
+        #: `L` with `s = w^L`, or 0
+        self.root: Final[int] = root
+        #: `L` with `w = \exp(s/L)`, or 0
+        self.exponential: Final[int] = exponential
+
+    def forward(self, e: Expr) -> Optional[Expr]:
+        """``e`` written in ``gen`` (its numerator once it is), ``None``
+        when it cannot be."""
+        if self.root:
+            return _root_substituted(e, self.s, self.gen, self.root)
+        if self.exponential:
+            return _exp_substituted(e, self.s, self.gen, self.exponential)
+        return e
+
+    def back(self) -> dict[Basic, Basic]:
+        """The rule writing ``gen`` in the jet coordinates again."""
+        if self.root:
+            return {self.gen: pow(self.s, Rational(1, self.root))}
+        if self.exponential:
+            return {self.gen: exp(self.s/self.exponential)}
+        return {}
+
+
+def _root_substituted(e: Expr, s: Symbol, w: Symbol, L: int) -> Optional[Expr]:
+    """The numerator of ``e`` with `s = w^L` (`s^r = w^{rL}`, for the
+    principal powers too: `rL` is an integer), ``None`` when ``s`` occurs
+    otherwise than in such powers."""
+    rule: dict[Basic, Basic] = {s: pow(w, Integer(L))}
+    for power in e.atoms(Pow):
+        if not isinstance(power, Pow) or s not in power.free_symbols:
+            continue
+        exponent = power.exp
+        if isinstance(exponent, Integer):
+            continue
+        if power.base != s or not isinstance(exponent, Rational) or (exponent.p*L) % exponent.q:
+            return None
+        rule[power] = pow(w, Integer(exponent.p*L//exponent.q))
+    result = numer(_replaced(e, rule).together())
+    if s in result.free_symbols:
+        return None
+    return result
+
+
+def _exp_substituted(e: Expr, s: Symbol, w: Symbol, L: int) -> Optional[Expr]:
+    """The numerator of ``e`` with `\\exp(c s + b) = w^{cL} \\exp(b)`,
+    ``None`` when an exponential of ``s`` is not of this form."""
+    rule: dict[Basic, Basic] = {}
+    for power in e.atoms(Exp):
+        if not isinstance(power, Exp) or s not in power.free_symbols:
+            continue
+        parts = _exp_argument(power.args[0], s)
+        if parts is None:
+            return None
+        c, b = parts
+        if (c.p*L) % c.q:
+            return None
+        rule[power] = pow(w, Integer(c.p*L//c.q))*exp(b)
+    return numer(_replaced(e, rule).together())
+
+
+def _exp_argument(arg: Expr, s: Symbol) -> Optional[tuple[Rational, Expr]]:
+    """``(c, b)`` with ``arg = c*s + b`` and ``c`` a nonzero rational
+    number, or ``None``."""
+    terms = _polynomial_terms(arg, [s])
+    if terms is None or any(m[0] > 1 for m in terms):
+        return None
+    c = terms.get((1,), Integer(0))
+    if not isinstance(c, Rational) or c == 0:
+        return None
+    return c, terms.get((0,), Integer(0))
+
+
+def _modulus(eq: Expr, s: Symbol) -> Optional[_Modulus]:
+    """The :class:`_Modulus` of an equation which is not linear in its
+    leading derivative ``s``: a polynomial of degree at least two in
+    ``s``, or in `w` with `s = w^L` or `w = \\exp(s/L)`; ``None``
+    otherwise."""
+    if _degree_in(eq, s) >= 2:
+        return _Modulus(s, s, 0, 0)
+    roots: list[int] = []
+    exponentials: list[int] = []
+    for power in eq.atoms(Pow):
+        if isinstance(power, Pow) and power.base == s and isinstance(power.exp, Rational) \
+                and not isinstance(power.exp, Integer):
+            roots.append(power.exp.q)
+    for power in eq.atoms(Exp):
+        if isinstance(power, Exp) and s in power.free_symbols:
+            parts = _exp_argument(power.args[0], s)
+            if parts is None:
+                return None
+            exponentials.append(parts[0].q)
+    if roots and exponentials:
+        return None
+    w = Dummy('w')
+    if roots:
+        modulus = _Modulus(s, w, lcm(*roots), 0)
+    elif exponentials:
+        modulus = _Modulus(s, w, 0, lcm(*exponentials))
+    else:
+        return None
+    written = modulus.forward(eq)
+    if written is None or _degree_in(written, w) < 1:
+        return None
+    return modulus
+
+
+def _leading_derivatives(jets: JetSpace, eqs: list[Expr],
+                         moduli: Optional[dict[int, _Modulus]] = None,
+                         branch: bool = False) -> dict[Basic, Basic]:
+    """Solve every equation for a highest derivative it is linear in.
+
+    With ``moduli``, an equation which is not linear in a highest
+    derivative, but a polynomial of degree at least two in it or a
+    polynomial in a root or an exponential of it, is not solved: its
+    :class:`_Modulus` is recorded in ``moduli`` under the index of the
+    equation, and the invariance condition is reduced modulo the equation
+    instead (keeping a single root would describe one branch of the
+    equation only). With ``branch``, an equation which is not linear is
+    solved for one root (one branch, for the callers which want one).
+    Otherwise such an equation raises ``NotImplementedError``."""
     solved: dict[Basic, Basic] = {}
     for index, eq in enumerate(eqs):
-        candidates = sorted(jets.jets_in(eq), key=lambda aJ: (sum(aJ[1]), aJ[1], aJ[0]), reverse=True)
-        top = sum(candidates[0][1]) if candidates else 0
+        top = _top_jets(jets, eq)
         found = False
-        for a, J in candidates:
-            if sum(J) < top:
-                break
-            s = jets.jet(a, J)
+        for s in top:
             if s in solved:
                 continue
             coefficient = diff(eq, s)
@@ -530,20 +678,18 @@ def _leading_derivatives(jets: JetSpace, eqs: list[Expr],
                 solved[s] = expand_power_exp(-(eq - coefficient*s)/coefficient)
                 found = True
                 break
-        if not found and polynomial is not None:
-            for a, J in candidates:
-                if sum(J) < top:
-                    break
-                s = jets.jet(a, J)
-                if s in solved or s in polynomial.values():
+        if not found and moduli is not None:
+            taken = {m.s for m in moduli.values()}
+            for s in top:
+                if s in solved or s in taken:
                     continue
-                if _degree_in(eq, s) >= 2:
-                    polynomial[index] = s
+                modulus = _modulus(eq, s)
+                if modulus is not None:
+                    moduli[index] = modulus
                     found = True
                     break
-        if not found:
-            for a, J in candidates:
-                s = jets.jet(a, J)
+        if not found and branch:
+            for s in top:
                 if s in solved:
                     continue
                 roots = _solve_for(eq, s)
@@ -552,14 +698,24 @@ def _leading_derivatives(jets: JetSpace, eqs: list[Expr],
                     found = True
                     break
         if not found:
-            raise NotImplementedError("cannot solve %s for a leading derivative" % (jets.from_jet(eq),))
+            if moduli is None:
+                raise NotImplementedError("%s is not linear in a leading derivative: solving it for one would "
+                                          "keep one branch only" % (jets.from_jet(eq),))
+            raise NotImplementedError("%s is not linear in a leading derivative, nor a polynomial in one or in "
+                                      "a root or an exponential of one: solving it would keep one branch only, "
+                                      "and the symmetries of one branch need not be symmetries"
+                                      % (jets.from_jet(eq),))
     return solved
 
 
 def leading_derivatives(jets: JetSpace, eqs: Sequence[Expr]) -> dict[Symbol, Expr]:
     """The highest derivative of every equation (in the jet coordinates)
-    solved for, preferring one in which it is linear; these are the
-    values substituted in the invariance condition.
+    solved for, one it is linear in (once the denominators it occurs in
+    are cleared); these are the values substituted in the invariance
+    condition. An equation which is not linear in a highest derivative
+    raises ``NotImplementedError``: it may have several branches, and the
+    invariance condition is reduced modulo it instead
+    (:func:`infinitesimal_condition`).
 
     Examples
     ========
@@ -573,7 +729,7 @@ def leading_derivatives(jets: JetSpace, eqs: Sequence[Expr]) -> dict[Symbol, Exp
     {u_xx: u_t}
     """
     result: dict[Symbol, Expr] = {}
-    for s, value in _leading_derivatives(jets, list(eqs)).items():
+    for s, value in _leading_derivatives(jets, [_cleared(jets, e) for e in eqs]).items():
         assert isinstance(s, Symbol) and isinstance(value, Expr)
         result[s] = value
     return result
@@ -584,11 +740,15 @@ def infinitesimal_condition(equations: Union[Equation, Sequence[Equation]],
                             symmetry: Symmetry) -> list[Expr]:
     """`\\mathrm{pr} X(\\Delta)` restricted to the solutions of the
     equations: the leading derivatives are eliminated (an equation which
-    is a polynomial of degree at least two in its leading derivative is
-    not solved for it: the conditions are pseudo-remainders modulo it, so
-    that all its branches count) and the numerators are returned,
-    expressions in the jet coordinates which vanish identically exactly
-    when ``symmetry`` is a symmetry.
+    is a polynomial of degree at least two in its leading derivative, or
+    in a root or an exponential of it, is not solved for it: the
+    conditions are pseudo-remainders modulo it, so that all its branches
+    count) and the numerators are returned, expressions in the jet
+    coordinates which vanish identically when ``symmetry`` is a symmetry
+    (exactly when, unless a root or an exponential is involved: their
+    remainders must vanish identically in them, which is sufficient).
+    An equation in which a leading derivative occurs otherwise
+    (``sin(y') - x``) raises ``NotImplementedError``.
 
     Examples
     ========
@@ -602,7 +762,12 @@ def infinitesimal_condition(equations: Union[Equation, Sequence[Equation]],
     [-u_x]
     """
     jets, eqs = _prepare(equations, functions)
-    return _condition(jets, eqs, symmetry)
+    conditions, moduli = _condition(jets, eqs, symmetry)
+    for modulus in moduli:
+        back = modulus.back()
+        if back:
+            conditions = [_replaced(c, back) for c in conditions]
+    return conditions
 
 
 def _eliminated(jets: JetSpace, e: Expr, leading: dict[Basic, Basic]) -> Expr:
@@ -640,34 +805,54 @@ def _pseudo_remainder(g: Expr, f: dict[int, Expr], s: Symbol) -> Optional[Expr]:
     return add(*[c*pow(s, Integer(k)) for k, c in remainder.items()])
 
 
-def _condition(jets: JetSpace, eqs: list[Expr], symmetry: Symmetry) -> list[Expr]:
+def _condition(jets: JetSpace, eqs: list[Expr], symmetry: Symmetry) -> tuple[list[Expr], list[_Modulus]]:
     """The invariance conditions: ``pr X`` applied to every equation, on
-    its solutions. The leading derivatives an equation is linear in are
-    eliminated by substitution; an equation which is a polynomial of
+    its solutions, and the moduli they are reduced by (their generators
+    which are not jet coordinates occur in the conditions).
+
+    A denominator containing a leading derivative is cleared first
+    (:func:`_cleared`). The leading derivatives an equation is linear in
+    are eliminated by substitution; an equation which is a polynomial of
     degree at least two in its leading derivative (``y*y'**2 - (y - x)*y'
-    - x``, the union of two families) is not solved for it, the
+    - x``, the union of two families), or in a root or an exponential of
+    it (``sqrt(y') - y``, ``exp(y') - y``), is not solved for it: the
     conditions are reduced modulo it, so that ``pr X(F)`` vanishes on all
-    the branches of ``F = 0`` (it is divisible by ``F``), not on one
-    root only."""
-    polynomial: dict[int, Symbol] = {}
-    leading = _leading_derivatives(jets, eqs, polynomial)
-    moduli: list[tuple[Symbol, dict[int, Expr]]] = []
-    for index, s in polynomial.items():
-        terms = _polynomial_terms(_eliminated(jets, eqs[index], leading), [s])
+    the branches of ``F = 0`` (it is divisible by ``F``), not on one root
+    only. Any other equation which is not linear in a leading derivative
+    (``sin(y') - x``) raises ``NotImplementedError``."""
+    eqs = [_cleared(jets, eq) for eq in eqs]
+    found: dict[int, _Modulus] = {}
+    leading = _leading_derivatives(jets, eqs, found)
+    moduli: list[tuple[_Modulus, dict[int, Expr]]] = []
+    for index, modulus in found.items():
+        written = modulus.forward(_eliminated(jets, eqs[index], leading))
+        terms = None if written is None else _polynomial_terms(written, [modulus.gen])
         if terms is None:
+            if modulus.gen != modulus.s:
+                raise NotImplementedError("cannot write %s in a root or an exponential of %s"
+                                          % (jets.from_jet(eqs[index]), modulus.s))
             continue
         coefficients = {m[0]: c for m, c in terms.items()}
         if coefficients and max(coefficients) >= 1:
-            moduli.append((s, coefficients))
+            moduli.append((modulus, coefficients))
+        elif modulus.gen != modulus.s:
+            raise NotImplementedError("cannot write %s in a root or an exponential of %s"
+                                      % (jets.from_jet(eqs[index]), modulus.s))
     result: list[Expr] = []
     for eq in eqs:
         condition = _eliminated(jets, symmetry.apply(eq), leading)
-        for s, f in moduli:
-            remainder = _pseudo_remainder(condition, f, s)
+        for modulus, f in moduli:
+            written = modulus.forward(condition)
+            remainder = None if written is None else _pseudo_remainder(written, f, modulus.gen)
             if remainder is not None:
                 condition = remainder
+            elif modulus.gen != modulus.s:
+                # a condition left in the jet coordinates would be
+                # reduced on one branch only
+                raise NotImplementedError("cannot write the invariance condition of %s in a root or an "
+                                          "exponential of %s" % (jets.from_jet(eq), modulus.s))
         result.append(condition)
-    return result
+    return result, [m for m, _ in moduli]
 
 
 def check_symmetry(equations: Union[Equation, Sequence[Equation]],
@@ -690,7 +875,8 @@ def check_symmetry(equations: Union[Equation, Sequence[Equation]],
     >>> check_symmetry(heat, u, Symmetry(jets, [t, 0], [0]))
     False
     """
-    for condition in infinitesimal_condition(equations, functions, symmetry):
+    jets, eqs = _prepare(equations, functions)
+    for condition in _condition(jets, eqs, symmetry)[0]:
         if condition != 0 and simplify(condition) != 0:
             return False
     return True
@@ -846,10 +1032,11 @@ def _ansatz(jets: JetSpace, degree: int, basis: Sequence[Expr]
 
 def _linear_equations(jets: JetSpace, eqs: list[Expr], xi: list[Expr], eta: list[Expr],
                       unknowns: list[Symbol]) -> list[Expr]:
-    conditions = _condition(jets, eqs, Symmetry(jets, xi, eta))
+    conditions, moduli = _condition(jets, eqs, Symmetry(jets, xi, eta))
+    gens = {m.gen for m in moduli}
     linear: list[Expr] = []
     for condition in conditions:
-        variables = set(jets.x) | set(jets.u) | {jets.jet(a, J) for a, J in jets.jets_in(condition)}
+        variables = set(jets.x) | set(jets.u) | {jets.jet(a, J) for a, J in jets.jets_in(condition)} | gens
         linear.extend(_split(condition, unknowns, variables))
     return linear
 
@@ -886,11 +1073,13 @@ def determining_system(equations: Union[Equation, Sequence[Equation]],
     unknowns += [Function('eta%d' % a)(*base) for a in range(jets.q)]
     xi: list[Expr] = list(unknowns[:jets.p])
     eta: list[Expr] = list(unknowns[jets.p:])
-    conditions = _condition(jets, eqs, Symmetry(jets, xi, eta))
+    conditions, moduli = _condition(jets, eqs, Symmetry(jets, xi, eta))
+    extra = sorted({m.gen for m in moduli if m.gen != m.s}, key=lambda g: g.sort_key())
     system: list[Expr] = []
     for condition in conditions:
         condition = expand(_canonical_derivatives(condition))
         gens = [jets.jet(a, J) for a, J in jets.jets_in(condition) if sum(J) > 0]
+        gens += [g for g in extra if g in condition.free_symbols]
         if not gens:
             if condition != 0:
                 system.append(condition)

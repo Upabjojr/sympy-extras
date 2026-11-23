@@ -10,7 +10,7 @@ import pytest
 
 from sympy_extras.core import Eq, Function, Integer, Rational, Symbol, Tuple
 from sympy_extras.core.basic import Basic
-from sympy_extras.functions import exp
+from sympy_extras.functions import exp, sin
 from sympy_extras.solvers.lie import (JetSpace, Symmetry, check_symmetry, determining_system,
     infinitesimal_condition, leading_derivatives, symmetries, symmetry_janet_basis)
 from ..conftest import load
@@ -40,6 +40,15 @@ CASES: list[tuple[list[Basic], list[Basic], int, list[Basic], bool]] = [
     ([y.diff(x, 2) + Rational(2)**Rational(1, 2)*y.diff(x)], [y], 2, [], True),
     ([y.diff(x, 2) - y.diff(x)**2/y], [y], 1, [], True),
     ([u.diff(t) - u.diff(x, 2) - u**2], [u], 2, [], True),
+    # issue #72: equations not linear in the leading derivative, all their
+    # branches (a denominator cleared, polynomials in exp(y'), in sqrt(y'))
+    ([(y*y.diff(x) + x)*(y.diff(x) - 1)/y.diff(x)], [y], 2, [], True),
+    ([(exp(y.diff(x)) - 1)*(exp(y.diff(x)) - y)], [y], 2, [], True),
+    ([exp(2*y.diff(x)) - (1 + y)*exp(y.diff(x)) + y], [y], 2, [], True),
+    ([(y.diff(x)**Rational(1, 2) - 1)*(y.diff(x)**Rational(1, 2) - y)], [y], 2, [], True),
+    ([y.diff(x)**Rational(1, 2) + y], [y], 2, [], True),
+    ([exp(y.diff(x)) - x], [y], 2, [], True),
+    ([sin(y.diff(x)) - x], [y], 1, [], True),
 ]
 
 
@@ -84,6 +93,21 @@ def test_check_symmetries(case: int) -> None:
         assert bool(r) == check_symmetry(eqs, funcs, s) is True
 
 
+def test_conditions_through_a_modulus() -> None:
+    # the conditions of an equation in exp(y'), the generator written back
+    jets = JetSpace([y])
+    for eq, xi, eta in [(exp(y.diff(x)) - jets.u[0], [Integer(0)], [Integer(1)]),
+                        (y.diff(x)**Rational(1, 2) + y, [x**2], [-2*x*jets.u[0] - 1]),
+                        (sin(y.diff(x)) - x, [Integer(0)], [Integer(1)])]:
+        p = _outcome(lambda: [str(c) for c in infinitesimal_condition(eq, y, Symmetry(jets, xi, eta))])
+        r = _outcome(lambda: [str(c) for c in rc.logic_call('lie', [Symbol('condition'), Tuple(eq), Tuple(y),
+                                                                   Tuple(*xi, *eta)]).args])
+        assert r == p
+    system, _, _ = determining_system(exp(y.diff(x)) - y, y)
+    r = rc.logic_call('lie', [Symbol('system'), Tuple(exp(y.diff(x)) - y), Tuple(y)])
+    assert [str(e) for e in r.args[0].args] == [str(e) for e in system]
+
+
 def test_conditions_and_symmetry_operations() -> None:
     jets = JetSpace([u])
     usym = jets.u[0]
@@ -109,9 +133,16 @@ def test_conditions_and_symmetry_operations() -> None:
 
 
 def test_leading_derivatives() -> None:
+    # an equation not linear in its leading derivative raises: solving it
+    # for one root would keep one branch only
     jets = JetSpace([u])
     for eq in [heat, burgers, kdv, u.diff(x, 2)**2 - u.diff(t)]:
-        p = leading_derivatives(jets, [jets.to_jet(eq)])
+        try:
+            p = leading_derivatives(jets, [jets.to_jet(eq)])
+        except NotImplementedError:
+            with pytest.raises(NotImplementedError):
+                rc.logic_call('lie', [Symbol('leading'), Tuple(eq), Tuple(u)])
+            continue
         r = rc.logic_call('lie', [Symbol('leading'), Tuple(eq), Tuple(u)])
         assert [(str(a.args[0]), str(a.args[1])) for a in r.args] == [(str(k), str(w)) for k, w in p.items()]
 

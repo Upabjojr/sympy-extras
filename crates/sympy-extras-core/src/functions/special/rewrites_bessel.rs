@@ -547,15 +547,110 @@ fn ynm_trig(_e: &Basic, _args: &[Basic], _h: &RewriteHints) -> O {
     Err(not_ported("Ynm rewritten as cos or sin (simplify)"))
 }
 
+// ---------------------------------------------------------------------
+// the error functions in terms of erf and the integrals in terms of li
+// (PORTED FROM SYMPY: erfc, erfi, erf2, fresnels, fresnelc ._eval_rewrite_as_erf,
+// Li._eval_rewrite_as_li, Ei._eval_rewrite_as_li)
+
+fn call(f: Function, args: &[Basic]) -> PolyResult<Basic> {
+    crate::functions::apply_function(f, args)
+}
+fn imag() -> Basic {
+    Basic::atom(crate::core::basic::Head::ImaginaryUnit)
+}
+fn mul2(a: &Basic, b: &Basic) -> PolyResult<Basic> {
+    crate::core::mul::mul(&[a.clone(), b.clone()])
+}
+
+fn erfc_erf(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    Ok(Some(crate::core::add::sub(
+        &Basic::one(),
+        &call(Function::Erf, &args[..1])?,
+    )?))
+}
+
+fn erfi_erf(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    let inner: Basic = call(Function::Erf, &[mul2(&imag(), &args[0])?])?;
+    Ok(Some(mul2(&crate::core::mul::neg(&imag())?, &inner)?))
+}
+
+fn erf2_erf(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    Ok(Some(crate::core::add::sub(
+        &call(Function::Erf, &args[1..2])?,
+        &call(Function::Erf, &args[..1])?,
+    )?))
+}
+
+/// `(1 + I)/2*sqrt(pi)` and `(1 - I)/2*sqrt(pi)`.
+fn fresnel_scales() -> PolyResult<(Basic, Basic)> {
+    let sqrt_pi: Basic = crate::core::power::pow(&Basic::pi(), &Basic::half())?;
+    let half = |s: Basic| -> PolyResult<Basic> { mul2(&crate::core::mul::div(&s, &Basic::int(2))?, &sqrt_pi) };
+    Ok((
+        half(crate::core::add::add(&[Basic::one(), imag()])?)?,
+        half(crate::core::add::sub(&Basic::one(), &imag())?)?,
+    ))
+}
+
+fn fresnel_erf(args: &[Basic], s: bool) -> O {
+    let (plus, minus) = fresnel_scales()?;
+    let first: Basic = call(Function::Erf, &[mul2(&plus, &args[0])?])?;
+    let second: Basic = mul2(&imag(), &call(Function::Erf, &[mul2(&minus, &args[0])?])?)?;
+    let (factor, inner) = if s {
+        (
+            crate::core::add::add(&[Basic::one(), imag()])?,
+            crate::core::add::sub(&first, &second)?,
+        )
+    } else {
+        (
+            crate::core::add::sub(&Basic::one(), &imag())?,
+            crate::core::add::add(&[first, second])?,
+        )
+    };
+    Ok(Some(mul2(&crate::core::mul::div(&factor, &Basic::int(4))?, &inner)?))
+}
+
+fn fresnels_erf(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    fresnel_erf(args, true)
+}
+
+fn fresnelc_erf(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    fresnel_erf(args, false)
+}
+
+fn offset_li_li(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    Ok(Some(crate::core::add::sub(
+        &call(Function::LogIntegral, &args[..1])?,
+        &call(Function::LogIntegral, &[Basic::int(2)])?,
+    )?))
+}
+
+fn ei_li(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    let z: &Basic = &args[0];
+    if z.is_function(Function::Log) {
+        return Ok(Some(call(Function::LogIntegral, &z.args()[..1])?));
+    }
+    Ok(Some(call(
+        Function::LogIntegral,
+        &[crate::functions::elementary::exponential::exp(z)?],
+    )?))
+}
+
 /// The targets of these rules.
-pub const TARGETS: [&str; 8] = [
-    "besselj", "bessely", "besseli", "jn", "yn", "hankel1", "hankel2", "hyper",
+pub const TARGETS: [&str; 10] = [
+    "besselj", "bessely", "besseli", "jn", "yn", "hankel1", "hankel2", "hyper", "erf", "li",
 ];
 
 /// The rule of the head `f` for `target` (`rules`).
 pub fn rule_for(f: Function, target: &str) -> Option<Rule> {
     use Function as F;
     let rule: Rule = match (f, target) {
+        (F::Erfc, "erf") => erfc_erf,
+        (F::Erfi, "erf") => erfi_erf,
+        (F::Erf2, "erf") => erf2_erf,
+        (F::FresnelS, "erf") => fresnels_erf,
+        (F::FresnelC, "erf") => fresnelc_erf,
+        (F::OffsetLogIntegral, "li") => offset_li_li,
+        (F::Ei, "li") => ei_li,
         (F::BesselJ, "bessely") => besselj_bessely,
         (F::BesselJ, "jn") => besselj_jn,
         (F::BesselJ, "besseli") | (F::BesselI, "besselj") => polar,

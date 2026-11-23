@@ -165,7 +165,13 @@ pub fn evaluate_atom(atom: &Basic, facts: &Facts) -> PolyResult<Truth> {
         }
     }
     if let Some(member) = real_membership(atom) {
-        if let Some(v) = realness(&member, facts)? {
+        let mut v: Truth = realness(&member, facts)?;
+        if v.is_none() && real_by_parts(&member, facts)? == Some(false) {
+            // the imaginary part is not zero: Q.real(z) under
+            // re(z)*im(z) > pi/2 (sympy-extras#74)
+            v = Some(false);
+        }
+        if let Some(v) = v {
             return Ok(Some(v));
         }
         if fragile(&member) {
@@ -184,6 +190,13 @@ pub fn evaluate_atom(atom: &Basic, facts: &Facts) -> PolyResult<Truth> {
         }
     }
     let mut value: Truth = cad_ask(atom, facts)?;
+    if value.is_none() && matches!(rel_op(atom), Some(RelOp::Eq | RelOp::Ne)) {
+        // complex variables: the real and the imaginary parts apart
+        let difference: Basic = crate::core::add::sub(&atom.args()[0], &atom.args()[1])?;
+        if let Some(zero) = zero_by_parts(&difference, facts)? {
+            value = Some(if rel_op(atom) == Some(RelOp::Eq) { zero } else { !zero });
+        }
+    }
     if value.is_none() && rel_op(atom).is_some() {
         value = structure_ask(atom, facts)?;
     }
@@ -194,6 +207,232 @@ pub fn evaluate_atom(atom: &Basic, facts: &Facts) -> PolyResult<Truth> {
         value = bounded_cad_ask(atom, facts)?;
     }
     Ok(value)
+}
+
+// ---------------------------------------------------------------------
+// complex variables by their real and imaginary parts
+
+/// The real and the imaginary parts of an expression of complex
+/// variables, written in real variables, with the facts translated
+/// (`_ComplexParts`).
+struct ComplexParts {
+    re: Basic,
+    im: Basic,
+    facts: Facts,
+}
+
+fn unevaluated(f: Function, z: &Basic) -> Basic {
+    Basic::new(Head::Function(f), vec![z.clone()])
+}
+
+fn symbol_name(s: &Basic) -> String {
+    match s.head() {
+        Head::Symbol(d) | Head::Dummy(d, _) => d.name.clone(),
+        _ => s.to_string(),
+    }
+}
+
+/// Whether `re(z)` and `im(z)` are finite real numbers (`_finite_parts`).
+fn finite_parts(z: &Basic, facts: &Facts) -> bool {
+    if is(z, Predicate::finite) == Some(true) {
+        return true;
+    }
+    let mut found: Vec<Basic> = Vec::new();
+    for c in &facts.conjuncts {
+        if matches!(rel_op(c), Some(RelOp::Gt | RelOp::Lt | RelOp::Ge | RelOp::Le)) {
+            for node in c.preorder() {
+                if matches!(function_of(&node), Some(Function::Re | Function::Im | Function::Abs))
+                    && node.args()[0] == *z
+                    && !found.contains(&node)
+                {
+                    found.push(node);
+                }
+            }
+        }
+    }
+    found.contains(&unevaluated(Function::Abs, z))
+        || (found.contains(&unevaluated(Function::Re, z)) && found.contains(&unevaluated(Function::Im, z)))
+}
+
+fn xreplace_with(e: &Basic, rule: &[(Basic, Basic)]) -> PolyResult<Basic> {
+    let map: std::collections::HashMap<Basic, Basic> = rule.iter().cloned().collect();
+    crate::core::function::xreplace_evaluated(e, &map)
+}
+
+/// The parts of `e` in real variables, or `None` when `e` has no complex
+/// variable, one whose parts may be infinite, or something which is not
+/// translated (`_complex_parts`).
+fn complex_parts(e: &Basic, facts: &Facts) -> PolyResult<Option<ComplexParts>> {
+    use crate::core::relational::{eq, ge, gt, le, lt};
+    let all: BTreeSet<Basic> = symbols(e);
+    let complex_: Vec<Basic> = sorted_symbols(
+        all.iter()
+            .filter(|s| !facts.real.contains(s) && is(s, Predicate::real) != Some(true))
+            .cloned()
+            .collect(),
+    );
+    if complex_.is_empty() || !complex_.iter().all(|z| finite_parts(z, facts)) {
+        return Ok(None);
+    }
+    let (re_part, im_part) = match crate::functions::elementary::complexes::as_real_imag(e, true, None)? {
+        Some(parts) => parts,
+        None => (
+            crate::functions::elementary::complexes::re(e)?,
+            crate::functions::elementary::complexes::im(e)?,
+        ),
+    };
+    let mut rule: Vec<(Basic, Basic)> = Vec::new();
+    for s in sorted_symbols(all.iter().filter(|s| !complex_.contains(s)).cloned().collect()) {
+        rule.push((unevaluated(Function::Re, &s), s.clone()));
+        rule.push((unevaluated(Function::Im, &s), Basic::zero()));
+    }
+    let mut variables: Vec<Basic> = Vec::new();
+    let mut constraints: Vec<Basic> = Vec::new();
+    let mut nodes: Vec<Basic> = Vec::new();
+    for c in [re_part.clone(), im_part.clone()].iter().chain(facts.conjuncts.iter()) {
+        for n in c.preorder() {
+            if !nodes.contains(&n) {
+                nodes.push(n);
+            }
+        }
+    }
+    let real = |name: String| crate::core::symbol::Dummy::new(&name, &[(Predicate::real, true)]).0;
+    for z in &complex_ {
+        let name: String = symbol_name(z);
+        let (x, y) = (real(format!("re_{}", name)), real(format!("im_{}", name)));
+        rule.push((unevaluated(Function::Re, z), x.clone()));
+        rule.push((unevaluated(Function::Im, z), y.clone()));
+        variables.push(x.clone());
+        variables.push(y.clone());
+        if nodes.contains(&unevaluated(Function::Abs, z)) {
+            let r: Basic = real(format!("abs_{}", name));
+            rule.push((unevaluated(Function::Abs, z), r.clone()));
+            variables.push(r.clone());
+            let two: Basic = Basic::int(2);
+            let sum: Basic =
+                crate::core::add::add(&[crate::core::power::pow(&x, &two)?, crate::core::power::pow(&y, &two)?])?;
+            constraints.push(ge(&r, &Basic::zero())?);
+            constraints.push(eq(&crate::core::power::pow(&r, &two)?, &sum)?);
+        }
+    }
+    let p: Basic = real("pi".to_string());
+    let mut angles: Vec<Basic> = Vec::new();
+    let mut requirements: Vec<Basic> = Vec::new();
+    let mut ordered_nodes: Vec<Basic> = nodes.clone();
+    ordered_nodes.sort_by_cached_key(|n| n.to_string());
+    for node in &ordered_nodes {
+        if function_of(node) == Some(Function::Arg) && is(&node.args()[0], Predicate::zero) == Some(false) {
+            let t: Basic = real("t".to_string());
+            rule.push((node.clone(), t.clone()));
+            angles.push(t);
+        } else if function_of(node) == Some(Function::Atan2) {
+            let (b, a) = (&node.args()[0], &node.args()[1]);
+            let (b_, a_) = (xreplace_with(b, &rule)?, xreplace_with(a, &rule)?);
+            let free: BTreeSet<Basic> = a_.free_symbols().union(&b_.free_symbols()).cloned().collect();
+            if complex_.iter().any(|z| free.contains(z)) {
+                continue;
+            }
+            let t: Basic = real("t".to_string());
+            rule.push((node.clone(), t.clone()));
+            angles.push(t);
+            // atan2(0, 0) is not an angle
+            let two: Basic = Basic::int(2);
+            requirements.push(crate::core::add::add(&[
+                crate::core::power::pow(&a_, &two)?,
+                crate::core::power::pow(&b_, &two)?,
+            ])?);
+        }
+    }
+    if !angles.is_empty() || nodes.contains(&Basic::pi()) {
+        rule.push((Basic::pi(), p.clone()));
+        variables.push(p.clone());
+        constraints.push(gt(&p, &Basic::from_rational(crate::numbers::rat(314159, 100000)))?);
+        constraints.push(lt(&p, &Basic::from_rational(crate::numbers::rat(314160, 100000)))?);
+    }
+    for angle in &angles {
+        variables.push(angle.clone());
+        constraints.push(gt(angle, &crate::core::mul::neg(&p)?)?);
+        constraints.push(le(angle, &p)?);
+    }
+    let re_new: Basic = xreplace_with(&re_part, &rule)?;
+    let im_new: Basic = xreplace_with(&im_part, &rule)?;
+    let free: BTreeSet<Basic> = re_new.free_symbols().union(&im_new.free_symbols()).cloned().collect();
+    if complex_.iter().any(|z| free.contains(z)) {
+        return Ok(None);
+    }
+    let mut kept: Vec<Basic> = Vec::new();
+    for c in &facts.conjuncts {
+        let translated: Basic = xreplace_with(c, &rule)?;
+        let f = translated.free_symbols();
+        if !complex_.iter().any(|z| f.contains(z)) {
+            kept.push(translated);
+        }
+    }
+    kept.extend(constraints);
+    let reals: Basic = crate::sets::sets::reals();
+    for v in &variables {
+        kept.push(element(v, &reals)?);
+    }
+    let extended: Facts = match Facts::new(&kept, None, &[]) {
+        Ok(f) => f,
+        Err(PolyError::Value(_) | PolyError::Type(_)) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    for q in &requirements {
+        if !nonzero(q, &extended)? {
+            return Ok(None);
+        }
+    }
+    Ok(Some(ComplexParts {
+        re: re_new,
+        im: im_new,
+        facts: extended,
+    }))
+}
+
+/// Whether a difference of expressions of complex variables is zero, by
+/// its real and imaginary parts (`_zero_by_parts`).
+fn zero_by_parts(difference: &Basic, facts: &Facts) -> PolyResult<Truth> {
+    let Some(parts) = complex_parts(difference, facts)? else {
+        return Ok(None);
+    };
+    let im_zero: Truth = zero_part(&parts.im, &parts.facts)?;
+    if im_zero == Some(false) {
+        return Ok(Some(false));
+    }
+    let re_zero: Truth = zero_part(&parts.re, &parts.facts)?;
+    if re_zero == Some(false) {
+        return Ok(Some(false));
+    }
+    if im_zero == Some(true) && re_zero == Some(true) {
+        return Ok(Some(true));
+    }
+    Ok(None)
+}
+
+/// `false` when the imaginary part of `e` is not zero on the region of the
+/// facts (`_real_by_parts`).
+fn real_by_parts(e: &Basic, facts: &Facts) -> PolyResult<Truth> {
+    let Some(parts) = complex_parts(e, facts)? else {
+        return Ok(None);
+    };
+    if zero_part(&parts.im, &parts.facts)? == Some(false) {
+        return Ok(Some(false));
+    }
+    Ok(None)
+}
+
+/// The budget of a part which is not polynomial (`_PARTS_SECONDS`).
+const PARTS_SECONDS: f64 = 2.0;
+
+/// Whether a part in real variables is zero on the region of the facts
+/// (`_zero_part`).
+fn zero_part(part: &Basic, facts: &Facts) -> PolyResult<Truth> {
+    let formula: Basic = normalize(&crate::core::relational::eq(part, &Basic::zero())?)?;
+    if facts.is_polynomial(&formula)? {
+        return cad_ask(&formula, facts);
+    }
+    Ok(crate::timeout::attempt_within(Some(PARTS_SECONDS), || evaluate(&formula, facts))?.flatten())
 }
 
 /// The budget of the structure theorem inside `ask` (`_STRUCTURE_SECONDS`).

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sympy import Function, symbols, Eq, exp, sin, Rational
+from sympy import Function, symbols, Eq, exp, sin, sqrt, Rational
 
 from sympy_extras.solvers.lie_sympy import JetSpace, Symmetry, symmetries, check_symmetry
 from sympy_extras.solvers.lie_sympy import infinitesimal_condition
@@ -179,3 +179,15 @@ def test_issues_71_72() -> None:
     eq = y*y.diff(x)**2 - (y - x)*y.diff(x) - x
     assert [(X.xi, X.eta) for X in symmetries(eq, y, 2)] == [((x,), (jets.u[0],))]
     assert not check_symmetry([eq], [y], Symmetry(jets, [0], [1]))
+    # 72: equations which are not polynomial in y', all their branches
+    p = y.diff(x)
+    for eq in [(y*p + x)*(p - 1)/p, (exp(p) - 1)*(exp(p) - y), (sqrt(p) - 1)*(sqrt(p) - y)]:
+        assert not check_symmetry(eq, y, Symmetry(jets, [0], [1]))
+        assert all(check_symmetry(eq, y, X) for X in symmetries(eq, y, 2))
+    assert len(symmetries((exp(p) - 1)*(exp(p) - y), y, 2)) == 1
+    try:
+        symmetries(sin(p) - x, y, 1)
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError("expected NotImplementedError")

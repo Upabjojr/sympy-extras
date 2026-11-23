@@ -395,6 +395,12 @@ def _real(e: Expr, assumptions: Boolean) -> Truth:
         if _ask(_q('real', _arg(e)), assumptions):
             return True
         return None
+    if isinstance(e, Atan):
+        # not in SymPy's handlers (SymPy falls back on atan(x).is_real):
+        # atan maps the extended reals onto [-pi/2, pi/2]
+        if _ask(_q('extended_real', _arg(e)), assumptions):
+            return True
+        return None
     if isinstance(e, Log) and len(e.args) == 1:
         return _ask(_q('positive', _arg(e)), assumptions)
     return None
@@ -583,6 +589,10 @@ def _negative(e: Expr, assumptions: Boolean) -> Truth:
         return None
     if e.is_number:
         return _sign_of_number(e, False)
+    if isinstance(e, Atan):
+        # not in SymPy: atan is odd and increasing, the mirror of the
+        # positive handler
+        return _ask(_q('extended_negative', _arg(e)), assumptions)
     if isinstance(e, Add):
         r = _ask(_q('real', e), assumptions)
         if r is not True:
@@ -685,6 +695,11 @@ def _zero(e: Expr, assumptions: Boolean) -> Truth:
     return fuzzy_and([fuzzy_not(_ask(_q('nonzero', e), assumptions)), _ask(_q('real', e), assumptions)])
 
 
+def _outside_unit_interval(x: Expr, assumptions: Boolean) -> bool:
+    """Whether ``x`` is known to be real with ``x > 1`` or ``x < -1``."""
+    return _ask(_q('positive', x - 1), assumptions) is True or _ask(_q('negative', x + 1), assumptions) is True
+
+
 # PORTED FROM SYMPY: sympy/assumptions/handlers/order.py (PositivePredicate)
 def _positive(e: Expr, assumptions: Boolean) -> Truth:
     if isinstance(e, (ImaginaryUnit, NaN)):
@@ -740,8 +755,8 @@ def _positive(e: Expr, assumptions: Boolean) -> Truth:
             return r
         if _ask(_q('positive', arg - 1), assumptions):
             return True
-        if _ask(_q('negative', arg - 1), assumptions):
-            return False
+        if _ask(_q('nonpositive', arg - 1), assumptions):
+            return False                                    # log(1) = 0
         return None
     if isinstance(e, Factorial):
         arg = _arg(e)
@@ -751,18 +766,27 @@ def _positive(e: Expr, assumptions: Boolean) -> Truth:
     if isinstance(e, Abs):
         return _ask(_q('nonzero', e), assumptions)
     if isinstance(e, Atan):
-        return _ask(_q('positive', _arg(e)), assumptions)
+        # extended_positive, not positive: atan(oo) = pi/2 (SymPy answers
+        # False for an infinite positive argument)
+        return _ask(_q('extended_positive', _arg(e)), assumptions)
     if isinstance(e, Asin):
         arg = _arg(e)
         if _ask(and_(_q('positive', arg), _q('nonpositive', arg - 1)), assumptions):
             return True
-        if _ask(and_(_q('negative', arg), _q('nonnegative', arg + 1)), assumptions):
+        if _ask(and_(_q('nonpositive', arg), _q('nonnegative', arg + 1)), assumptions):
+            return False
+        if _outside_unit_interval(arg, assumptions):
+            # asin of a real number off [-1, 1] is not real
             return False
         return None
     if isinstance(e, Acos):
+        # acos is positive on [-1, 1) but acos(1) = 0: SymPy's handler
+        # answers True on the closed interval [-1, 1]
         arg = _arg(e)
-        if _ask(and_(_q('nonpositive', arg - 1), _q('nonnegative', arg + 1)), assumptions):
+        if _ask(and_(_q('negative', arg - 1), _q('nonnegative', arg + 1)), assumptions):
             return True
+        if _ask(_q('zero', arg - 1), assumptions) or _outside_unit_interval(arg, assumptions):
+            return False
         return None
     if isinstance(e, Acot):
         return _ask(_q('real', _arg(e)), assumptions)
