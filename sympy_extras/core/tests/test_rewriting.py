@@ -244,7 +244,9 @@ def test_pochhammer_binomial_and_eta_rewrites_are_native() -> None:
     from sympy_extras.core.rewriting import _rule_for
     from sympy_extras.functions.combinatorial.factorials import Binomial, FallingFactorial, RisingFactorial
     from sympy_extras.functions.special.zeta_functions import DirichletEta, Zeta
-    k = s.Symbol('k', integer=True)
+    # a nonnegative k: for an integer of unknown sign the rules to binomial are guarded by k >= 0
+    # here (sympy/sympy#31275, V72), where SymPy's formula is nan at the negative integers
+    k = s.Symbol('k', integer=True, nonnegative=True)
     a = s.Symbol('a')
     cases = [(s.ff(x, k, evaluate=False), s.binomial, FallingFactorial, Binomial),
              (s.ff(x, k, evaluate=False), s.rf, FallingFactorial, RisingFactorial),

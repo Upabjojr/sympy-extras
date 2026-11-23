@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 
+import mpmath
 import sympy
 
 from sympy_extras._typing_sympy import as_expr as sympy_expr
@@ -38,9 +39,20 @@ def test_unary_match_sympy() -> None:
         for ours_f, theirs_f, name in ((gamma, sympy.gamma, 'gamma'), (loggamma, sympy.loggamma, 'loggamma'),
                                        (digamma, sympy.digamma, 'digamma'), (trigamma, sympy.trigamma, 'trigamma')):
             ours, theirs = str(to_sympy(ours_f(a), evaluate=False)), str(theirs_f(sympy_value(a)))
+            if name == 'digamma' and a == -oo:
+                # sympy/sympy#31275 (V103): no limit at -oo, SymPy has oo
+                assert (ours, theirs) == ('polygamma(0, -oo)', 'oo')
+                continue
             if ours != theirs:
                 different.append((name, str(a), ours, theirs))
     assert not different, different
+
+
+def test_digamma_has_no_value_at_minus_infinity() -> None:
+    # sympy/sympy#31275 (V103): a pole at every nonpositive integer and a zero between two of them
+    assert digamma(-oo) == PolyGamma(Integer(0), -oo) and polygamma(Integer(0), -oo) == PolyGamma(Integer(0), -oo)
+    assert digamma(oo) == oo
+    assert mpmath.digamma(-1000.01) > 90 and mpmath.digamma(-999.99) < -90
 
 
 def test_polygamma_matches_sympy() -> None:
@@ -49,6 +61,8 @@ def test_polygamma_matches_sympy() -> None:
     for order, a in itertools.product(orders, values()):
         theirs = str(sympy.polygamma(sympy_value(order), sympy_value(a)))
         ours = str(to_sympy(polygamma(order, a), evaluate=False))
+        if order == 0 and a == -oo:
+            continue  # sympy/sympy#31275 (V103), see test_digamma_has_no_value_at_minus_infinity
         if ours != theirs:
             different.append((str(order), str(a), ours, theirs))
     assert not different, different

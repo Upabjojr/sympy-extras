@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 from typing import Callable
 
+import mpmath
 import sympy
 
 from sympy_extras._typing_sympy import as_expr as sympy_expr
@@ -45,9 +46,19 @@ def test_values_match_sympy() -> None:
                 different.append((f.__name__, str(order), str(z)))
     for z in points + [nan, I]:
         for f1, g1 in UNARY:
+            if f1 is airybiprime and z == -oo:
+                continue  # sympy/sympy#31275 (V92), see test_airybiprime_has_no_value_at_minus_infinity
             if not same(f1(z), g1(sympy_value(z))):
                 different.append((f1.__name__, str(z), str(f1(z)), str(g1(sympy_value(z)))))
     assert not different, different
+
+
+def test_airybiprime_has_no_value_at_minus_infinity() -> None:
+    # sympy/sympy#31275 (V92): Bi'(-x) oscillates with a growing amplitude (DLMF 9.7.12), SymPy has 0
+    from sympy_extras.functions import AiryBiPrime
+    assert airybiprime(-oo) == AiryBiPrime(-oo) and airybiprime(oo) == oo and airybi(-oo) == 0
+    values = [abs(mpmath.airybi(-t, derivative=1)) for t in mpmath.linspace(10000, 10003, 61)]
+    assert max(values) > 5
 
 
 def test_derivatives_conjugates_parts_numbers() -> None:

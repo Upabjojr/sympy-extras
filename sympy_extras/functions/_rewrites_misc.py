@@ -158,13 +158,19 @@ def _atan2_log(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optio
 def _atan2_atan(node: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from sympy_extras.core.numbers import nan, pi
     from sympy_extras.core.power import sqrt
-    from sympy_extras.core.relational import lt, ne
-    from sympy_extras.functions.elementary.complexes import re
+    from sympy_extras.core.logic import and_
+    from sympy_extras.core.relational import eq, lt, ne
+    from sympy_extras.functions.elementary.complexes import im, re
     from sympy_extras.functions.elementary.piecewise import piecewise
     from sympy_extras.functions.elementary.trigonometric import atan
     y, x = args
+    # on the negative imaginary axis x/sqrt(x**2) is -1 and atan2(0, x) is
+    # pi (SymPy has 0 there): a branch of its own unless x is real
+    below: list[tuple[Expr, Boolean]] = []
+    if x.is_extended_real is not True:
+        below.append((pi, and_(eq(re(x), ZERO), lt(im(x), ZERO))))
     return piecewise((mul(Integer(2), atan(_div(y, add(x, sqrt(add(mul(x, x), mul(y, y))))))), ne(y, ZERO)),
-                     (pi, lt(re(x), ZERO)), (ZERO, ne(x, ZERO)), (nan, True))
+                     (pi, lt(re(x), ZERO)), *below, (ZERO, ne(x, ZERO)), (nan, True))
 
 
 # PORTED FROM SYMPY: sympy/functions/elementary/trigonometric.py:atan2._eval_rewrite_as_arg

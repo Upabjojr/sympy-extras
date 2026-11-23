@@ -233,8 +233,17 @@ def _li(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Optiona
     from sympy_extras.functions.combinatorial.factorials import factorial
     from sympy_extras.functions.elementary.exponential import log
     z = _arg(f)
-    s = [log(z)**k / (factorial(Integer(k)) * k) for k in range(1, n)]
-    return EulerGamma + log(log(z)) + add(*s)
+    # EulerGamma + log(log(z)) + sum(log(z)**k/(k*k!)) is a series in log(z):
+    # its truncation is an expansion only where log(z) tends to 0. SymPy
+    # returns it at any point: at z = 0, where li(z) is z/log(z) + ... and
+    # has no expansion in powers of z and log(z), the function is kept.
+    z0 = _limit0(z, x)
+    if z0.is_Number and z0 == 1:
+        s = [log(z)**k / (factorial(Integer(k)) * k) for k in range(1, n)]
+        return _ns(EulerGamma + log(log(z)) + add(*s), x, n, logx, cdir)
+    if z0.is_zero is True or z0.is_finite is not True:
+        return f
+    return _generic(f, x, n, logx)
 
 
 # PORTED FROM SYMPY: sympy/functions/special/error_functions.py:Li._eval_nseries
@@ -249,8 +258,12 @@ def _singularity(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -
     shift = _e((z - a).subs(x, ZERO))
     if p.is_negative is True:
         return ZERO
-    if p.is_zero is True and shift.is_zero is True:
-        return ZERO if cdir == -1 else Integer(1)
+    if shift.is_zero is True:
+        # at the singular point the side decides (see the leading term)
+        from sympy_extras.functions._leading_terms import singularity_side_positive
+        if not singularity_side_positive(z - a, x, cdir):
+            return ZERO
+        return Integer(1) if p.is_zero is True else _ns((z - a)**p, x, n, logx, cdir)
     if shift.is_positive is True:
         # SymPy passes the exponent as the order (its n is rebound): fixed
         return _ns((z - a)**p, x, n, logx, cdir)
@@ -388,12 +401,46 @@ def _bessel_head(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr
     return nu, z, ex, _int_of(newn) if ex.is_positive is True else 0
 
 
+def _is_monomial(z: Expr, x: Symbol) -> bool:
+    """Whether ``z`` is its own leading term in ``x`` (``c*x**e``)."""
+    from sympy_extras.core.function import expand_mul
+    try:
+        lead = z.as_leading_term(x)
+    except (ValueError, NotImplementedError):
+        return False
+    return expand_mul(z - lead).is_zero is True
+
+
+def _bessel_composed(f: Expr, nu: Expr, z: Expr, newn: int, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr,
+                     with_log: bool) -> Expr:
+    """The series of a Bessel function of an argument ``z`` which is not a
+    monomial in ``x`` (``sin(x)``, ``x + x**2``): the series in the
+    argument itself, in which ``z`` is put and expanded.
+
+    SymPy puts the series of ``z/2`` truncated at ``O(x**n)`` into
+    ``r**nu``, ``r**(-nu)`` and into the powers of ``t = r**2``, which
+    loses the terms of ``r`` that a negative or fractional power needs:
+    ``bessely(1, sin(x))`` misses ``x**3/(60*pi)`` there and
+    ``bessely(2, sin(x)**2)`` is ``-4/(pi*x**4) + O(x**4*log(x))``."""
+    from sympy_extras.core.function import Application
+    from sympy_extras.core.order import order
+    from sympy_extras.core.symbol import Dummy
+    from sympy_extras.functions.elementary.exponential import log
+    assert isinstance(f, Application)
+    t = Dummy('t')
+    inner = _ns(f._rebuilt([nu, t]), t, newn, None, Integer(1)).removeO()
+    body = _ns(_e(inner.subs(t, z)), x, n, logx, cdir).removeO()
+    bound = x**n * log(x) if with_log and logx is None else x**n
+    return body + order(bound, x)
+
+
 # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besselj._eval_nseries and besseli._eval_nseries
 def _bessel_ji(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr, modified: bool) -> Optional[Expr]:
     """The power series (functions.wolfram.com BesselJ and BesselI
     06/01/04/01/01/0003)."""
     from sympy_extras.core.add import add
     from sympy_extras.core.order import order
+    from sympy_extras.functions.elementary.integers import ceiling
     from sympy_extras.functions.special.gamma_functions import gamma
     head = _bessel_head(f, x, n, logx, cdir)
     if head is None:
@@ -401,14 +448,23 @@ def _bessel_ji(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr, mod
     nu, z, ex, newn = head
     if ex.is_positive is not True:
         return _generic(f, x, n, logx)
+    if not _is_monomial(z, x):
+        return _bessel_composed(f, nu, z, newn, x, n, logx, cdir, False)
     o = order(x**n, x)
-    r = _ns(z / 2, x, n, logx, cdir).removeO()
-    if r.is_Number and r == 0:
-        return o
-    t = (_mexpand(r**2) + o).removeO()
+    # the monomial itself, and its square, are not truncated at O(x**n) as
+    # in SymPy: besselj(0, x**5) is 1 + O(x**4), not O(x**4), and a negative
+    # order needs the powers of t beyond x**n
+    r = z / 2
+    t = _mexpand(r**2)
     term = r**nu / gamma(nu + 1)
     s = [term]
-    for k in range(1, (newn + 1) // 2):
+    count = (newn + 1) // 2
+    if nu.is_negative is True:
+        # the terms are r**(nu + 2*k): more of them lie below x**n (SymPy
+        # stops at newn/2 whatever the order: besselj(-1/2, x) to O(x**4)
+        # misses the term in x**(7/2) there)
+        count = max(count, (_int_of(ceiling(Integer(n) / ex - nu)) + 1) // 2)
+    for k in range(1, count):
         term = term * ((t if modified else -t) / (k * (nu + k)))
         term = _truncate(term, o)
         s.append(term)
@@ -431,15 +487,17 @@ def _bessel_y(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> O
     nu, z, ex, newn = head
     if not (ex.is_positive is True and nu.is_integer is True):
         return _generic(f, x, n, logx)
+    if not _is_monomial(z, x):
+        return _bessel_composed(f, nu, z, newn, x, n, logx, cdir, True)
     bn = besselj(nu, z)
     a = _ns((2 / pi) * log(z / 2) * bn, x, n, logx, cdir)
     b: list[Expr] = []
     c: list[Expr] = []
     o = order(x**n, x)
-    r = _ns(z / 2, x, n, logx, cdir).removeO()
-    if r.is_Number and r == 0:
-        return o
-    t = (_mexpand(r**2) + o).removeO()
+    # neither the monomial nor its square truncated at O(x**n) (SymPy:
+    # bessely(2, x) to O(x**2) loses its term -1/pi, to O(x) all of them)
+    r = z / 2
+    t = _mexpand(r**2)
     k_nu = _int_of(nu)
     if k_nu > 0:
         term = r**(-nu) * factorial(nu - 1) / pi
@@ -477,9 +535,11 @@ def _bessel_k(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> O
     nu, z, ex, newn = head
     if ex.is_positive is not True:
         return _generic(f, x, n, logx)
-    r = _ns(z / 2, x, n, logx, cdir).removeO()
-    if r.is_Number and r == 0:
-        return order(z**(-nu) + z**nu, x)
+    if not _is_monomial(z, x):
+        if nu.is_integer is True or nu.is_noninteger is True:
+            return _bessel_composed(f, nu, z, newn, x, n, logx, cdir, nu.is_integer is True)
+        raise NotImplementedError('besselk expansion is only implemented for real order')
+    r = z / 2
     o = order(x**n, x)
     if nu.is_integer is True:
         bn = besseli(nu, z)
@@ -505,8 +565,11 @@ def _bessel_k(f: Expr, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> O
             c.append(term)
         return a + add(*b) + add(*c) + o
     if nu.is_noninteger is True:
-        newn_a = _int_of(ceiling((Integer(n) + nu) / ex))
-        newn_b = _int_of(ceiling((Integer(n) - nu) / ex))
+        # the terms are r**(2*k - nu) and r**(2*k + nu), of the orders
+        # (2*k -+ nu)*ex in x (SymPy divides nu by ex too, and loses terms
+        # of besselk(5/2, x**2))
+        newn_a = _int_of(ceiling(Integer(n) / ex + nu))
+        newn_b = _int_of(ceiling(Integer(n) / ex - nu))
         terms_a = [_mexpand(gamma(nu) * r**(2 * k - nu) / (2 * rf(1 - nu, Integer(k)) * factorial(Integer(k))))
                    for k in range((newn_a + 1) // 2)]
         terms_b = [_mexpand(gamma(-nu) * r**(2 * k + nu) / (2 * rf(nu + 1, Integer(k)) * factorial(Integer(k))))

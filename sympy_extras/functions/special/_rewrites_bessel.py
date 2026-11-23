@@ -136,7 +136,10 @@ def _besselk_yn(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optiona
 
 def _integer_order(rule: Rule) -> Rule:
     """SymPy's ``assume_integer_order``: the rule only for an order known
-    to be an integer."""
+    to be an integer. Also on the rules between ``jn`` and ``bessely`` or
+    ``yn`` and from ``hn1``, ``hn2`` to ``jn`` or ``yn``, which SymPy
+    applies to any order: they rest on ``Y(-nu - 1/2) = (-1)**nu
+    J(nu + 1/2)``, false unless ``nu`` is an integer."""
     def ruled(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
         return rule(e, args, hints) if args[0].is_integer is True else None
     return ruled
@@ -227,7 +230,7 @@ def _hankel_rules(cls: type, sign: Expr, hankel: type) -> dict[RuleKey, Rule]:
 
     from .bessel import BesselJ, BesselY
     return {(cls, BesselJ): _integer_order(as_besselj), (cls, BesselY): _integer_order(as_bessely),
-            (cls, SphericalY): as_yn, (cls, SphericalJ): as_jn, (cls, hankel): _integer_order(as_hankel)}
+            (cls, SphericalY): _integer_order(as_yn), (cls, SphericalJ): _integer_order(as_jn), (cls, hankel): _integer_order(as_hankel)}
 
 
 # -- the Airy functions
@@ -421,10 +424,10 @@ def rules() -> dict[RuleKey, Rule]:
         (b.BesselY, b.SphericalY): _bessely_yn, (b.BesselI, b.BesselY): _besseli_bessely,
         (b.BesselI, b.SphericalJ): _besseli_jn, (b.BesselK, b.BesselY): _besselk_bessely,
         (b.BesselK, b.SphericalY): _besselk_yn,
-        (b.SphericalJ, b.BesselJ): _jn_besselj, (b.SphericalJ, b.BesselY): _jn_bessely,
-        (b.SphericalJ, b.SphericalY): _jn_yn,
+        (b.SphericalJ, b.BesselJ): _jn_besselj, (b.SphericalJ, b.BesselY): _integer_order(_jn_bessely),
+        (b.SphericalJ, b.SphericalY): _integer_order(_jn_yn),
         (b.SphericalY, b.BesselJ): _integer_order(_yn_besselj), (b.SphericalY, b.BesselY): _integer_order(_yn_bessely),
-        (b.SphericalY, b.SphericalJ): _yn_jn,
+        (b.SphericalY, b.SphericalJ): _integer_order(_yn_jn),
         (b.AiryAi, b.BesselJ): _airyai_besselj, (b.AiryAi, b.BesselI): _airyai_besseli, (b.AiryAi, 'hyper'): _airyai_hyper,
         (b.AiryBi, b.BesselJ): _airybi_besselj, (b.AiryBi, b.BesselI): _airybi_besseli, (b.AiryBi, 'hyper'): _airybi_hyper,
         (b.AiryAiPrime, b.BesselJ): _airyaiprime_besselj, (b.AiryAiPrime, b.BesselI): _airyaiprime_besseli,

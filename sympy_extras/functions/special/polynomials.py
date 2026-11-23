@@ -176,7 +176,9 @@ class Legendre(OrthogonalPolynomial):
                 return div(sqrt(pi), mul(gamma(sub(HALF, div(n, Integer(2)))), gamma(add(ONE, div(n, Integer(2))))))
             if x == ONE:
                 return ONE
-            if isinstance(x, Infinity):
+            if isinstance(x, Infinity) and n.is_positive:
+                # for a positive order only: the polynomial of order 0 is 1
+                # (SymPy returns oo for any symbolic order)
                 return oo
             return None
         if order < 0:
@@ -218,7 +220,9 @@ class ChebyshevT(OrthogonalPolynomial):
                 return cos(mul(HALF, pi, n))
             if x == ONE:
                 return ONE
-            if isinstance(x, Infinity):
+            if isinstance(x, Infinity) and n.is_positive:
+                # for a positive order only: the polynomial of order 0 is 1
+                # (SymPy returns oo for any symbolic order)
                 return oo
             return None
         return _as_expr(_chebyshev(abs(order), [ZERO, ONE]), x)
@@ -262,7 +266,9 @@ class ChebyshevU(OrthogonalPolynomial):
                 return cos(mul(HALF, pi, n))
             if x == ONE:
                 return add(ONE, n)
-            if isinstance(x, Infinity):
+            if isinstance(x, Infinity) and n.is_positive:
+                # for a positive order only: the polynomial of order 0 is 1
+                # (SymPy returns oo for any symbolic order)
                 return oo
             return None
         if order < 0:
@@ -303,7 +309,9 @@ class Hermite(OrthogonalPolynomial):
                 return reflected
             if x.is_zero:
                 return div(mul(pow(Integer(2), n), sqrt(pi)), gamma(div(sub(ONE, n), Integer(2))))
-            if isinstance(x, Infinity):
+            if isinstance(x, Infinity) and n.is_positive:
+                # for a positive order only: the polynomial of order 0 is 1
+                # (SymPy returns oo for any symbolic order)
                 return oo
             return None
         if order < 0:
@@ -339,13 +347,19 @@ class Laguerre(OrthogonalPolynomial):
             if n.is_Number:
                 return None
             minus_n = mul(MINUS_ONE, n)
-            if n.could_extract_minus_sign() and not sub(minus_n, ONE).could_extract_minus_sign():
+            if (n.could_extract_minus_sign() and not sub(minus_n, ONE).could_extract_minus_sign()
+                    and not isinstance(x, (Infinity, NegativeInfinity))):
+                # not at infinity, where exp(x) and the other factor have no product
                 return mul(exp(x), laguerre(sub(minus_n, ONE), mul(MINUS_ONE, x)))
             if x.is_zero:
                 return ONE
-            if isinstance(x, NegativeInfinity):
+            # at infinity for a positive order only (laguerre(0, x) is 1),
+            # and (-1)**n*oo at +oo for the polynomials only: the sign is
+            # that of 1/gamma(-n) for the other orders (SymPy returns both
+            # for any symbolic order)
+            if isinstance(x, NegativeInfinity) and n.is_positive:
                 return oo
-            if isinstance(x, Infinity):
+            if isinstance(x, Infinity) and n.is_positive and n.is_integer:
                 return mul(pow(MINUS_ONE, n), oo)
             return None
         if order < 0:
@@ -597,8 +611,15 @@ class Gegenbauer(DefinedFunction):
             two_a = mul(Integer(2), a)
             if x == MINUS_ONE:
                 if gt(re(a), HALF) == true:
+                    # the pole of the functions of a noninteger order: the
+                    # polynomials have the value (-1)**n*C(n, a, 1) there
+                    # (SymPy returns zoo for any symbolic order)
                     from sympy_extras.core.numbers import zoo
-                    return zoo
+                    if n.is_integer is False:
+                        return zoo
+                    if n.is_integer is True and n.is_nonnegative is True:
+                        return div(mul(pow(MINUS_ONE, n), gamma(add(two_a, n))), mul(gamma(two_a), gamma(add(n, ONE))))
+                    return None
                 return div(_lmul(cos(mul(pi, add(a, n))), sec(mul(pi, a)), gamma(add(two_a, n))),
                            _lmul(gamma(two_a), gamma(add(n, ONE))))
             if x.could_extract_minus_sign():
@@ -717,8 +738,11 @@ class HermiteProb(OrthogonalPolynomial):
             if reflected is not None:
                 return reflected
             if x.is_zero:
-                return div(sqrt(pi), gamma(div(sub(ONE, n), Integer(2))))
-            if isinstance(x, Infinity):
+                # He_n(0) = 2**(-n/2)*H_n(0) (SymPy leaves the power of 2 out)
+                return div(mul(pow(Integer(2), div(n, Integer(2))), sqrt(pi)), gamma(div(sub(ONE, n), Integer(2))))
+            if isinstance(x, Infinity) and n.is_positive:
+                # for a positive order only: the polynomial of order 0 is 1
+                # (SymPy returns oo for any symbolic order)
                 return oo
             return None
         if order < 0:

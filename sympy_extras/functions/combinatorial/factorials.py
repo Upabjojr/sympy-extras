@@ -216,7 +216,8 @@ def _factorial_power(x: Expr, k: Expr, rising: bool) -> Optional[Expr]:
             return NegativeInfinity() if kk % 2 else oo
         return _product(x, range(kk), 1 if rising else -1)
     if isinstance(x, (Infinity, NegativeInfinity)):
-        return oo
+        # the reciprocal of a polynomial of degree -k (SymPy returns oo)
+        return Integer(0)
     return pow(_product(x, range(1, -kk + 1), -1 if rising else 1), Integer(-1))
 
 

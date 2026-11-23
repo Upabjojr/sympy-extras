@@ -3896,6 +3896,74 @@ remove public functions. Breaking changes are listed here when they happen.
     constant, giving a sequence which does not satisfy the recurrence
     (SymPy's test pins that value, #31275 V255); `ValueError` now.
 
+- The findings of sympy/sympy#31275 (V70-V111, `sympy.functions`) which
+  the native ports shared with SymPy 1.14, each checked against mpmath
+  (`test_sympy_issue_31275.py` in the tests of `functions.combinatorial`,
+  `functions.elementary`, `functions.special` and `core`). The values now
+  differ from SymPy's:
+  - `rf(oo, -k)`, `ff(oo, -k)` (and at `-oo`) are `0`, not `oo` (V70);
+    `rf(x, k).rewrite(binomial)`, `ff(x, k).rewrite(binomial)`,
+    `catalan(n).rewrite(factorial)` and `.rewrite(binomial)` are guarded by
+    `k >= 0` for an integer of unknown sign, where the bare formula is
+    `nan` at the negative integers (V72, V74); `mobius(n**2)`,
+    `mobius(n**(k + 1))` stay unevaluated for a positive integer `n`
+    which may be 1, and `mobius(3*n)`, `mobius(6*p)` do too (SymPy
+    multiplies the signs of the numeric factors and forgets the symbols)
+    (V75).
+  - `re(f(y)).diff(y)` for an imaginary `y` is `I*im(f'(y))` (the sign was
+    wrong, and with it the derivatives of `Abs` and `arg`) (V76, V77);
+    `atan2(0, x)` is `pi` on the negative imaginary axis, in the value and
+    in `rewrite(atan)` (V85), and `atan2(y, -oo)` is `pi` for an imaginary
+    `y` (V84); the leading terms of the inverse
+    trigonometric and hyperbolic functions at a branch point reached as a
+    limit (`acos(sin(x)/x)` is `sqrt(3)*sqrt(x**2)/3`, not `acos(1) = 0`;
+    `acosh` and `asech` at 1 no longer go through the logarithmic form,
+    which failed there) (V81, V82, V86, V87).
+  - The series of `besselj`, `bessely`, `besseli`, `besselk` at 0: an
+    argument which is not a monomial (`sin(x)`, `x + x**2`) is put into
+    the series in the argument and expanded, where the truncated series
+    of `z/2` under a negative or fractional power lost terms
+    (`bessely(1, sin(x))` missed `x**3/(60*pi)`) (V88); for a monomial,
+    the terms lost for a negative order, for a small `n`
+    (`bessely(2, x)` to `O(x**2)` had no `-1/pi`) and for `besselk` of a
+    noninteger order in `x**2`. The asymptotic series of `besseli` and
+    `besselk` have the coefficients of DLMF 10.40.1-2 (`1 +- 1/(8*x) +
+    9/(128*x**2) +- ...`; every coefficient after the first was wrong)
+    (V89, V90). `jn(nu, z).rewrite(bessely)`, `jn.rewrite(yn)`,
+    `yn.rewrite(jn)` and `hn1`, `hn2` to `jn`, `yn` only for an integer
+    order (V91). `airybiprime(-oo)` and `digamma(-oo)`,
+    `polygamma(0, -oo)` stay unevaluated (no limit) (V92, V103).
+  - `beta(5, -3)` is `zoo` and `Beta(x, y).is_real` is no longer `True`
+    at or possibly at a pole (V93); `erf2inv(x, oo)` stays unevaluated
+    (V94); `Ei(2*log(x)).rewrite(li)` only for a real argument (V95);
+    `conjugate(li(z))` is `li(conjugate(z))` only for a `z` known to be
+    off the cut (V97); `li(z).series(z)` is the series in `log(z)` at 1
+    only (expanded there), the Taylor series at the other finite points
+    and the function itself at 0 (V98).
+  - `hyper(...).radius_of_convergence` when a nonpositive integer
+    numerator ends the series (`hyper((-1, 1, 2), (-4,), z)` is a
+    polynomial: `oo`, not 0), with cases (`Piecewise`) for the integer
+    parameters of unknown sign, and `convergence_statement` by those
+    cases, simplified (V104, V105): the sums evaluated through a
+    hypergeometric series state their condition in that form
+    (`n > -1` for SymPy's `(n > 0) | ((n <= 0) & (n > -1))` in the sum of
+    `binomial(n, i)`), and `Sum(x**i/factorial(i), (i, 0, n))` has the
+    condition `n > -2` (SymPy's formula is `exp(x)` at `n = -2`, where
+    the sum is 0); the leading term and the series of
+    `SingularityFunction` at its point follow the side (V106).
+  - `gegenbauer(n, a, -1)` for `re(a) > 1/2` is `zoo` for a noninteger
+    order only (the value for a nonnegative integer one, unevaluated
+    otherwise) (V107); `legendre`, `chebyshevt`, `chebyshevu`, `hermite`,
+    `hermite_prob`, `laguerre` at `oo`, `-oo` evaluate for a positive
+    order only (and `laguerre(n, oo)` for a positive integer), and
+    `laguerre(-n, +-oo)` is not reflected into a product `exp(x)*...`
+    (V108); `hermite_prob(n, 0)` is `2**(n/2)*sqrt(pi)/gamma((1 - n)/2)`
+    (V110).
+  - In the core: the series of a power whose base is replaced by its
+    series (`1/Abs(sin(x))`, hence `(sin(x)**2)**(-1/2)` in any symbol)
+    takes the base to the relative order needed (SymPy: `1/x + x/6 +
+    x**3/36 + O(x**4)`, the coefficient is `7/360`); the leading term of
+    a sum whose terms cancel to every order is 0 instead of a loop.
 - Issue #72, the equations which are not polynomial in their leading
   derivative (`sympy_extras.solvers.lie` and its SymPy face): they were
   solved for it and the first root kept, so that `symmetries` returned the
