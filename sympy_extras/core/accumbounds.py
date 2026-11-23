@@ -437,7 +437,11 @@ def ab_pow(self: AccumBounds, other: Expr) -> Expr:
                     return accum_bounds(self.max**other, oo)
                 if _is_zero(self.max):
                     return accum_bounds(self.min**other, oo)
-                return (1 / self)**(-other)
+                # SymPy computes (1/self)**(-other), which loses the lower
+                # bound when 0 is inside: AccumBounds(-1, 3)**(-2) was
+                # AccumBounds(0, oo) instead of AccumBounds(1/9, oo)
+                # (sympy/sympy#31275, V34)
+                return 1 / self**(-other)
             return accum_bounds(Integer(0), _max(self.min**other, self.max**other))
         if other.p < 0:
             if _is_zero(self.min):

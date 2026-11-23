@@ -186,3 +186,31 @@ def test_gosper_certificate_poles_get_cases() -> None:
     kk = Symbol('k', integer=True, nonnegative=True)
     value = Sum((-1)**jj*(kk - 2*jj)**3*nbinomial(kk, jj), (jj, 0, kk)).doit()
     assert str(value) == 'Piecewise((2, Eq(k, 1)), (48, Eq(k, 3)), (0, True))'
+
+
+def test_reversed_infinite_sums_follow_karr_convention() -> None:
+    # sympy/sympy#31275, V46: a sum over (x, a, b) with a > b is minus the
+    # sum over (x, b + 1, a - 1); SymPy forgets the sign when a is oo
+    # (Sum(1/(x**2 + 1), (x, oo, 0)).doit() is positive there)
+    import mpmath
+    from sympy_extras.core import Integer, Rational as Rat, oo as inf, pi
+    from sympy_extras.functions import exp as exp_, factorial as factorial_, log, tanh, zeta
+    from sympy_extras.functions.elementary.piecewise import Piecewise as NativePiecewise
+    from sympy_extras.concrete.expr_with_limits import Sum
+    from sympy_extras.concrete.summations import eval_sum_residue
+    t, c, s = Symbol('t'), Symbol('c'), Symbol('s')
+    assert summation(1/(t**2 + 1), (t, inf, Integer(0))) == Rat(1, 2) - pi/(2*tanh(pi))
+    assert Sum(1/(t**2 + 1), (t, inf, Integer(0))).doit() == Rat(1, 2) - pi/(2*tanh(pi))
+    forward = mpmath.nsum(lambda v: 1/(v**2 + 1), [1, mpmath.inf])
+    assert abs(complex((Rat(1, 2) - pi/(2*tanh(pi))).evalf()) + complex(forward)) < 1e-12
+    assert (summation(c**t/factorial_(t), (t, inf, Integer(0))) - (1 - exp_(c))).expand() == 0
+    assert summation(Integer(-1)**t/t, (t, inf, Integer(0))) == log(2)
+    assert summation(Rat(1, 2)**t, (t, inf, Integer(-1))) == -2
+    assert summation(1/t, (t, inf, Integer(0))) == -inf
+    assert summation(Integer(-1)**t/(2*t + 1), (t, inf, Integer(-1))) == -pi/4
+    reversed_zeta = summation(1/t**s, (t, inf, Integer(0)))
+    assert isinstance(reversed_zeta, NativePiecewise) and reversed_zeta.args[0].expr == -zeta(s)
+    assert eval_sum_residue(1/(t**2 + 1), (t, inf, Integer(-1))) == -Rat(1, 2) - pi/(2*tanh(pi))
+    # the finite sums, right before: -(2 + 3 + 4)
+    assert summation(t, (t, Integer(5), Integer(1))) == -9
+    assert summation(t, (t, Integer(5), Integer(4))) == 0

@@ -27,8 +27,13 @@ def test_delta_sums_and_products_match_sympy() -> None:
             assert isinstance(var, Symbol)
             limits = (var, expr_from_sympy(slo), expr_from_sympy(shi))
             of = expr_from_sympy(f)
-            assert str(to_sympy(deltasummation(of, limits), evaluate=False)) == str(sympy_deltasummation(f, (v, slo, shi)))
-            assert str(to_sympy(summation(of, limits), evaluate=False)) == str(sympy.summation(f, (v, slo, shi)))
+            if f != KD(i, 2*k):
+                # (SymPy's sum of KroneckerDelta(i, 2*k) over k is 1 for an odd
+                # i in the range too, sympy/sympy#31275, V47: see
+                # test_delta_sum_asks_for_a_solution_on_the_lattice_of_the_index)
+                assert str(to_sympy(deltasummation(of, limits), evaluate=False)) == str(
+                    sympy_deltasummation(f, (v, slo, shi)))
+                assert str(to_sympy(summation(of, limits), evaluate=False)) == str(sympy.summation(f, (v, slo, shi)))
             if lo == -oo:
                 continue
             assert str(to_sympy(deltaproduct(of, limits), evaluate=False)) == str(sympy_deltaproduct(f, (v, slo, shi)))
@@ -51,3 +56,35 @@ def test_delta_solutions_respect_the_assumptions_of_the_index() -> None:
     from sympy_extras.functions.special.tensor_functions import KroneckerDelta
     k, n = Symbol('k', integer=True), Symbol('n', integer=True)
     assert deltasummation(k*KroneckerDelta(pi*k, 1), (k, Integer(0), n)) == 0
+
+
+def test_delta_sum_asks_for_a_solution_on_the_lattice_of_the_index() -> None:
+    # sympy/sympy#31275, V47: the index of a sum takes integer steps, and
+    # KroneckerDelta(x, y) is 0 on all of them for y = 1/2; SymPy only asks
+    # for y in the range: its Sum(KroneckerDelta(x, 1/2), (x, -oo, oo)) is 1
+    from sympy_extras.core import Integer, Rational, oo as inf
+    from sympy_extras.core.logic import and_, true
+    from sympy_extras.functions import KroneckerDelta
+    from sympy_extras.functions.elementary.piecewise import piecewise
+    from sympy_extras.sets.fancysets import Integers
+    from sympy_extras.sets.sets import contains
+    u, v, m = Symbol('u'), Symbol('v'), Symbol('m')
+    q = Symbol('q', integer=True)
+    assert summation(KroneckerDelta(u, Rational(1, 2)), (u, -inf, inf)) == 0
+    assert summation(KroneckerDelta(u, Rational(1, 2)), (u, Integer(-3), Integer(3))) == 0
+    assert summation(KroneckerDelta(u, Integer(2)), (u, -inf, inf)) == 1
+    general = summation(m*KroneckerDelta(u, v), (u, -inf, inf))
+    assert general == piecewise((m, and_(v > -inf, v < inf, contains(v, Integers))), (Integer(0), true))
+    assert general.subs(v, Rational(1, 2)) == 0 and general.subs(v, 7) == m
+    # an integer solution: the range alone, as before
+    assert summation(KroneckerDelta(u, q), (u, -inf, inf)) == piecewise(
+        (Integer(1), and_(q > -inf, q < inf)), (Integer(0), true))
+    # a symbolic lower limit: the lattice is a + integers
+    a = Symbol('a')
+    shifted = deltasummation(KroneckerDelta(u, v), (u, a, inf))
+    assert shifted.subs({v: Rational(5, 2), a: Rational(1, 2)}) == 1
+    assert shifted.subs({v: Rational(5, 2), a: Integer(1)}) == 0
+    # an odd integer is no 2*k
+    p, w = Symbol('p', integer=True), Symbol('w', integer=True)
+    halves = deltasummation(KroneckerDelta(p, 2*w), (w, Integer(0), Integer(5)))
+    assert halves.subs(p, 3) == 0 and halves.subs(p, 4) == 1 and halves.subs(p, 12) == 0

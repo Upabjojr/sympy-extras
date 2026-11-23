@@ -277,7 +277,10 @@ def deltasummation(f: Expr, limit: Limits, no_piecewise: bool = False) -> Expr:
     solution of the delta, on the condition that it lies in the range
     (unconditional with ``no_piecewise``)."""
     from sympy_extras.functions.elementary.piecewise import piecewise, piecewise_fold
+    from sympy_extras.core.logic import and_
     from sympy_extras.sets import interval
+    from sympy_extras.sets.fancysets import Integers
+    from sympy_extras.sets.sets import contains
     from .expr_with_limits import sum_
     from .summations import summation
     x, a, b = limit
@@ -299,4 +302,15 @@ def deltasummation(f: Expr, limit: Limits, no_piecewise: bool = False) -> Expr:
     value = solns[0]
     if no_piecewise:
         return _e(expr.subs(x, value))
-    return piecewise((_e(expr.subs(x, value)), interval(a, b).as_relational(value)), (ZERO, true))
+    # the index runs over a + 0, a + 1, ...: a solution off this lattice is
+    # no term of the sum. SymPy only asks for the range: its sum of
+    # KroneckerDelta(x, y) over (x, -oo, oo) is 1 at y = 1/2
+    # (sympy/sympy#31275, V47)
+    anchor = a if a.is_infinite is not True else (b if b.is_infinite is not True else ZERO)
+    on_lattice = (value - anchor).is_integer
+    if on_lattice is False:
+        return ZERO
+    in_range = interval(a, b).as_relational(value)
+    if on_lattice is None:
+        in_range = and_(in_range, contains(value - anchor, Integers))
+    return piecewise((_e(expr.subs(x, value)), in_range), (ZERO, true))

@@ -68,3 +68,17 @@ def test_numbers_and_nodes() -> None:
     for cls, function in [(Floor, floor), (Ceiling, ceiling), (Frac, frac)]:
         node = cls(Rational(7, 2))
         assert type(node) is cls and function(Rational(7, 2)) != node and node.doit() == function(Rational(7, 2))
+
+
+def test_evalf_of_a_floor_next_to_an_integer() -> None:
+    # sympy/sympy#31275, V57: log(8)/log(2) is 3, the argument is
+    # 3 - exp(-1000) and its floor 2; SymPy's evalf answers 3.0
+    from sympy_extras.core import Float
+    below = log(8)/log(2) - exp(-1000)
+    above = log(8)/log(2) + exp(-1000)
+    assert Floor(below).evalf() == Float(2) and Ceiling(below).evalf() == Float(3)
+    assert Floor(above).evalf() == Float(3) and Ceiling(above).evalf() == Float(4)
+    assert Floor(-above).evalf() == Float(-4) and Ceiling(-below).evalf() == Float(-2)
+    assert Floor(sqrt(2)**2 + pi - pi).evalf() == Float(2)
+    assert Floor(pi).evalf() == Float(3) and Ceiling(pi + I*E).evalf() == Float(4) + Float(3)*I
+    assert Floor(Rational(7, 2)).evalf() == Float(3) and Floor(Float(3)).evalf() == Float(3)

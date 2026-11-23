@@ -197,7 +197,10 @@ def _not_rational(e: Expr) -> Boolean:
 # PORTED FROM SYMPY: sympy/assumptions/sathandlers.py:_ (Abs)
 def _abs_facts(expr: Abs) -> list[Boolean]:
     arg = expr.args[0]
-    return [Q.nonnegative(expr),
+    # SymPy states Q.nonnegative(expr) whatever the argument: Abs(oo) is oo
+    # (sympy/sympy#31275, V7)
+    return [Q.extended_nonnegative(expr),
+            implies(Q.complex(arg), Q.nonnegative(expr)),
             equivalent(not_(Q.zero(arg)), not_(Q.zero(expr))),
             implies(Q.even(arg), Q.even(expr)),
             implies(Q.odd(arg), Q.odd(expr)),
@@ -251,7 +254,10 @@ def _pow_facts(expr: Pow) -> list[Boolean]:
     return [implies(and_(Q.real(base), Q.even(exp), Q.nonnegative(exp)), Q.nonnegative(expr)),
             implies(and_(Q.nonnegative(base), Q.odd(exp), Q.nonnegative(exp)), Q.nonnegative(expr)),
             implies(and_(Q.nonpositive(base), Q.odd(exp), Q.nonnegative(exp)), Q.nonpositive(expr)),
-            equivalent(Q.zero(expr), and_(Q.zero(base), Q.positive(exp)))]
+            # SymPy states the equivalence of Q.zero(expr) with the left side:
+            # 2**(-oo), oo**(-1) and 0**(1 + I) are 0 (sympy/sympy#31275, V33)
+            implies(and_(Q.zero(base), Q.positive(exp)), Q.zero(expr)),
+            implies(and_(Q.zero(expr), Q.finite(base), Q.finite(exp)), Q.zero(base))]
 
 
 # PORTED FROM SYMPY: sympy/assumptions/sathandlers.py:_ (Number, NumberSymbol, ImaginaryUnit)

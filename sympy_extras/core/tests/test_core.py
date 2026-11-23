@@ -1055,3 +1055,17 @@ def test_function_of_a_hidden_zero_has_no_numeric_facts() -> None:
     # numbers which are not hidden zeros keep their facts
     assert (pi - 3).is_positive is True and (sqrt(2) - sqrt(3)).is_negative is True
     assert (sqrt(sqrt(2) - sqrt(3))).is_imaginary is True
+
+
+def test_subs_does_not_capture_a_bound_variable_of_subs() -> None:
+    # sympy/sympy#31275, V59: Subs(x, y, 2) does not depend on y, it is x;
+    # SymPy's Subs(x, y, 2).subs(x, y) is Subs(y, y, 2), which is 2
+    from sympy_extras.core import Subs
+    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    assert Subs(x, y, 2).subs(x, y).doit() == y
+    assert Subs(x + y, y, 2).subs(x, y).doit() == y + 2
+    assert Subs(x + y, y, 2).subs(x, y**2 + z).doit() == y**2 + z + 2
+    assert Subs(x + y, y, 2).doit().subs(x, y) == Subs(x + y, y, 2).subs(x, y).doit()
+    # nothing to capture: the bound variable is kept
+    assert Subs(x + y, y, 2).subs(x, z) == Subs(z + y, y, 2)
+    assert Subs(z + y, y, x).subs(x, y) == Subs(z + y, y, y)

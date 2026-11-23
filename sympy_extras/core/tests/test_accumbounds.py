@@ -21,6 +21,10 @@ def test_functions_of_bounds_match_sympy() -> None:
         for text in TEMPLATES:
             template = s.sympify(text)
             want = str(template.subs(q, b))
+            if text == 'q**(-2)' and s.Lt(b.args[0], 0) == s.true and s.Gt(b.args[1], 0) == s.true:
+                # SymPy loses the lower bound when 0 is inside
+                # (sympy/sympy#31275, V34): test_negative_even_power_around_zero
+                continue
             got = str(to_sympy(expr_from_sympy(template).subs(Q, expr_from_sympy(b)), evaluate=False))
             assert got == want, (b, text)
 
@@ -59,3 +63,20 @@ def test_evalf_of_a_function_of_bounds() -> None:
     e = b - atan(b)
     assert str(e.evalf(30)) == 'AccumBounds(0, oo) - atan(AccumBounds(0, oo))'
     assert str((-atan(b)).evalf(30)) == str((-s.atan(AB(0, s.oo))).evalf(30)) == '-atan(AccumBounds(0, oo))'
+
+
+def test_negative_even_power_around_zero() -> None:
+    # sympy/sympy#31275, V34: on [-1, 3] without 0 the infimum of x**(-2) is
+    # 1/9, at x = 3; SymPy answers AccumBounds(0, oo)
+    from sympy_extras.core import Integer, Rational, oo
+    from sympy_extras.core.accumbounds import accum_bounds
+    assert accum_bounds(-1, 3)**(-2) == accum_bounds(Rational(1, 9), oo)
+    assert accum_bounds(-2, 3)**(-4) == accum_bounds(Rational(1, 81), oo)
+    assert accum_bounds(-3, 1)**(-2) == accum_bounds(Rational(1, 9), oo)
+    assert accum_bounds(0, 3)**(-2) == accum_bounds(Rational(1, 9), oo)
+    assert accum_bounds(-oo, oo)**(-2) == accum_bounds(0, oo)
+    assert accum_bounds(-1, 3)**(-3) == accum_bounds(-oo, oo)
+    # the values on a grid lie in the bounds, and reach the lower one
+    values = [Rational(k, 100)**(-2) for k in range(-100, 301) if k != 0]
+    assert Rational(1, 9) in values and Integer(1) in values
+    assert all((v - Rational(1, 9)).is_nonnegative is True for v in values)
