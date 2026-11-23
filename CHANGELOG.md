@@ -10,6 +10,38 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Added
 
+- `sympy_extras.printing`: a native LaTeX printer, `latex(expr,
+  **settings)`, for every node class of the typed core (numbers, symbols,
+  sums, products, powers, relations, logic, functions and special
+  functions, `Piecewise`, `Sum`, `Product`, `Integral`, `Derivative`,
+  `Limit`, `Subs`, `Order`, sets, `AccumBounds`, sequences, series,
+  roots), `ExprMatrix`, `Poly` and Python containers, with SymPy's
+  settings (`mode`, `fold_frac_powers`, `fold_func_brackets`,
+  `fold_short_frac`, `inv_trig_style`, `itex`, `ln_notation`,
+  `long_frac_ratio`, `mat_delim`, `mat_str`, `mul_symbol`, `order`,
+  `symbol_names`, `root_notation`, `imaginary_unit`, `gothic_re_im`,
+  `decimal_separator`, `parenthesize_super`, `min`, `max`, `full_prec`,
+  `diff_operator`) as typed keyword arguments. A typed port of SymPy's
+  `printing/latex.py` on a different design
+  (`sympy_extras.printing.framework`, shared with the pretty printer):
+  rules found by the class of the node in a table, never by its name;
+  every rule returns its output with the binding strength of what it
+  *printed*; parents pass an immutable context down (term, factor, base
+  with the exponent offered, side of a relation, point of a limit, ...);
+  brackets are decided in one place. The defects of SymPy's LaTeX
+  printer listed in sympy/sympy#30844 which concern these classes are not
+  reproduced (`Mod(-x, y)` against `-Mod(x, y)`, `\neg x > y`,
+  `\lim_{x \to a + b^+}`, double superscripts, `\sigma_k + 1`, names with
+  `%`, `fold_func_brackets` printing `fx`, ...). The output is SymPy's on
+  a corpus of 390 expressions under 14 settings; 2100 random unevaluated
+  trees are read back from their LaTeX and evaluated; 1800 formulas
+  compile with pdflatex. See `docs/printing.md`.
+- `sympy_extras.printing.init_printing` and `_repr_latex_` on `Basic`,
+  `ExprMatrix` and `Poly`: notebooks render the native objects;
+  `init_printing` chooses the LaTeX settings, switches LaTeX off, and
+  installs a display hook in a plain Python session;
+  `interactive.set_pretty_printer` plugs in a two-dimensional text
+  printer.
 - `sympy_extras.integrals.definite`: rational functions of `sin` and
   `cos` with parameters over whole periods (issue #53). The driver tries
   the residues inside the unit circle before cutting the range into

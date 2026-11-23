@@ -25,7 +25,7 @@ ExprMatrix([[0, 1, 0], [0, 0, 1], [1, 2, 3]])
 """
 from __future__ import annotations
 
-from typing import Callable, Iterator, Sequence, Union
+from typing import Callable, Iterator, Optional, Sequence, Union
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.expr import Expr, ExprLike, to_expr
@@ -112,6 +112,12 @@ class ExprMatrix:
         return 'ExprMatrix([%s])' % ', '.join(rows)
 
     __str__ = __repr__
+
+    def _repr_latex_(self) -> Optional[str]:
+        """What a notebook shows: the LaTeX of the matrix (see
+        :mod:`sympy_extras.printing.interactive`)."""
+        from sympy_extras.printing.interactive import repr_latex
+        return repr_latex(self)
 
     def transpose(self) -> ExprMatrix:
         return ExprMatrix(self.cols, self.rows, [self.entries[i*self.cols + j] for j in range(self.cols) for i in range(self.rows)])

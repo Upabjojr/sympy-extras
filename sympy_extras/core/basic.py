@@ -310,6 +310,12 @@ class Basic:
     def __repr__(self) -> str:
         return str(self)
 
+    def _repr_latex_(self) -> Optional[str]:
+        """What a notebook shows: the LaTeX of the node (see
+        :mod:`sympy_extras.printing.interactive`)."""
+        from sympy_extras.printing.interactive import repr_latex
+        return repr_latex(self)
+
     def _sympystr(self, printer: NodePrinter) -> str:
         """The printed form; subclasses with a special form override it."""
         return printer.generic(self)

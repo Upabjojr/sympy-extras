@@ -1197,6 +1197,29 @@ function, as formulas in the index:
 
 ```
 
+### Printing: LaTeX (`sympy_extras.printing`)
+
+`latex` prints the native objects with the settings of SymPy's `latex`;
+every native object has a `_repr_latex_`, so notebooks render them, and
+`init_printing` chooses the settings. The brackets follow what is
+printed, not the class of the node, so the defects of SymPy's printer
+collected in sympy/sympy#30844 do not occur:
+
+```python
+>>> from sympy_extras.core import symbols, Mod, Not, Rational
+>>> from sympy_extras.core.limits import Limit
+>>> from sympy_extras.functions.elementary.trigonometric import sin
+>>> from sympy_extras.printing import latex
+>>> x, y, a, b = symbols('x y a b')
+>>> print(latex(sin(x)**2/(2*y) + x**Rational(1, 3)))
+\sqrt[3]{x} + \frac{\sin^{2}{\left(x \right)}}{2 y}
+>>> print(latex(Mod(-x, y)), latex(Not(x > y)), latex(Limit(sin(x), x, a + b)))
+\left(- x\right) \bmod y \neg \left(x > y\right) \lim_{x \to \left(a + b\right)^+} \sin{\left(x \right)}
+
+```
+
+See [docs/printing.md](docs/printing.md).
+
 ## What this adds to SymPy
 
 [docs/comparison.md](docs/comparison.md) puts seventy questions to SymPy

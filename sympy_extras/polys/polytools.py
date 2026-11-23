@@ -696,6 +696,12 @@ class Poly:
 
     # -- printing
 
+    def _repr_latex_(self) -> Optional[str]:
+        """What a notebook shows: the LaTeX of the polynomial (see
+        :mod:`sympy_extras.printing.interactive`)."""
+        from sympy_extras.printing.interactive import repr_latex
+        return repr_latex(self)
+
     # PORTED FROM SYMPY: sympy/printing/str.py:StrPrinter._print_Poly
     def __str__(self) -> str:
         def atom(e: Expr) -> str:

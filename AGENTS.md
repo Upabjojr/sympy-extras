@@ -620,6 +620,18 @@ sympy_extras/
       svd.py                 singular_values, exact compact svd of rational matrices
       functions.py           component matrices, matrix_exp, matrix_power, matrix_function
     vector/                  orthogonal.py: OrthogonalCoordinates (gradient, divergence, curl, laplacian), cartesian, cylindrical, spherical
+    printing/                printers of the native objects (no SymPy): the typed framework and the LaTeX printer; see docs/printing.md
+        framework.py         Binding, Position, Context, Result, needs_brackets (the only place where brackets are decided),
+                             Dispatcher (rules by class, never by name), TreePrinter: generic over the output type
+        latex.py             latex(expr, **settings), LatexSettings, LatexPrinter, RULES: the rules of the core classes, the
+                             matrices, the polynomials, the Python values, PORTED FROM SYMPY (printing/latex.py)
+        _latex_names.py      symbols with scripts, Greek letters, modifiers, escaping, PORTED FROM SYMPY
+        _latex_functions.py  the rules of the functions with a notation of their own, PORTED FROM SYMPY
+        _latex_objects.py    the rules of Piecewise, Sum, Product, Integral, the sets, quantifiers, sequences, series, roots, PORTED FROM SYMPY
+        interactive.py       init_printing, reset_printing, repr_latex (what _repr_latex_ of Basic, ExprMatrix, Poly returns),
+                             set_pretty_printer (the hook of a two-dimensional text printer)
+        tests/               corpus.py (expressions printed as in SymPy), latex_reader.py (a LaTeX reader for the semantic
+                             test), test_latex_issue_30844.py (one test per item of sympy/sympy#30844)
     series/                  residue; limit_seq, difference_delta, dominant (limitseq.py); fps, FormalPowerSeries,
                              FormalPowerSeriesProduct/Compose/Inverse (formal.py: the rational and hypergeometric
                              algorithms, the full partial fractions by Taylor coefficients at the roots, rsolve_linear);
