@@ -196,6 +196,7 @@ fn function_conjugate(e: &Basic, f: Function) -> PolyResult<Option<Basic>> {
         | Function::SingularityFunction
         | Function::Znm
         | Function::AppellF1
+        | Function::QPochhammer
         | Function::MarcumQ
         | Function::HyperRepPower1
         | Function::HyperRepPower2
@@ -630,6 +631,7 @@ fn function_real_imag(
         | Function::MathieuCPrime
         | Function::Znm
         | Function::AppellF1
+        | Function::QPochhammer
         | Function::SphericalJ
         | Function::SphericalY
         | Function::SphericalHankel1

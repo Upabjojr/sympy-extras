@@ -260,6 +260,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "AssocLegendre" => Basic::new(Head::Function(Function::AssocLegendre), args()?),
         "HermiteProb" => Basic::new(Head::Function(Function::HermiteProb), args()?),
         "AppellF1" => Basic::new(Head::Function(Function::AppellF1), args()?),
+        "QPochhammer" => Basic::new(Head::Function(Function::QPochhammer), args()?),
         "BesselJ" => Basic::new(Head::Function(Function::BesselJ), args()?),
         "BesselY" => Basic::new(Head::Function(Function::BesselY), args()?),
         "BesselI" => Basic::new(Head::Function(Function::BesselI), args()?),
@@ -674,6 +675,13 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         }
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            if *f == Function::QPochhammer {
+                // the class of concrete/qhyper.py, which does not evaluate
+                return py
+                    .import("sympy_extras.concrete.qhyper")?
+                    .getattr("QPochhammer")?
+                    .call1(PyTuple::new(py, items)?);
+            }
             let module: &str = match f {
                 Function::Exp | Function::Log | Function::LambertW | Function::ExpPolar => "exponential",
                 Function::Sin | Function::Cos | Function::Tan | Function::Cot | Function::Sec | Function::Csc => {
@@ -3750,6 +3758,43 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                         other => {
                             return Err(pyo3::exceptions::PyValueError::new_err(format!(
                                 "unknown action {}",
+                                other
+                            )))
+                        }
+                    }
+                }
+                "qhyper" => {
+                    // (qhyper, name, args...): the functions of concrete/qhyper.rs
+                    use sympy_extras_core::concrete::qhyper as qh;
+                    let label = |t: &str| sympy_extras_core::core::Symbol::new(t, &[]).0;
+                    let flag = |b: &Basic| b.to_string() == "True";
+                    let number = |b: &Basic| -> PyResult<usize> {
+                        b.to_string()
+                            .parse::<usize>()
+                            .map_err(|_| pyo3::exceptions::PyValueError::new_err("an order"))
+                    };
+                    let optional = |v: Option<Basic>| v.unwrap_or_else(|| label("NONE"));
+                    match a[1].to_string().as_str() {
+                        "qpochhammer" => qh::qpochhammer(&a[2], &a[3], &a[4]).map_err(e)?,
+                        "qbinomial" => qh::qbinomial(&a[2], &a[3], &a[4]).map_err(e)?,
+                        "q_ratio" => match qh::q_ratio(&a[2], &a[3], &a[4]).map_err(e)? {
+                            None => label("NONE"),
+                            Some((ratio, big_q)) => tuple(vec![ratio, big_q]),
+                        },
+                        "normal_in" => qh::normal_in(&a[2], &a[3], &a[4]).map_err(e)?,
+                        "qgosper_term" => optional(qh::qgosper_term(&a[2], &a[3], &a[4], flag(&a[5])).map_err(e)?),
+                        "qgosper_sum" => {
+                            optional(qh::qgosper_sum(&a[2], (&a[3], &a[4], &a[5]), &a[6], flag(&a[7])).map_err(e)?)
+                        }
+                        "qzeilberger" => {
+                            match qh::qzeilberger(&a[2], &a[3], &a[4], &a[5], number(&a[6])?).map_err(e)? {
+                                None => label("NONE"),
+                                Some(z) => tuple(vec![tuple(z.coefficients), z.certificate]),
+                            }
+                        }
+                        other => {
+                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                "unknown qhyper call {}",
                                 other
                             )))
                         }

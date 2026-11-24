@@ -350,7 +350,7 @@ fn telescope(f: &Basic, n: &Basic, k: &Basic, r: &Basic, ratios: &[Basic]) -> Po
 /// its reduced row echelon form, the free coordinate one, over the
 /// rational functions of its symbols; over the expressions when an entry
 /// is not a rational function (`_nullspace`).
-fn nullspace(rows: &[Vec<Basic>], columns: usize) -> PolyResult<Vec<Vec<Basic>>> {
+pub(crate) fn nullspace(rows: &[Vec<Basic>], columns: usize) -> PolyResult<Vec<Vec<Basic>>> {
     let mut symbols: Vec<Basic> = Vec::new();
     for row in rows {
         for e in row {

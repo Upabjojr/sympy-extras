@@ -12,6 +12,7 @@ pub mod guess;
 pub mod karr;
 pub mod pisigma;
 pub mod products;
+pub mod qhyper;
 pub mod rational;
 pub mod summations;
 pub mod zeilberger;

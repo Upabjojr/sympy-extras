@@ -120,7 +120,7 @@ impl UPoly {
             .collect::<PolyResult<_>>()?;
         UPoly::new(&v)
     }
-    fn times(&self, other: &UPoly) -> PolyResult<UPoly> {
+    pub(crate) fn times(&self, other: &UPoly) -> PolyResult<UPoly> {
         if self.is_zero() || other.is_zero() {
             return UPoly::new(&[]);
         }
@@ -136,7 +136,7 @@ impl UPoly {
         let v: Vec<Basic> = self.c.iter().map(|cv| mul(cv, k)).collect::<PolyResult<_>>()?;
         UPoly::new(&v)
     }
-    fn monic(&self) -> PolyResult<UPoly> {
+    pub(crate) fn monic(&self) -> PolyResult<UPoly> {
         if self.c.is_empty() {
             return Ok(self.clone());
         }
@@ -380,7 +380,7 @@ pub fn hypersimp(f: &Basic, k: &Basic) -> PolyResult<Option<Basic>> {
     Ok(Some(crate::simplify::simplify::simplify(&g, &options)?))
 }
 
-fn solve_linear(equations: &[Basic], unknowns: &[Basic]) -> PolyResult<Option<Vec<(Basic, Basic)>>> {
+pub(crate) fn solve_linear(equations: &[Basic], unknowns: &[Basic]) -> PolyResult<Option<Vec<(Basic, Basic)>>> {
     let mut rows: Vec<Vec<Basic>> = Vec::new();
     for eq in equations {
         let mut row: Vec<Basic> = unknowns

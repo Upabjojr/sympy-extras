@@ -672,6 +672,8 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 | super::basic::Function::HermiteProb => return None,
                 // mpmath's appellf1 is not ported
                 super::basic::Function::AppellF1 => return None,
+                // no numeric value in Python either (a DefinedFunction without mpmath)
+                super::basic::Function::QPochhammer => return None,
                 // evaluated above
                 super::basic::Function::BesselJ
                 | super::basic::Function::BesselY

@@ -110,6 +110,7 @@ pub fn fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic> {
         Function::SingularityFunction => special::singularity_functions::singularity_fdiff(e, argindex),
         g @ (Function::Erfs | Function::Eis) => special::error_functions::helper_fdiff(g, e),
         Function::AppellF1 => special::hyper::appellf1_fdiff(e, argindex),
+        Function::QPochhammer => special::hyper::default_fdiff(e, argindex),
         g @ (Function::BesselJ
         | Function::BesselY
         | Function::BesselI
@@ -321,6 +322,9 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     if special::bessel::is_bessel(f) && args.len() == 2 {
         return special::bessel::bessel(f, args);
     }
+    if f == Function::QPochhammer && args.len() == 3 {
+        return crate::concrete::qhyper::qpochhammer_eval(&args[0], &args[1], &args[2]);
+    }
     if f == Function::AppellF1 && args.len() == 6 {
         return special::hyper::appellf1(args);
     }
@@ -453,7 +457,7 @@ pub fn apply_function(f: Function, args: &[Basic]) -> PolyResult<Basic> {
             unreachable!("evaluated above with all their arguments")
         }
         Function::SingularityFunction => unreachable!("evaluated above with all their arguments"),
-        Function::AppellF1 => unreachable!("evaluated above with all their arguments"),
+        Function::AppellF1 | Function::QPochhammer => unreachable!("evaluated above with all their arguments"),
         Function::BesselJ
         | Function::BesselY
         | Function::BesselI
