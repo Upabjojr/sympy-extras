@@ -900,13 +900,19 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
             return Some(v);
         }
     }
+    let two_f_one: bool = ap.len() == 2 && bq.len() == 1;
+    if terms.is_none() && two_f_one && size > 0.8 {
+        // mpmath's _hyp2f1: the transformations outside the disc |z| <= 0.8
+        return hyp2f1_continued(&ap[0], &ap[1], &bq[0], z, prec);
+    }
     if terms.is_none() {
         let fits: bool =
             // (p <= q: the series converges everywhere, and the loss of
             // precision to cancellation is measured below; mpmath's
             // asymptotic expansions for a large argument, not ported, fall
             // back to it when they do not converge)
-            (ap.len() <= bq.len() && (one_f_one || size <= 1.0e4)) || (ap.len() == bq.len() + 1 && size < 0.75);
+            (ap.len() <= bq.len() && (one_f_one || size <= 1.0e4))
+                || (ap.len() == bq.len() + 1 && (size < 0.75 || (two_f_one && size <= 0.8)));
         if !fits {
             return None;
         }
@@ -946,6 +952,175 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
         }
     }
     None
+}
+
+/// The integer of a value, if it is one.
+fn integer_value(v: &Complex) -> Option<i64> {
+    let (re, im) = parts(v);
+    if im == Real::ZERO && re.clone() == re.floor() {
+        return re.to_f64().value().round().to_string().parse::<i64>().ok();
+    }
+    None
+}
+
+/// `2F1(a, b; c; z)` outside the disc `|z| <= 0.8` (mpmath's `_hyp2f1`):
+/// Gauss's theorem at `z = 1`, the `1/z` transformation for `|z| >= 1.3`,
+/// the `1 - z` transformation for `|1 - z| <= 0.75`, Pfaff's `z/(z - 1)`
+/// for `|z/(z - 1)| <= 0.75`, and Gosper's recurrence on the rest of the
+/// unit circle; the terms of the transformations through [`hypercomb`].
+fn hyp2f1_continued(a: &Complex, b: &Complex, c: &Complex, z: &Complex, prec: usize) -> Option<Complex> {
+    use crate::functions::special::gamma_numeric::gamma;
+    let wp: usize = prec + 10;
+    let one: Complex = c_int(1, wp);
+    let (a, b, c, z) = (raise_to(a, wp), raise_to(b, wp), raise_to(c, wp), raise_to(z, wp));
+    let is_nonpositive_in = |v: &Complex, low: i64| integer_value(v).is_some_and(|k| low <= k && k <= 0);
+    if z == one {
+        let convergent: bool = parts(&(&(&c - &a) - &b)).0 > Real::ZERO;
+        let finite: bool = is_nonpositive_in(&a, i64::MIN) || is_nonpositive_in(&b, i64::MIN);
+        let c_int_value: Option<i64> = integer_value(&c);
+        let zerodiv: bool = c_int_value.is_some_and(|k| k <= 0)
+            && !(is_nonpositive_in(&a, c_int_value.unwrap_or(0)) || is_nonpositive_in(&b, c_int_value.unwrap_or(0)));
+        if !(convergent || finite) || zerodiv {
+            return None; // a pole: mpmath's infinity
+        }
+        // gammaprod([c, c - a - b], [c - a, c - b])
+        let mut v: Complex = gamma(&c, wp)?;
+        v = &v * &gamma(&(&(&c - &a) - &b), wp)?;
+        for d in [&c - &a, &c - &b] {
+            match gamma(&d, wp) {
+                Some(g) => v = &v / &g,
+                None => return Some(c_int(0, prec)),
+            }
+        }
+        return Some(raise_to(&v, prec));
+    }
+    let absz: f64 = modulus(&z);
+    let value: Complex = if absz >= 1.3 {
+        let (c, z) = (c.clone(), z.clone());
+        let function = move |args: &[Complex]| -> Vec<HyperTerm> {
+            let (a, b) = (&args[0], &args[1]);
+            let wp: usize = parts(a).0.precision().max(prec);
+            let one: Complex = c_int(1, wp);
+            let t: Complex = &one - &c;
+            let ab: Complex = a - b;
+            let minus_z: Complex = &c_int(0, wp) - &z;
+            let rz: Complex = &one / &z;
+            let neg = |v: &Complex| &c_int(0, wp) - v;
+            vec![
+                HyperTerm {
+                    bases: vec![minus_z.clone()],
+                    exponents: vec![neg(a)],
+                    gamma_numerator: vec![c.clone(), neg(&ab)],
+                    gamma_denominator: vec![b.clone(), &c - a],
+                    upper: vec![a.clone(), &t + a],
+                    lower: vec![&one + &ab],
+                    argument: rz.clone(),
+                },
+                HyperTerm {
+                    bases: vec![minus_z],
+                    exponents: vec![neg(b)],
+                    gamma_numerator: vec![c.clone(), ab.clone()],
+                    gamma_denominator: vec![a.clone(), &c - b],
+                    upper: vec![b.clone(), &t + b],
+                    lower: vec![&one - &ab],
+                    argument: rz,
+                },
+            ]
+        };
+        hypercomb(&function, &[a.clone(), b.clone()], wp)?
+    } else if modulus(&(&one - &z)) <= 0.75 {
+        let (c, z) = (c.clone(), z.clone());
+        let function = move |args: &[Complex]| -> Vec<HyperTerm> {
+            let (a, b) = (&args[0], &args[1]);
+            let wp: usize = parts(a).0.precision().max(prec);
+            let one: Complex = c_int(1, wp);
+            let t: Complex = &(&c - a) - b;
+            let (ca, cb) = (&c - a, &c - b);
+            let rz: Complex = &one - &z;
+            vec![
+                HyperTerm {
+                    bases: vec![],
+                    exponents: vec![],
+                    gamma_numerator: vec![c.clone(), t.clone()],
+                    gamma_denominator: vec![ca.clone(), cb.clone()],
+                    upper: vec![a.clone(), b.clone()],
+                    lower: vec![&one - &t],
+                    argument: rz.clone(),
+                },
+                HyperTerm {
+                    bases: vec![rz.clone()],
+                    exponents: vec![t.clone()],
+                    gamma_numerator: vec![c.clone(), &(a + b) - &c],
+                    gamma_denominator: vec![a.clone(), b.clone()],
+                    upper: vec![ca, cb],
+                    lower: vec![&one + &t],
+                    argument: rz,
+                },
+            ]
+        };
+        hypercomb(&function, &[a.clone(), b.clone()], wp)?
+    } else if modulus(&(&z / &(&z - &one))) <= 0.75 {
+        let w: Complex = &z / &(&z - &one);
+        let inner: Complex = hyper_value(&[a.clone(), &c - &b], std::slice::from_ref(&c), &w, wp)?;
+        &inner / &complex_power(&(&one - &z), &a, wp)?
+    } else {
+        hyp2f1_gosper(&a, &b, &c, &z, wp)?
+    };
+    Some(raise_to(&value, prec))
+}
+
+/// `2F1(a, b; c; z)` by Gosper's recurrence (mpmath's `_hyp2f1_gosper`),
+/// for the part of the unit circle no transformation reaches; the working
+/// precision raised by the cancellation measured.
+fn hyp2f1_gosper(a: &Complex, b: &Complex, c: &Complex, z: &Complex, prec: usize) -> Option<Complex> {
+    let maxprec: usize = 100 * prec;
+    let mut extra: usize = 10;
+    loop {
+        let wp: usize = prec + extra;
+        let (a, b, c, z) = (raise_to(a, wp), raise_to(b, wp), raise_to(c, wp), raise_to(z, wp));
+        let n = |k: i64| c_int(k, wp);
+        let half: Complex = &n(1) / &n(2);
+        let (mut d, mut e, mut f) = (n(0), n(1), n(0));
+        let abz: Complex = &(&a * &b) * &z;
+        let ch: Complex = &c * &half;
+        let c1h: Complex = &(&c + &n(1)) * &half;
+        let nz: Complex = &n(1) - &z;
+        let g: Complex = &z / &nz;
+        let abg: Complex = &(&a * &b) * &g;
+        let cba: Complex = &(&c - &b) - &a;
+        let z2: Complex = &z - &n(2);
+        let tol: f64 = -(wp as f64) - 10.0;
+        let mut maxmag: f64 = f64::NEG_INFINITY;
+        let mut k: i64 = 0;
+        let f1: Complex = loop {
+            let kk: Complex = n(k);
+            let kch: Complex = &kk + &ch;
+            let kakbz: Complex =
+                &(&(&(&kk + &a) * &(&kk + &b)) * &z) / &(&(&(&n(4) * &(&kk + &n(1))) * &kch) * &(&kk + &c1h));
+            let d1: Complex = &kakbz * &(&e - &(&(&(&kk + &cba) * &d) * &g));
+            let e1: Complex = &kakbz * &(&(&d * &abg) + &(&(&kk + &c) * &e));
+            let inner: Complex = &(&kk * &(&(&(&cba * &z) + &(&kk * &z2)) - &c)) - &abz;
+            let ft: Complex = &(&d * &inner) / &(&(&n(2) * &kch) * &nz);
+            let f1: Complex = &(&f + &e) - &ft;
+            maxmag = maxmag.max(complex_magnitude(&f1));
+            if complex_magnitude(&(&f1 - &f)) < tol {
+                break f1;
+            }
+            (d, e, f) = (d1, e1, f1);
+            k += 1;
+            if k > 1_000_000 {
+                return None;
+            }
+        };
+        let cancellation: f64 = maxmag - complex_magnitude(&f1);
+        if cancellation < extra as f64 {
+            return Some(raise_to(&f1, prec));
+        }
+        extra += cancellation.ceil() as usize;
+        if extra > maxprec {
+            return None;
+        }
+    }
 }
 
 /// `2F0(a1, a2; ; x)` as the asymptotic series: summed while the terms
