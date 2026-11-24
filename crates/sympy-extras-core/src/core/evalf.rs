@@ -177,7 +177,7 @@ fn abs_of(r: &Real) -> Real {
 /// `z**w` on the principal branch: repeated squaring for an integer `w`,
 /// the square root to an integer power for a half-integer (mpmath's
 /// `mpc_pow_mpf`), `exp(w ln z)` otherwise (`z` nonzero).
-fn power(z: &Complex, w: &Basic, wz: &Complex, prec: usize) -> Option<Complex> {
+pub(crate) fn power(z: &Complex, w: &Basic, wz: &Complex, prec: usize) -> Option<Complex> {
     if let Some(r) = w.as_rational() {
         if denom(r) == Int::from(2u8) && bits(&numer(r)) <= 62 {
             let n: Int = numer(r);

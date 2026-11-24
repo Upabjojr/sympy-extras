@@ -508,15 +508,108 @@ fn complex_of(z: &Complex) -> PolyResult<Basic> {
     add(&[re_value, mul(&[im_value, Basic::atom(Head::ImaginaryUnit)])?])
 }
 
-fn evaluate(e: &Basic, y: &Basic, at: &Complex, prec: usize) -> PolyResult<Option<Complex>> {
-    let value: Basic = complex_of(at)?;
-    let substituted: Basic =
-        match crate::core::function::xreplace_evaluated(e, &[(y.clone(), value)].into_iter().collect()) {
-            Ok(s) => s,
-            Err(err) if failure(&err) => return Ok(None),
-            Err(err) => return Err(err),
+/// An expression in `Y` compiled for its numerical values, its parts free
+/// of `Y` evaluated once (`_compiled`): the secant method of the check
+/// evaluates the relation a few dozen times, and rebuilding the expression
+/// at every point (its facts, the factorisations of its powers) took 299 s
+/// where Python takes 12.
+enum Compiled {
+    Identity,
+    Constant(Option<Complex>),
+    Sum(Vec<Compiled>),
+    Product(Vec<Compiled>),
+    /// The base, the exponent, and the exponent itself when it is free of
+    /// `Y` (its exact rational form chooses the root of a half-integer).
+    Power(Box<Compiled>, Box<Compiled>, Option<Basic>),
+    /// A function node and its compiled arguments (`DefinedFunction.numeric`).
+    Function(Basic, Vec<Compiled>),
+}
+
+fn compiled(e: &Basic, y: &Basic, prec: usize) -> Compiled {
+    if e == y {
+        return Compiled::Identity;
+    }
+    if !e.has(y) {
+        return Compiled::Constant(crate::core::evalf::numeric_value(e, prec));
+    }
+    if e.is_add() || e.is_mul() {
+        let parts: Vec<Compiled> = e.args().iter().map(|a| compiled(a, y, prec)).collect();
+        return if e.is_add() {
+            Compiled::Sum(parts)
+        } else {
+            Compiled::Product(parts)
         };
-    Ok(crate::core::evalf::numeric_value(&substituted, prec))
+    }
+    if e.is_pow() {
+        let (base, exponent) = (&e.args()[0], &e.args()[1]);
+        let fixed: Option<Basic> = if exponent.has(y) { None } else { Some(exponent.clone()) };
+        return Compiled::Power(
+            Box::new(compiled(base, y, prec)),
+            Box::new(compiled(exponent, y, prec)),
+            fixed,
+        );
+    }
+    if matches!(e.head(), Head::Function(_)) {
+        return Compiled::Function(e.clone(), e.args().iter().map(|a| compiled(a, y, prec)).collect());
+    }
+    Compiled::Constant(None)
+}
+
+fn is_zero_value(z: &Complex) -> bool {
+    let (a, b) = crate::core::evalf::parts(z);
+    a.repr().significand().is_zero() && b.repr().significand().is_zero()
+}
+
+impl Compiled {
+    fn value(&self, at: &Complex, prec: usize) -> PolyResult<Option<Complex>> {
+        use crate::core::evalf::{complex_real, real_int};
+        Ok(match self {
+            Compiled::Identity => Some(at.clone()),
+            Compiled::Constant(v) => v.clone(),
+            Compiled::Sum(parts) | Compiled::Product(parts) => {
+                let sum: bool = matches!(self, Compiled::Sum(_));
+                let start: i64 = if sum { 0 } else { 1 };
+                let mut result: Complex = complex_real(real_int(&Int::from(start), prec), prec);
+                for part in parts {
+                    let Some(v) = part.value(at, prec)? else {
+                        return Ok(None);
+                    };
+                    result = if sum { &result + &v } else { &result * &v };
+                }
+                Some(result)
+            }
+            Compiled::Power(base, exponent, fixed) => {
+                let (Some(b), Some(k)) = (base.value(at, prec)?, exponent.value(at, prec)?) else {
+                    return Ok(None);
+                };
+                if is_zero_value(&b) {
+                    return Ok(None);
+                }
+                // an exponent in Y has no exact form: exp(k log b)
+                let w: Basic = fixed.clone().unwrap_or_else(|| Basic::atom(Head::Pi));
+                crate::core::evalf::power(&b, &w, &k, prec)
+            }
+            Compiled::Function(node, arguments) => {
+                let mut values: Vec<Basic> = Vec::new();
+                for argument in arguments {
+                    let Some(v) = argument.value(at, prec)? else {
+                        return Ok(None);
+                    };
+                    values.push(complex_of(&v)?);
+                }
+                // the node with the numerical arguments, not evaluated
+                crate::core::evalf::numeric_value(&Basic::new(node.head().clone(), values), prec)
+            }
+        })
+    }
+}
+
+fn evaluate(e: &Basic, y: &Basic, at: &Complex, prec: usize) -> PolyResult<Option<Complex>> {
+    match compiled(e, y, prec).value(at, prec) {
+        Ok(v) => Ok(v),
+        Err(err) if failure(&err) => Ok(None),
+        Err(err) => Err(err),
+    }
 }
 
 fn size(z: &Complex) -> f64 {
@@ -528,7 +621,14 @@ fn size(z: &Complex) -> f64 {
 /// digits (`_real_root`).
 fn real_root(e: &Basic, y: &Basic, guess: &Rat) -> PolyResult<Option<Rat>> {
     let prec: usize = crate::numeric::dps_to_prec(DIGITS) + 20;
-    let value = |at: &Complex| -> PolyResult<Option<Complex>> { evaluate(e, y, at, prec) };
+    let evaluator: Compiled = compiled(e, y, prec);
+    let value = |at: &Complex| -> PolyResult<Option<Complex>> {
+        match evaluator.value(at, prec) {
+            Ok(v) => Ok(v),
+            Err(err) if failure(&err) => Ok(None),
+            Err(err) => Err(err),
+        }
+    };
     let x0: Complex = crate::core::evalf::complex_real(crate::core::evalf::real_rat(guess, prec), prec);
     // tol = eps * 2**10 at the working precision of findroot
     let tol: f64 = 2f64.powi(-(prec as i32) + 1 + 10);

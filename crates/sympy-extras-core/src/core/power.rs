@@ -34,6 +34,27 @@ pub const TRIAL: u64 = 1 << 16;
 /// in the factorisation used (complete below 64 bits, by trial division
 /// above).
 pub fn integer_root_parts(p: &Int, e: &Rat) -> (Int, Int, Int) {
+    // the factorisations are kept: a power is evaluated, then its facts ask
+    // again, once per rebuilt node (the Abel solver's checks rebuilt the
+    // same powers of large integers thousands of times, 299 s against
+    // Python's 12 s)
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<(Int, Rat), (Int, Int, Int)>>> =
+        std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let key: (Int, Rat) = (p.clone(), e.clone());
+    if let Some(found) = cache.lock().expect("the root cache").get(&key) {
+        return found.clone();
+    }
+    let found: (Int, Int, Int) = integer_root_parts_uncached(p, e);
+    let mut table = cache.lock().expect("the root cache");
+    if table.len() > 4096 {
+        table.clear();
+    }
+    table.insert(key, found.clone());
+    found
+}
+
+fn integer_root_parts_uncached(p: &Int, e: &Rat) -> (Int, Int, Int) {
     let (m, n) = (numer(e), denom(e));
     let factors = if bits(p) <= FULL_FACTORING_BITS {
         factorint(p, None)
