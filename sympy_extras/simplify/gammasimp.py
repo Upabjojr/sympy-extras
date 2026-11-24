@@ -772,7 +772,8 @@ def _undefined_factors(e: Expr) -> tuple[list[Expr], list[Expr]]:
     """The binomials which are factors of the denominator of a term of
     ``e`` and the arguments of the factorials which are factors of the
     numerator of a term: where such a binomial is zero, or such an
-    argument a negative integer, the term (and ``e``) is not finite."""
+    argument a negative integer, the term (and ``e``) is not finite. A
+    gamma function of a numerator counts as the factorial it is."""
     from sympy_extras.functions.combinatorial.factorials import Binomial, Factorial
     poles: list[Expr] = []
     factorials: list[Expr] = []
@@ -783,6 +784,9 @@ def _undefined_factors(e: Expr) -> tuple[list[Expr], list[Expr]]:
                 poles.append(base)
             elif isinstance(base, Factorial) and exponent.is_positive is True:
                 factorials.append(_expr(base.args[0]))
+            elif isinstance(base, _gamma_types()[0]) and exponent.is_positive is True:
+                # gamma(m + 1) is factorial(m)
+                factorials.append(add(_expr(base.args[0]), Integer(-1)))
     return poles, factorials
 
 
