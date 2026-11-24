@@ -116,6 +116,14 @@ fn difference_delta_rule(e: &Basic, n: &Basic, h: &Basic) -> OptR {
 /// The dominant term of a sum of terms, `None` when two are comparable
 /// (`dominant`).
 pub fn dominant(expr: &Basic, n: &Basic) -> OptR {
+    dominant_at(expr, n, 0)
+}
+
+/// How deep [`dominant`] and the limit of a sequence may call each other
+/// (`_MAX_DEPTH`).
+const MAX_DEPTH: usize = 3;
+
+fn dominant_at(expr: &Basic, n: &Basic, depth: usize) -> OptR {
     let mut hints = crate::core::function::Hints::DEFAULT;
     hints.func = true;
     let expanded: Basic = crate::core::function::expand_with(expr, true, hints)?;
@@ -128,7 +136,7 @@ pub fn dominant(expr: &Basic, n: &Basic) -> OptR {
         if e == r {
             e = crate::polys::polytools::factor(&r, &[], false, true)?;
         }
-        let Some(lim) = limit_seq(&e, Some(n), 5)? else {
+        let Some(lim) = limit_seq_of(&e, Some(n), 5, depth + 1)? else {
             return Ok(None);
         };
         if is(&lim, Predicate::zero) == Some(true) {
@@ -153,8 +161,86 @@ fn limit_inf(expr: &Basic, n: &Basic) -> OptR {
     }
 }
 
-fn limit_seq_trials(expr: &Basic, n: &Basic, trials: usize) -> OptR {
+/// `expr` with every factor `Sum(f(k), (k, a, n))` replaced by an
+/// asymptotically equivalent `c*f(n)`, `None` when a sum is not a factor
+/// (or a power of one with a constant exponent) or has no such equivalent
+/// (`_asymptotic_factors`). When `f(n + 1)/f(n)` tends to `r` with
+/// `|r| > 1`, the quotient of the sum and its last term tends to
+/// `r/(r - 1)` (to 1 for an infinite `r`): the theorem of Stolz and Cesaro
+/// for a sum of geometric growth.
+fn asymptotic_factors(expr: &Basic, n: &Basic) -> OptR {
+    if !has_sum(expr) {
+        return Ok(Some(expr.clone()));
+    }
+    if expr.is_mul() {
+        let mut factors: Vec<Basic> = Vec::new();
+        for a in expr.args() {
+            let Some(factor) = asymptotic_factors(a, n)? else {
+                return Ok(None);
+            };
+            factors.push(factor);
+        }
+        return Ok(Some(crate::core::mul::mul(&factors)?));
+    }
+    if expr.is_pow() {
+        let (b, x) = (&expr.args()[0], &expr.args()[1]);
+        if x.has(n) || has_sum(x) {
+            return Ok(None);
+        }
+        return Ok(match asymptotic_factors(b, n)? {
+            None => None,
+            Some(base) => Some(pw(&base, x)?),
+        });
+    }
+    if matches!(expr.head(), Head::Sum) {
+        let lims = crate::concrete::expr_with_limits::limits(expr);
+        if lims.len() != 1 {
+            return Ok(None);
+        }
+        let (k, lower, upper) = lims[0].clone();
+        let f: &Basic = &expr.args()[0];
+        if upper != *n || lower.has(n) || f.has(n) || has_sum(f) {
+            return Ok(None);
+        }
+        let last: Basic = subs(f, &k, n)?;
+        let next: Basic = subs(f, &k, &a2(n, &Basic::one())?)?;
+        let Some(ratio) = limit_inf(&crate::simplify::gammasimp::gammasimp(&d2(&next, &last)?)?, n)? else {
+            return Ok(None);
+        };
+        if matches!(ratio.head(), Head::Infinity | Head::NegativeInfinity) {
+            return Ok(Some(last));
+        }
+        let size: Basic = crate::functions::elementary::complexes::abs_(&ratio)?;
+        if !crate::core::assumptions::is_number(&ratio)
+            || is(&s2(&size, &Basic::one())?, Predicate::positive) != Some(true)
+        {
+            return Ok(None);
+        }
+        let c: Basic = d2(&ratio, &s2(&ratio, &Basic::one())?)?;
+        return Ok(Some(m2(&c, &last)?));
+    }
+    Ok(None)
+}
+
+fn limit_seq_trials(expr: &Basic, n: &Basic, trials: usize, depth: usize) -> OptR {
     let mut expr: Basic = expr.clone();
+    if has_sum(&expr) {
+        // not SymPy's: the sums which are factors by their last terms
+        if let Some(equivalent) = asymptotic_factors(&expr, n)? {
+            if !has_sum(&equivalent) {
+                if let Some(result) = limit_inf(&crate::simplify::gammasimp::gammasimp(&equivalent)?, n)? {
+                    return Ok(Some(result));
+                }
+            }
+        }
+        // and the sums with a closed form
+        let closed: Basic = crate::core::function::doit(&expr)?;
+        if !has_sum(&closed) {
+            if let Some(result) = limit_inf(&closed, n)? {
+                return Ok(Some(result));
+            }
+        }
+    }
     for _ in 0..trials {
         crate::timeout::check()?;
         if !has_sum(&expr) {
@@ -176,10 +262,10 @@ fn limit_seq_trials(expr: &Basic, n: &Basic, trials: usize) -> OptR {
             }
         }
         let (num, den) = crate::core::expr::as_numer_denom(&expr)?;
-        let Some(dominant_num) = dominant(&num, n)? else {
+        let Some(dominant_num) = dominant_at(&num, n, depth)? else {
             return Ok(None);
         };
-        let Some(dominant_den) = dominant(&den, n)? else {
+        let Some(dominant_den) = dominant_at(&den, n, depth)? else {
             return Ok(None);
         };
         expr = crate::simplify::gammasimp::gammasimp(&d2(&dominant_num, &dominant_den)?)?;
@@ -208,6 +294,19 @@ fn fibonacci_as_golden_ratio(e: &Basic) -> R {
 /// The limit of the sequence `expr` at `n -> oo`, `None` when it is not
 /// found (`limit_seq`).
 pub fn limit_seq(expr: &Basic, n: Option<&Basic>, trials: usize) -> OptR {
+    limit_seq_of(expr, n, trials, 0)
+}
+
+/// [`limit_seq`] at a depth of the mutual recursion with [`dominant`]
+/// (`_limit_seq_of`): the comparison of two terms with sums is the limit of
+/// a quotient with the same sums, whose differences have them again
+/// (SymPy's functions call each other without end on
+/// `Sum(a)/(Sum(b)*Sum(c))`, sympy/sympy#31275 V214). Beyond `MAX_DEPTH`
+/// the limit is not found.
+fn limit_seq_of(expr: &Basic, n: Option<&Basic>, trials: usize, depth: usize) -> OptR {
+    if depth > MAX_DEPTH {
+        return Ok(None);
+    }
     let free: Vec<Basic> = expr
         .free_symbols()
         .into_iter()
@@ -251,9 +350,9 @@ pub fn limit_seq(expr: &Basic, n: Option<&Basic>, trials: usize) -> OptR {
             .iter()
             .any(|p| matches!(p.head(), Head::Function(Function::Cos | Function::Sin)));
     let first: Option<Basic> = if oscillating {
-        let first = limit_seq_trials(&xreplace(&e, &n, &n1)?, &n1, trials)?;
+        let first = limit_seq_trials(&xreplace(&e, &n, &n1)?, &n1, trials, depth)?;
         if let Some(f) = &first {
-            let second = limit_seq_trials(&xreplace(&e, &n, &n2)?, &n2, trials)?;
+            let second = limit_seq_trials(&xreplace(&e, &n, &n2)?, &n2, trials, depth)?;
             if second.as_ref() != Some(f) {
                 if let Some(s) = &second {
                     if crate::core::expr::is_comparable(f) && crate::core::expr::is_comparable(s) {
@@ -267,7 +366,7 @@ pub fn limit_seq(expr: &Basic, n: Option<&Basic>, trials: usize) -> OptR {
         }
         first
     } else {
-        limit_seq_trials(&xreplace(&e, &n, &n_)?, &n_, trials)?
+        limit_seq_trials(&xreplace(&e, &n, &n_)?, &n_, trials, depth)?
     };
     if first.is_some() {
         return Ok(first);
@@ -275,7 +374,7 @@ pub fn limit_seq(expr: &Basic, n: Option<&Basic>, trials: usize) -> OptR {
     if e.is_add() {
         let mut found: Vec<Basic> = Vec::new();
         for term in e.args() {
-            let Some(result) = limit_seq(term, Some(&n), trials)? else {
+            let Some(result) = limit_seq_of(term, Some(&n), trials, depth)? else {
                 return Ok(None);
             };
             found.push(result);
@@ -284,7 +383,7 @@ pub fn limit_seq(expr: &Basic, n: Option<&Basic>, trials: usize) -> OptR {
     }
     if !has_sum(&e) {
         let absolute: Basic = crate::functions::elementary::complexes::abs_(&xreplace(&e, &n, &n_)?)?;
-        if let Some(lim) = limit_seq_trials(&absolute, &n_, trials)? {
+        if let Some(lim) = limit_seq_trials(&absolute, &n_, trials, depth)? {
             if is(&lim, Predicate::zero) == Some(true) {
                 return Ok(Some(Basic::zero()));
             }

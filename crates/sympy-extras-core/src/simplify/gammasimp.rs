@@ -908,7 +908,238 @@ pub fn combsimp(expr: &Basic) -> PolyResult<Basic> {
         };
         turned.insert(b, m);
     }
-    Ok(result.xreplace(&turned).xreplace(&back))
+    let found: Basic = result.xreplace(&turned).xreplace(&back);
+    if found == *expr {
+        return Ok(expr.clone());
+    }
+    // the quotient of gamma functions is not the binomial where k <= n < 0
+    // (binomial(-1, -1) is 0, the gamma functions have the limit 1)
+    let mut checked: Vec<Basic> = risky.iter().filter(|b| !conflicts.contains(b)).cloned().collect();
+    checked.extend(
+        negative_upper_binomials(&found)
+            .into_iter()
+            .filter(|b| !risky.contains(b)),
+    );
+    if checked.is_empty() {
+        return Ok(found);
+    }
+    let (poles, factorials) = undefined_factors(expr)?;
+    let mut points: Vec<(Basic, i64)> = Vec::new();
+    let mut sound: bool = true;
+    for b in &checked {
+        match uncovered_points(b, &poles, &factorials)? {
+            None => {
+                sound = false;
+                break;
+            }
+            Some(uncovered) => {
+                for point in uncovered {
+                    if !points.contains(&point) {
+                        points.push(point);
+                    }
+                }
+            }
+        }
+    }
+    if sound && points.is_empty() {
+        return Ok(found);
+    }
+    let symbols: BTreeSet<String> = points.iter().map(|(s, _)| s.to_string()).collect();
+    if sound && symbols.len() == 1 {
+        points.sort_by_key(|(_, v)| *v);
+        let mut cases: Vec<(Basic, Basic)> = Vec::new();
+        for (symbol, value) in &points {
+            let at: Basic = Basic::int(*value);
+            let at_point: Basic = crate::core::subs::subs(expr, symbol, &at)?;
+            if is(&at_point, Predicate::finite) == Some(true)
+                && at_point != crate::core::subs::subs(&found, symbol, &at)?
+            {
+                cases.push((at_point, crate::core::relational::eq(symbol, &at)?));
+            }
+        }
+        if cases.is_empty() {
+            return Ok(found);
+        }
+        cases.push((found, Basic::atom(Head::BooleanTrue)));
+        return crate::functions::elementary::piecewise::piecewise(&cases);
+    }
+    if expr.is_add() {
+        // term by term: a binomial which stays as it is needs no proof
+        let terms: Vec<Basic> = expr.args().iter().map(combsimp).collect::<PolyResult<_>>()?;
+        return add(&terms);
+    }
+    Ok(expr.clone())
+}
+
+/// The binomials which are factors of the denominator of a term of `e` and
+/// the arguments of the factorials which are factors of the numerator of a
+/// term (`_undefined_factors`): where such a binomial is zero, or such an
+/// argument a negative integer, the term is not finite.
+fn undefined_factors(e: &Basic) -> PolyResult<(Vec<Basic>, Vec<Basic>)> {
+    let mut poles: Vec<Basic> = Vec::new();
+    let mut factorials: Vec<Basic> = Vec::new();
+    for term in crate::core::expr::terms_of(e) {
+        for factor in factors_of(&term) {
+            let (base, exponent) = as_base_exp(&factor)?;
+            if base.is_function(Function::Binomial) && is(&exponent, Predicate::negative) == Some(true) {
+                poles.push(base);
+            } else if base.is_function(Function::Factorial) && is(&exponent, Predicate::positive) == Some(true) {
+                factorials.push(base.args()[0].clone());
+            }
+        }
+    }
+    Ok((poles, factorials))
+}
+
+fn rat_parts(r: &Rat) -> (i128, i128) {
+    let p: i128 = crate::numbers::numer(r).to_string().parse().unwrap_or(0);
+    let q: i128 = crate::numbers::denom(r).to_string().parse().unwrap_or(1);
+    (p, q)
+}
+
+/// `(a, b)` of `e = a*symbol + b` with rational numbers (`_linear`).
+fn linear(e: &Basic, symbol: &Basic) -> PolyResult<Option<(Rat, Rat)>> {
+    let constant: Basic = crate::core::subs::subs(e, symbol, &Basic::zero())?;
+    let slope: Basic = crate::core::add::sub(&crate::core::subs::subs(e, symbol, &Basic::one())?, &constant)?;
+    let (Some(c), Some(a)) = (constant.as_rational().cloned(), slope.as_rational().cloned()) else {
+        return Ok(None);
+    };
+    let rebuilt: Basic = add(&[mul(&[slope.clone(), symbol.clone()])?, constant.clone()])?;
+    if crate::core::function::expand_default(&crate::core::add::sub(e, &rebuilt)?)? != Basic::zero() {
+        return Ok(None);
+    }
+    Ok(Some((a, c)))
+}
+
+type Bounds = (Option<i128>, Option<i128>);
+
+/// The integers of `bounds` with `a*s + b >= 0` (`> 0` when `strict`);
+/// `None` when there is none (`_at_least`).
+fn at_least(a: &Rat, b: &Rat, strict: bool, bounds: Bounds) -> Option<Bounds> {
+    let (mut low, mut high) = bounds;
+    let zero: Rat = Rat::from(0);
+    if *a == zero {
+        return if *b > zero || (*b == zero && !strict) {
+            Some(bounds)
+        } else {
+            None
+        };
+    }
+    let root: Rat = -(b.clone()) / a.clone();
+    let (p, q) = rat_parts(&root);
+    let floor: i128 = p.div_euclid(q);
+    let ceil: i128 = -((-p).div_euclid(q));
+    if *a > zero {
+        let least: i128 = if strict { floor + 1 } else { ceil };
+        low = Some(low.map_or(least, |l| l.max(least)));
+    } else {
+        let most: i128 = if strict { ceil - 1 } else { floor };
+        high = Some(high.map_or(most, |h| h.min(most)));
+    }
+    if let (Some(l), Some(h)) = (low, high) {
+        if l > h {
+            return None;
+        }
+    }
+    Some((low, high))
+}
+
+/// The points of the set `k <= n < 0` of `b = binomial(n, k)`, where it is
+/// not the quotient of gamma functions, at which the expression with the
+/// `poles` and the `factorials` of [`undefined_factors`] may be finite
+/// (`_uncovered_points`); `None` when the set is not known to be covered
+/// up to finitely many points.
+fn uncovered_points(b: &Basic, poles: &[Basic], factorials: &[Basic]) -> PolyResult<Option<Vec<(Basic, i64)>>> {
+    use crate::core::add::sub;
+    let (upper, lower) = (&b.args()[0], &b.args()[1]);
+    if is(upper, Predicate::nonnegative) == Some(true) || is(&sub(upper, lower)?, Predicate::negative) == Some(true) {
+        return Ok(Some(Vec::new()));
+    }
+    if is(lower, Predicate::integer) != Some(true) {
+        return Ok(Some(Vec::new()));
+    }
+    // binomial(n', k') is 0 for a negative integer k', and k <= n < 0 is in
+    // k' < 0 for k' <= k or k' <= n
+    for pole in poles {
+        let k_pole: &Basic = &pole.args()[1];
+        if is(k_pole, Predicate::integer) == Some(true)
+            && (is(&sub(lower, k_pole)?, Predicate::nonnegative) == Some(true)
+                || is(&sub(upper, k_pole)?, Predicate::nonnegative) == Some(true))
+        {
+            return Ok(Some(Vec::new()));
+        }
+    }
+    for m in factorials {
+        if is(m, Predicate::integer) == Some(true)
+            && (is(&sub(lower, m)?, Predicate::nonnegative) == Some(true)
+                || is(&sub(upper, m)?, Predicate::nonnegative) == Some(true))
+        {
+            return Ok(Some(Vec::new()));
+        }
+    }
+    let mut symbols: Vec<Basic> = Vec::new();
+    for x in upper.free_symbols().into_iter().chain(lower.free_symbols()) {
+        if matches!(x.head(), Head::Symbol(_)) && !symbols.contains(&x) {
+            symbols.push(x);
+        }
+    }
+    if symbols.len() != 1 || is(&symbols[0], Predicate::integer) != Some(true) {
+        return Ok(None);
+    }
+    let symbol: Basic = symbols[0].clone();
+    let (Some(n_form), Some(k_form)) = (linear(upper, &symbol)?, linear(lower, &symbol)?) else {
+        return Ok(None);
+    };
+    let start: Bounds = if is(&symbol, Predicate::positive) == Some(true) {
+        (Some(1), None)
+    } else if is(&symbol, Predicate::nonnegative) == Some(true) {
+        (Some(0), None)
+    } else if is(&symbol, Predicate::negative) == Some(true) {
+        (None, Some(-1))
+    } else if is(&symbol, Predicate::nonpositive) == Some(true) {
+        (None, Some(0))
+    } else {
+        (None, None)
+    };
+    // n - k >= 0 and -n > 0
+    let Some(first) = at_least(
+        &(n_form.0.clone() - k_form.0.clone()),
+        &(n_form.1.clone() - k_form.1.clone()),
+        false,
+        start,
+    ) else {
+        return Ok(Some(Vec::new()));
+    };
+    let Some(second) = at_least(&(-n_form.0), &(-n_form.1), true, first) else {
+        return Ok(Some(Vec::new()));
+    };
+    let (Some(low), Some(high)) = second else {
+        return Ok(None);
+    };
+    if high - low > 16 {
+        return Ok(None);
+    }
+    let negative_integer =
+        |e: &Basic| is(e, Predicate::negative) == Some(true) && is(e, Predicate::integer) == Some(true);
+    let mut uncovered: Vec<(Basic, i64)> = Vec::new();
+    for value in low..=high {
+        let at: Basic = Basic::int(value as i64);
+        let mut skip: bool = false;
+        for pole in poles {
+            if negative_integer(&crate::core::subs::subs(&pole.args()[1], &symbol, &at)?) {
+                skip = true;
+            }
+        }
+        for m in factorials {
+            if negative_integer(&crate::core::subs::subs(m, &symbol, &at)?) {
+                skip = true;
+            }
+        }
+        if !skip {
+            uncovered.push((symbol.clone(), value as i64));
+        }
+    }
+    Ok(Some(uncovered))
 }
 
 /// The binomials of `e` whose upper index is an integer which may be

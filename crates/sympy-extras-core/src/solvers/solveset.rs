@@ -664,6 +664,74 @@ fn periodic_real(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
     Ok(Some(found))
 }
 
+/// `(a*x + b)*exp(c*x + d) + e = 0` with `a`, `c` and `e` not zero and no
+/// `x` in the coefficients, by all the branches of Lambert's function
+/// (`_lambert`, not SymPy's, which leaves a `ConditionSet`): with
+/// `t = c*x + c*b/a` it is `t*exp(t) = z`, `z = -(c*e/a)*exp(c*b/a - d)`,
+/// so that `x = (W_n(z) - c*b/a)/c` for the integers `n`. The exponentials
+/// of the terms may differ by factors free of `x`.
+#[allow(clippy::mutable_key_type)]
+fn lambert(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
+    use crate::core::add::sub;
+    use crate::core::function::expand_default as expand;
+    use crate::core::mul::{div, mul, neg};
+    use crate::functions::elementary::exponential::{exp, lambertw};
+    use crate::polys::polytools::cancel;
+    let nodes: Vec<Basic> = f.preorder();
+    let mut exponentials: Vec<Basic> = Vec::new();
+    for node in &nodes {
+        if node.is_function(Function::Exp) && node.has(x) && !exponentials.contains(node) {
+            exponentials.push(node.clone());
+        }
+    }
+    let other_function: bool = nodes.iter().any(|node| {
+        matches!(node.head(), Head::Function(_) | Head::Undefined(_)) && !node.is_function(Function::Exp) && node.has(x)
+    });
+    let variable_power: bool = nodes.iter().any(|node| node.is_pow() && node.args()[1].has(x));
+    if exponentials.is_empty() || other_function || variable_power {
+        return Ok(None);
+    }
+    let zero: Basic = Basic::zero();
+    let c: Basic = crate::core::function::derivative(&exponentials[0].args()[0], x)?;
+    if c.has(x) || c == zero {
+        return Ok(None);
+    }
+    let t: Basic = crate::core::symbol::Dummy::new("t", &[]).0;
+    let mut rule: std::collections::HashMap<Basic, Basic> = std::collections::HashMap::new();
+    for a in &exponentials {
+        let shift: Basic = expand(&sub(&a.args()[0], &mul(&[c.clone(), x.clone()])?)?)?;
+        if shift.has(x) {
+            return Ok(None);
+        }
+        rule.insert(a.clone(), mul(&[exp(&shift)?, t.clone()])?);
+    }
+    let g: Basic = expand(&crate::core::function::xreplace_evaluated(f, &rule)?)?;
+    // g = (a*x + b)*t + e
+    let e: Basic = crate::core::subs::subs(&g, &t, &zero)?;
+    let slope: Basic = expand(&sub(&g, &e)?)?;
+    let linear: Basic = cancel(&div(&slope, &t)?, &[])?;
+    if e.has(x) || e == zero || linear.has(&t) || expand(&sub(&mul(&[linear.clone(), t.clone()])?, &slope)?)? != zero {
+        return Ok(None);
+    }
+    let b: Basic = crate::core::subs::subs(&linear, x, &zero)?;
+    let a_: Basic = expand(&sub(&linear, &b)?)?;
+    let quotient: Basic = cancel(&div(&a_, x)?, &[])?;
+    if quotient.has(x) || quotient == zero || expand(&sub(&mul(&[quotient.clone(), x.clone()])?, &a_)?)? != zero {
+        return Ok(None);
+    }
+    let n: Basic = crate::core::symbol::Dummy::new("n", &[(Predicate::integer, true)]).0;
+    let z: Basic = mul(&[
+        neg(&div(&mul(&[c.clone(), e.clone()])?, &quotient)?)?,
+        exp(&div(&mul(&[c.clone(), b.clone()])?, &quotient)?)?,
+    ])?;
+    let image: Basic = sub(&div(&lambertw(&z, Some(&n))?, &c)?, &div(&b, &quotient)?)?;
+    Ok(Some(crate::sets::fancysets::image_set(
+        &Basic::new(Head::Tuple, vec![n]),
+        &image,
+        &[Basic::atom(Head::Integers)],
+    )?))
+}
+
 fn solve_complex(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
     use super::solvers::{checksol, coefficients, polynomial_roots, solve_equation, zero_truth};
     let (numerator, denominator) = fraction(f)?;
@@ -698,6 +766,11 @@ fn solve_complex(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
     }
     if let Some(p) = periodic(f, x)? {
         return Ok(Some(p));
+    }
+    if !denominator.has(x) {
+        if let Some(family) = lambert(&numerator, x)? {
+            return Ok(Some(family));
+        }
     }
     if algebraic(f, x) {
         let candidates: Option<Vec<Basic>> =

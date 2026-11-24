@@ -140,8 +140,9 @@ def test_appellf1(rust: Any, seed: int) -> None:
 
 
 def test_values(rust: Any) -> None:
-    """The series values Rust has: entire functions, ``2F1`` inside the
-    disc, terminating series."""
+    """The values Rust has: entire functions, ``2F1`` everywhere (inside
+    the disc by the series, outside by mpmath's transformations),
+    terminating series."""
     from sympy_extras.core import I, Integer, Rational
     from sympy_extras.core.containers import Tuple
     from sympy_extras.core.evalf import numeric_value
@@ -149,7 +150,14 @@ def test_values(rust: Any) -> None:
     rc = load("sympy_extras_rs.core")
     cases = [((), (), Integer(3)), ((Rational(1, 2),), (Rational(3, 2),), -Integer(4)), ((1, 2), (3,), Rational(1, 2)),
              ((Integer(-3), Rational(1, 3)), (Rational(5, 2),), Integer(7)), ((1 + I,), (2,), 2*I),
-             ((), (Rational(1, 2), 2), -Integer(20)), ((Rational(1, 3), 1), (Rational(1, 2),), -Rational(2, 3))]
+             ((), (Rational(1, 2), 2), -Integer(20)), ((Rational(1, 3), 1), (Rational(1, 2),), -Rational(2, 3)),
+             # 2F1 beyond |z| <= 0.8 (mpmath's transformations): Gauss at 1, 1/z (the cut z > 1 too),
+             # 1 - z, z/(z - 1), Gosper's recurrence on the unit circle
+             ((1, 2), (5,), Integer(1)), ((Rational(1, 2), Rational(1, 3)), (Rational(5, 2),), -Integer(3)),
+             ((1, 2), (3,), Integer(2)), ((1, 1), (2,), -Integer(2)), ((1, 2), (Rational(1, 2),), 5 + 2*I),
+             ((Rational(1, 3), 1), (Rational(1, 2),), Rational(3, 5) + Rational(4, 5)*I),
+             ((Rational(1, 2), Rational(1, 2)), (1,), Rational(9, 10)),
+             ((Rational(1, 2), Rational(1, 3)), (2,), -Rational(9, 10))]
     for ap, bq, z in cases:
         args = [Tuple(*ap), Tuple(*bq), z]
         e, r = hy.hyper(*args), rc.logic_call('hyper', args)
