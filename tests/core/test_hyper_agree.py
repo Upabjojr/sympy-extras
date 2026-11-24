@@ -157,3 +157,31 @@ def test_values(rust: Any) -> None:
             vr = rc.numeric_value(r, prec)
             assert vr is not None, (e, prec)
             assert close(vr, finite(numeric_value(e, prec + 200)), prec), (e, prec)
+
+
+def test_meijerg_values(rust: Any) -> None:
+    """The values of ``meijerg`` by Slater's theorem (mpmath's ``meijerg``):
+    distinct ``b``, ``b`` differing by integers (the perturbation of the
+    parameters), ``p = q`` on both sides of the unit circle, the second
+    series for ``p > q``."""
+    from sympy_extras.core import I, Integer, Rational
+    from sympy_extras.core.containers import Tuple
+    from sympy_extras.core.evalf import numeric_value
+    from sympy_extras.functions.special import hyper as hy
+    rc = load("sympy_extras_rs.core")
+    h = Rational(1, 2)
+    cases = [((), (), (Integer(0),), (), Integer(2)),                              # exp(-z)
+             ((), (), (h, Integer(0)), (), Rational(9, 4)),                         # distinct b
+             ((), (-h, Integer(1)), (Integer(0), Integer(0), Integer(1)), (-h,), Rational(9, 16)),
+             ((), (-h, Integer(1)), (Integer(0), Integer(0), Integer(0)), (-h,), Integer(3)),
+             ((Integer(1),), (), (Integer(1),), (Integer(0),), Rational(1, 3)),     # p = q, |z| < 1
+             ((Integer(1),), (), (Integer(1),), (Integer(0),), Integer(3)),         # p = q, |z| > 1
+             ((Integer(1), Integer(1)), (), (Integer(1),), (), Integer(5)),  # p > q
+             ((), (), (h, -h), (), 1 + I)]
+    for an, ap, bm, bq, z in cases:
+        args = [Tuple(*an), Tuple(*ap), Tuple(*bm), Tuple(*bq), z]
+        e, r = hy.meijerg(*args), rc.logic_call('meijerg', args)
+        for prec in (53, 120):
+            vr = rc.numeric_value(r, prec)
+            ve = finite(numeric_value(e, prec + 200))
+            assert vr is not None and ve is not None and close(vr, ve, prec), (e, prec, vr, ve)
