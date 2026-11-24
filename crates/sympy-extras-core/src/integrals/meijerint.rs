@@ -2780,9 +2780,11 @@ fn rewrite_mellin(f: &Basic, x: &Basic) -> PolyResult<Option<Rewriting>> {
             crate::numeric::reliable_complex(&subs(&m2(&m2(&coeff, &p2(x, &power)?)?, &g)?, x, &point)?, 15, &[]);
         let (Some(v), Some(r)) = (value, represented) else {
             if value.is_some() {
-                // the Rust core has no numeric G-function (mpmath's meijerg)
+                // the G-function has no Rust value where mpmath continues its
+                // hypergeometric terms (2F1 outside the unit disc, the
+                // asymptotic expansions)
                 return Err(crate::error::not_ported(
-                    "the numeric value of a Meijer G-function (mpmath.meijerg)",
+                    "the numeric value of this Meijer G-function (mpmath's continuations of hyper)",
                 ));
             }
             return Ok(None);
