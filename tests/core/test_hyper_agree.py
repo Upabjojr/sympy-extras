@@ -157,7 +157,13 @@ def test_values(rust: Any) -> None:
              ((1, 2), (3,), Integer(2)), ((1, 1), (2,), -Integer(2)), ((1, 2), (Rational(1, 2),), 5 + 2*I),
              ((Rational(1, 3), 1), (Rational(1, 2),), Rational(3, 5) + Rational(4, 5)*I),
              ((Rational(1, 2), Rational(1, 2)), (1,), Rational(9, 10)),
-             ((Rational(1, 2), Rational(1, 3)), (2,), -Rational(9, 10))]
+             ((Rational(1, 2), Rational(1, 3)), (2,), -Rational(9, 10)),
+             # (q+1)Fq beyond the unit circle (mpmath's 1/z transformation; integer gaps of ap perturbed)
+             ((Rational(1, 2), Rational(1, 3), Rational(1, 4)), (Rational(3, 2), 2), -Integer(2)),
+             ((1, 2, Rational(1, 2)), (3, Rational(5, 2)), Integer(3)),
+             ((Rational(1, 2), Rational(1, 3), 1), (2, Rational(7, 3)), 2 + I),
+             ((Rational(1, 2), Rational(1, 3), Rational(1, 5), Rational(1, 7)), (2, 3, 4), -Integer(5)),
+             ((1, 2, 3), (4, 5), -Integer(4))]
     for ap, bq, z in cases:
         args = [Tuple(*ap), Tuple(*bq), z]
         e, r = hy.hyper(*args), rc.logic_call('hyper', args)

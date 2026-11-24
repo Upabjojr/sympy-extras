@@ -824,8 +824,8 @@ pub fn airy_value(f: Function, values: &[Complex], prec: usize) -> Option<Comple
         };
         let size = |v: &Complex| {
             let (a, b) = parts(v);
-            let (a, b) = (a.to_f64().value(), b.to_f64().value());
-            (a * a + b * b).sqrt()
+            // (hypot: the squares overflow beyond 2**512)
+            a.to_f64().value().hypot(b.to_f64().value())
         };
         let largest: f64 = size(&first).max(size(&second));
         let lost: f64 = if largest == 0.0 {

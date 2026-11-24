@@ -813,10 +813,12 @@ pub fn print_hyper(e: &Basic, doprint: &dyn Fn(&Basic) -> String) -> String {
 // values
 // ---------------------------------------------------------------------
 
+/// `|w|` as a float: `hypot`, which does not overflow where the squares
+/// would (the perturbed terms of `hypercomb` pass `2**512`, and a modulus
+/// of `inf` stopped the series as if it diverged).
 fn modulus(w: &Complex) -> f64 {
     let (wr, wi) = parts(w);
-    let (a, b) = (wr.to_f64().value(), wi.to_f64().value());
-    (a * a + b * b).sqrt()
+    wr.to_f64().value().hypot(wi.to_f64().value())
 }
 
 fn raise_to(z: &Complex, wp: usize) -> Complex {
@@ -904,6 +906,21 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
     if terms.is_none() && two_f_one && size > 0.8 {
         // mpmath's _hyp2f1: the transformations outside the disc |z| <= 0.8
         return hyp2f1_continued(&ap[0], &ap[1], &bq[0], z, prec);
+    }
+    if terms.is_none() && ap.len() == bq.len() + 1 && ap.len() >= 3 && size >= 1.0 {
+        // mpmath's _hypq1fq beyond the unit circle: the 1/z transformation
+        // where mpmath takes it (|z| >= 1.1, or re(z) > 1 away from the
+        // alternate summation of 3F2 near 1); its acceleration of the
+        // series near the circle is not ported (no value)
+        let near_one: bool = modulus(&(z - &c_int(1, prec + 10))) < 0.05;
+        let re_beyond: bool = parts(z).0 > real_int(&Int::ONE, prec);
+        if *z == c_int(1, prec) {
+            return None; // Saalschütz-type sums and the poles at 1: not ported
+        }
+        if size >= 1.1 || (re_beyond && !(ap.len() == 3 && near_one)) {
+            return hypq1fq_reciprocal(ap, bq, z, prec);
+        }
+        return None;
     }
     if terms.is_none() {
         let fits: bool =
@@ -1067,6 +1084,53 @@ fn hyp2f1_continued(a: &Complex, b: &Complex, c: &Complex, z: &Complex, prec: us
         hyp2f1_gosper(&a, &b, &c, &z, wp)?
     };
     Some(raise_to(&value, prec))
+}
+
+/// `(q+1)Fq(ap; bq; z)` for `|z| > 1` by the `1/z` transformation (mpmath's
+/// `_hypq1fq`, functions.wolfram.com 07.31.06.0004): `q + 1` terms
+/// `(-z)**(-a_k)*prod gamma(b)*gamma(a_k)... * (q+1)Fq(1/z)`, through
+/// [`hypercomb`], which perturbs the parameters where two upper ones differ
+/// by an integer.
+fn hypq1fq_reciprocal(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> Option<Complex> {
+    let (p, q) = (ap.len(), bq.len());
+    let z: Complex = z.clone();
+    let function = move |args: &[Complex]| -> Vec<HyperTerm> {
+        let wp: usize = args
+            .iter()
+            .map(|v| parts(v).0.precision())
+            .max()
+            .unwrap_or(prec)
+            .max(prec);
+        let (a, b) = (&args[..p], &args[p..]);
+        let one: Complex = c_int(1, wp);
+        let zz: Complex = raise_to(&z, wp);
+        let recz: Complex = &one / &zz;
+        let negz: Complex = &c_int(0, wp) - &zz;
+        let mut terms: Vec<HyperTerm> = Vec::new();
+        for k in 0..=q {
+            let ak: &Complex = &a[k];
+            let mut gn: Vec<Complex> = b.to_vec();
+            gn.push(ak.clone());
+            gn.extend((0..=q).filter(|&j| j != k).map(|j| &a[j] - ak));
+            let mut gd: Vec<Complex> = a.to_vec();
+            gd.extend((0..q).map(|j| &b[j] - ak));
+            let mut fn_: Vec<Complex> = vec![ak.clone()];
+            fn_.extend((0..q).map(|j| &(ak - &b[j]) + &one));
+            let fd: Vec<Complex> = (0..=q).filter(|&j| j != k).map(|j| &(&one - &a[j]) + ak).collect();
+            terms.push(HyperTerm {
+                bases: vec![negz.clone()],
+                exponents: vec![&c_int(0, wp) - ak],
+                gamma_numerator: gn,
+                gamma_denominator: gd,
+                upper: fn_,
+                lower: fd,
+                argument: recz.clone(),
+            });
+        }
+        terms
+    };
+    let params: Vec<Complex> = ap.iter().chain(bq).cloned().collect();
+    hypercomb(&function, &params, prec + 10).map(|v| raise_to(&v, prec))
 }
 
 /// `2F1(a, b; c; z)` by Gosper's recurrence (mpmath's `_hyp2f1_gosper`),
