@@ -385,7 +385,25 @@ class Limit(Expr):
             if found_h is None:
                 return self
             return found_h
+        except NotImplementedError:
+            # a function with the variable in a tuple of parameters (hyper,
+            # meijerg) which has no leading term there: Gruntz's algorithm
+            # has no mrv set for it, and the limit is not found (it raised)
+            if _variable_in_parameters(e, z):
+                return self
+            raise
         return r
+
+
+def _variable_in_parameters(e: Expr, z: Symbol) -> bool:
+    """Whether a function of ``e`` has ``z`` in an argument which is not
+    an expression (the parameter tuples of ``hyper`` and ``meijerg``)."""
+    from .basic import preorder_traversal
+    for node in preorder_traversal(e):
+        if isinstance(node, Expr) and node.is_Function and any(
+                not isinstance(argument, Expr) and argument.has(z) for argument in node.args):
+            return True
+    return False
 
 
 def _shifted_variable(z: Symbol, z0: Expr, dir: str) -> Symbol:

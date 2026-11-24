@@ -25,7 +25,9 @@ of SymPy's ``_solveset`` which the callers of this package meet:
   numerator which are not roots of the denominator), an equation
   ``g(a*x + b) = c`` for an exponential, a trigonometric or a hyperbolic
   function ``g`` (the inverse images, SymPy's ``_invert_complex``, as
-  images of the integers), and an algebraic equation by
+  images of the integers), an equation ``(a*x + b)*exp(c*x + d) + e = 0``
+  by all the branches of Lambert's function (not SymPy's, which leaves a
+  ``ConditionSet``), and an algebraic equation by
   :func:`~sympy_extras.solvers.solvers.solve_equation` with the
   candidates which provably fail dropped.
 
@@ -561,6 +563,49 @@ def _periodic_real(f: Expr, x: Symbol) -> Optional[Set]:
     return found
 
 
+def _lambert(f: Expr, x: Symbol) -> Optional[Set]:
+    """``(a*x + b)*exp(c*x + d) + e = 0`` with ``a``, ``c`` and ``e`` not
+    zero and no ``x`` in the coefficients: with ``t = c*x + c*b/a`` it is
+    ``t*exp(t) = z``, ``z = -(c*e/a)*exp(c*b/a - d)``, whose solutions are
+    the values ``W_n(z)`` of the branches of Lambert's function, so that
+    ``x = (W_n(z) - c*b/a)/c`` for the integers ``n`` (the branches are
+    distinct and ``z`` is not zero). The exponentials of the terms may
+    differ by factors free of ``x`` (``exp(2*x)`` and ``exp(2*x + y)``).
+    """
+    from sympy_extras.core.function import expand
+    from sympy_extras.functions.elementary.exponential import exp, lambertw
+    from sympy_extras.polys.polytools import cancel
+    exponentials = [a for a in f.atoms(Exp) if isinstance(a, Exp) and a.has(x)]
+    if not exponentials or any(a.has(x) for a in f.atoms(Application) if not isinstance(a, Exp)) \
+            or any(isinstance(q, Pow) and q.exp.has(x) for q in f.atoms(Pow)):
+        return None
+    c = diff(_expr(exponentials[0].args[0]), x)
+    if c.has(x) or c == _ZERO:
+        return None
+    t = Dummy('t')
+    rule: dict[Basic, Basic] = {}
+    for a in exponentials:
+        shift = expand(_expr(a.args[0]) - c*x)
+        if shift.has(x):
+            return None
+        rule[a] = exp(shift)*t
+    g = expand(_expr(f.xreplace(rule)))
+    # g = (a*x + b)*t + e
+    e = _expr(g.subs(t, _ZERO))
+    slope = expand(g - e)
+    linear = cancel(slope/t)
+    if e.has(x) or e == _ZERO or linear.has(t) or expand(linear*t - slope) != _ZERO:
+        return None
+    b = _expr(linear.subs(x, _ZERO))
+    a_ = expand(linear - b)
+    quotient = cancel(a_/x)
+    if quotient.has(x) or quotient == _ZERO or expand(quotient*x - a_) != _ZERO:
+        return None
+    n = Dummy('n', integer=True)
+    z = -(c*e/quotient)*exp(c*b/quotient)
+    return image_set(Tuple(n), lambertw(z, n)/c - b/quotient, Integers)
+
+
 def _solve_complex(f: Expr, x: Symbol) -> Optional[Set]:
     from .solvers import _coefficients, _polynomial_roots, checksol, solve_equation, zero_truth
     numerator, denominator = _fraction(f)
@@ -581,6 +626,9 @@ def _solve_complex(f: Expr, x: Symbol) -> Optional[Set]:
     periodic = _periodic(f, x)
     if periodic is not None:
         return periodic
+    family = _lambert(numerator, x) if not denominator.has(x) else None
+    if family is not None:
+        return family
     if _algebraic(f, x):
         candidates = attempt(lambda: solve_equation(f, x), settings.timeout, native=True)
         if candidates is None:

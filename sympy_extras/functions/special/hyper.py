@@ -197,12 +197,19 @@ class Hyper(Expr):
         if isinstance(x0, NaN):
             x0 = limit(arg, x, Integer(0), '-' if re(cdir).is_negative is True else '+')
         if isinstance(x0, Integer) and x0 == 0:
+            # 1 when the terms of the series tend to 0: not with a parameter
+            # which is infinite at 0, nor with a lower one tending to a
+            # nonpositive integer (hyper([1], [x], x) tends to 2)
+            if _depends(self.ap + self.bq, x) and not self._continuous_parameters(x):
+                raise NotImplementedError('hyper has no _eval_as_leading_term routine for these parameters')
             return Integer(1)
         if _depends(self.ap + self.bq, x):
             # not SymPy's (it raises AttributeError, sympy/sympy#31017 C5): the
             # value at the limits of the parameters where the series converges
             # locally uniformly in them, so that the function is continuous
             value = self._value_at_parameters(x, x0)
+            if value is None:
+                value = self._pole_in_a_lower_parameter(x, x0, logx, cdir)
             if value is None:
                 raise NotImplementedError('hyper has no _eval_as_leading_term routine for these parameters')
             return value
@@ -212,6 +219,69 @@ class Hyper(Expr):
         if x in lead.free_symbols and o.contains(lead):
             raise NotImplementedError('hyper has no _eval_as_leading_term routine')
         return self
+
+    def _continuous_parameters(self, x: Symbol) -> bool:
+        """Whether the parameters are finite at ``x = 0`` and no lower one
+        is a nonpositive integer there (or may be one)."""
+        ap0 = [a.subs(x, Integer(0)) for a in self.ap]
+        bq0 = [b.subs(x, Integer(0)) for b in self.bq]
+        return all(c.is_finite is True for c in ap0 + bq0) \
+            and all(b.is_integer is False or b.is_positive is True for b in bq0)
+
+    def _pole_in_a_lower_parameter(self, x: Symbol, z0: Expr, logx: Optional[Expr], cdir: Expr) -> Optional[Expr]:
+        """The leading term at ``x = 0`` when one lower parameter ``b(x)``
+        tends to a nonpositive integer ``-m`` and the function is
+        continuous in the other parameters: the terms of the series from
+        ``z**(m + 1)`` on have the factor ``1/(b + m)``, and
+
+        ``(b + m)*hyper(ap, [b] + cq, z) -> (-1)**m*prod((a)_(m+1))*z**(m+1)
+        /(m!*(m + 1)!*prod((c)_(m+1)))*hyper(ap + m + 1, cq + m + 1 + [m + 2], z)``
+
+        (``(b)_(m+1) = (b + m)*(-1)**m*m!*(1 + O(b + m))`` and ``(b + m +
+        1)_j -> j!``). With an upper parameter which is a nonpositive
+        integer ``-j``, ``j <= m``, and does not depend on ``x``, the
+        function is a polynomial of degree ``j`` whose terms have no pole:
+        its value. ``None`` when the limit is not of these kinds (an upper
+        parameter tending to such an integer, two lower ones at
+        nonpositive integers, a series which does not converge).
+        """
+        from sympy_extras.functions.combinatorial.factorials import factorial, rf
+        from sympy_extras.functions.elementary.complexes import abs_
+        ap0 = [a.subs(x, Integer(0)) for a in self.ap]
+        bq0 = [b.subs(x, Integer(0)) for b in self.bq]
+        if x in z0.free_symbols or not all(c.is_finite is True for c in ap0 + bq0 + [z0]):
+            return None
+        unsafe = [i for i, b in enumerate(bq0) if not (b.is_integer is False or b.is_positive is True)]
+        if len(unsafe) != 1:
+            return None
+        index = unsafe[0]
+        pole = bq0[index]
+        if not isinstance(pole, Integer) or x not in self.bq[index].free_symbols:
+            return None
+        m = -pole.p
+        truncating = [(a, given) for a, given in zip(ap0, self.ap)
+                      if isinstance(a, Integer) and a.p <= 0 and -a.p <= m]
+        if truncating:
+            if any(x in given.free_symbols for _, given in truncating):
+                return None     # 0/0 in the terms
+            degree = min(-a.p for a, _ in truncating)
+            terms = [div(mul(*[rf(a, Integer(k)) for a in ap0], z0**k),
+                         mul(*[rf(b, Integer(k)) for b in bq0], factorial(Integer(k)))) for k in range(degree + 1)]
+            value = add(*terms)
+            return None if value.is_zero is True else value
+        if len(ap0) > len(bq0) + 1 or (len(ap0) == len(bq0) + 1 and (ONE - abs_(z0)).is_positive is not True):
+            return None
+        shift = Integer(m + 1)
+        others = [b for i, b in enumerate(bq0) if i != index]
+        numerator = mul(Integer(-1)**m, *[rf(a, shift) for a in ap0], z0**shift)
+        denominator = mul(factorial(Integer(m)), factorial(shift), *[rf(c, shift) for c in others])
+        from sympy_extras.simplify.hyperexpand import hyperexpand
+        # in closed form when it has one: its sign is the sign of an infinite limit
+        residue = mul(div(numerator, denominator), hyperexpand(
+            hyper([add(a, shift) for a in ap0], [add(c, shift) for c in others] + [Integer(m + 2)], z0)))
+        if residue.is_zero is True:
+            return None
+        return div(residue, add(self.bq[index], Integer(m)).as_leading_term(x, logx=logx, cdir=cdir))
 
     def _value_at_parameters(self, x: Symbol, z0: Expr) -> Optional[Expr]:
         """The function at ``x = 0`` when it is continuous there in its

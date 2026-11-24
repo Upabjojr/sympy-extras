@@ -674,6 +674,9 @@ def _uncovered_points(b: Expr, poles: list[Expr], factorials: list[Expr]) -> Opt
     upper, lower = _expr(b.args[0]), _expr(b.args[1])
     if upper.is_nonnegative is True or add(upper, mul(Integer(-1), lower)).is_negative is True:
         return []
+    if lower.is_integer is not True:
+        # a lower index which is not an integer (a symbol of no assumption is generic, as elsewhere)
+        return []
     # binomial(n', k') is 0 for a negative integer k', and k <= n < 0 is in k' < 0 for k' <= k or k' <= n
     for pole in poles:
         k_pole = _expr(pole.args[1])

@@ -112,3 +112,6 @@ def test_combsimp_of_binomials_where_the_gamma_quotient_fails() -> None:
     assert (combsimp(binomial(m, k)/binomial(m, k + 1)) - (k + 1)/(m - k)).cancel() == 0
     x = Symbol('x')
     assert combsimp(binomial(2*x + 1, x)/binomial(2*x + 1, x + 1)) == 1
+    # a lower index which is not an integer has no such point (zeilberger_sum of
+    # binomial(n, k)*binomial(n, k + a) lost its closed form)
+    assert (combsimp(binomial(n, x + 1)/binomial(n, x)) - (n - x)/(x + 1)).cancel() == 0

@@ -3906,6 +3906,96 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- A third pass over the defects reported against SymPy (sympy/sympy#31275,
+  #31017, #30902, #30900) which the earlier passes left open:
+  - `series.limitseq.limit_seq` did not return on a quotient of sums
+    (#31275 V214; SymPy's too): `dominant` and the limit of the quotient
+    of two terms with the same sums called each other without end, with
+    growing expressions. The mutual recursion is bounded (the limit is
+    then not found, `None`), a sum of geometric growth which is a factor
+    is replaced by `r/(r - 1)` times its last term (Stolz–Cesàro, `r` the
+    limit of the quotient of consecutive terms, `|r| > 1`), and the sums
+    with a closed form by it. `Sum(2**k*binomial(2*k, k)/k**2, (k, 1,
+    n))/(Sum(2**k/k**2, (k, 1, n))*Sum(binomial(2*k, k), (k, 1, n)))` has
+    the limit `3/7`, and with `2**k/k*2` (the typo of SymPy's XFAIL test)
+    `0`. **Behaviour change**: some limits of sequences with sums which
+    were `None` are found.
+  - `combsimp(binomial(2*n + 1, n)/binomial(2*n + 1, n + 1))` was `1` for
+    an integer `n` of any sign (SymPy's too); at `n = -1` it is
+    `binomial(-1, -1)/binomial(-1, 0) = 0`. `binomial(n, k)` is `0` for
+    `k <= n < 0`, where the quotient of gamma functions has a nonzero
+    limit: these points of every binomial whose upper index may be a
+    negative integer are now checked. Finitely many of them are cases,
+    `Piecewise((0, Eq(n, -1)), (1, True))`; when they are not known to be
+    covered by a zero binomial in a denominator or an infinite factorial
+    (where the expression is not finite), the expression stays, a sum
+    term by term. **Behaviour change**: `combsimp(binomial(n, k)/
+    binomial(n, k + 1))` for integers `n`, `k` of unknown sign is
+    returned as it is (it was `(k + 1)/(n - k)`, which is `0/0` at
+    `k = n = -1`, where the quotient is 0); with a nonnegative `n`, or
+    symbols which are not integers, the results are as before.
+  - `Integral.doit()` evaluates the integrals of its integrand first:
+    `Integral(Integral(x*y, x), y).doit()` stayed (the integrators do not
+    look into a node).
+  - `sympify('Integral(x**2, (x, a))')`, SymPy's antiderivative at `a`,
+    is read natively as `Subs(Integral(x**2, x), x, a)` (it was outside
+    the grammar). A symbolic order of differentiation (`Derivative(f(x),
+    (x, n))`, which the native node cannot hold) and a sum or a product
+    without bounds (which SymPy refuses too) stay outside it, and
+    `SympifyError` says why when no bridge is loaded (it was "cannot
+    parse" alone).
+  - Matrices with floats in `matrices.steps`, `normalforms`, `pencils`,
+    `riccati`, `statespace`, `markov` and `equations` follow the policy
+    of "Floating point entries" in `docs/matrices.md` (a float is the
+    rational number it stores, the algorithm is exact, the result is
+    written in floats). `steps`, `normalforms`, `pencils` and `riccati`
+    raised for floats; `statespace` rounded the products of the
+    controllability matrix, so that a pair which is not controllable as
+    stored was reported controllable and its minimal realisation was 0;
+    `MarkovChain` took a matrix whose rows have the sum 1 only after
+    rounding and `stationary_distribution` raised `ArithmeticError` (such
+    a row is divided by its exact sum). **Behaviour changes**:
+    `pencil_polynomial`, `controllability_matrix`, `transfer_function`
+    and the solutions of matrix equations are the exact values rounded
+    once, and `MarkovChain.P` of a chain given with floats is the matrix
+    as given.
+  - The eigenvalues, eigenvectors, `diagonalize` and `jordan_form` of a
+    complex matrix of floats whose characteristic polynomial has a factor
+    of degree above 2 with `I` in its coefficients raised
+    `NotImplementedError`: its roots are the isolated roots of its norm
+    which are its own.
+  - `assumptions.solve` of a system with a transcendental equation
+    raised `NotImplementedError` ("the system cannot be solved") whenever
+    the chains and the substitution of polynomial equations did not solve
+    it. Such a system is now split by the factors of its equations and
+    solved by substitution (an equation linear in an unknown, an equation
+    in one unknown): points, images of the integers, and for what stays
+    unsolved the condition set of the remaining equation with the values
+    already found. The system of sympy/sympy#22413 (#31275 V276; SymPy's
+    `nonlinsolve` returns `{(x, 0), (-exp(y) - 1/2, y)}`, which do not
+    satisfy the second equation) has `(LambertW(-exp(2)/2, n)/2 - 1, 0)`
+    for the integers `n` and a `ConditionSet` with `x = -exp(y) - 1/2`.
+    `solvers.solveset` over the complex numbers solves `(a*x + b)*exp(c*x
+    + d) + e = 0` by all the branches of Lambert's function (it was a
+    `ConditionSet`). **Behaviour change**: these calls return sets where
+    they raised or returned a `ConditionSet`.
+  - `limit` of `hyper` where a lower parameter tends to a nonpositive
+    integer `-m` raised `NotImplementedError` from the mrv set: the
+    function has a simple pole there, and its leading term is the residue
+    `(-1)**m*prod((a)_(m+1))*z**(m+1)/(m!*(m+1)!*prod((c)_(m+1)))*hyper(a +
+    m + 1; c + m + 1, m + 2; z)` over the leading term of the parameter
+    plus `m` (`limit(hyper([1], [x], 1/2), x, 0)` is `oo`, `limit(x*hyper(
+    [1], [x], 1/2), x, 0)` is `exp(1/2)/2`); a polynomial (an upper
+    parameter `-j`, `j <= m`) has its value. `hyper(...).as_leading_term`
+    no longer answers `1` for an argument tending to 0 together with such
+    a lower parameter (`hyper([1], [x], x)` tends to 2). A limit of a
+    function with the variable in a parameter which has no leading term
+    is returned unevaluated instead of raising.
+  The items of sympy/sympy#31017 and of the explicit matrices of
+  sympy/sympy#30900 were probed again on the native code, one by one: no
+  other difference from the expected values was found (matrix and array
+  expressions, the subject of sympy/sympy#30902, do not exist here).
+
 - `sympy_extras.interop`: **an object of SymPy without arguments keeps
   its data** in its wrapper. `Str('A')`, the name of a `MatrixSymbol`,
   was rebuilt as `Str()`: `from_sympy(MatrixSymbol('A', 2, 2)).args`

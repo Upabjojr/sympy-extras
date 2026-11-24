@@ -237,7 +237,7 @@ def test_integral_with_one_bound_is_the_antiderivative_at_it() -> None:
     # substitution in the indefinite integral, which the native nodes have
     from sympy_extras.core import Subs
     from sympy_extras.integrals.integral import Integral
-    x, y, a = Symbol('x'), Symbol('y'), Symbol('a')
+    x, a = Symbol('x'), Symbol('a')
     read = parse('Integral(x**2, (x, a))')
     assert read == Subs(Integral(x**2, x), x, a) and read.free_symbols == {a}
     assert read.doit() == a**3/3 == as_expr(sympify(str(sympy.Integral(sympy.Symbol('x')**2,

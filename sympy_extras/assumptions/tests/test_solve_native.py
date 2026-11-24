@@ -136,3 +136,60 @@ def test_a_point_real_only_where_the_condition_fails() -> None:
     x, y, p, q = Symbol('x'), Symbol('y'), Symbol('p'), Symbol('q')
     assert solve(x**2 + y**2, x, [x > p, x < q, p > 0, q > 0], domain=Reals) == EmptySet
     assert isinstance(solve(x**2 + y**2, x, [x > p, x < q, p < 0, q > 0], domain=Reals), ConditionSet)
+
+
+def test_sympy_issue_31275_V276_system_with_transcendental_equations() -> None:
+    # "the system cannot be solved" (NotImplementedError); SymPy's nonlinsolve returns {(x, 0),
+    # (-exp(y) - 1/2, y)}, which its own test pins: neither satisfies the second equation
+    # (sympy/sympy#22413). The solutions are (LambertW(-exp(2)/2, n)/2 - 1, 0) and, with
+    # x = -exp(y) - 1/2, those of an equation in y alone
+    import cmath
+    first = 4*y*(2*x + 2*exp(y) + 1)*exp(2*x)
+    second = 4*x*exp(2*x) + 4*y*exp(2*x + y) + 4*exp(2*x + y) + 1
+    found = solve([Eq(first, 0), Eq(second, 0)], [x, y])
+    assert isinstance(found, Union)
+    families = [s for s in found.sets if isinstance(s, ImageSet)]
+    conditions = [s for s in found.sets if isinstance(s, ConditionSet)]
+    assert len(families) == 1 and len(conditions) == 1 and len(found.sets) == 2
+    n = families[0].variables[0]
+    image = families[0].image
+    assert isinstance(image, Tuple) and image.args[1] == 0
+    for k in range(-2, 3):
+        values: dict[Basic, Basic] = {x: as_expr(image.args[0]).subs(n, k), y: Integer(0)}
+        assert _vanishes(first, values) and _vanishes(second, values)
+    # a solution with y != 0, found numerically (Newton's method on the second equation at
+    # x = -exp(y) - 1/2): it satisfies the condition of the set, and the condition has the first equation
+    from sympy_extras.core import Float
+    point = complex(1.0407812886383698, 1.218274716694042)
+    y0 = Float(point.real) + Float(point.imag)*I
+    x0 = Float((-cmath.exp(point) - 0.5).real) + Float((-cmath.exp(point) - 0.5).imag)*I
+    relations = conditions[0].condition.args
+    assert Eq(x, -exp(y) - Rational(1, 2)) in relations and len(relations) == 2
+    for relation in relations:
+        assert isinstance(relation, Eq)
+        residual = as_expr(relation.lhs - relation.rhs).subs(x, x0).subs(y, y0)
+        assert abs(complex(residual.evalf(20))) < 1e-12
+    assert abs(complex(second.subs(x, x0).subs(y, y0).evalf(20))) < 1e-12
+    # over the reals the first family is empty
+    real = solve([Eq(first, 0), Eq(second, 0)], [x, y], domain=Reals)
+    assert isinstance(real, ConditionSet)
+
+
+def test_systems_by_factors_and_substitution() -> None:
+    # NotImplementedError before for every system with a transcendental equation
+    found = solve([Eq(sin(x), 0), Eq(y, x)], [x, y])
+    assert isinstance(found, Union) and all(isinstance(s, ImageSet) for s in found.sets)
+    for s in found.sets:
+        assert isinstance(s, ImageSet) and isinstance(s.image, Tuple)
+        for k in (-1, 0, 2):
+            px, py = [as_expr(c).subs(s.variables[0], k) for c in s.image.args]
+            assert sin(px) == 0 and px == py
+    assert solve([Eq(exp(x), 2), Eq(y, x - log(2))], [x, y], domain=Reals) == point_set(Tuple(log(2), Integer(0)))
+    # the points which are not in the domain or fail a condition are dropped
+    assert solve([Eq(exp(x), 2), Eq(y, log(x - 1))], [x, y], domain=Reals) == EmptySet
+    assert solve([Eq(x*exp(y), 0), Eq(x + y, 1), x > 0], [x, y]) == EmptySet
+    assert solve([Eq(exp(x) + y, 0), Eq(exp(x) + y, 1)], [x, y]) == EmptySet
+    # a factor which is solved and one which is not
+    mixed = solve([Eq(y*(x - exp(y)), 0), Eq(x + y, 1)], [x, y])
+    assert isinstance(mixed, Union) and point_set(Tuple(Integer(1), Integer(0))) in mixed.sets
+    assert any(isinstance(s, ConditionSet) for s in mixed.sets)

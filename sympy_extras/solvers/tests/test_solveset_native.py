@@ -3,7 +3,7 @@
 or hand computations, the elements checked by substitution."""
 from __future__ import annotations
 
-from sympy_extras.core import Eq, I, Ne, Rational, Symbol, oo, pi, sqrt
+from sympy_extras.core import Eq, I, Ne, Rational, Symbol, as_expr, oo, pi, sqrt
 from sympy_extras.functions import cos, exp, log, sin, sinh, tan, zeta
 from sympy_extras.sets import Complexes, ConditionSet, EmptySet, FiniteSet, ImageSet, Interval, Reals
 from sympy_extras.sets.sets import Union, interval
@@ -68,3 +68,32 @@ def test_periodic_and_logarithmic_real_equations() -> None:
     assert solveset(Eq(log(x) + log(x - 1), log(2)), x, Reals) == FiniteSet(2)
     assert isinstance(solveset(Eq(cos(x/2), 0), x, Reals), Union)
     assert solveset(Eq(tan(x), 1), x, Reals) != EmptySet
+
+
+def test_branches_of_lambert_function_over_the_complex_numbers() -> None:
+    # (a*x + b)*exp(c*x + d) + e = 0 was a ConditionSet over the complex numbers: the solutions are
+    # (W_n(z) - c*b/a)/c for the branches of Lambert's function (found with sympy/sympy#31275 V276)
+    import mpmath
+    y = Symbol('y')
+    equations = [4*x*exp(2*x) + 4*exp(2*x) + 1, x*exp(x) - 1, (3*x - 2)*exp(1 - x/2) + 5,
+                 x*exp(x + y) + 2*exp(x) - y, x*exp(x) - a]
+    for f in equations:
+        found = solveset(Eq(f, 0), x, Complexes)
+        assert isinstance(found, ImageSet), f
+        index = found.variables[0]
+        image = as_expr(found.image)
+        assert image.has(index)
+        for k in range(-3, 4):
+            value = image.subs(index, k).subs(y, 2).subs(a, 3)
+            assert abs(complex(f.subs(x, value).subs(y, 2).subs(a, 3).evalf(30))) < 1e-20, (f, k)
+    # the branches of x*exp(x) = 1 against mpmath's
+    found = solveset(Eq(x*exp(x) - 1, 0), x, Complexes)
+    assert isinstance(found, ImageSet)
+    for k in (-2, -1, 0, 1, 2):
+        branch = as_expr(found.image).subs(found.variables[0], k)
+        assert abs(complex(branch.evalf(20)) - complex(mpmath.lambertw(1, k))) < 1e-12
+    # not of this form: unsolved as before
+    assert isinstance(solveset(Eq(x**2*exp(x) - 1, 0), x, Complexes), ConditionSet)
+    assert isinstance(solveset(Eq(x*exp(x) + x - 1, 0), x, Complexes), ConditionSet)
+    # over the reals the real branches, as before
+    assert solveset(Eq(4*x*exp(2*x) + 4*exp(2*x) + 1, 0), x, Reals) == EmptySet
