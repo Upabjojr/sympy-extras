@@ -625,6 +625,17 @@ def test_every_sympy_object_converts() -> None:
     assert from_sympy(sympy.Sum(sx, (sx, 1, 10))).doit() == 55
 
 
+def test_derivative_with_an_integer_count() -> None:
+    # (x, Integer(2)) as a plain tuple: the count was kept as an Integer, so args held
+    # Integer(Integer(2)), whose sort key failed (a TypeError of Fraction)
+    x = Symbol('x')
+    f = Function('f')(x)
+    d = untyped(Derivative)(f, (x, Integer(2)))
+    assert isinstance(d, Derivative) and d == f.diff(x, 2) and d.variable_count == ((x, 2),)
+    assert sorted([d, f], key=lambda e: e.sort_key()) == sorted([f.diff(x, 2), f], key=lambda e: e.sort_key())
+    raises(TypeError, lambda: untyped(Derivative)(f, (x, Rational(1, 2))))
+
+
 def test_a_wrapped_integral_differentiates() -> None:
     # the derivative of a wrapped unevaluated Integral(f, x) by x was the
     # unevaluated Derivative(Integral(f, x), x) (the native linear ODE

@@ -2133,7 +2133,7 @@ fn soft_failure(e: &PolyError) -> bool {
 /// Whether `value` is zero: exactly for the rational functions and the
 /// algebraic numbers (by their minimal polynomial), numerically at 30
 /// digits for the other numbers (`_is_zero`).
-fn is_zero(value: &Basic) -> PolyResult<bool> {
+pub(crate) fn is_zero(value: &Basic) -> PolyResult<bool> {
     if *value == Basic::zero() {
         return Ok(true);
     }
@@ -2235,7 +2235,7 @@ fn rank(rows: &[Vec<Basic>]) -> PolyResult<usize> {
 
 /// A solution of `rows * x = rhs` (the free unknowns zero), `None` when
 /// there is none (`_solve_linear`).
-fn solve_linear(rows: &[Vec<Basic>], rhs: &[Basic], columns: usize) -> PolyResult<Option<Vec<Basic>>> {
+pub(crate) fn solve_linear(rows: &[Vec<Basic>], rhs: &[Basic], columns: usize) -> PolyResult<Option<Vec<Basic>>> {
     if rows.is_empty() {
         return Ok(Some(vec![Basic::zero(); columns]));
     }

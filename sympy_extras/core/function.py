@@ -36,6 +36,7 @@ References
 from __future__ import annotations
 
 import inspect
+import operator
 
 import mpmath
 from fractions import Fraction
@@ -911,7 +912,8 @@ class Derivative(Expr):
             if isinstance(v, Tuple):
                 counts.append(_as_count(v))
             elif isinstance(v, tuple):
-                counts.append((v[0], v[1]))
+                # an Integer count is kept as an int: Tuple(s, Integer(n)) of args is not nested
+                counts.append((v[0], operator.index(v[1])))
             else:
                 if not after_symbol:
                     raise TypeError("the count %s must follow a symbol" % (v,))

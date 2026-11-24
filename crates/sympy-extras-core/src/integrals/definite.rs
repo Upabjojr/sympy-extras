@@ -4375,24 +4375,37 @@ impl Integrator {
         if !self.parametric || depth > 1 {
             return Ok(None);
         }
-        if self.one_parameter(f, x, a, b).len() != 1 {
+        let parameters: Vec<Basic> = self.one_parameter(f, x, a, b);
+        if parameters.len() != 1 || !crate::integrals::telescoping::is_hyperexponential(f, x, &parameters[0])? {
             return Ok(None);
         }
-        Err(crate::error::not_ported(
-            "integrals/telescoping and integrals/reduction (holonomic_integral)",
-        ))
+        // the reduction-based telescoper first (minimal order, no bound on
+        // the certificate), the ansatz as the fallback
+        let t: &Basic = &parameters[0];
+        let mut found: Option<ConditionalValue> =
+            crate::integrals::reduction::reduction_integral(f, x, a, b, t, &self.assumptions)?;
+        if found.is_none() {
+            found = crate::integrals::telescoping::holonomic_integral(f, x, a, b, t, &self.assumptions)?;
+        }
+        self.finish(found)
     }
 
     fn dfinite(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {
         if !self.parametric || depth > 1 {
             return Ok(None);
         }
-        if self.one_parameter(f, x, a, b).len() != 1 {
+        let parameters: Vec<Basic> = self.one_parameter(f, x, a, b);
+        if parameters.len() != 1 || crate::integrals::telescoping::is_hyperexponential(f, x, &parameters[0])? {
             return Ok(None);
         }
-        Err(crate::error::not_ported(
-            "integrals/dfinite and integrals/telescoping (dfinite_integral)",
-        ))
+        self.finish(crate::integrals::dfinite::dfinite_integral(
+            f,
+            x,
+            a,
+            b,
+            &parameters[0],
+            &self.assumptions,
+        )?)
     }
 
     fn parametric_method(&self, f: &Basic, x: &Basic, a: &Basic, b: &Basic, depth: usize) -> OptCV {

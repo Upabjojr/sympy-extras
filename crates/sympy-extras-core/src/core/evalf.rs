@@ -428,8 +428,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::special::bessel::bessel_value(*g, &values, prec)
         }
-        // mpmath's meijerg is not ported
-        Head::MeijerG => None,
+        Head::MeijerG => crate::functions::special::hyper::meijerg_node_value(e, prec),
         Head::Function(
             g @ (super::basic::Function::Legendre
             | super::basic::Function::ChebyshevT

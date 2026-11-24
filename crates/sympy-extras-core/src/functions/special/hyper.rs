@@ -13,8 +13,9 @@
 //!
 //! Values: `hyper` by its defining series where it converges (`p <= q`
 //! for a moderate argument, `p = q + 1` for `|z| < 3/4`, a terminating
-//! series); mpmath's continuations, `meijerg` and `appellf1` values are not
-//! ported (no value). Not ported either: the series (`nseries`,
+//! series), `meijerg` by Slater's theorem (mpmath's `meijerg` and
+//! `hypercomb`: the parameters perturbed at poles); mpmath's continuations
+//! and `appellf1` values are not ported (no value). Not ported either: the series (`nseries`,
 //! `as_leading_term`), `hyperexpand`, and the `simplify` of the
 //! parameter differences (`sub` only: the differences of polynomial
 //! parameters are already canonical).
@@ -28,7 +29,7 @@
 use crate::core::add::{add, sub};
 use crate::core::assumptions::{FactList, Predicate};
 use crate::core::basic::{Basic, Function, Head};
-use crate::core::evalf::{complex, parts, real_int, Complex, Real};
+use crate::core::evalf::{complex, complex_real, parts, real_int, real_rat, Complex, Real};
 use crate::core::expr::is_true;
 use crate::core::mul::{div, mul};
 use crate::core::parameters::evaluate;
@@ -810,6 +811,351 @@ pub fn hyper_node_value(e: &Basic, prec: usize) -> Option<Complex> {
         .collect::<Option<_>>()?;
     let z: Complex = numeric_value(&e.args()[2], wp)?;
     hyper_value(&ap, &bq, &z, prec)
+}
+
+// ---------------------------------------------------------------------
+// meijerg values
+// ---------------------------------------------------------------------
+
+/// One term of a combination of hypergeometric functions,
+/// `prod w_i**c_i * prod gamma(alpha_j) / prod gamma(beta_k) * pFq(upper; lower; argument)`
+/// (the terms of mpmath's `hypercomb`).
+struct HyperTerm {
+    bases: Vec<Complex>,
+    exponents: Vec<Complex>,
+    gamma_numerator: Vec<Complex>,
+    gamma_denominator: Vec<Complex>,
+    upper: Vec<Complex>,
+    lower: Vec<Complex>,
+    argument: Complex,
+}
+
+/// `floor(log2|x|) + 1`, `-inf` at zero (mpmath's `mag`).
+fn magnitude(x: &Real) -> f64 {
+    if *x == Real::ZERO {
+        return f64::NEG_INFINITY;
+    }
+    x.to_f64().value().abs().log2().floor() + 1.0
+}
+
+/// The magnitude of a complex number, the larger of its parts'.
+fn complex_magnitude(z: &Complex) -> f64 {
+    let (re, im) = parts(z);
+    magnitude(&re).max(magnitude(&im))
+}
+
+fn is_zero_value(z: &Complex) -> bool {
+    let (re, im) = parts(z);
+    re == Real::ZERO && im == Real::ZERO
+}
+
+/// The nearest integer to `x` (halves away from zero) and the magnitude of
+/// the distance to it, `-inf` for an integer (mpmath's `nint_distance`).
+fn nint_distance(x: &Complex) -> (i64, f64) {
+    let (re, im) = parts(x);
+    let imaginary: f64 = if im == Real::ZERO {
+        f64::NEG_INFINITY
+    } else {
+        magnitude(&im)
+    };
+    let half: Real = real_rat(&crate::numbers::rat(1, 2), re.precision().max(64));
+    let negative: bool = re < Real::ZERO;
+    let size: Real = if negative { -re.clone() } else { re.clone() };
+    let nearest: Real = (size + half).floor();
+    let nearest: Real = if negative { -nearest } else { nearest };
+    let distance: Real = re - nearest.clone();
+    let n: i64 = nearest.to_f64().value() as i64;
+    (n, magnitude(&distance).max(imaginary))
+}
+
+/// `(perturb, recompute, extra precision, discarded terms)`: the poles of
+/// the gamma factors and of the lower parameters (a term with more poles in
+/// its reciprocal gammas than elsewhere is zero), a zero base to a power of
+/// nonpositive real part (mpmath's `_check_need_perturb`).
+fn check_need_perturb(terms: &[HyperTerm]) -> (bool, bool, usize, Vec<usize>) {
+    let (mut perturb, mut recompute) = (false, false);
+    let mut extra: usize = 0;
+    let mut discard: Vec<usize> = Vec::new();
+    for (index, term) in terms.iter().enumerate() {
+        let mut singular_weight: bool = false;
+        for (w, c) in term.bases.iter().zip(&term.exponents) {
+            if is_zero_value(w) && parts(c).0 <= Real::ZERO && !is_zero_value(c) {
+                perturb = true;
+                recompute = true;
+                singular_weight = true;
+            }
+        }
+        let mut poles: [usize; 3] = [0, 0, 0];
+        for (kind, data) in [&term.gamma_numerator, &term.gamma_denominator, &term.lower]
+            .iter()
+            .enumerate()
+        {
+            for x in data.iter() {
+                let (n, d) = nint_distance(x);
+                if n > 0 {
+                    continue;
+                }
+                if d == f64::NEG_INFINITY {
+                    // a pole of a lower parameter is harmless when an upper
+                    // one terminates the series before it
+                    let polynomial: bool = kind == 2
+                        && term
+                            .upper
+                            .iter()
+                            .any(|u| nonpositive_integer(u).is_some_and(|v| v >= n));
+                    if !polynomial {
+                        poles[kind] += 1;
+                    }
+                } else if d < -4.0 {
+                    extra += (-d) as usize;
+                    recompute = true;
+                }
+            }
+        }
+        if poles[1] > poles[0] + poles[2] && !singular_weight {
+            discard.push(index);
+        } else if poles.iter().sum::<usize>() > 0 {
+            perturb = true;
+            recompute = true;
+        }
+    }
+    (perturb, recompute, extra, discard)
+}
+
+/// `w**c` on the principal branch, `0**c = 0` for a positive real part;
+/// `None` for zero to a power of nonpositive real part (mpmath raises).
+fn complex_power(w: &Complex, c: &Complex, wp: usize) -> Option<Complex> {
+    if is_zero_value(c) {
+        return Some(c_int(1, wp));
+    }
+    if is_zero_value(w) {
+        return if parts(c).0 > Real::ZERO {
+            Some(c_int(0, wp))
+        } else {
+            None
+        };
+    }
+    Some((c * &w.ln()).exp())
+}
+
+/// The value of one term at the working precision; `None` where a
+/// factor has no value.
+fn term_value(term: &HyperTerm, wp: usize) -> Option<Complex> {
+    use crate::functions::special::gamma_numeric::gamma;
+    let mut v: Complex = hyper_value(&term.upper, &term.lower, &term.argument, wp)?;
+    for a in &term.gamma_numerator {
+        v = &v * &gamma(a, wp)?;
+    }
+    for b in &term.gamma_denominator {
+        match gamma(b, wp) {
+            Some(g) => v = &v / &g,
+            None => return Some(c_int(0, wp)), // 1/gamma at a pole
+        }
+    }
+    for (w, c) in term.bases.iter().zip(&term.exponents) {
+        v = &v * &complex_power(w, c, wp)?;
+    }
+    Some(v)
+}
+
+/// A sum of hypergeometric terms given by `function` of the parameters,
+/// to `prec` bits: the working precision raised until the cancellation
+/// between the terms is paid for, and the parameters perturbed by tiny
+/// independent amounts where gamma factors or lower parameters hit poles
+/// (the limit then taken by comparing two perturbations). The method of
+/// mpmath's `hypercomb` (F. Johansson, BSD license), whose control flow
+/// this follows so that the values agree; `None` beyond its maximum
+/// precision, or where a hypergeometric term has no value here.
+fn hypercomb(function: &dyn Fn(&[Complex]) -> Vec<HyperTerm>, params: &[Complex], prec: usize) -> Option<Complex> {
+    let orig: usize = prec;
+    let maxprec: usize = (1000.0 * (orig as f64).powf(0.25) + 4.0 * orig as f64) as usize;
+    let mut wp: usize = orig;
+    let mut hextra: usize = 0;
+    let mut reference: Option<Complex> = None;
+    loop {
+        wp += 10;
+        if wp > maxprec {
+            return None;
+        }
+        let orig2: usize = wp;
+        let mut values: Vec<Complex> = params.iter().map(|p| raise_to(p, wp)).collect();
+        let mut terms: Vec<HyperTerm> = function(&values);
+        let (perturb, recompute, extra, discard) = check_need_perturb(&terms);
+        wp += extra;
+        if perturb {
+            let hmag: usize = orig + 10 + hextra;
+            wp = orig2 + 10 + hmag + 10;
+            let mut h: Complex = &c_int(1, wp) / &complex_real(real_int(&(Int::ONE << hmag), wp), wp);
+            for (k, v) in values.iter_mut().enumerate() {
+                *v = &raise_to(v, wp) + &h;
+                // independent perturbations, so that two do not cancel
+                h = &h + &(&h / &c_int(k as i64 + 1, wp));
+            }
+        }
+        if recompute {
+            terms = function(&values);
+        }
+        let terms: Vec<HyperTerm> = terms
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| !discard.contains(i))
+            .map(|(_, t)| t)
+            .collect();
+        if terms.is_empty() {
+            return Some(c_int(0, prec));
+        }
+        let mut evaluated: Vec<Complex> = Vec::new();
+        for term in &terms {
+            evaluated.push(term_value(term, wp)?);
+        }
+        if evaluated.len() == 1 && !perturb {
+            return Some(raise_to(&evaluated[0], prec));
+        }
+        let mut total: Complex = c_int(0, wp);
+        for v in &evaluated {
+            total = &total + v;
+        }
+        let largest: f64 = evaluated
+            .iter()
+            .map(complex_magnitude)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let cancellation: f64 = largest - complex_magnitude(&total);
+        let precision_ok: bool = cancellation < (wp - orig) as f64;
+        if (precision_ok && !perturb) || cancellation.is_nan() {
+            return Some(raise_to(&total, prec));
+        } else if precision_ok {
+            match &reference {
+                None => {
+                    hextra += 20;
+                    reference = Some(total);
+                    continue;
+                }
+                Some(r) => {
+                    if complex_magnitude(&(&total - r)) <= complex_magnitude(&total) - orig as f64 {
+                        return Some(raise_to(&total, prec));
+                    }
+                    hextra *= 2;
+                    reference = Some(total);
+                }
+            }
+        } else {
+            let increment: f64 = cancellation.max((orig / 2) as f64).min(extra.max(orig) as f64);
+            wp += increment as usize;
+        }
+    }
+}
+
+/// `G^{m,n}_{p,q}(an, aother; bm, bother | z)` to `prec` bits by Slater's
+/// theorem: the sum of `m` hypergeometric `pF(q-1)` of `z` when `p < q`
+/// (or `p = q`, `|z| <= 1` or `m + n < p`), of `n` `qF(p-1)` of `1/z`
+/// otherwise, through [`hypercomb`] (mpmath's `meijerg` with `r = 1`).
+pub fn meijerg_value(
+    an: &[Complex],
+    aother: &[Complex],
+    bm: &[Complex],
+    bother: &[Complex],
+    z: &Complex,
+    prec: usize,
+) -> Option<Complex> {
+    let (n, m) = (an.len(), bm.len());
+    let p: usize = n + aother.len();
+    let q: usize = m + bother.len();
+    let first_series: bool = match p.cmp(&q) {
+        std::cmp::Ordering::Less => true,
+        std::cmp::Ordering::Greater => false,
+        std::cmp::Ordering::Equal => !(m + n == p && modulus(z) > 1.0),
+    };
+    let z: Complex = z.clone();
+    let function = |args: &[Complex]| -> Vec<HyperTerm> {
+        let wp: usize = args
+            .iter()
+            .map(|v| parts(v).0.precision())
+            .max()
+            .unwrap_or(prec)
+            .max(prec);
+        let (a, b) = (&args[..p], &args[p..]);
+        let one: Complex = c_int(1, wp);
+        let zz: Complex = raise_to(&z, wp);
+        let mut terms: Vec<HyperTerm> = Vec::new();
+        if first_series {
+            let sign: Complex = c_int(
+                if (p as i64 - m as i64 - n as i64).rem_euclid(2) == 0 {
+                    1
+                } else {
+                    -1
+                },
+                wp,
+            );
+            for k in 0..m {
+                let mut gn: Vec<Complex> = (0..m).filter(|&j| j != k).map(|j| &b[j] - &b[k]).collect();
+                gn.extend((0..n).map(|j| &(&one - &a[j]) + &b[k]));
+                let mut gd: Vec<Complex> = (n..p).map(|j| &a[j] - &b[k]).collect();
+                gd.extend((m..q).map(|j| &(&one - &b[j]) + &b[k]));
+                terms.push(HyperTerm {
+                    bases: vec![zz.clone()],
+                    exponents: vec![b[k].clone()],
+                    gamma_numerator: gn,
+                    gamma_denominator: gd,
+                    upper: (0..p).map(|j| &(&one - &a[j]) + &b[k]).collect(),
+                    lower: (0..q).filter(|&j| j != k).map(|j| &(&one - &b[j]) + &b[k]).collect(),
+                    argument: &sign * &zz,
+                });
+            }
+        } else {
+            let sign: Complex = c_int(
+                if (q as i64 - m as i64 - n as i64).rem_euclid(2) == 0 {
+                    1
+                } else {
+                    -1
+                },
+                wp,
+            );
+            for k in 0..n {
+                let mut gn: Vec<Complex> = (0..n).filter(|&j| j != k).map(|j| &a[k] - &a[j]).collect();
+                gn.extend((0..m).map(|j| &(&one - &a[k]) + &b[j]));
+                let mut gd: Vec<Complex> = (m..q).map(|j| &a[k] - &b[j]).collect();
+                gd.extend((n..p).map(|j| &(&one - &a[k]) + &a[j]));
+                terms.push(HyperTerm {
+                    bases: vec![zz.clone()],
+                    exponents: vec![&a[k] - &one],
+                    gamma_numerator: gn,
+                    gamma_denominator: gd,
+                    upper: (0..q).map(|j| &(&one - &a[k]) + &b[j]).collect(),
+                    lower: (0..p).filter(|&j| j != k).map(|j| &(&one + &a[j]) - &a[k]).collect(),
+                    argument: &sign / &zz,
+                });
+            }
+        }
+        terms
+    };
+    let params: Vec<Complex> = an.iter().chain(aother).chain(bm).chain(bother).cloned().collect();
+    let value: Complex = hypercomb(&function, &params, prec)?;
+    // real parameters and a positive argument: mpmath works with reals
+    let real: bool = params
+        .iter()
+        .chain(std::iter::once(&z))
+        .all(|v| parts(v).1 == Real::ZERO)
+        && parts(&z).0 > Real::ZERO;
+    if real {
+        return Some(complex(parts(&value).0, real_int(&Int::ZERO, prec)));
+    }
+    Some(value)
+}
+
+/// The value of a `MeijerG` node, as the Python's `_numeric_node`: its
+/// parameters and argument at the precision, then [`meijerg_value`].
+pub fn meijerg_node_value(e: &Basic, prec: usize) -> Option<Complex> {
+    use crate::core::evalf::numeric_value;
+    let lists: Vec<Vec<Complex>> = meijerg_lists(e)
+        .iter()
+        .map(|l| {
+            l.iter()
+                .map(|v| numeric_value(v, prec))
+                .collect::<Option<Vec<Complex>>>()
+        })
+        .collect::<Option<_>>()?;
+    let z: Complex = numeric_value(&e.args()[2], prec)?;
+    meijerg_value(&lists[0], &lists[1], &lists[2], &lists[3], &z, prec)
 }
 
 // ---------------------------------------------------------------------

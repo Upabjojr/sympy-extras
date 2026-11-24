@@ -6554,6 +6554,360 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                 }
             }
         }
+        "ode" => {
+            // (dsolve_linear, equation, f, kovacic, dsolve, special) -> Tuple of solutions;
+            // (dsolve_kovacic, equation, f, _, _, special) -> Tuple | NONE;
+            // (liouvillian_solution, r, x) -> Tuple(case, omega | NONE, polynomial, solution) | NONE;
+            // (special_solutions, equation, f) -> Tuple | NONE
+            use sympy_extras_core::solvers::{kovacic as kv, linear_ode as lo, special as sp};
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let flag = |b: &Basic| b.to_string() == "yes";
+            match a[0].to_string().as_str() {
+                "dsolve_linear" => {
+                    tuple(lo::dsolve_linear(&a[1], &a[2], flag(&a[3]), flag(&a[4]), flag(&a[5])).map_err(e)?)
+                }
+                "dsolve_kovacic" => match kv::dsolve_kovacic(&a[1], &a[2], flag(&a[5])).map_err(e)? {
+                    Some(v) => tuple(v),
+                    None => none(),
+                },
+                "liouvillian_solution" => match kv::liouvillian_solution(&a[1], &a[2]).map_err(e)? {
+                    Some(s) => tuple(vec![
+                        Basic::int(s.case as i64),
+                        s.omega.unwrap_or_else(none),
+                        s.omega_polynomial,
+                        s.solution,
+                    ]),
+                    None => none(),
+                },
+                _ => match sp::special_solutions(&a[1], &a[2]).map_err(e)? {
+                    Some(v) => tuple(v),
+                    None => none(),
+                },
+            }
+        }
+        "telescoping" => {
+            // (almkvist_zeilberger | reduction_telescoper | chyzak, f, x, t, NONE, NONE, o1, o2) ->
+            // Tuple(Tuple(a_j), certificate) | NONE; (annihilators, f, x, t, ...) -> Tuple(Tuple(L_x),
+            // Tuple(L_t)) | NONE; (hermite_reduce, p, q, x, t | NONE, ...) -> Tuple(g, r);
+            // (holonomic_ode | holonomic_integral | reduction_integral | dfinite_integral, f, x, a, b, t,
+            // Tuple(assumptions), _) -> Eq | Tuple(value, condition) | NONE
+            use sympy_extras_core::integrals::{dfinite as df, reduction as rd, telescoping as ts};
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let small = |b: &Basic| -> usize { b.to_string().parse().unwrap_or(0) };
+            let cv = |found: Option<sympy_extras_core::integrals::conditions::ConditionalValue>| match found {
+                Some(c) => tuple(vec![c.value, c.condition]),
+                None => none(),
+            };
+            let differential = |found: Option<ts::DifferentialTelescoper>| match found {
+                Some(t) => tuple(vec![tuple(t.coefficients), t.certificate]),
+                None => none(),
+            };
+            match a[0].to_string().as_str() {
+                "almkvist_zeilberger" => {
+                    differential(ts::almkvist_zeilberger(&a[1], &a[2], &a[3], small(&a[6]), small(&a[7])).map_err(e)?)
+                }
+                "reduction_telescoper" => {
+                    differential(rd::reduction_telescoper(&a[1], &a[2], &a[3], small(&a[6])).map_err(e)?)
+                }
+                "chyzak" => match df::chyzak(&a[1], &a[2], &a[3], small(&a[6]), small(&a[7])).map_err(e)? {
+                    Some(t) => tuple(vec![
+                        tuple(t.coefficients),
+                        tuple(t.certificate.into_iter().map(|(b, g)| tuple(vec![b, g])).collect()),
+                    ]),
+                    None => none(),
+                },
+                "annihilators" => match df::annihilators(&a[1], &a[2], &a[3]).map_err(e)? {
+                    Some((lx, lt)) => tuple(vec![tuple(lx.coefficients), tuple(lt.coefficients)]),
+                    None => none(),
+                },
+                "hermite_reduce" => {
+                    let t: Option<&Basic> = if a[4] == none() { None } else { Some(&a[4]) };
+                    let (g, r) = rd::hermite_reduce(&a[1], &a[2], &a[3], t).map_err(e)?;
+                    tuple(vec![g, r])
+                }
+                name => {
+                    let assumptions: Vec<Basic> = a[6].args().to_vec();
+                    let (f, x, lo, hi, t) = (&a[1], &a[2], &a[3], &a[4], &a[5]);
+                    match name {
+                        "holonomic_ode" => ts::holonomic_ode(f, x, lo, hi, t, &assumptions, "I")
+                            .map_err(e)?
+                            .unwrap_or_else(none),
+                        "holonomic_integral" => cv(ts::holonomic_integral(f, x, lo, hi, t, &assumptions).map_err(e)?),
+                        "reduction_integral" => cv(rd::reduction_integral(f, x, lo, hi, t, &assumptions).map_err(e)?),
+                        _ => cv(df::dfinite_integral(f, x, lo, hi, t, &assumptions).map_err(e)?),
+                    }
+                }
+            }
+        }
+        "first_order" => {
+            // (name, args...): the functions of solvers/first_order, abel,
+            // second_order, ode and darboux; results as Tuples of their
+            // fields, NONE for None, True/False for booleans; flags yes/no
+            use sympy_extras_core::solvers::{
+                abel as ab, darboux as db, first_order as fo, ode as od, second_order as so,
+            };
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let flag = |b: &Basic| b.to_string() == "yes";
+            let opt = |v: Option<Basic>| v.unwrap_or_else(none);
+            let boolean = |b: bool| {
+                if b {
+                    sympy_extras_core::core::logic::true_()
+                } else {
+                    sympy_extras_core::core::logic::false_()
+                }
+            };
+            let number = |b: &Basic| -> i64 { b.to_string().parse::<i64>().unwrap_or(0) };
+            let coefficients = |b: &Basic| -> ab::Coefficients {
+                let c = b.args();
+                (c[0].clone(), c[1].clone(), c[2].clone(), c[3].clone())
+            };
+            let extension = |b: &Basic| if b.to_string() == "NONE" { None } else { Some(b.clone()) };
+            let timeout = od::default_timeout();
+            match a[0].to_string().as_str() {
+                "riccati_ode" => opt(fo::riccati_ode(&a[1], &a[2], flag(&a[3])).map_err(e)?),
+                "dsolve_first_order" => opt(fo::dsolve_first_order(&a[1], &a[2], flag(&a[3])).map_err(e)?),
+                "chini_ode" => opt(fo::chini_ode(&a[1], &a[2]).map_err(e)?),
+                "abel_ode" => opt(fo::abel_ode(&a[1], &a[2]).map_err(e)?),
+                "lagrange_ode" => fo::lagrange_ode(&a[1], &a[2])
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "abel_by_invariants" => opt(ab::abel_by_invariants(&a[1], &a[2]).map_err(e)?),
+                "abel_invariants" => {
+                    let i = ab::abel_invariants(&coefficients(&a[1]), &a[2]).map_err(e)?;
+                    tuple(vec![i.s3, i.s5, i.i1, i.i2])
+                }
+                "constant_invariant" => ab::constant_invariant(&coefficients(&a[1]), &a[2])
+                    .map_err(e)?
+                    .map(boolean)
+                    .unwrap_or_else(none),
+                "particular_solution" => {
+                    opt(ab::particular_solution(&coefficients(&a[1]), &a[2], number(&a[3]) as usize).map_err(e)?)
+                }
+                "abel_equivalence" => ab::abel_equivalence(&coefficients(&a[1]), &a[2], &coefficients(&a[3]), &a[4])
+                    .map_err(e)?
+                    .map(|t| tuple(vec![t.xi, t.p, t.q]))
+                    .unwrap_or_else(none),
+                "air_solution" => opt(ab::air_solution(&coefficients(&a[1]), &a[2], &a[3], None).map_err(e)?),
+                "second_order_rhs" => {
+                    let (phi, x, y, p) = so::second_order_rhs(&a[1], &a[2]).map_err(e)?;
+                    tuple(vec![phi, x, y, p])
+                }
+                "integrating_factor_xy" | "integrating_factor_p" => {
+                    let found = if a[0].to_string() == "integrating_factor_xy" {
+                        so::integrating_factor_xy(&a[1], &a[2], &a[3], &a[4])
+                    } else {
+                        so::integrating_factor_p(&a[1], &a[2], &a[3], &a[4])
+                    };
+                    found
+                        .map_err(e)?
+                        .map(|f| tuple(vec![f.factor, f.integral]))
+                        .unwrap_or_else(none)
+                }
+                "is_linearizable" => boolean(so::is_linearizable(&a[1], &a[2], &a[3], &a[4]).map_err(e)?),
+                "linearize" => so::linearize(&a[1], &a[2], &a[3], &a[4])
+                    .map_err(e)?
+                    .map(|l| tuple(vec![l.t, l.u, l.rhs]))
+                    .unwrap_or_else(none),
+                "transformed_rhs" => {
+                    opt(so::transformed_rhs(&a[1], &a[2], &a[3], &a[4], &a[5], &a[6], &a[7]).map_err(e)?)
+                }
+                "ode_symmetries" => tuple(
+                    so::ode_symmetries(&a[1], &a[2], number(&a[3]) as u32, &[])
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|s| tuple(vec![tuple(s.xi.clone()), tuple(s.eta.clone())]))
+                        .collect(),
+                ),
+                "dsolve_second_order" => so::dsolve_second_order(&a[1], &a[2], number(&a[3]) as u32, flag(&a[4]))
+                    .map_err(e)?
+                    .map(tuple)
+                    .unwrap_or_else(none),
+                "check_ode_solution" => od::check_ode_solution(&a[1], &a[2], &a[3], timeout, flag(&a[4]))
+                    .map_err(e)?
+                    .map(boolean)
+                    .unwrap_or_else(none),
+                "dsolve_lie" => tuple(
+                    od::dsolve_lie(
+                        &a[1],
+                        &a[2],
+                        number(&a[3]) as u32,
+                        &[],
+                        None,
+                        flag(&a[4]),
+                        timeout,
+                        flag(&a[5]),
+                    )
+                    .map_err(e)?,
+                ),
+                "solve_ode" => tuple(
+                    od::solve_ode(&a[1], &a[2], number(&a[3]) as u32, flag(&a[4]), timeout, flag(&a[5])).map_err(e)?,
+                ),
+                "prelle_singer" => {
+                    opt(db::prelle_singer(&a[1], &a[2], number(&a[3]), extension(&a[4]).as_ref()).map_err(e)?)
+                }
+                "vector_field" => db::vector_field(&a[1], &a[2])
+                    .map_err(e)?
+                    .map(|(p, q, x, y)| tuple(vec![p, q, x, y]))
+                    .unwrap_or_else(none),
+                "darboux_polynomials" => tuple(
+                    db::darboux_polynomials(&a[1], &a[2], &a[3], &a[4], number(&a[5]), extension(&a[6]).as_ref())
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|d| tuple(vec![d.polynomial, d.cofactor]))
+                        .collect(),
+                ),
+                "exponential_factors" => tuple(
+                    db::exponential_factors(&a[1], &a[2], &a[3], &a[4], number(&a[5]), extension(&a[6]).as_ref())
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|f| tuple(vec![f.numerator, f.denominator, f.cofactor]))
+                        .collect(),
+                ),
+                "darboux_integrating_factor" => opt(db::darboux_integrating_factor(
+                    &a[1],
+                    &a[2],
+                    &a[3],
+                    &a[4],
+                    number(&a[5]),
+                    extension(&a[6]).as_ref(),
+                )
+                .map_err(e)?),
+                _ => opt(db::darboux_first_integral(
+                    &a[1],
+                    &a[2],
+                    &a[3],
+                    &a[4],
+                    number(&a[5]),
+                    extension(&a[6]).as_ref(),
+                )
+                .map_err(e)?),
+            }
+        }
+        "systems" => {
+            // (name, args...): solvers/charpit, dae, pde, linear_systems; matrices
+            // as Tuple(rows, cols, Tuple(entries)), NONE for None, flags yes/no
+            use sympy_extras_core::matrices::dense::ExprMatrix;
+            use sympy_extras_core::solvers::{charpit as ch, dae, linear_systems as ls, pde};
+            let none = || sympy_extras_core::core::Symbol::new("NONE", &[]).0;
+            let tuple = |v: Vec<Basic>| Basic::new(Head::Tuple, v);
+            let boolean = |b: bool| {
+                if b {
+                    sympy_extras_core::core::logic::true_()
+                } else {
+                    sympy_extras_core::core::logic::false_()
+                }
+            };
+            let is_none = |b: &Basic| b.to_string() == "NONE";
+            let matrix = |b: &Basic| ExprMatrix::from_tuple(b).map_err(e);
+            let optional_matrix = |b: &Basic| -> PyResult<Option<ExprMatrix>> {
+                if is_none(b) {
+                    Ok(None)
+                } else {
+                    Ok(Some(ExprMatrix::from_tuple(b).map_err(e)?))
+                }
+            };
+            let timeout = pde::default_timeout();
+            match a[0].to_string().as_str() {
+                "complete_integral" => ch::complete_integral(&a[1], &a[2], None)
+                    .map_err(e)?
+                    .unwrap_or_else(none),
+                "check_complete_integral" => boolean(ch::check_complete_integral(&a[1], &a[2], &a[3]).map_err(e)?),
+                "dsolve_dae" => {
+                    let f = optional_matrix(&a[3])?;
+                    let s = dae::dsolve_dae(&matrix(&a[1])?, &matrix(&a[2])?, f.as_ref(), &a[4]).map_err(e)?;
+                    tuple(vec![
+                        s.solution.as_tuple(),
+                        tuple(s.constants),
+                        Basic::int(s.index as i64),
+                    ])
+                }
+                "dae_index" => Basic::int(dae::dae_index(&matrix(&a[1])?, &matrix(&a[2])?).map_err(e)? as i64),
+                "dae_matrices" => {
+                    let (am, bm, f, x) = dae::dae_matrices(a[1].args(), a[2].args()).map_err(e)?;
+                    tuple(vec![am.as_tuple(), bm.as_tuple(), f.as_tuple(), x])
+                }
+                "check_dae" => {
+                    let f = optional_matrix(&a[3])?;
+                    boolean(
+                        dae::check_dae(&matrix(&a[1])?, &matrix(&a[2])?, f.as_ref(), &matrix(&a[4])?, &a[5])
+                            .map_err(e)?,
+                    )
+                }
+                "matrix_exponential" => dae::matrix_exponential(&matrix(&a[1])?, &a[2]).map_err(e)?.as_tuple(),
+                "core_nilpotent_decomposition" => {
+                    let (t, c, n, k) = dae::core_nilpotent_decomposition(&matrix(&a[1])?).map_err(e)?;
+                    tuple(vec![t.as_tuple(), c.as_tuple(), n.as_tuple(), Basic::int(k as i64)])
+                }
+                "pde_symmetries" => tuple(
+                    pde::pde_symmetries(
+                        &a[1],
+                        &a[2],
+                        a[3].to_string().parse().unwrap_or(2),
+                        &[],
+                        a[4].to_string() == "yes",
+                    )
+                    .map_err(e)?
+                    .into_iter()
+                    .map(|s| tuple(vec![tuple(s.xi.clone()), tuple(s.eta.clone())]))
+                    .collect(),
+                ),
+                "pdsolve_lie" => tuple(
+                    pde::pdsolve_lie(
+                        &a[1],
+                        &a[2],
+                        None,
+                        a[3].to_string().parse().unwrap_or(2),
+                        a[4].to_string() == "yes",
+                        timeout,
+                    )
+                    .map_err(e)?,
+                ),
+                "check_pde_solution" => boolean(pde::check_pde_solution(&a[1], &a[2], &a[3], timeout).map_err(e)?),
+                "dsolve_system" => {
+                    let b = optional_matrix(&a[3])?;
+                    let s = ls::dsolve_system(&matrix(&a[1])?, &a[2], b.as_ref()).map_err(e)?;
+                    tuple(vec![
+                        s.fundamental.as_tuple(),
+                        s.particular.map(|p| p.as_tuple()).unwrap_or_else(none),
+                        s.complete.map(boolean).unwrap_or_else(none),
+                    ])
+                }
+                "dsolve_linear_system" => tuple(
+                    ls::dsolve_linear_system(&matrix(&a[1])?, &a[2])
+                        .map_err(e)?
+                        .iter()
+                        .map(|m| m.as_tuple())
+                        .collect(),
+                ),
+                "rational_system_solutions" => tuple(
+                    ls::rational_system_solutions(&matrix(&a[1])?, &a[2])
+                        .map_err(e)?
+                        .iter()
+                        .map(|m| m.as_tuple())
+                        .collect(),
+                ),
+                "hyperexponential_system_solutions" => tuple(
+                    ls::hyperexponential_system_solutions(&matrix(&a[1])?, &a[2])
+                        .map_err(e)?
+                        .iter()
+                        .map(|m| m.as_tuple())
+                        .collect(),
+                ),
+                "system_to_scalar" => {
+                    let (l, m) = ls::system_to_scalar(&matrix(&a[1])?, &a[2]).map_err(e)?;
+                    tuple(vec![tuple(l.coefficients.clone()), m.as_tuple()])
+                }
+                "cyclic_vector" => {
+                    let (v, l) = ls::cyclic_vector(&matrix(&a[1])?, &a[2]).map_err(e)?;
+                    tuple(vec![v.as_tuple(), tuple(l.coefficients.clone())])
+                }
+                _ => ls::rational_integral(&a[1], &a[2]).map_err(e)?,
+            }
+        }
         "residues" => {
             // (name, f, x, a, b, Tuple(assumptions), half|full) -> Tuple(value, condition) or NONE;
             // the functions of integrals/residues, integrals/contours and integrals/periodic
