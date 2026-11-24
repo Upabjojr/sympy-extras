@@ -162,3 +162,27 @@ def test_combsimp_where_a_binomial_is_a_limit_of_gamma_functions() -> None:
     # symbols which are not integers are generic, as before
     x, y = Symbol('x'), Symbol('y')
     assert (combsimp(binomial(x, y)/binomial(x - 1, y)) - x/(x - y)).cancel() == 0
+
+
+def test_combsimp_at_the_points_a_random_search_found() -> None:
+    # found by random products of binomials and factorials compared at the integer points:
+    # binomial(k - 1, k) became 0 (it is binomial(-1, 0) = 1 at k = 0); binomial(n - 2, 2*n + 1)*binomial(2*n + 1, 3)
+    # became factorial(n + 2)/(6*factorial(1 - n)*factorial(2*n - 2)), 1 at n = 1 where the product is
+    # binomial(-1, 3) = -1 (the limit of the gamma functions with both indices moving has another sign);
+    # binomial(0, n - k)/binomial(0, k - 2) became a product with factorial(-k)*factorial(k - 1), nan at k = 2;
+    # binomial(2, k + n)*binomial(2*n - 1, n - 2)*factorial(n - k + 1) a quotient of factorials at their poles,
+    # nan at n = k = -4 where the product is 0
+    from sympy_extras.simplify.gammasimp import gammasimp
+    p = Symbol('p', integer=True, nonnegative=True)
+    cases = [(binomial(k - 1, k), (n, k)), (binomial(p - 2, 2*p + 1)*binomial(2*p + 1, 3), (p, k)),
+             (binomial(0, n - k)/binomial(0, k - 2), (n, k)),
+             (binomial(2, k + n)*binomial(2*n - 1, n - 2)*factorial(n - k + 1), (n, k)),
+             (1/binomial(n - 2, n + 1), (n, k)), (binomial(n - 5, 2*n), (n, k))]
+    for e, (first, second) in cases:
+        for simplified in (combsimp(e), gammasimp(e)):
+            for upper in range(0 if first.is_nonnegative else -5, 6):
+                for lower in range(-5, 6):
+                    given = e.subs(first, upper).subs(second, lower)
+                    if given.is_finite is True and e.subs(second, lower).subs(first, upper) == given:
+                        assert simplified.subs(first, upper).subs(second, lower) == given, (e, upper, lower)
+    assert binomial(-4, 2) == 10 and combsimp(binomial(n - 5, 2*n)).subs(n, 1) == 10

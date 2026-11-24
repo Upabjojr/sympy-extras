@@ -646,13 +646,17 @@ def _checked_at_integer_points(given: Expr, found: Expr, checked: list[Expr], ag
     for every negative ``n``, and ``binomial(n, k)/binomial(n - 1, k)``
     became ``n/(n - k)``, ``0/0`` at ``n = k = 0``, where it is 1. The
     second set is looked at with ``above`` only."""
+    poles, factorials = _undefined_factors(given)
+    if above and not _numerators_finite(found, poles, factorials):
+        if isinstance(given, Add):
+            return add(*[again(term) for term in given.args if isinstance(term, Expr)])
+        return given
     if not checked:
         return found
-    poles, factorials = _undefined_factors(given)
     points: list[tuple[Symbol, int]] = []
     sound = True
     for b in checked:
-        uncovered = _uncovered_points(b, poles, factorials, above)
+        uncovered = _uncovered_points(b, poles, factorials, found if above else None)
         if uncovered is None:
             sound = False
             break
@@ -684,6 +688,33 @@ def _checked_at_integer_points(given: Expr, found: Expr, checked: list[Expr], ag
         # term by term: a binomial which stays as it is needs no proof
         return add(*[again(term) for term in given.args if isinstance(term, Expr)])
     return given
+
+
+def _numerators_finite(found: Expr, poles: list[Expr], factorials: list[Expr]) -> bool:
+    """Whether every factorial and gamma function of a numerator of
+    ``found`` is finite wherever the expression with the ``poles`` and
+    the ``factorials`` of :func:`_undefined_factors` may be: its argument
+    is not a negative integer (it is not an integer, or not negative), or
+    the expression is known not to be finite where it is one.
+
+    ``combsimp(binomial(0, n - k)/binomial(0, k - 2))`` was ``(k -
+    2)*factorial(-k)*factorial(k - 1)/(factorial(n - k)*factorial(k -
+    n))``, ``nan`` at ``k = 2``, where the quotient is ``binomial(0, n -
+    2)`` (the product of the factorials of ``-k`` and of ``k - 1`` has a
+    limit, which the evaluation does not take)."""
+    from sympy_extras.functions.combinatorial.factorials import Factorial
+    for term in Add.make_args(found):
+        for factor in Mul.make_args(term):
+            base, exponent = factor.as_base_exp()
+            if not isinstance(base, (Factorial, _gamma_types()[0])) or exponent.is_negative is True:
+                continue
+            argument = _expr(base.args[0])
+            m = argument if isinstance(base, Factorial) else add(argument, Integer(-1))
+            if m.is_integer is not True or m.is_nonnegative is True:
+                continue
+            if not _covered([m], poles, factorials):
+                return False
+    return True
 
 
 def _line_points(given: Expr, found: Expr, checked: list[Expr]) -> Optional[list[tuple[Symbol, int]]]:
@@ -790,14 +821,18 @@ def _covered(shifts: list[Expr], poles: list[Expr], factorials: list[Expr]) -> b
     integer points where every one of ``shifts`` is negative: a binomial
     of the denominator with a lower index ``k'`` (it is 0 for a negative
     integer ``k'``) or a factorial of the numerator of ``m`` with ``k' <=
-    shift`` or ``m <= shift`` for one of them."""
-    for pole in poles:
-        k_pole = _expr(pole.args[1])
-        if k_pole.is_integer is True and any(add(shift, mul(Integer(-1), k_pole)).is_nonnegative is True for shift in shifts):
-            return True
-    for m in factorials:
-        if m.is_integer is True and any(add(shift, mul(Integer(-1), m)).is_nonnegative is True for shift in shifts):
-            return True
+    shift`` or ``m <= shift`` for one of them, or two of these indices
+    with a sum which is at most a shift (one of them is negative then:
+    ``binomial(n, k)*factorial(k)*factorial(n - k)`` is not finite for
+    ``n < 0``)."""
+    indices = [k for k in [_expr(pole.args[1]) for pole in poles] + factorials if k.is_integer is True]
+    for shift in shifts:
+        for i, first in enumerate(indices):
+            rest = add(shift, mul(Integer(-1), first))
+            if rest.is_nonnegative is True:
+                return True
+            if any(add(rest, mul(Integer(-1), second)).is_nonnegative is True for second in indices[i + 1:]):
+                return True
     return False
 
 
@@ -813,28 +848,118 @@ def _symbol_bounds(symbol: Symbol) -> tuple[Optional[int], Optional[int]]:
     return (None, None)
 
 
+Interval = tuple[Optional[int], Optional[int]]
+
+
+def _where_finite(interval: Interval, symbol: Symbol, poles: list[Expr], factorials: list[Expr]) -> Optional[Interval]:
+    """The integers of ``interval`` (values of ``symbol``) where no
+    binomial of ``poles`` has a negative lower index and no argument of
+    ``factorials`` is negative, among those which are ``a*symbol + b``
+    with rational numbers: elsewhere the expression is not finite.
+    ``None`` when there is none."""
+    found: Optional[Interval] = interval
+    for index in [_expr(pole.args[1]) for pole in poles] + factorials:
+        if found is None:
+            break
+        if index.is_integer is not True or index.free_symbols != {symbol}:
+            continue
+        form = _linear(index, symbol)
+        if form is not None:
+            found = _at_least(form[0], form[1], False, found)
+    return found
+
+
+def _irregular_values(found: Expr, symbol: Symbol, interval: Interval) -> Optional[list[int]]:
+    """The integers of ``interval``, values of ``symbol``, at which the
+    evaluation of ``found`` may not be the limit of ``found``: where a
+    factorial or a gamma function of a numerator has a pole (``zoo``, or
+    ``zoo/zoo``) or a polynomial of a denominator a root. Elsewhere every
+    factor of every term is continuous (the inverse of a factorial is 0 at
+    its poles, a binomial has its own points). ``None`` when they are not
+    known to be finitely many (a factor with another symbol, a binomial in
+    a denominator, a function which is not known)."""
+    from sympy_extras.functions.combinatorial.factorials import Binomial, Factorial
+    if found.has(zoo, nan, oo):
+        return None
+    values: list[int] = []
+    for term in Add.make_args(found):
+        for factor in Mul.make_args(term):
+            base, exponent = factor.as_base_exp()
+            if symbol not in base.free_symbols:
+                if symbol in exponent.free_symbols and (base.free_symbols or not isinstance(base, Rational) or base.p == 0):
+                    return None
+                continue
+            if symbol in exponent.free_symbols or not isinstance(exponent, Rational) or base.free_symbols != {symbol}:
+                return None
+            where: Optional[Interval] = None
+            if isinstance(base, (Factorial, _gamma_types()[0])):
+                if exponent.p < 0:
+                    continue
+                argument = _expr(base.args[0])
+                form = _linear(argument if isinstance(base, Factorial) else add(argument, Integer(-1)), symbol)
+                if form is None:
+                    return None
+                where = _at_least(-form[0], -form[1], True, interval)
+            elif isinstance(base, Binomial):
+                if exponent.p < 0:
+                    return None
+                continue
+            elif base.is_polynomial(symbol) is True:
+                if exponent.p > 0 and exponent.q == 1:
+                    continue
+                form = _linear(base, symbol)
+                if form is None or form[0] == 0:
+                    return None
+                root = -form[1]/form[0]
+                if root.denominator == 1 and (interval[0] is None or interval[0] <= root) \
+                        and (interval[1] is None or root <= interval[1]):
+                    where = (root.numerator, root.numerator)
+            else:
+                return None
+            if where is None:
+                continue
+            low, high = where
+            if low is None or high is None or high - low > 16:
+                return None
+            values.extend(value for value in range(low, high + 1) if value not in values)
+    return values
+
+
 def _uncovered_points(b: Expr, poles: list[Expr], factorials: list[Expr],
-                      above_too: bool) -> Optional[list[tuple[Symbol, int]]]:
-    """The points of the sets ``k <= n < 0`` and ``n < 0 <= k`` of the
-    binomial ``b = binomial(n, k)``, where it is not the quotient of gamma
-    functions, or is one only as a limit in ``n``, at which the
-    expression with the ``poles`` and the ``factorials`` of
-    :func:`_undefined_factors` may be finite, as pairs of a symbol and
-    its value (every point with that value of the symbol is meant);
-    ``None`` when the sets are not known to be covered up to finitely
-    many values of one symbol."""
+                      found: Optional[Expr]) -> Optional[list[tuple[Symbol, int]]]:
+    """The points with a negative upper index of the binomial ``b =
+    binomial(n, k)`` at which the expression with the ``poles`` and the
+    ``factorials`` of :func:`_undefined_factors` may be finite and not
+    equal to its simplified form, as pairs of a symbol and its value
+    (every point with that value of the symbol is meant); ``None`` when
+    they are not known to be finitely many values of one symbol.
+
+    Where ``k <= n < 0`` the binomial is 0 and not the quotient of gamma
+    functions; these points alone are looked at when ``found``, the
+    simplified form, is not given. Where ``n < 0 <= k`` it is the limit
+    in ``n`` alone of the quotient, of gamma functions at their poles,
+    which a simplified form need not have. Where ``n < k < 0`` the
+    binomial is 0, as every limit of the quotient is, and the simplified
+    form has that limit where its evaluation is continuous
+    (:func:`_irregular_values`, for a binomial in one symbol; every point
+    otherwise). A lower index which is a number has no such point: the
+    binomial is a polynomial in ``n``, or 0."""
     upper, lower = _expr(b.args[0]), _expr(b.args[1])
+    everywhere = found is not None
     if upper.is_nonnegative is True:
         return []
     if lower.is_integer is not True:
         # a lower index which is not an integer (a symbol of no assumption is generic, as elsewhere)
         return []
+    if everywhere and isinstance(lower, Integer):
+        return []
     difference = add(upper, mul(Integer(-1), lower))
-    # k <= n < 0: binomial(n', k') is 0 for a negative integer k', and the set is in k' < 0 for k' <= k or k' <= n
-    below = not (difference.is_negative is True or _covered([lower, upper], poles, factorials))
-    # n < 0 <= k: a polynomial in n for a number k, the quotient of gamma functions as it is simplified
-    above = above_too and not (isinstance(lower, Integer) or lower.is_negative is True
-                               or _covered([upper, difference], poles, factorials))
+    # k < 0 (and k <= n when not everywhere): binomial(n', k') is 0 for a negative integer k', and the set is in
+    # k' < 0 for k' <= k or k' <= n
+    below = not (lower.is_nonnegative is True or (not everywhere and difference.is_negative is True)
+                 or _covered([lower, upper], poles, factorials))
+    # n < 0 <= k
+    above = everywhere and not (lower.is_negative is True or _covered([upper, difference], poles, factorials))
     if not below and not above:
         return []
     symbols = [x for x in upper.free_symbols if isinstance(x, Symbol)]
@@ -844,34 +969,49 @@ def _uncovered_points(b: Expr, poles: list[Expr], factorials: list[Expr],
     n_form = _linear(upper, symbol)
     if n_form is None:
         return None
-    k_form: Optional[tuple[Fraction, Fraction]] = None
-    if not (lower.free_symbols - {symbol}):
-        k_form = _linear(lower, symbol)
-        if k_form is None:
-            return None
-    elif not above_too:
-        # (the first set alone, with another symbol in the lower index: not looked into)
-        return None
     # -n > 0
     negative = _at_least(-n_form[0], -n_form[1], True, _symbol_bounds(symbol))
     if negative is None:
         return []
-    ranges: list[tuple[Optional[int], Optional[int]]] = []
-    if k_form is None:
-        ranges.append(negative)
+    #: the intervals of values of the symbol, and whether every point of them is meant (or the irregular ones)
+    intervals: list[tuple[Interval, bool]] = []
+    if lower.free_symbols - {symbol}:
+        if not everywhere:
+            # (k <= n < 0 with another symbol in the lower index: not looked into)
+            return None
+        intervals.append((negative, True))
     else:
+        k_form = _linear(lower, symbol)
+        if k_form is None:
+            return None
         if below:
-            # n - k >= 0
-            first = _at_least(n_form[0] - k_form[0], n_form[1] - k_form[1], False, negative)
+            # -k > 0 with n - k >= 0, and with k - n > 0
+            first = _at_least(-k_form[0], -k_form[1], True, negative)
             if first is not None:
-                ranges.append(first)
+                inside = _at_least(n_form[0] - k_form[0], n_form[1] - k_form[1], False, first)
+                if inside is not None:
+                    intervals.append((inside, True))
+                outside = _at_least(k_form[0] - n_form[0], k_form[1] - n_form[1], True, first)
+                if outside is not None and everywhere:
+                    intervals.append((outside, False))
         if above:
-            # k >= 0
+            # k >= 0: the limit of the gamma functions with both indices moving is not the binomial (it has the
+            # factor (a - c)/a for the indices a*s + b and c*s + d: binomial(s - 5, 2*s) is 10 at s = 1, the
+            # limit -10)
             second = _at_least(k_form[0], k_form[1], False, negative)
             if second is not None:
-                ranges.append(second)
+                intervals.append((second, True))
     values: list[int] = []
-    for low, high in ranges:
+    for interval, whole in intervals:
+        finite = _where_finite(interval, symbol, poles, factorials)
+        if finite is None:
+            continue
+        if not whole and found is not None:
+            irregular = _irregular_values(found, symbol, finite)
+            if irregular is not None:
+                values.extend(value for value in irregular if value not in values)
+                continue
+        low, high = finite
         if low is None or high is None or high - low > 16:
             return None
         values.extend(value for value in range(low, high + 1) if value not in values)

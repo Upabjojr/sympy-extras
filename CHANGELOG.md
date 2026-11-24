@@ -3962,7 +3962,19 @@ remove public functions. Breaking changes are listed here when they happen.
     such point, and when a symbol is in the upper indices only and the
     result is a rational function, the result holds wherever its
     denominator is not 0 (`binomial(n + 1, k + 1)/binomial(n, k)` is still
-    `(n + 1)/(k + 1)`). **Behaviour changes**: for integer symbols of
+    `(n + 1)/(k + 1)`). Where `n < k < 0` the binomial is 0, as the limit
+    is, and the points are those where the evaluation of the result is
+    not continuous (a factorial of a numerator at a pole); and a result
+    with a factorial or a gamma function of a numerator at a pole where
+    the expression may be finite is not returned at all
+    (`binomial(0, n - k)/binomial(0, k - 2)` became a product with
+    `factorial(-k)*factorial(k - 1)`, `nan` at `k = 2`). A random search
+    over products of binomials and factorials, compared at the integer
+    points, found these; it still finds, once in some hundreds, a result
+    of `gammasimp` for an integer symbol of unknown sign which is `0*zoo`
+    at a point (a polynomial factor of a denominator beside the inverse
+    of a gamma function at its pole: `1/((n + 2)*gamma(n + 1))` at `n =
+    -2`), which is not handled. **Behaviour changes**: for integer symbols of
     unknown sign `combsimp` returns more expressions as they are
     (`binomial(n, k)*factorial(k)`, `binomial(n + 1, n - k)/binomial(n, n
     - k)`, which was `(n + 1)/(k + 1)`, `0/0` at `n = k = -1` where the
