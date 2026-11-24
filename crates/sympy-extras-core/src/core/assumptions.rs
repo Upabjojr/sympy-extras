@@ -1459,7 +1459,9 @@ fn function_facts(e: &Basic, f: super::basic::Function) -> FactList {
         | super::basic::Function::HermiteProb => crate::functions::special::polynomials::orthogonal_facts(),
         super::basic::Function::AppellF1 => crate::functions::special::hyper::appellf1_facts(),
         // a DefinedFunction without facts of its own: commutative only
-        super::basic::Function::QPochhammer => crate::functions::special::hyper::appellf1_facts(),
+        super::basic::Function::QPochhammer | super::basic::Function::Coeff => {
+            crate::functions::special::hyper::appellf1_facts()
+        }
         g @ (super::basic::Function::BesselJ
         | super::basic::Function::BesselY
         | super::basic::Function::BesselI

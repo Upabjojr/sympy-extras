@@ -525,3 +525,13 @@ def test_coeff_and_bell() -> None:
     assert bell_incomplete(6, 2, [x1, x2, x3, x1, x2]) == expand(6*x1*x2 + 15*x2*x1 + 10*x3**2)
     assert isinstance(_series(fps(x**3 + 1)).ak, SeqFormula)
 
+
+
+def test_product_of_series_starting_at_one() -> None:
+    # the coefficients of the product come from the terms of the series: SymPy
+    # reads ak.formula from 0, where -1/((-1)**k*k) of log(1 + x) is undefined,
+    # and the product was nan
+    s = _series(fps(cos(x))).product(_series(fps(log(1 + x))), x)
+    assert _same(s.truncate(), x - x**2/2 - x**3/6 + 3*x**5/40 + O(x**6))
+    t = _series(fps(log(1 + x))).product(_series(fps(sin(x))), x)
+    assert _same(t.truncate(), x**2 - x**3/2 + x**4/6 - x**5/6 + O(x**6))

@@ -334,6 +334,8 @@ pub enum Function {
     AppellF1,
     /// `QPochhammer(a, q, k)`, the q-Pochhammer symbol (`concrete/qhyper.rs`).
     QPochhammer,
+    /// `Coeff(p, x, n)`, the coefficient of a polynomial (`series/formal.rs`).
+    Coeff,
     BesselJ,
     BesselY,
     BesselI,
@@ -507,6 +509,7 @@ impl Function {
             Function::HermiteProb => "hermite_prob",
             Function::AppellF1 => "appellf1",
             Function::QPochhammer => "QPochhammer",
+            Function::Coeff => "Coeff",
             Function::BesselJ => "besselj",
             Function::BesselY => "bessely",
             Function::BesselI => "besseli",
@@ -677,6 +680,7 @@ impl Function {
             Function::HermiteProb => "HermiteProb",
             Function::AppellF1 => "AppellF1",
             Function::QPochhammer => "QPochhammer",
+            Function::Coeff => "Coeff",
             Function::BesselJ => "BesselJ",
             Function::BesselY => "BesselY",
             Function::BesselI => "BesselI",
@@ -789,7 +793,7 @@ impl Function {
             Function::ExpPolar | Function::PolarLift | Function::PeriodicArgument | Function::PrincipalBranch => 10000,
             Function::Floor | Function::Ceiling | Function::Frac => 10000,
             Function::DiracDelta | Function::Heaviside => 10000,
-            Function::QPochhammer => 10000,
+            Function::QPochhammer | Function::Coeff => 10000,
             Function::Factorial
             | Function::Binomial
             | Function::RisingFactorial

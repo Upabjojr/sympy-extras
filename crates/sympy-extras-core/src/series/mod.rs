@@ -1,6 +1,7 @@
 //! Series, ported from `sympy_extras.series`.
 
 pub mod approximants;
+pub mod formal;
 pub mod fourier;
 pub mod fouriercoefficients;
 pub mod limitseq;

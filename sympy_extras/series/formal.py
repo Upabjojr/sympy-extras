@@ -1701,7 +1701,12 @@ class FormalPowerSeriesProduct(FiniteFormalPowerSeries):
     def _eval_terms(self, n: int) -> Expr:
         """The first ``n`` terms of the product (the discrete convolution
         of the coefficients)."""
-        a, b = self.coeff1[:n], self.coeff2[:n]
+        # the coefficient of x**j from the j-th term, which has the independent
+        # terms and is zero before the start of ak: SymPy reads ak.formula from
+        # 0 (coeff1, coeff2), and fps(cos(x)).product(fps(log(1 + x))) was nan
+        from sympy_extras.polys.polytools import cancel
+        a = [cancel(self._ffps[j] / self._ffps.xk.coeff(j)) for j in range(n)]
+        b = [cancel(self._gfps[j] / self._gfps.xk.coeff(j)) for j in range(n)]
         terms: list[Expr] = []
         for i in range(n):
             c = add(*[a[j] * b[i - j] for j in range(i + 1)])

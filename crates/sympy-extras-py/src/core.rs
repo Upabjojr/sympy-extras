@@ -261,6 +261,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "HermiteProb" => Basic::new(Head::Function(Function::HermiteProb), args()?),
         "AppellF1" => Basic::new(Head::Function(Function::AppellF1), args()?),
         "QPochhammer" => Basic::new(Head::Function(Function::QPochhammer), args()?),
+        "Coeff" => Basic::new(Head::Function(Function::Coeff), args()?),
         "BesselJ" => Basic::new(Head::Function(Function::BesselJ), args()?),
         "BesselY" => Basic::new(Head::Function(Function::BesselY), args()?),
         "BesselI" => Basic::new(Head::Function(Function::BesselI), args()?),
@@ -675,6 +676,13 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
         }
         Head::Function(f) => {
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            if *f == Function::Coeff {
+                // the class of series/formal.py, which does not evaluate
+                return py
+                    .import("sympy_extras.series.formal")?
+                    .getattr("Coeff")?
+                    .call1(PyTuple::new(py, items)?);
+            }
             if *f == Function::QPochhammer {
                 // the class of concrete/qhyper.py, which does not evaluate
                 return py
@@ -3760,6 +3768,98 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                                 "unknown action {}",
                                 other
                             )))
+                        }
+                    }
+                }
+                "formal" => {
+                    // (formal, op, args...): the functions of series/formal.rs
+                    use sympy_extras_core::series::formal as fm;
+                    let label = |t: &str| sympy_extras_core::core::Symbol::new(t, &[]).0;
+                    let flag = |b: &Basic| b.to_string() == "True";
+                    let none = || label("NONE");
+                    let series_of = |f: &Basic| -> PyResult<fm::FormalPowerSeries> {
+                        match fm::fps(f, None, &Basic::zero(), 1, true, 4, true, false).map_err(e)? {
+                            fm::Fps::Series(s) => Ok(s),
+                            fm::Fps::Expr(_) => Err(pyo3::exceptions::PyValueError::new_err("no series")),
+                        }
+                    };
+                    let formula = |f: Option<fm::Formula>| match f {
+                        None => none(),
+                        Some((a, b, c)) => tuple(vec![a, b, c]),
+                    };
+                    let k = || label("k");
+                    let xs = || label("x");
+                    use sympy_extras_core::series::series_class::SeriesBase;
+                    match a[1].to_string().as_str() {
+                        "rational_algorithm" => {
+                            formula(fm::rational_algorithm(&a[2], &xs(), &k(), 4, flag(&a[3])).map_err(e)?)
+                        }
+                        "hyper_algorithm" => formula(fm::hyper_algorithm(&a[2], &xs(), &k(), 4).map_err(e)?),
+                        "simpleDE" => tuple(
+                            fm::simple_de(&a[2], &xs(), &fm::undefined("g"), 4)
+                                .map_err(e)?
+                                .into_iter()
+                                .map(|(de, i)| tuple(vec![de, Basic::int(i as i64)]))
+                                .collect(),
+                        ),
+                        "exp_re" => fm::exp_re(&a[2], &fm::undefined("r"), &k()).map_err(e)?,
+                        "hyper_re" => fm::hyper_re(&a[2], &fm::undefined("r"), &k()).map_err(e)?,
+                        "coeff_of" => fm::coeff_of(&a[2], &xs(), &a[3]).map_err(e)?,
+                        "bell_incomplete" => {
+                            let n: usize = a[2].to_string().parse().unwrap_or(0);
+                            let j: usize = a[3].to_string().parse().unwrap_or(0);
+                            fm::bell_incomplete(n, j, a[4].args()).map_err(e)?
+                        }
+                        op @ ("add" | "sub" | "product" | "compose") => {
+                            let (s, t) = (series_of(&a[2])?, series_of(&a[3])?);
+                            match op {
+                                "add" | "sub" => {
+                                    let r = if op == "add" { s.plus(&t) } else { s.minus(&t) }.map_err(e)?;
+                                    match r {
+                                        fm::Fps::Series(r) => r.truncate(6).map_err(e)?,
+                                        fm::Fps::Expr(v) => tuple(vec![label("expr"), v]),
+                                    }
+                                }
+                                "product" => s.product(&t).map_err(e)?.truncate(6).map_err(e)?,
+                                _ => s.compose(&t).map_err(e)?.truncate(6).map_err(e)?,
+                            }
+                        }
+                        op => {
+                            // (formal, op, f, x | NONE, x0, dir, hyper, rational, full)
+                            let x: Option<Basic> = if a[3].to_string() == "NONE" {
+                                None
+                            } else {
+                                Some(a[3].clone())
+                            };
+                            let dir: i64 = a[5].to_string().parse().unwrap_or(1);
+                            let found =
+                                fm::fps(&a[2], x.as_ref(), &a[4], dir, flag(&a[6]), 4, flag(&a[7]), flag(&a[8]))
+                                    .map_err(e)?;
+                            let symbolic: bool = a[2].free_symbols().iter().any(|v| v.to_string() == "n");
+                            match found {
+                                fm::Fps::Expr(v) => tuple(vec![label("expr"), v]),
+                                fm::Fps::Series(s) => match op {
+                                    "truncate" => s.truncate(if symbolic { 8 } else { 6 }).map_err(e)?,
+                                    "polynomial" => s.polynomial(5).map_err(e)?,
+                                    "derivative" => s.derivative(&s.x.clone()).map_err(e)?.truncate(6).map_err(e)?,
+                                    "integrate" => s.integrate(&s.x.clone()).map_err(e)?.truncate(6).map_err(e)?,
+                                    "integrate01" => s
+                                        .integrate_definite(&s.x.clone(), &Basic::zero(), &Basic::one())
+                                        .map_err(e)?,
+                                    "neg" => s.neg().map_err(e)?.truncate(6).map_err(e)?,
+                                    "scale" => s.scale(&label("c")).map_err(e)?.truncate(6).map_err(e)?,
+                                    "plus_const" => s.plus_expr(&label("c")).map_err(e)?.truncate(6).map_err(e)?,
+                                    "inverse" => s.inverse().map_err(e)?.truncate(8).map_err(e)?,
+                                    "terms" => tuple(s.first_terms(6).map_err(e)?),
+                                    "infinite" => s.infinite().map_err(e)?,
+                                    other => {
+                                        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                            "unknown formal call {}",
+                                            other
+                                        )))
+                                    }
+                                },
+                            }
                         }
                     }
                 }
