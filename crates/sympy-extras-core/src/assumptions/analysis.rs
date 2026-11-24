@@ -675,7 +675,7 @@ fn zero_set(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
 }
 
 fn zero_set_of(f: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
-    let g: Basic = crate::core::exprtools::factor_terms(f, false, true, false, false)?;
+    let g: Basic = crate::core::exprtools::factor_terms(f, false, false, false, true)?;
     if g.is_mul() {
         let mut parts: Vec<Basic> = Vec::new();
         for a in g.args() {

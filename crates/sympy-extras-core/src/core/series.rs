@@ -558,6 +558,7 @@ pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, c
             Ok(d)
         }
         Head::Hyper => hyper_leading_term(e, x, logx, cdir),
+        Head::MeijerG => meijerg_leading_term(e, x, logx, cdir),
         _ if e.is_atom() => Ok(e.clone()),
         _ => Err(not_ported(&format!("the leading term of {}", e.class_name()))),
     }
@@ -587,6 +588,168 @@ fn hyper_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) 
         ));
     }
     Ok(e.clone())
+}
+
+/// `meijerg._eval_as_leading_term`: the leading term of its hyperexpansion.
+fn meijerg_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) -> R {
+    let expanded: Basic =
+        crate::simplify::hyperexpand::hyperexpand(e, false, crate::simplify::hyperexpand::Rewrite::Default, None)?;
+    if matches!(expanded.head(), Head::MeijerG) {
+        return Err(PolyError::NotImplemented(
+            "meijerg has no _eval_as_leading_term routine".to_string(),
+        ));
+    }
+    as_leading_term(&expanded, std::slice::from_ref(x), logx, cdir)
+}
+
+/// The node with its parameters and the argument `w` (the Python's
+/// `Hyper(ap, bq, w)` and `MeijerG(an, aother, bm, bother, w)`, as given).
+fn with_argument(e: &Basic, w: &Basic) -> Basic {
+    Basic::new(
+        e.head().clone(),
+        vec![e.args()[0].clone(), e.args()[1].clone(), w.clone()],
+    )
+}
+
+/// The parameters of a `Hyper` or `MeijerG` node, in the Python's order
+/// (`ap + bq`, `an + aother + bm + bother`).
+fn node_parameters(e: &Basic) -> Vec<Basic> {
+    e.args()[..2]
+        .iter()
+        .flat_map(|t| {
+            if matches!(e.head(), Head::MeijerG) {
+                t.args().iter().flat_map(|l| l.args().to_vec()).collect::<Vec<Basic>>()
+            } else {
+                t.args().to_vec()
+            }
+        })
+        .collect()
+}
+
+/// `_generic_function_nseries` of a node whose only expression argument is
+/// `z` (the parameter tuples are not expressions): `None` for an argument
+/// going to an infinity (these classes have no `_eval_aseries`), the
+/// series by the derivatives otherwise.
+fn node_generic_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> PolyResult<Option<Basic>> {
+    let z0: Basic = crate::core::limits::limit(&e.args()[2], x, &Basic::zero(), "+")?;
+    if is(&z0, Predicate::finite) == Some(false) {
+        return Ok(None);
+    }
+    Ok(Some(derivative_series(e, x, n, logx, true)?))
+}
+
+/// SymPy's generic expansion when an argument goes to an infinity
+/// (`_asymptotic_nseries`): `PoleError` when a leading term goes to one
+/// (no `_eval_aseries`); otherwise, the argument growing like `log(x)`,
+/// the node at `a0 + p` expanded in `p` with `p` the rest of the series
+/// of the argument.
+fn asymptotic_node_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> R {
+    let zero: Basic = Basic::zero();
+    let name: &str = if matches!(e.head(), Head::MeijerG) {
+        "meijerg"
+    } else {
+        "hyper"
+    };
+    let parameters: Vec<Basic> = node_parameters(e);
+    let z: &Basic = &e.args()[2];
+    let mut args: Vec<Basic> = parameters.clone();
+    args.push(z.clone());
+    let mut a0: Vec<Basic> = Vec::new();
+    for a in &args {
+        let leading: Basic = as_leading_term(a, std::slice::from_ref(x), logx, &zero)?;
+        a0.push(crate::core::limits::limit(&leading, x, &zero, "+")?);
+    }
+    let infinite = |t: &Basic| {
+        t.preorder().iter().any(|u| {
+            matches!(
+                u.head(),
+                Head::Infinity | Head::NegativeInfinity | Head::ComplexInfinity | Head::NaN
+            )
+        })
+    };
+    if a0.iter().any(infinite) {
+        let points: Vec<String> = args
+            .iter()
+            .map(|a| crate::core::limits::limit(a, x, &zero, "+").map(|v| v.to_string()))
+            .collect::<PolyResult<_>>()?;
+        return Err(pole_error(&format!(
+            "Asymptotic expansion of {} around [{}] is not implemented.",
+            name,
+            points.join(", ")
+        )));
+    }
+    if parameters.iter().any(|a| a.free_symbols().contains(x)) {
+        return Err(PolyError::NotImplemented(format!(
+            "the parameters of {} depend on {}",
+            name, x
+        )));
+    }
+    let z0: Basic = a0[a0.len() - 1].clone();
+    let series: Basic = eval_nseries(z, x, n, logx, &zero)?;
+    let rest: Basic = sub(&series, &z0)?;
+    if !rest.has(x) {
+        return Ok(with_argument(e, &z0));
+    }
+    let p: Basic = Dummy::new("p", &[]).0;
+    let s: Basic = eval_nseries(&with_argument(e, &add(&[z0, p.clone()])?), &p, n, logx, &zero)?;
+    let o: Option<Basic> = get_o(&s)?;
+    let terms: Basic = remove_o(&s)?;
+    let expanded: Basic = expand(&subs(&terms, &p, &rest)?)?;
+    match o {
+        None => Ok(expanded),
+        Some(o) => {
+            let big: Basic = subs(&o.args()[0], &p, &rest)?;
+            add(&[expanded, order(&big, &[(x.clone(), zero.clone())])?])
+        }
+    }
+}
+
+/// `hyper._eval_nseries`: the power series when the argument is `x`
+/// itself, else the generic expansion, hyperexpanded; `meijerg`'s is the
+/// generic expansion (SymPy's `Function._eval_nseries`).
+fn hyper_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>) -> R {
+    let zero: Basic = Basic::zero();
+    let arg: &Basic = &e.args()[2];
+    if matches!(e.head(), Head::MeijerG) {
+        return match node_generic_nseries(e, x, n, logx)? {
+            Some(g) => Ok(g),
+            None => asymptotic_node_nseries(e, x, n, logx),
+        };
+    }
+    let x0: Basic = crate::core::limits::limit(arg, x, &zero, "+")?;
+    if !(arg == x && x0 == zero) {
+        let generic: Basic = match node_generic_nseries(e, x, n, logx)? {
+            Some(g) => g,
+            None => asymptotic_node_nseries(e, x, n, logx)?,
+        };
+        return crate::simplify::hyperexpand::hyperexpand(
+            &generic,
+            false,
+            crate::simplify::hyperexpand::Rewrite::Default,
+            None,
+        );
+    }
+    use crate::functions::combinatorial::factorials::{factorial, rf};
+    let mut terms: Vec<Basic> = Vec::new();
+    for i in 0..n {
+        let k: Basic = int(i);
+        let num: Basic = mul(&e.args()[0]
+            .args()
+            .iter()
+            .map(|a| rf(a, &k))
+            .collect::<PolyResult<Vec<Basic>>>()?)?;
+        let den: Basic = mul(&e.args()[1]
+            .args()
+            .iter()
+            .map(|b| rf(b, &k))
+            .collect::<PolyResult<Vec<Basic>>>()?)?;
+        terms.push(mul(&[
+            div(&num, &den)?,
+            pow(arg, &k)?,
+            pow(&factorial(&k)?, &int(-1))?,
+        ])?);
+    }
+    add(&[add(&terms)?, order_at_zero(&pow(x, &int(n))?, x)?])
 }
 
 /// The value of `arg` at `x = 0`; where the substitution gives `nan`
@@ -1122,6 +1285,7 @@ pub fn eval_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &B
         Head::Mul => mul_nseries(e, x, n, logx, cdir),
         Head::Pow => pow_nseries(e, x, n, logx, cdir),
         Head::Order => Ok(e.clone()),
+        Head::Hyper | Head::MeijerG => hyper_nseries(e, x, n, logx),
         Head::Function(Function::Exp) => exp_nseries(e, x, n, logx, cdir),
         Head::Function(Function::Log) => log_nseries(e, x, n, logx, cdir),
         Head::Function(f) if super::series_trig::is_trig(*f) => super::series_trig::nseries(e, *f, x, n, logx, cdir),

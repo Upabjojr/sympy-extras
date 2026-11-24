@@ -288,7 +288,7 @@ pub fn doit(node: &Basic, deep: bool) -> R {
     }
     let (newe, newz): (Basic, Basic) = if matches!(z0.head(), Head::Infinity) {
         if e.is_mul() {
-            e = crate::core::exprtools::factor_terms(&e, false, true, false, false)?;
+            e = crate::core::exprtools::factor_terms(&e, false, false, false, true)?;
         }
         let mut assumptions: Vec<(Predicate, bool)> = Vec::new();
         for p in [Predicate::positive, Predicate::negative, Predicate::real] {
@@ -460,7 +460,7 @@ pub fn heuristics(e: &Basic, z: &Basic, z0: &Basic, dir: &str) -> PolyResult<Opt
             let lim: Basic = limit(a, z, z0, dir)?;
             if has_any(&lim, &|n| matches!(n.head(), Head::Infinity)) && is(&lim, Predicate::finite).is_none() {
                 if e.is_add() {
-                    let mut m: Basic = crate::core::exprtools::factor_terms(e, false, true, false, false)?;
+                    let mut m: Basic = crate::core::exprtools::factor_terms(e, false, false, false, true)?;
                     if !m.is_mul() {
                         m = crate::polys::rationaltools::together(&m, false, true)?;
                     }

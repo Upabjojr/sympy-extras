@@ -4651,7 +4651,8 @@ impl Integrator {
         f = sums_to_products(&f, x)?;
         f = self.arctangent_pairs(&f, x, a, b)?;
         let (constant, rest) = crate::core::expr::as_independent(
-            &crate::core::exprtools::factor_terms(&f, false, false, true, false)?,
+            // Python's factor_terms(f): radical, clear and fraction off, sign on
+            &crate::core::exprtools::factor_terms(&f, false, false, false, true)?,
             x,
             false,
         )?;
