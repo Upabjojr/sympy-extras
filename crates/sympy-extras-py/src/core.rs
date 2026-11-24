@@ -196,6 +196,7 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
         "Sum" => Basic::new(Head::Sum, args()?),
         "Integral" => Basic::new(Head::Integral, args()?),
         "NonElementaryIntegral" => Basic::new(Head::NonElementaryIntegral, args()?),
+        "IntegralByRanges" => Basic::new(Head::IntegralByRanges, args()?),
         "Product" => Basic::new(Head::Product, args()?),
         "TranscendentalRoot" => Basic::new(Head::TranscendentalRoot, args()?),
         "RootSum" => {
@@ -559,6 +560,12 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
             let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
             py.import("sympy_extras.integrals.integral")?
                 .getattr("Integral")?
+                .call1(PyTuple::new(py, items)?)?
+        }
+        Head::IntegralByRanges => {
+            let items: Vec<Bound<'py, PyAny>> = e.args().iter().map(|a| to_python(py, a)).collect::<PyResult<_>>()?;
+            py.import("sympy_extras.integrals.regions")?
+                .getattr("IntegralByRanges")?
                 .call1(PyTuple::new(py, items)?)?
         }
         Head::NonElementaryIntegral => {
@@ -3862,6 +3869,33 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                             }
                         }
                     }
+                }
+                "regions" => {
+                    // (regions, f, condition, Tuple(variables) | NONE, Tuple(assumptions),
+                    //  measure, dimension | NONE, Tuple(parameters) | NONE)
+                    let is_none = |b: &Basic| b.to_string() == "NONE";
+                    let variables: Option<Vec<Basic>> = if is_none(&a[3]) {
+                        None
+                    } else {
+                        Some(a[3].args().to_vec())
+                    };
+                    let parameters: Option<Vec<Basic>> = if is_none(&a[7]) {
+                        None
+                    } else {
+                        Some(a[7].args().to_vec())
+                    };
+                    let dimension: Option<Basic> = if is_none(&a[6]) { None } else { Some(a[6].clone()) };
+                    sympy_extras_core::integrals::regions::integrate_by_ranges_with(
+                        &a[1],
+                        &a[2],
+                        variables.as_deref(),
+                        a[4].args(),
+                        None,
+                        &a[5].to_string(),
+                        dimension.as_ref(),
+                        parameters.as_deref(),
+                    )
+                    .map_err(e)?
                 }
                 "qhyper" => {
                     // (qhyper, name, args...): the functions of concrete/qhyper.rs

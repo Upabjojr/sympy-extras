@@ -171,6 +171,8 @@ fn subs_partial(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Option<Basic>
         Head::Subs => subs_subs(e, old, new),
         Head::Sum | Head::Product => crate::concrete::expr_with_limits::subs_partial(e, old, new),
         Head::Integral | Head::NonElementaryIntegral => crate::integrals::integral::subs_partial(e, old, new),
+        // a bound variable is not substituted
+        Head::IntegralByRanges if e.args()[2].args().contains(old) => Ok(Some(e.clone())),
         _ => Ok(None),
     }
 }

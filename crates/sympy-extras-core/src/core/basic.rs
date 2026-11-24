@@ -143,6 +143,9 @@ pub enum Head {
     /// the Risch algorithm (`integrals/risch/risch.rs`), printed as
     /// `Integral(f, x)`.
     NonElementaryIntegral,
+    /// `IntegralByRanges(f, condition, Tuple(variables)[, Symbol(measure)[, dimension]])`:
+    /// the integral over the region of a condition (`integrals/regions.rs`).
+    IntegralByRanges,
     /// `TranscendentalRoot(f, x, a, b)`: a real root of `f` isolated in
     /// `(a, b)` (`solvers/isolation.rs`).
     TranscendentalRoot,
@@ -976,6 +979,7 @@ impl Head {
             Head::Sum => "Sum",
             Head::Integral => "Integral",
             Head::NonElementaryIntegral => "NonElementaryIntegral",
+            Head::IntegralByRanges => "IntegralByRanges",
             Head::Product => "Product",
             Head::TranscendentalRoot => "TranscendentalRoot",
             Head::BooleanTrue => "BooleanTrue",
@@ -1079,6 +1083,7 @@ impl Head {
                 | Head::Product
                 | Head::Integral
                 | Head::NonElementaryIntegral
+                | Head::IntegralByRanges
                 | Head::TranscendentalRoot
                 | Head::And
                 | Head::Or
@@ -1435,6 +1440,7 @@ impl Basic {
             Head::Limit => crate::core::limits::free_symbols(self),
             Head::Sum | Head::Product => crate::concrete::expr_with_limits::free_symbols(self),
             Head::Integral | Head::NonElementaryIntegral => crate::integrals::integral::free_symbols(self),
+            Head::IntegralByRanges => crate::integrals::regions::free_symbols(self),
             Head::TranscendentalRoot => BTreeSet::new(),
             Head::RootSum => crate::polys::rootoftools::free_symbols(self),
             Head::Subs => {

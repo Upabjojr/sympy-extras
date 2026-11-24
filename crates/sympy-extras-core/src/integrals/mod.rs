@@ -3,6 +3,7 @@
 pub mod algebraic;
 pub mod antiderivative;
 pub mod asymptotic;
+pub mod axisymmetric;
 pub mod brackets;
 pub mod conditions;
 pub mod contours;
@@ -29,6 +30,7 @@ pub mod quadrature;
 pub mod radicals;
 pub mod recognize;
 pub mod reduction;
+pub mod regions;
 pub mod residues;
 pub mod rewriting;
 pub mod risch;

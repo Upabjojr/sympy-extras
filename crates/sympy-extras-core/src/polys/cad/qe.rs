@@ -193,7 +193,7 @@ impl Compiled {
 }
 
 /// Compile `formula`, collecting the polynomials of the atoms (`_compile`).
-fn compile(formula: &Basic, gens: &[Basic], polys: &mut Vec<Poly>) -> PolyResult<Compiled> {
+pub(crate) fn compile(formula: &Basic, gens: &[Basic], polys: &mut Vec<Poly>) -> PolyResult<Compiled> {
     Ok(match formula.head() {
         Head::BooleanTrue => Compiled::Const(true),
         Head::BooleanFalse => Compiled::Const(false),

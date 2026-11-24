@@ -198,7 +198,10 @@ fn hermite_prob_sum(_: &Basic, args: &[Basic], _: &RewriteHints) -> OptR {
     let k: Basic = dummy();
     let n2k: Basic = sub(n, &mul(&[int(2), k.clone()])?)?;
     let kern: Basic = div(
-        &mul(&[pow(&Basic::from_rational(crate::numbers::rat(-1, 2)), &k)?, pow(x, &n2k)?])?,
+        &mul(&[
+            pow(&Basic::from_rational(crate::numbers::rat(-1, 2)), &k)?,
+            pow(x, &n2k)?,
+        ])?,
         &mul(&[factorial(&k)?, factorial(&n2k)?])?,
     )?;
     Ok(Some(mul(&[
