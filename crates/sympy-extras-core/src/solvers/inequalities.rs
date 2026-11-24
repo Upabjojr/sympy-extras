@@ -206,7 +206,7 @@ pub fn solve_inequality(ie: &Basic, s: &Basic) -> R {
         let (b, _) = crate::core::expr::as_independent(&e, s, true)?;
         e = crate::core::add::sub(&e, &b)?;
         let mut rhs: Basic = crate::core::add::sub(&Basic::zero(), &b)?;
-        let ef: Basic = crate::core::exprtools::factor_terms(&e, false, true, false, false)?;
+        let ef: Basic = crate::core::exprtools::factor_terms(&e, false, false, false, true)?;
         let (mut a, mut e2) = crate::core::expr::as_independent(&ef, s, false)?;
         let neg_unknown: bool = is(&a, Predicate::negative).is_none() && is(&a, Predicate::positive).is_none();
         if is(&a, Predicate::zero) != Some(false) || (neg_unknown && !matches!(op, RelOp::Ne | RelOp::Eq)) {
