@@ -159,6 +159,9 @@ def _nodes(e: Sortable) -> float:
     differed from SymPy's on expressions with floats and on derivatives.
     """
     from .function import Derivative
+    from .numbers import Integer
     if isinstance(e, Derivative):
-        return _nodes(e.expr) + sum(count for _, count in e.variable_count)
+        # (a symbolic order counts as its nodes)
+        return _nodes(e.expr) + sum(count.p if isinstance(count, Integer) else _nodes(count)
+                                    for _, count in e.variable_orders)
     return _node_count(e)

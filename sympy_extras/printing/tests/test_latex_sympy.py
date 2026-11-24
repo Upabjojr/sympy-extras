@@ -127,3 +127,35 @@ def test_wrapped_objects_of_sympy_print_as_in_sympy() -> None:
     # an atom of SymPy (the name of the matrix symbol) and a container with wrapped objects
     assert latex(from_sympy(A).args[0]) == 'A'
     assert latex(from_sympy(sympy.Tuple(A, A.T))) == sympy.latex(sympy.Tuple(A, A.T))
+
+
+def test_applied_functions_of_sympy_print_in_the_notation_of_sympy() -> None:
+    # a function of SymPy applied to native arguments (interop's AppliedSymPyFunction) printed the name of its class,
+    # \operatorname{elliptic\_k}{\left(x \right)} and \operatorname{Ynm}{\left(1,0,x,y \right)}: it is printed by
+    # SymPy's own LaTeX printer, as the wrapped objects are, the node as it stands (not evaluated)
+    from sympy_extras.interop import AppliedSymPyFunction
+    sx, sy = sympy.Symbol('x'), sympy.Symbol('y')
+    assert latex(AppliedSymPyFunction(sympy.elliptic_k, x)) == r'K\left(x\right)'
+    assert latex(AppliedSymPyFunction(sympy.Ynm, 1, 0, x, y)) == sympy.latex(sympy.Ynm(1, 0, sx, sy))
+    assert latex(AppliedSymPyFunction(sympy.mathieuc, x, y, 1)) == sympy.latex(sympy.mathieuc(sx, sy, 1))
+    assert latex(AppliedSymPyFunction(sympy.exp, x)) == 'e^{x}'
+    gamma = AppliedSymPyFunction(sympy.gamma, x + y)
+    assert latex(gamma) == sympy.latex(sympy.gamma(sx + sy)) and 'operatorname' not in latex(gamma)
+    # an operand: the brackets are ours, and the printed form reads as the expression
+    assert latex(gamma + x) == sympy.latex(sympy.gamma(sx + sy) + sx)
+    assert latex(gamma**2) == r'\left(\Gamma\left(x + y\right)\right)^{2}'
+    assert latex(AppliedSymPyFunction(sympy.exp, x)**2) == r'\left(e^{x}\right)^{2}'
+    # not evaluated by the printing: gamma(1) stays
+    assert latex(AppliedSymPyFunction(sympy.gamma, 1)) == r'\Gamma\left(1\right)'
+
+
+def test_derivative_of_symbolic_order() -> None:
+    # a derivative of symbolic order (Derivative(f(x), (x, n)), which the node could not hold) prints its orders
+    # as exponents, and their sum on the operator, as SymPy's printer does
+    from sympy_extras.core import Derivative, Function
+    n, m = Symbol('n', integer=True), Symbol('m', integer=True)
+    f = Function('f')
+    assert latex(Derivative(f(x), (x, n))) == r'\frac{d^{n}}{d x^{n}} f{\left(x \right)}'
+    for d in (Derivative(f(x), (x, n)), Derivative(f(x, y), (x, n), y, (x, m + 1)), Derivative(x**3, (x, 2*n)),
+              Derivative(f(x, y), (x, n), (y, 2)), Derivative(f(x), (x, n))**2 + 1):
+        assert latex(d) == sympy.latex(to_sympy(d, evaluate=False)), str(d)

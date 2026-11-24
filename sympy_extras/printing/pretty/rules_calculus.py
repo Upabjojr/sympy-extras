@@ -27,11 +27,12 @@ from __future__ import annotations
 
 from typing import Optional
 
+from ...core.add import add
 from ...concrete.expr_with_limits import ExprWithLimits, Limits, Product, Sum
 from ...core.expr import Expr
 from ...core.function import Derivative, Lambda, Subs
 from ...core.limits import Limit
-from ...core.numbers import Infinity, NegativeInfinity
+from ...core.numbers import Infinity, Integer, NegativeInfinity
 from ...core.order import Order
 from ...integrals.integral import Integral
 from .engine import PrettyPrinter, RuleEntry, rule_for
@@ -69,17 +70,18 @@ def _body(p: PrettyPrinter, e: Expr, context: PrettyContext, minimum: Binding) -
 def _derivative(p: PrettyPrinter, e: Derivative, context: PrettyContext) -> PrettyResult:
     d = p.symbology.atom('Partial', 'd') if requires_partial(e.expr) else 'd'
     below: list[Picture] = []
-    total = 0
-    for symbol, count in reversed(e.variable_count):
+    # the orders are integers or symbolic: a symbolic order is written as an exponent, as an order above 1 is
+    total: Expr = Integer(0)
+    for symbol, count in reversed(e.variable_orders):
         ds = p.operand(symbol, context.operand()).ltext(d)
-        total += count
-        if count > 1:
-            ds = p.power(ds, Picture.text(str(count)))
+        total = add(total, count)
+        if count != 1:
+            ds = p.power(ds, p.operand(count, context.delimited()))
         below.append(ds)
     denominator = p.join(below, ' ')
     top = Picture.text(d)
-    if total > 1:
-        top = p.power(top, Picture.text(str(total)))
+    if total != 1:
+        top = p.power(top, p.operand(total, context.delimited()))
     width = max(top.width(), denominator.width())
     operator = top.below(Picture.text(p.symbology.hobj('-', width)), denominator)
     operator = operator.with_baseline(operator.baseline + 1)

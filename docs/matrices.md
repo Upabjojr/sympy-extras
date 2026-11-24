@@ -208,7 +208,9 @@ ever tested for zero, and the structure does not depend on solving $f$.
 An `Eigenspace` has the irreducible `factor`, its `multiplicity` in the
 characteristic polynomial, and a `basis` of the eigenspace in terms of
 the eigenvalue; `values()` gives the roots in radicals when they are
-found, `vectors(value)` the basis for one of them. When a factor is not
+found (a factor with `I` in its coefficients up to the degree 4, by the
+formulas of Cardano and of Ferrari with complex coefficients),
+`vectors(value)` the basis for one of them. When a factor is not
 solved, the structure is still complete (and `is_diagonalizable` is
 decided), while `eigenvals`, `eigenvects` and `diagonalize` raise
 `NotImplementedError`:

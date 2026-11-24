@@ -27,7 +27,7 @@ from .basic import Basic, NodePrinter
 from .coreerrors import PoleError
 from .expr import Expr, ExprLike, as_expr, to_expr
 from .kind import Kind, NumberKind
-from .numbers import ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, nan, oo, zoo
+from .numbers import ComplexInfinity, Float, I, Infinity, Integer, NaN, NegativeInfinity, Rational, nan, oo, zoo
 from .sorting import ClassKey
 from .symbol import Dummy, Symbol
 
@@ -248,6 +248,16 @@ class Limit(Expr):
     # PORTED FROM SYMPY: sympy/series/limits.py:Limit.doit
     def doit(self, deep: bool = True) -> Expr:
         """The limit (the node itself when it is not found)."""
+        found = self._doit(deep)
+        if isinstance(found, Limit) and self._dir != '+-':
+            closed = _hypergeometric_closed_form(self._expr.doit() if deep else self._expr, self._z, self._z0, self._dir)
+            if closed is not None:
+                through = limit(closed, self._z, self._z0, self._dir)
+                if not isinstance(through, Limit):
+                    return through
+        return found
+
+    def _doit(self, deep: bool) -> Expr:
         from .exprtools import factor_terms
         from .gruntz import gruntz
         from .mul import Mul
@@ -389,10 +399,70 @@ class Limit(Expr):
             # a function with the variable in a tuple of parameters (hyper,
             # meijerg) which has no leading term there: Gruntz's algorithm
             # has no mrv set for it, and the limit is not found (it raised)
-            if _variable_in_parameters(e, z):
+            if _variable_in_parameters(e, z) or _unbounded_hypergeometric(e, z, z0, dir):
                 return self
             raise
         return r
+
+
+def _hypergeometric_closed_form(e: Expr, z: Symbol, z0: Expr, dir: str) -> Optional[Expr]:
+    """``e`` with its hypergeometric functions of ``z`` (in the argument
+    only) replaced by their closed forms, when ``hyperexpand`` has one for
+    each without hypergeometric functions and the closed form has the
+    values of the function at three points on the way of ``z`` to ``z0``;
+    ``None`` otherwise.
+
+    A limit of ``hyper((1, 1), (2,), -x)`` at infinity stayed unevaluated
+    (the function has no leading term there): it is that of ``log(x +
+    1)/x``. The closed forms are compared numerically with the function
+    because an expansion holds on a branch, which need not be the one of
+    the function on the whole way (on the cut of a 2F1 beyond 1)."""
+    from sympy_extras._numeric import reliable_complex
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG
+    from sympy_extras.simplify.hyperexpand import hyperexpand
+    functions = [h for h in e.atoms(Hyper) if isinstance(h, Hyper) and h.has(z)]
+    if not functions or e.atoms(MeijerG) or e.free_symbols != {z}:
+        return None
+    sign = -1 if dir == '-' else 1
+    points: list[Expr]
+    if isinstance(z0, Infinity):
+        points = [Integer(7), Integer(23), Integer(61)]
+    elif isinstance(z0, NegativeInfinity):
+        points = [Integer(-7), Integer(-23), Integer(-61)]
+    elif z0.is_finite is True and not z0.free_symbols:
+        points = [z0 + sign*Rational(1, 8), z0 + sign*Rational(1, 32), z0 + sign*Rational(1, 128)]
+    else:
+        return None
+    closed_forms: dict[Basic, Basic] = {}
+    for h in functions:
+        if any(a.has(z) for a in h.ap + h.bq):
+            return None
+        closed = hyperexpand(h)
+        if closed.atoms(Hyper) or closed.atoms(MeijerG) or closed.has(nan, zoo, oo, -oo):
+            return None
+        for point in points:
+            value = reliable_complex(h, 20, {z: point})
+            other = reliable_complex(closed, 20, {z: point})
+            if value is None or other is None or abs(value - other) > 1e-9*(1 + abs(value)):
+                return None
+        closed_forms[h] = closed
+    return as_expr(e.xreplace(closed_forms))
+
+
+def _unbounded_hypergeometric(e: Expr, z: Symbol, z0: Expr, dir: str) -> bool:
+    """Whether ``e`` has a hypergeometric function whose argument is
+    not known to stay finite as ``z`` tends to ``z0``: Gruntz's algorithm
+    has no mrv set for it."""
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG
+    for h in e.atoms(Hyper) | e.atoms(MeijerG):
+        if isinstance(h, (Hyper, MeijerG)) and h.argument.has(z):
+            try:
+                at = limit(h.argument, z, z0, dir)
+            except (NotImplementedError, ValueError, PoleError):
+                return True
+            if at.is_finite is not True:
+                return True
+    return False
 
 
 def _variable_in_parameters(e: Expr, z: Symbol) -> bool:

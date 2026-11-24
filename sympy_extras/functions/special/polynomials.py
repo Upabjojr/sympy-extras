@@ -603,16 +603,25 @@ class Gegenbauer(DefinedFunction):
         from sympy_extras.functions.elementary.trigonometric import cos, sec
         from .gamma_functions import gamma
         n, a, x = args
-        if n.is_negative:
+        if n.is_negative and n.is_integer:
+            # (an integer degree only: the function of a negative degree which is not an integer is not 0)
             return ZERO
         if a == HALF:
             return legendre(n, x)
         if a == ONE:
             return chebyshevu(n, x)
-        if a == MINUS_ONE:
-            return ZERO
         if not n.is_Number:
             two_a = mul(Integer(2), a)
+            if isinstance(two_a, Rational) and two_a.q == 1 and two_a.p <= 0:
+                # (1 - 2*x*t + t**2)**(-a) with 2*a = -m: the closed forms below are quotients of gamma functions
+                # at their poles, 0 or nan, where the polynomials of degree n <= m are not 0 (C(0) = 1,
+                # C(1) = 2*a*x; SymPy returns 0 for a = -1 and every n). The generating function is a polynomial
+                # of degree m in t for an integer a: 0 for n > m.
+                if isinstance(a, Rational) and a.q == 1 and add(n, two_a).is_positive:
+                    return ZERO
+                if n.is_integer is True and x.could_extract_minus_sign():
+                    return mul(pow(MINUS_ONE, n), gegenbauer(n, a, mul(MINUS_ONE, x)))
+                return None
             if x == MINUS_ONE:
                 if gt(re(a), HALF) == true:
                     # the pole of the functions of a noninteger order: the
@@ -654,7 +663,16 @@ class Gegenbauer(DefinedFunction):
         return gegenbauer(n, conjugate(a), conjugate(x))
 
     def numeric(self, values: Sequence[mpmath.mpc]) -> Optional[mpmath.mpc]:
-        return mpmath.mpc(mpmath.gegenbauer(*values))
+        n, a, x = values
+        if n.imag == 0 and n.real == int(n.real) and 0 <= n.real <= 10000:
+            # a polynomial, by its recurrence k*C(k) = 2*x*(k + a - 1)*C(k - 1) - (k + 2*a - 2)*C(k - 2): mpmath's
+            # product of a binomial coefficient and a 2F1 is 0 for every degree where 2*a is a nonpositive
+            # integer (mpmath.gegenbauer(1, -1, x) is 0, the polynomial is -2*x)
+            before, value = mpmath.mpc(0), mpmath.mpc(1)
+            for k in range(1, int(n.real) + 1):
+                before, value = value, (2*x*(k + a - 1)*value - (k + 2*a - 2)*before)/k
+            return value
+        return mpmath.mpc(mpmath.gegenbauer(n, a, x))
 
     def _eval_facts(self) -> dict[str, bool]:
         return {'commutative': True}

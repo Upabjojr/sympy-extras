@@ -44,14 +44,14 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sympy_extras.core.accumbounds import accum_bounds
+from sympy_extras.core.accumbounds import AccumBounds, accum_bounds
 from sympy_extras.core.add import Add, add
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.coreerrors import PoleError
 from sympy_extras.core.expr import Expr, ExprLike, as_expr, to_expr
 from sympy_extras.core.limits import Limit
 from sympy_extras.core.mul import Mul, mul
-from sympy_extras.core.numbers import GoldenRatio, Infinity, Integer, NegativeInfinity
+from sympy_extras.core.numbers import GoldenRatio, Infinity, Integer, NegativeInfinity, Rational
 from sympy_extras.core.power import Pow
 from sympy_extras.core.symbol import Dummy, Symbol
 from sympy_extras.functions.combinatorial.factorials import Factorial, Subfactorial
@@ -162,7 +162,7 @@ def _dominant(expr: Expr, n: Symbol, depth: int) -> Optional[Expr]:
     comparable = [term0]
     for t in terms[:-1]:
         r = term0/t
-        e = r.gammasimp()
+        e = r.gammasimp(generic=True)
         if e == r:
             e = r.factor()
         lim = _limit_seq_of(e, n, 5, depth + 1)
@@ -223,7 +223,7 @@ def _asymptotic_factors(expr: Expr, n: Symbol, depth: int) -> Optional[Expr]:
         if upper != n or lower.has(n) or f.has(n) or _has_sum(f):
             return None
         last = as_expr(f.subs(k, n))
-        ratio = _limit_inf((as_expr(f.subs(k, n + 1))/last).gammasimp(), n)
+        ratio = _limit_inf((as_expr(f.subs(k, n + 1))/last).gammasimp(generic=True), n)
         if ratio is None:
             return None
         if isinstance(ratio, (Infinity, NegativeInfinity)):
@@ -235,13 +235,103 @@ def _asymptotic_factors(expr: Expr, n: Symbol, depth: int) -> Optional[Expr]:
     return None
 
 
+def _is_exp_log(e: Expr, n: Symbol) -> bool:
+    """Whether ``e`` is built from ``n`` and constants by sums, products,
+    powers with a constant exponent or a constant positive base,
+    exponentials and logarithms: such functions form a Hardy field (every
+    one of them, and its difference ``e(n + 1) - e(n)``, has a constant
+    sign from some point on)."""
+    from sympy_extras.functions.elementary.exponential import Exp, Log
+    if not e.has(n):
+        return not e.free_symbols and e.is_real is True
+    if e == n:
+        return True
+    if isinstance(e, (Add, Mul)):
+        return all(isinstance(a, Expr) and _is_exp_log(a, n) for a in e.args)
+    if isinstance(e, Pow):
+        if not e.exp.has(n):
+            return e.exp.is_real is True and not e.exp.free_symbols and _is_exp_log(e.base, n)
+        return not e.base.has(n) and e.base.is_positive is True and not e.base.free_symbols and _is_exp_log(e.exp, n)
+    if isinstance(e, (Exp, Log)):
+        argument = e.args[0]
+        return isinstance(argument, Expr) and _is_exp_log(argument, n)
+    return False
+
+
+def _stolz_cesaro(expr: Expr, n: Symbol) -> Optional[Expr]:
+    """The limit of ``g(n)*Sum(f(k), (k, a, n))**p`` (``p`` a rational
+    number; positive terms ``f`` unless ``p`` is 1 or -1) by the theorem
+    of Stolz and Cesàro on the sum against ``b(n) = g(n)**(-1/p)``: when
+    ``b`` is strictly monotone from some point on and unbounded, and
+    ``f(n + 1)/(b(n + 1) - b(n))`` has the limit ``L``, finite or not,
+    the quotient of the sum and ``b`` has the limit ``L``, and the
+    expression is its power ``p``. ``b`` is asked to be a function of
+    exponentials and logarithms which tends to an infinity: it is then
+    strictly monotone from some point on (:func:`_is_exp_log`). ``None``
+    when this does not apply.
+
+    The differences of the numerator and of the denominator of
+    ``log(n)*Sum(1/log(k + 1), (k, 1, n))/n`` as they stand, ``log(n)*Sum``
+    and ``n``, have the sum again: the limit, 1, was not found."""
+    from sympy_extras.concrete.expr_with_limits import Sum
+    sums: list[Expr] = []
+    others: list[Expr] = []
+    power: Rational = Integer(1)
+    for factor in Mul.make_args(expr):
+        base, exponent = factor.as_base_exp()
+        if isinstance(base, Sum) and isinstance(exponent, Rational) and exponent.p != 0:
+            sums.append(base)
+            power = exponent
+        elif _has_sum(factor):
+            return None
+        else:
+            others.append(factor)
+    if len(sums) != 1:
+        return None
+    total = sums[0]
+    if not isinstance(total, Sum) or len(total.limits) != 1:
+        return None
+    k, lower, upper = total.limits[0]
+    f = total.function
+    if upper != n or lower.has(n) or f.has(n) or _has_sum(f):
+        return None
+    # the sum against b: g*Sum**p is (Sum/b)**p with b = g**(-1/p)
+    rest = mul(*others)
+    plain = power == 1 or power == -1
+    b = rest**(-1/power)
+    if not _is_exp_log(b, n):
+        return None
+    at_infinity = _limit_inf(b, n)
+    if not isinstance(at_infinity, (Infinity, NegativeInfinity)):
+        return None
+    if not plain and not (isinstance(at_infinity, Infinity) and f.is_positive is True and lower.is_integer is True):
+        # another power is that of a positive quotient
+        return None
+    quotient = as_expr(f.subs(k, n + 1))/(as_expr(b.subs(n, n + 1)) - b)
+    found = _limit_inf(quotient, n)
+    if found is None or isinstance(found, Limit) or found.has(n) or isinstance(found, AccumBounds):
+        return None
+    if power == 1:
+        return found
+    if isinstance(found, (Infinity, NegativeInfinity)):
+        if power.p < 0:
+            return Integer(0)
+        return found if plain else None if isinstance(found, NegativeInfinity) else found
+    if found.is_number and found.is_finite is True and (found.is_positive is True or (plain and found.is_zero is False)):
+        return found**power
+    if not plain and found.is_zero is True:
+        # a positive quotient which tends to 0
+        return Integer(0) if power.p > 0 else Infinity()
+    return None
+
+
 # PORTED FROM SYMPY: sympy/series/limitseq.py:_limit_seq
 def _limit_seq(expr: Expr, n: Symbol, trials: int, depth: int) -> Optional[Expr]:
     if _has_sum(expr):
         # not SymPy's: the sums which are factors by their last terms
         equivalent = _asymptotic_factors(expr, n, depth)
         if equivalent is not None and not _has_sum(equivalent):
-            result = _limit_inf(equivalent.gammasimp(), n)
+            result = _limit_inf(equivalent.gammasimp(generic=True), n)
             if result is not None:
                 return result
         # and the sums with a closed form
@@ -250,6 +340,10 @@ def _limit_seq(expr: Expr, n: Symbol, trials: int, depth: int) -> Optional[Expr]
             result = _limit_inf(closed, n)
             if result is not None:
                 return result
+        # and a sum which is the only one, a factor, against the rest
+        result = _stolz_cesaro(expr, n)
+        if result is not None:
+            return result
     for _ in range(trials):
         if not _has_sum(expr):
             result = _limit_inf(expr, n)
@@ -264,7 +358,7 @@ def _limit_seq(expr: Expr, n: Symbol, trials: int, depth: int) -> Optional[Expr]
             return None
 
         num, den = difference_delta(num.expand(), n), difference_delta(den.expand(), n)
-        expr = (num/den).gammasimp()
+        expr = (num/den).gammasimp(generic=True)
 
         if not _has_sum(expr):
             result = _limit_inf(expr, n)
@@ -281,7 +375,7 @@ def _limit_seq(expr: Expr, n: Symbol, trials: int, depth: int) -> Optional[Expr]
         if dominant_den is None:
             return None
 
-        expr = (dominant_num/dominant_den).gammasimp()
+        expr = (dominant_num/dominant_den).gammasimp(generic=True)
     return None
 
 

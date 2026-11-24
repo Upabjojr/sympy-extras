@@ -220,3 +220,39 @@ def test_the_orders_of_the_terms_as_in_sympy() -> None:
                 mine = pretty(e, use_unicode=unicode, wrap_line=False, order=order)
                 theirs = sympy.pretty(to_sympy(e), use_unicode=unicode, wrap_line=False, order=order)
                 assert mine == theirs, (str(e), order)
+
+
+def test_applied_functions_of_sympy_are_drawn_by_sympy() -> None:
+    # a function of SymPy applied to native arguments (interop's AppliedSymPyFunction) was its string, the name
+    # of the class ("elliptic_k(x)", "exp(x)" on one row): it is the picture of SymPy's own pretty printer
+    from sympy_extras.interop import AppliedSymPyFunction
+    sx, sy = sympy.Symbol('x'), sympy.Symbol('y')
+    x, y = Symbol('x'), Symbol('y')
+    for unicode in (False, True):
+        k = AppliedSymPyFunction(sympy.elliptic_k, x)
+        assert pretty(k, use_unicode=unicode) == sympy.pretty(sympy.elliptic_k(sx), use_unicode=unicode)
+        assert pretty(k + x, use_unicode=unicode) == sympy.pretty(sympy.elliptic_k(sx) + sx, use_unicode=unicode)
+        e = AppliedSymPyFunction(sympy.exp, x/y)
+        assert pretty(e, use_unicode=unicode) == sympy.pretty(sympy.exp(sx/sy), use_unicode=unicode)
+        g = AppliedSymPyFunction(sympy.gamma, x + y)
+        assert pretty(g, use_unicode=unicode) == sympy.pretty(sympy.gamma(sx + sy), use_unicode=unicode)
+    assert pretty(AppliedSymPyFunction(sympy.elliptic_k, x)) == 'K(x)'
+    # a power of exp(x) is not e**x with a second exponent
+    assert pretty(AppliedSymPyFunction(sympy.exp, x)**2) == '    2\n/ x\\ \n\\e / '
+
+
+def test_derivative_of_symbolic_order() -> None:
+    # a derivative of symbolic order (Derivative(f(x), (x, n)), which the node could not hold) is drawn with its
+    # orders as exponents, and their sum on the operator, as by SymPy's printer
+    from sympy_extras.core import Derivative, Function
+    from sympy_extras.interop import to_sympy
+    x, y = Symbol('x'), Symbol('y')
+    n, m = Symbol('n', integer=True), Symbol('m', integer=True)
+    f = Function('f')
+    assert pretty(Derivative(f(x), (x, n))) == ' n       \nd        \n---(f(x))\n  n      \ndx       '
+    for unicode in (False, True):
+        for d in (Derivative(f(x), (x, n)), Derivative(f(x, y), (x, n), y, (x, m + 1)), Derivative(f(x, y), (x, n), (y, 2))):
+            reference = sympy.pretty(to_sympy(d, evaluate=False), use_unicode=unicode, wrap_line=False)
+            assert pretty(d, use_unicode=unicode) == reference, str(d)
+    # an order is drawn as an expression (SymPy writes its string, 2*n, in the Unicode picture too)
+    assert pretty(Derivative(f(x), (x, 2*n)), use_unicode=True).splitlines()[0].strip() == '2⋅n'

@@ -349,3 +349,45 @@ def test_float_eigenvalues_exact_multiplicities() -> None:
     # with a symbol: the exact parametric answer, written with floats
     P = ExprMatrix.from_rows([[x, Float(0.5)], [Float(0.5), x]])
     assert eigenvalues(P) == {x - Float(0.5): 1, x + Float(0.5): 1}
+
+
+def test_gaussian_matrices_with_cubic_and_quartic_factors() -> None:
+    # the eigenvalues, the eigenvectors, diagonalize and jordan_form of an exact matrix with I whose
+    # characteristic polynomial has a factor of degree 3 or 4 which is irreducible over QQ(I) raised
+    # NotImplementedError ("the roots are not expressed in radicals"): they are, by the formulas of Cardano and
+    # of Ferrari with complex coefficients, checked against the roots numerically
+    import mpmath
+    from sympy_extras.matrices.functions import matrix_function
+    x = Symbol('x')
+    cubic = ExprMatrix.from_rows([[I, 1, 0], [2, 0, 1], [1, I, 3]])
+    quartic = ExprMatrix.from_rows([[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [I, 1, 0, 2]])
+    for M in (cubic, quartic):
+        n = M.rows
+        assert [space.multiplicity for space in eigenspaces(M, x)] == [1]
+        A = mpmath.matrix([[complex(M[i, j]) for j in range(n)] for i in range(n)])
+        values = eigenvalues(M)
+        assert len(values) == n and all(multiplicity == 1 for multiplicity in values.values())
+        expected = [complex(v) for v in mpmath.eig(A)[0]]
+        for value in values:
+            assert not value.has(x) and min(abs(complex(value.evalf(30)) - w) for w in expected) < 1e-12
+        for w in expected:
+            assert min(abs(complex(value.evalf(30)) - w) for value in values) < 1e-12
+        for value, multiplicity, vectors in eigenvectors(M):
+            assert multiplicity == 1 and len(vectors) == 1
+            column = mpmath.matrix([complex(vectors[0][i, 0].evalf(30)) for i in range(n)])
+            assert mpmath.norm(A*column - complex(value.evalf(30))*column) < 1e-10*mpmath.norm(column)
+        found = diagonalize(M)
+        assert found is not None
+        for P, D in (found, jordan_form(M)):
+            Pn = mpmath.matrix([[complex(P[i, j].evalf(30)) for j in range(n)] for i in range(n)])
+            Dn = mpmath.matrix([[complex(D[i, j].evalf(30)) for j in range(n)] for i in range(n)])
+            assert mpmath.norm(Pn*Dn - A*Pn) < 1e-10 and abs(mpmath.det(Pn)) > 1e-8
+    # a function of the matrix, on its spectrum
+    inverse_of_shift = matrix_function(cubic, 1/(x + 5), x)
+    shifted = mpmath.matrix([[complex(cubic[i, j]) + (5 if i == j else 0) for j in range(3)] for i in range(3)])
+    value = mpmath.matrix([[complex(inverse_of_shift[i, j].evalf(30)) for j in range(3)] for i in range(3)])
+    assert mpmath.norm(value*shifted - mpmath.eye(3)) < 1e-10
+    # a factor of degree 5 has no such formulas, as over the rational numbers
+    quintic = ExprMatrix.from_rows([[0, 1, 0, 0, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 1], [I, 1, 0, 0, 2]])
+    with pytest.raises(NotImplementedError):
+        eigenvalues(quintic)

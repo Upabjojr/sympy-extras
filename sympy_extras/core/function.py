@@ -36,7 +36,6 @@ References
 from __future__ import annotations
 
 import inspect
-import operator
 
 import mpmath
 from fractions import Fraction
@@ -60,8 +59,8 @@ __all__ = ['FunctionClass', 'Application', 'UndefinedFunction', 'AppliedUndef', 
     'expand_power_exp', 'expand_log', 'expand_func', 'expand_trig', 'expand_complex', 'count_ops',
     'nfloat', 'arity', 'PoleError', 'DiffSpec', 'CountOpsArg']
 
-#: what ``diff`` accepts after the expression: symbols, counts, pairs
-DiffSpec = Union[Symbol, int, tuple[Symbol, int]]
+#: what ``diff`` accepts after the expression: symbols, counts, pairs (the count of a pair may be symbolic)
+DiffSpec = Union[Symbol, int, tuple[Symbol, int], tuple[Symbol, Expr]]
 #: a set of numbers of arguments, ``None`` for any number
 NargsSpec = Union[int, Iterable[int], None]
 
@@ -875,6 +874,8 @@ def _as_symbol(b: Basic) -> Symbol:
 
 #: a variable of differentiation with its multiplicity
 VariableCount = tuple[Symbol, int]
+#: a variable of differentiation with its order, an integer or a symbolic expression
+VariableOrder = tuple[Symbol, Expr]
 
 
 class Derivative(Expr):
@@ -892,51 +893,90 @@ class Derivative(Expr):
     (6*x, 1)
     >>> Derivative(x**3, x, 2), Derivative(x**3, x, x)
     (Derivative(x**3, (x, 2)), Derivative(x**3, (x, 2)))
+
+    The order of a pair may be symbolic: the derivative stays until the
+    order is a number.
+
+    >>> n = symbols('n', integer=True)
+    >>> d = Derivative(x**3, (x, n))
+    >>> d, d.doit(), d.subs(n, 2), d.subs(n, 2).doit(), sorted(d.free_symbols, key=str)
+    (Derivative(x**3, (x, n)), Derivative(x**3, (x, n)), Derivative(x**3, (x, 2)), 6*x, [n, x])
     """
 
-    __slots__ = ('_expr', '_counts')
+    __slots__ = ('_expr', '_orders', '_counts')
 
     is_Derivative = True
 
-    def __init__(self, expr: ExprLike, *variables: Union[Symbol, int, Integer, tuple[Symbol, int], Tuple]) -> None:
+    def __init__(self, expr: ExprLike,
+                 *variables: Union[Symbol, int, Expr, tuple[Symbol, int], tuple[Symbol, Expr], Tuple]) -> None:
         self._expr: Final[Expr] = to_expr(expr)
-        counts: list[VariableCount] = []
+        orders: list[VariableOrder] = []
         # SymPy's forms: a symbol, a symbol followed by its count
-        # (``x, 2``), a pair ``(x, 2)``
+        # (``x, 2``), a pair ``(x, 2)``; a symbol after a symbol is a variable, a symbolic order is in a pair
         after_symbol = False
         for v in variables:
             if isinstance(v, Symbol):
-                counts.append((v, 1))
+                orders.append((v, Integer(1)))
                 after_symbol = True
                 continue
             if isinstance(v, Tuple):
-                counts.append(_as_count(v))
+                orders.append(_as_order(v))
             elif isinstance(v, tuple):
-                # an Integer count is kept as an int: Tuple(s, Integer(n)) of args is not nested
-                counts.append((v[0], operator.index(v[1])))
+                orders.append((v[0], to_expr(v[1])))
             else:
                 if not after_symbol:
                     raise TypeError("the count %s must follow a symbol" % (v,))
-                counts[-1] = (counts[-1][0], int(v))
+                orders[-1] = (orders[-1][0], to_expr(v))
             after_symbol = False
-            if counts[-1][1] < 0:
-                raise ValueError("order of differentiation must be nonnegative")
-        self._counts: Final[tuple[VariableCount, ...]] = _merge_counts(counts)
+            _check_order(orders[-1][1])
+        #: the variables with their orders, the truth of the node; the integer view ``_counts`` is empty when
+        #: an order is symbolic (``variable_count`` and ``variables`` raise then)
+        self._orders: Final[tuple[VariableOrder, ...]] = _merge_orders(orders)
+        self._counts: Final[tuple[VariableCount, ...]] = tuple(
+            (s, n.p) for s, n in self._orders if isinstance(n, Integer)) if all(
+            isinstance(n, Integer) for _, n in self._orders) else ()
         Basic.__init__(self)
 
     @property
     def args(self) -> tuple[Basic, ...]:
-        return (self._expr,) + tuple(Tuple(s, Integer(n)) for s, n in self._counts)
+        return (self._expr,) + tuple(Tuple(s, n) for s, n in self._orders)
+
+    @property
+    def has_symbolic_order(self) -> bool:
+        """Whether an order of differentiation is not a number
+        (``Derivative(f(x), (x, n))``)."""
+        return any(not isinstance(n, Integer) for _, n in self._orders)
+
+    @property
+    def variable_orders(self) -> tuple[VariableOrder, ...]:
+        """The variables with their orders as expressions (an
+        ``Integer`` or a symbolic order)."""
+        return self._orders
+
+    def _integer_counts(self) -> tuple[VariableCount, ...]:
+        if self.has_symbolic_order:
+            raise ValueError("the derivative %s has a symbolic order of differentiation: its orders are "
+                             "variable_orders" % (self,))
+        return self._counts
 
     # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_nseries
     def _eval_nseries(self, x: Symbol, n: int, logx: Optional[Expr], cdir: Expr) -> Expr:
         """The derivatives of the terms of the series of the expression
-        (unevaluated, as SymPy's), the order term divided by ``x``."""
+        (unevaluated, as SymPy's), the order term divided by ``x`` once
+        for every differentiation with respect to ``x`` (SymPy divides
+        it once whatever the order: its series of ``Derivative(exp(x),
+        (x, 2))`` is ``1 + O(x**2)``, without the term ``x``)."""
+        times = 0
+        for s, count in self._orders:
+            if s == x:
+                if not isinstance(count, Integer):
+                    raise NotImplementedError("the series of the derivative of symbolic order %s" % (self,))
+                times += count.p
         arg = self.expr.nseries(x, n=n, logx=logx)
         o = arg.getO()
-        terms: list[Expr] = [Derivative(a, *self._counts) for a in terms_of(arg.removeO())]
+        terms: list[Expr] = [Derivative(a, *self._orders) for a in terms_of(arg.removeO())]
         if o is not None:
-            terms.append(o / x)
+            terms.append(o / pow(x, Integer(times)))
         return add(*terms)
 
     # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_as_leading_term
@@ -945,7 +985,7 @@ class Derivative(Expr):
         with a nonzero derivative."""
         d: Expr = Integer(0)
         for leading_term in self.expr.lseries(x):
-            d = diff(leading_term, *self.variables)
+            d = diff(leading_term, *self._orders)
             if not (d.is_Number and d == 0):
                 break
         return d
@@ -956,18 +996,25 @@ class Derivative(Expr):
 
     @property
     def variable_count(self) -> tuple[VariableCount, ...]:
-        return self._counts
+        """The variables with their integer counts; ``ValueError`` for
+        a derivative of symbolic order (see :attr:`variable_orders`)."""
+        return self._integer_counts()
 
     @property
     def variables(self) -> tuple[Symbol, ...]:
+        """The variables, each as many times as it is differentiated;
+        ``ValueError`` for a derivative of symbolic order."""
         result: list[Symbol] = []
-        for s, n in self._counts:
+        for s, n in self._integer_counts():
             result.extend([s] * n)
         return tuple(result)
 
     @property
     def free_symbols(self) -> set[Symbol]:
-        return self._expr.free_symbols | {s for s, _ in self._counts}
+        free = self._expr.free_symbols | {s for s, _ in self._orders}
+        for _, n in self._orders:
+            free |= n.free_symbols
+        return free
 
     @property
     def kind(self) -> Kind:
@@ -983,7 +1030,7 @@ class Derivative(Expr):
 
     def _evaluated(self, args: tuple[Basic, ...]) -> Basic:
         expr, rest = args[0], args[1:]
-        return diff(as_expr(expr), *[_as_count(_as_tuple(t)) for t in rest])
+        return diff(as_expr(expr), *[_as_order(_as_tuple(t)) for t in rest])
 
     # PORTED FROM SYMPY: sympy/core/function.py:Derivative._eval_subs
     def _subs_partial(self, old: Basic, new: Basic) -> Optional[Basic]:
@@ -991,7 +1038,7 @@ class Derivative(Expr):
         by what is not a symbol (``Derivative(f(x), x).subs(x, 0)``), a
         free symbol which would be captured, a variable renamed to a symbol
         already in the expression."""
-        wrt = [v for v, _ in self._counts]
+        wrt = [v for v, _ in self._orders]
         if not isinstance(new, Expr):
             return None
         if isinstance(old, Symbol) and old in wrt and not _diff_wrt(new):
@@ -1011,7 +1058,8 @@ class Derivative(Expr):
             return None
         # SymPy's _derivative_dispatch: the derivative rebuilt unevaluated
         # (Derivative(2*f(x), x) stays)
-        counts = [Tuple(nv, Integer(n)) for (_, nv), (_, n) in zip(renamed, self._counts)]
+        # (a symbolic order is substituted too: Derivative(f(x), (x, n)).subs(n, 2) is Derivative(f(x), (x, 2)))
+        counts = [Tuple(nv, as_expr(n._subs(old, new))) for (_, nv), (_, n) in zip(renamed, self._orders)]
         return Derivative(as_expr(new_expr), *counts)
 
     def _eval_facts(self) -> dict[str, bool]:
@@ -1021,8 +1069,8 @@ class Derivative(Expr):
 
     def _sympystr(self, printer: NodePrinter) -> str:
         parts = [printer.doprint(self._expr)]
-        for s, n in self._counts:
-            parts.append(printer.doprint(s) if n == 1 else '(%s, %d)' % (printer.doprint(s), n))
+        for s, n in self._orders:
+            parts.append(printer.doprint(s) if n == 1 else '(%s, %s)' % (printer.doprint(s), printer.doprint(n)))
         return 'Derivative(%s)' % ', '.join(parts)
 
 
@@ -1032,18 +1080,32 @@ def _as_tuple(b: Basic) -> Tuple:
     return b
 
 
-def _as_count(t: Tuple) -> VariableCount:
-    s, n = t[0], t[1]
-    if not (isinstance(s, Symbol) and isinstance(n, Rational) and n.q == 1):
+def _as_order(t: Tuple) -> VariableOrder:
+    if len(t) != 2:
         raise TypeError("a variable and a count are expected, got %s" % (t,))
-    return (s, n.p)
+    s, n = t[0], t[1]
+    if not (isinstance(s, Symbol) and isinstance(n, Expr)):
+        raise TypeError("a variable and a count are expected, got %s" % (t,))
+    return (s, n)
 
 
-def _merge_counts(counts: list[VariableCount]) -> tuple[VariableCount, ...]:
-    merged: list[VariableCount] = []
-    for s, n in counts:
+def _check_order(n: Expr) -> None:
+    """An order of differentiation is a nonnegative integer, or an
+    expression with symbols which is not known to be anything else."""
+    if isinstance(n, Number):
+        if not isinstance(n, Integer):
+            raise TypeError("the order of differentiation %s is not an integer" % (n,))
+        if n.p < 0:
+            raise ValueError("order of differentiation must be nonnegative")
+    elif n.is_integer is False or n.is_negative is True or not n.free_symbols:
+        raise ValueError("order of differentiation must be a nonnegative integer, got %s" % (n,))
+
+
+def _merge_orders(orders: list[VariableOrder]) -> tuple[VariableOrder, ...]:
+    merged: list[VariableOrder] = []
+    for s, n in orders:
         if merged and merged[-1][0] == s:
-            merged[-1] = (s, merged[-1][1] + n)
+            merged[-1] = (s, add(merged[-1][1], n))
         else:
             merged.append((s, n))
     return tuple(merged)
@@ -1221,7 +1283,7 @@ def _substituted(expr: Expr, variables: tuple[Symbol, ...], point: tuple[Expr, .
     function which are not replaced by symbols."""
     derivatives = [d for d in expr.atoms(Derivative) if isinstance(d, Derivative)]
     blocked = [(v, p) for v, p in zip(variables, point)
-               if any(v in d.variables for d in derivatives)
+               if any(v in [s for s, _ in d.variable_orders] for d in derivatives)
                and (not isinstance(p, Symbol) or p in expr.free_symbols - {v})]
     free = [(v, p) for v, p in zip(variables, point) if (v, p) not in blocked]
     rules: list[tuple[Basic, Basic]] = [(v, p) for v, p in free]
@@ -1236,7 +1298,8 @@ def diff(expr: ExprLike, *symbols: DiffSpec) -> Expr:
 
     ``diff(f, x, 2)``, ``diff(f, x, x)`` and ``diff(f, (x, 2))`` are the
     second derivative. What cannot be differentiated structurally (an
-    undefined function) is returned as a :class:`Derivative`.
+    undefined function) is returned as a :class:`Derivative`, and so is
+    a derivative of symbolic order, ``diff(f, (x, n))``.
 
     Examples
     ========
@@ -1252,20 +1315,27 @@ def diff(expr: ExprLike, *symbols: DiffSpec) -> Expr:
     2**x*log(2)
     """
     result = to_expr(expr)
-    counts: list[VariableCount] = []
+    orders: list[VariableOrder] = []
     for s in symbols:
         if isinstance(s, Symbol):
-            counts.append((s, 1))
+            orders.append((s, Integer(1)))
         elif isinstance(s, int):
-            if not counts:
+            if not orders:
                 raise TypeError("a count must follow a symbol")
-            last, n = counts[-1]
-            counts[-1] = (last, n - 1 + s)
+            last, n = orders[-1]
+            orders[-1] = (last, add(n, Integer(s - 1)))
         else:
-            counts.append(s)
-    for s, n in counts:
-        for _ in range(n):
-            result = _derivative(result, s)
+            orders.append((s[0], to_expr(s[1])))
+            _check_order(orders[-1][1])
+    for s, n in orders:
+        if isinstance(n, Integer):
+            for _ in range(n.p):
+                result = _derivative(result, s)
+        else:
+            # of symbolic order: not evaluated (the derivative of order 0 is the expression itself, so that
+            # not even an expression free of the variable has the derivative 0)
+            result = Derivative(result.expr, *result.variable_orders, (s, n)) if isinstance(result, Derivative) \
+                else Derivative(result, (s, n))
     return result
 
 
@@ -1319,7 +1389,7 @@ def _derivative(e: Expr, s: Symbol) -> Expr:
             terms.append(mul(_substituted(Derivative(inner, xi), (xi,), (a,)), _derivative(a, s)))
         return add(*terms)
     if isinstance(e, Derivative):
-        return Derivative(e.expr, *e.variable_count, (s, 1))
+        return Derivative(e.expr, *e.variable_orders, (s, Integer(1)))
     from sympy_extras.functions.elementary.piecewise import Piecewise
     if isinstance(e, Piecewise):
         return e.map_expressions(lambda a: _derivative(a, s))

@@ -410,7 +410,19 @@ x + tr⎝A⋅A ⎠
 
 (Before, the LaTeX of such a node was the name of its wrapper,
 `\operatorname{SymPyExprNode}\left(\text{SymPyNode}, 2, 2\right)`, and its
-picture its string on one row.) What SymPy prints wrongly for its own
+picture its string on one row.) A function of SymPy applied to native
+arguments (`interop.AppliedSymPyFunction`) is printed in the same way, the
+node as it stands, in SymPy's notation for the function:
+
+```python
+>>> from sympy_extras.interop import AppliedSymPyFunction
+>>> applied = AppliedSymPyFunction(sympy.elliptic_k, x)
+>>> print(latex(applied), "|", latex(applied**2 + 1), "|", pretty(applied))
+K\left(x\right) | \left(K\left(x\right)\right)^{2} + 1 | K(x)
+
+```
+
+What SymPy prints wrongly for its own
 objects stays wrong inside them (the defects of sympy/sympy#30844 which
 concern matrix expressions, for instance); the terms of a sum are ordered
 by the keys of the wrappers, which may differ from SymPy's order for two

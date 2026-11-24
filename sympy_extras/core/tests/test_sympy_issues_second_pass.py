@@ -72,10 +72,10 @@ def test_parser_nodes_as_sympy_constructs_them() -> None:
 
 
 def test_parser_refuses_the_forms_the_nodes_have_not() -> None:
-    # a sum without bounds, a symbolic order, a variable which is not a symbol, a direction which
+    # a sum without bounds, an order which is no integer, a variable which is not a symbol, a direction which
     # is none: outside the grammar, not a node of another meaning ((x, a) of an integral was in
     # this list: it is the substitution in the indefinite integral since, test_parsing)
-    for text in ['Integral(x, (x, 1, 2, 3))', 'Sum(x, x)', 'Sum(x)', 'Derivative(f(x), (x, n))', 'Derivative(f(x), f(x))',
+    for text in ['Integral(x, (x, 1, 2, 3))', 'Sum(x, x)', 'Sum(x)', 'Derivative(f(x), (x, 1/2))', 'Derivative(f(x), f(x))',
                  'Derivative(x, 2)', "Limit(1/x, x, 0, 'up')", 'Limit(1/x, x, x)', 'Limit(1/x, x)', 'Integral(x*y)',
                  "Integral(x, 'x')", 'Integral(x, y=1)', 'Limit()', 'Derivative(x**2, x, -1)', 'x = 1', "'x'",
                  '[x, 1]', 'f((x, 1))']:

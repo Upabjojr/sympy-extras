@@ -146,6 +146,10 @@ def _roots_in_radicals(factor: Expr, x: Symbol) -> Optional[list[Expr]]:
     if len(coefficients) == 2:
         return [-coefficients[1]/coefficients[0]]
     if any(c.has(ImaginaryUnit) for c in coefficients):
+        if len(coefficients) == 4:
+            return _checked_roots(coefficients, _cubic_roots(coefficients))
+        if len(coefficients) == 5:
+            return _checked_roots(coefficients, _quartic_roots(coefficients))
         if len(coefficients) != 3:
             return None
         a, b, c = coefficients
@@ -158,6 +162,91 @@ def _roots_in_radicals(factor: Expr, x: Symbol) -> Optional[list[Expr]]:
     if not isinstance(found, dict) or sum(found.values()) != len(coefficients) - 1:
         return None
     return sorted(found, key=default_sort_key)
+
+
+def _cubic_roots(coefficients: Sequence[Expr]) -> list[Expr]:
+    """The roots of a cubic with coefficients which are complex numbers
+    (highest degree first), not all three equal, by Cardano's formula
+    ``-(b + u*C + D0/(u*C))/3`` on the monic polynomial ``x**3 + b*x**2 +
+    c*x + d``, with ``D0 = b**2 - 3*c``, ``D1 = 2*b**3 - 9*b*c + 27*d``,
+    ``C`` a cube root of ``(D1 + sqrt(D1**2 - 4*D0**3))/2`` and ``u`` the
+    cube roots of 1. The formula holds for every choice of the square
+    root and of the cube root, ``C`` being not 0 (it is 0 only for ``D0
+    = 0`` with the square root ``-D1``: ``C`` is then a cube root of
+    ``D1``)."""
+    lead = coefficients[0]
+    b, c, d = [expand(k/lead) for k in coefficients[1:]]
+    D0 = expand(b*b - 3*c)
+    D1 = expand(2*b**3 - 9*b*c + 27*d)
+    third = Rational(1, 3)
+    if D0 == 0:
+        C = pow(D1, third)
+    else:
+        C = pow((D1 + sqrt(expand(D1*D1 - 4*D0**3)))/2, third)
+    half = Rational(1, 2)
+    turn = half*sqrt(Integer(3))*ImaginaryUnit()
+    units: list[Expr] = [Integer(1), -half + turn, -half - turn]
+    return [-(b + u*C + D0/(u*C))/3 for u in units]
+
+
+def _quartic_roots(coefficients: Sequence[Expr]) -> list[Expr]:
+    """The roots of a quartic with coefficients which are complex
+    numbers (highest degree first) by Ferrari's method: with ``x = y -
+    b/4`` the monic polynomial is ``y**4 + p*y**2 + q*y + r``, and for a
+    root ``m`` of the resolvent ``8*m**3 + 8*p*m**2 + (2*p**2 - 8*r)*m -
+    q**2`` and ``s = sqrt(2*m)`` it is the product of ``y**2 - s*y + p/2
+    + m + q/(2*s)`` and ``y**2 + s*y + p/2 + m - q/(2*s)`` (``m`` is not 0
+    when ``q`` is not: the product of the roots of the resolvent is
+    ``q**2/8``); for ``q = 0`` it is a quadratic in ``y**2``. Every choice
+    of the square roots gives the four roots."""
+    lead = coefficients[0]
+    b, c, d, e = [expand(k/lead) for k in coefficients[1:]]
+    p = expand(c - 3*b*b/8)
+    q = expand(d - b*c/2 + b**3/8)
+    r = expand(e - b*d/4 + b*b*c/16 - 3*b**4/256)
+    shift = b/4
+    if q == 0:
+        inner = sqrt(expand(p*p - 4*r))
+        first, second = sqrt((-p + inner)/2), sqrt((-p - inner)/2)
+        return [first - shift, -first - shift, second - shift, -second - shift]
+    m = _cubic_roots([Integer(8), 8*p, expand(2*p*p - 8*r), expand(-q*q)])[0]
+    s = sqrt(2*m)
+    plus, minus = sqrt(-2*m - 2*p - 2*q/s), sqrt(-2*m - 2*p + 2*q/s)
+    return [(s + plus)/2 - shift, (s - plus)/2 - shift, (-s + minus)/2 - shift, (-s - minus)/2 - shift]
+
+
+def _checked_roots(coefficients: Sequence[Expr], candidates: Sequence[Expr]) -> Optional[list[Expr]]:
+    """The roots in radicals of a polynomial whose coefficients are
+    rational numbers and ``I`` when their numerical values (40 digits)
+    are the roots: every one a root to 30 digits, and as far apart as
+    the roots of the polynomial are, which :func:`_gaussian_roots`
+    isolates; ``None`` otherwise (the formulas are not trusted
+    unchecked: a root which is evaluated on another branch than the one
+    of its formula would be no root)."""
+    from sympy_extras._numeric import reliable_complex
+    pairs: list[_Gaussian] = []
+    for k in coefficients:
+        re, im = k.as_real_imag()
+        if not isinstance(re, Rational) or not isinstance(im, Rational):
+            return None
+        pairs.append((Fraction(re.p, re.q), Fraction(im.p, im.q)))
+    numbers: list[complex] = []
+    scale = max(1.0, max(abs(complex(float(a), float(b))) for a, b in pairs))
+    for root in candidates:
+        value = reliable_complex(root, 40)
+        if value is None:
+            return None
+        residual = 0j
+        for a, b in pairs:
+            residual = residual*value + complex(float(a), float(b))
+        if abs(residual) > 1e-9*scale*max(1.0, abs(value))**(len(pairs) - 1):
+            return None
+        numbers.append(value)
+    # an irreducible factor has simple roots: the candidates are all of them when they are distinct
+    gap = min(abs(u - v) for i, u in enumerate(numbers) for v in numbers[i + 1:])
+    if gap < 1e-6*max(1.0, max(abs(u) for u in numbers)):
+        return None
+    return sorted(candidates, key=default_sort_key)
 
 
 def _isolated_roots(factor: Expr, x: Symbol) -> Optional[list[Expr]]:

@@ -152,6 +152,43 @@ def _checked_atom(atom: Optional[SymPyBasic], args: tuple[Basic, ...]) -> Option
     return atom
 
 
+def _latex_by_sympy(wrapped: SymPyBasic, settings: Mapping[str, PrintSetting]) -> ForeignPrint:
+    """SymPy's own LaTeX of ``wrapped`` (``A^{T}``, ``\\operatorname{tr}\\left(A \\right)``, ``K\\left(x\\right)``)
+    with the settings SymPy's printer shares with ours; the binding from
+    the precedence by which SymPy's LaTeX printer brackets."""
+    taken = {name: value for name, value in settings.items() if name in _SYMPY_LATEX_SETTINGS}
+    text = str(sympy.latex(wrapped, mode='plain', **taken))
+    level = sympy_precedence(wrapped)
+    binding = 'LOWEST'
+    for threshold, name in _PRECEDENCE_BINDINGS:
+        if level >= threshold:
+            binding = name
+            break
+    return ForeignPrint([text], 0, binding)
+
+
+def _pretty_by_sympy(wrapped: SymPyBasic, settings: Mapping[str, PrintSetting]) -> ForeignPrint:
+    """SymPy's own picture of ``wrapped``, with the binding its
+    ``prettyForm`` carries."""
+    taken: dict[str, PrintSetting] = {name: value for name, value in settings.items()
+                                      if name in _SYMPY_PRETTY_SETTINGS}
+    use_unicode = settings.get('use_unicode') is True
+    taken['use_unicode'] = use_unicode
+    taken['wrap_line'] = False
+    previous = pretty_use_unicode(use_unicode)
+    try:
+        form: object = _SymPyPrettyPrinterBase(taken)._print(wrapped)
+    finally:
+        pretty_use_unicode(previous)
+    if not isinstance(form, SymPyPrettyForm):
+        raise TypeError("SymPy's pretty printer returned %r" % (form,))
+    level, baseline = form.binding, form.baseline
+    binding = 'LOWEST'
+    if isinstance(level, int) and 0 <= level < len(_PRETTY_BINDINGS):
+        binding = _PRETTY_BINDINGS[level]
+    return ForeignPrint([str(row) for row in form.picture], baseline if isinstance(baseline, int) else 0, binding)
+
+
 class _SymPyNodeMixin:
     """The behaviour shared by the generic wrappers of SymPy objects.
 
@@ -228,38 +265,10 @@ class _SymPyNodeMixin:
         return None
 
     def _foreign_latex(self, settings: Mapping[str, PrintSetting]) -> Optional[ForeignPrint]:
-        # SymPy's own LaTeX of the wrapped object (A^{T}, \operatorname{tr}\left(A \right)) with the settings
-        # SymPy's printer shares with ours; the binding from the precedence by which SymPy's LaTeX printer brackets
-        wrapped = self._sympy()
-        taken = {name: value for name, value in settings.items() if name in _SYMPY_LATEX_SETTINGS}
-        text = str(sympy.latex(wrapped, mode='plain', **taken))
-        level = sympy_precedence(wrapped)
-        binding = 'LOWEST'
-        for threshold, name in _PRECEDENCE_BINDINGS:
-            if level >= threshold:
-                binding = name
-                break
-        return ForeignPrint([text], 0, binding)
+        return _latex_by_sympy(self._sympy(), settings)
 
     def _foreign_pretty(self, settings: Mapping[str, PrintSetting]) -> Optional[ForeignPrint]:
-        # SymPy's own picture of the wrapped object, with the binding its prettyForm carries
-        taken: dict[str, PrintSetting] = {name: value for name, value in settings.items()
-                                          if name in _SYMPY_PRETTY_SETTINGS}
-        use_unicode = settings.get('use_unicode') is True
-        taken['use_unicode'] = use_unicode
-        taken['wrap_line'] = False
-        previous = pretty_use_unicode(use_unicode)
-        try:
-            form: object = _SymPyPrettyPrinterBase(taken)._print(self._sympy())
-        finally:
-            pretty_use_unicode(previous)
-        if not isinstance(form, SymPyPrettyForm):
-            raise TypeError("SymPy's pretty printer returned %r" % (form,))
-        level, baseline = form.binding, form.baseline
-        binding = 'LOWEST'
-        if isinstance(level, int) and 0 <= level < len(_PRETTY_BINDINGS):
-            binding = _PRETTY_BINDINGS[level]
-        return ForeignPrint([str(row) for row in form.picture], baseline if isinstance(baseline, int) else 0, binding)
+        return _pretty_by_sympy(self._sympy(), settings)
 
 
 class SymPyNode(_SymPyNodeMixin, Basic):
@@ -682,7 +691,7 @@ def _to_sympy(e: Basic, evaluate: bool) -> SymPyBasic:
             return sympy_class(*args)  # their __new__ takes no evaluate (they never evaluate)
         return sympy_class(*args, evaluate=evaluate)
     if isinstance(e, Derivative):
-        counts = [(to_sympy(s), n) for s, n in e.variable_count]
+        counts = [(to_sympy(s), to_sympy(n)) for s, n in e.variable_orders]
         return sympy.Derivative(args[0], *counts)
     if isinstance(e, Subs):
         return sympy.Subs(args[0], tuple(to_sympy(v) for v in e.variables), tuple(to_sympy(p) for p in e.point))
@@ -927,7 +936,7 @@ def _from_sympy(e: SymPyBasic) -> Basic:
         assumptions = {str(k): bool(v) for k, v in f._kwargs.items() if str(k) in PREDICATES and v is not None}
         return Function(f.__name__, **assumptions)(*[_expr(a) for a in e.args])
     if isinstance(e, sympy.Derivative):
-        counts = [(_symbol(s), int(n)) for s, n in e.variable_count]
+        counts = [(_symbol(s), _expr(n)) for s, n in e.variable_count]
         return Derivative(_expr(e.expr), *counts)
     if isinstance(e, sympy.Subs):
         return Subs(_expr(e.expr), tuple(_symbol(v) for v in e.variables), tuple(_expr(p) for p in e.point))
@@ -1688,6 +1697,25 @@ class AppliedSymPyFunction(Application):
 
     def _srepr_name(self) -> Optional[str]:
         return self.name
+
+    def _foreign_latex(self, settings: Mapping[str, PrintSetting]) -> Optional[ForeignPrint]:
+        # the notation of SymPy for its function (K\left(x\right) for elliptic_k, Y_{n}^{m} for Ynm), of the
+        # node as it stands: it printed \operatorname{elliptic\_k}, the name of the class
+        wrapped = self._unevaluated_sympy()
+        return None if wrapped is None else _latex_by_sympy(wrapped, settings)
+
+    def _foreign_pretty(self, settings: Mapping[str, PrintSetting]) -> Optional[ForeignPrint]:
+        wrapped = self._unevaluated_sympy()
+        return None if wrapped is None else _pretty_by_sympy(wrapped, settings)
+
+    def _unevaluated_sympy(self) -> Optional[SymPyBasic]:
+        """The function of SymPy applied without evaluation, ``None``
+        for a class which does not build it (the node is then printed
+        with the name of the class, as an undefined function is)."""
+        try:
+            return to_sympy(self, evaluate=False)
+        except (TypeError, ValueError):
+            return None
 
 
 

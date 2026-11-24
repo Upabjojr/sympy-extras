@@ -268,9 +268,9 @@ def _rational_ratio(num: Expr, den: Expr, symbols: Sequence[Symbol]) -> Optional
     """``num/den`` as a rational function of the ``symbols``, or ``None``."""
     if num == den:
         return ONE
-    ratio = _within(lambda: cancel(combsimp(num/den)), _STEP_SECONDS)
+    ratio = _within(lambda: cancel(combsimp(num/den, generic=True)), _STEP_SECONDS)
     if ratio is None or ratio.is_rational_function(*symbols) is not True:
-        second = _within(lambda: cancel(combsimp((num/den).rewrite(Gamma))), _STEP_SECONDS)
+        second = _within(lambda: cancel(combsimp((num/den).rewrite(Gamma), generic=True)), _STEP_SECONDS)
         if second is None or second.is_rational_function(*symbols) is not True:
             return None
         ratio = second
@@ -441,7 +441,7 @@ def _direct(f: Expr, k: Symbol, lo: int, hi: int) -> Optional[Expr]:
 def _tidy(expr: Expr) -> Expr:
     """``expr`` with the binomials and harmonic numbers of shifted
     arguments expanded and the hypergeometric terms simplified."""
-    value = _within(lambda: combsimp(expand_func(expr)), _STEP_SECONDS)
+    value = _within(lambda: combsimp(expand_func(expr), generic=True), _STEP_SECONDS)
     return expr if value is None else value
 
 
@@ -512,10 +512,10 @@ def _nicer(solution: Expr, n: Symbol) -> Expr:
                     return e.subs({gamma(a): formula})
         return e
 
-    candidates = [simplify(combsimp(solution))]
-    candidates.append(combsimp(duplicate(candidates[0])))
-    candidates.append(combsimp(triplicate(candidates[-1])))
-    candidates.append(combsimp(candidates[-1].rewrite(Factorial)))
+    candidates = [simplify(combsimp(solution, generic=True))]
+    candidates.append(combsimp(duplicate(candidates[0]), generic=True))
+    candidates.append(combsimp(triplicate(candidates[-1]), generic=True))
+    candidates.append(combsimp(candidates[-1].rewrite(Factorial), generic=True))
     candidates.append(candidates[-1].rewrite(Binomial))
     candidates.append(simplify(candidates[-1]))
     return min(candidates, key=lambda e: (_ops(e), len(str(e))))
@@ -541,9 +541,9 @@ def _simplest(expr: Expr, n: Symbol) -> Expr:
                                  lambda g: factorial(_arg(g, 0) - 1)))
 
     simplifications: list[Callable[[Expr], Expr]] = [
-        lambda e: factor_terms(combsimp(e)),
+        lambda e: factor_terms(combsimp(e, generic=True)),
         lambda e: factor_terms(cancel(e)) if not e.has(Sum) else e,
-        lambda e: factor_terms(combsimp(e.expand())),
+        lambda e: factor_terms(combsimp(e.expand(), generic=True)),
         to_factorials,
     ]
     if not expr.has(Sum, Harmonic):
@@ -693,7 +693,7 @@ def _prettier_sum(term: Expr, j: Symbol, lo: Expr, hi: Expr) -> Expr:
     candidates: list[Sum] = []
     for d in range(-2, 3):
         shifted = cancel(term.subs(j, j - d)) if term.is_rational_function(j) is True else \
-            combsimp(term.subs(j, j - d))
+            combsimp(term.subs(j, j - d), generic=True)
         candidates.append(Sum(shifted, (j, lo + d, hi + d)))
     return min(candidates, key=lambda e: (_ops(e.function), len(str(e.function))))
 
@@ -903,7 +903,7 @@ def _agree(direct: Expr, value: Expr) -> Optional[bool]:
     numerically at sample values of the symbols; ``None`` when neither
     is decided."""
     difference = direct - value
-    exact = _within(lambda: cancel(combsimp(expand_func(difference))), _STEP_SECONDS)
+    exact = _within(lambda: cancel(combsimp(expand_func(difference), generic=True)), _STEP_SECONDS)
     if exact == ZERO:
         return True
     digits = settings.precision

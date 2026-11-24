@@ -3906,6 +3906,139 @@ remove public functions. Breaking changes are listed here when they happen.
 
 ### Fixed
 
+- A fourth pass over the defects reported against SymPy (sympy/sympy#31275,
+  #31017, #30902, #30900, #30844), on what the earlier passes left open:
+  - **A derivative of symbolic order**, `Derivative(f(x), (x, n))` and
+    `diff(f(x), (x, n))`, raised `TypeError` (the node counted with
+    integers). The node holds the order as an expression and stays
+    unevaluated until it is a number: `d.subs(n, 2)` is `Derivative(f(x),
+    (x, 2))`, whose `doit()` differentiates; not even an expression free
+    of the variable is differentiated (the derivative of order 0 is the
+    expression itself). The orders of one variable in a row add up
+    (`diff(d, x)` is `Derivative(f(x), (x, n + 1))`), the free symbols
+    have those of the orders, an order which cannot be a nonnegative
+    integer raises `ValueError`. `sstr`, `srepr`, `latex`
+    (`\frac{d^{n}}{d x^{n}} f{\left(x \right)}`) and `pretty` print it as
+    SymPy's printers do, the parser reads `'Derivative(f(x), (x, n))'`
+    natively (it was outside the grammar), `to_sympy`/`from_sympy` convert
+    it, `collect` and `ordered` take it as a term. New:
+    `Derivative.variable_orders` (the variables with their orders as
+    expressions) and `Derivative.has_symbolic_order`.
+    `Derivative.variable_count` and `Derivative.variables`, the integer
+    views which the solvers read, raise `ValueError` for a derivative of
+    symbolic order (it could not be built before).
+  - The series of an unevaluated derivative of order above 1 had the
+    order term of the first derivative (SymPy's rule, which divides the
+    order term by `x` once): `Derivative(exp(x), (x, 2)).series(x, 0, 3)`
+    evaluated to `1 + x + O(x**3)`, without `x**2/2`. The order term is
+    divided once for every differentiation in `x`. **Behaviour change**:
+    `nseries` of such a derivative has a lower order than before, and
+    that of a derivative of symbolic order in `x` raises
+    `NotImplementedError`.
+  - `series.limitseq.limit_seq` did not find the limit of a sum against
+    factors which are not a denominator as they stand: `log(n)*Sum(1/log(k
+    + 1), (k, 1, n))/n` (the differences of `log(n)*Sum` and of `n` have
+    the sum again). A sum which is the only one of a product, to a
+    rational power (positive terms unless the power is 1 or -1), is
+    taken against the rest `b(n)` by the theorem of Stolz and Cesàro
+    when `b` is a function of exponentials and logarithms which tends to
+    an infinity (it is then monotone from some point on). **Behaviour
+    change**: some limits which were `None` are found (`1`, and `1/2` for
+    `log(n)*Sum(k/log(k + 1), (k, 1, n))/n**2`).
+  - `combsimp` and `gammasimp` at the integer points where a binomial is
+    only a limit of its quotient of gamma functions: `combsimp(binomial(n,
+    k)*factorial(k))` was `factorial(n)/factorial(n - k)` for integers of
+    any sign, `zoo/zoo` for every negative `n`, where the product is
+    `n*(n - 1)*...*(n - k + 1)`; `combsimp(binomial(n, k)/binomial(n - 1,
+    k))` was `n/(n - k)` for nonnegative integers too, `0/0` at `n = k =
+    0`, where the quotient is `binomial(0, 0)/binomial(-1, 0) = 1`
+    (SymPy's results too); `gammasimp` gave the same in gamma functions.
+    The points `n < 0 <= k` of every binomial whose upper index may be a
+    negative integer are now checked as the points `k <= n < 0` were:
+    finitely many values of one symbol are cases (`Piecewise((binomial(0,
+    k)/binomial(-1, k), Eq(n, 0)), (n/(n - k), True))`), and the
+    expression stays where they are not known to be covered. A binomial
+    with a number as lower index (a polynomial in the upper one) has no
+    such point, and when a symbol is in the upper indices only and the
+    result is a rational function, the result holds wherever its
+    denominator is not 0 (`binomial(n + 1, k + 1)/binomial(n, k)` is still
+    `(n + 1)/(k + 1)`). Where `n < k < 0` the binomial is 0, as the limit
+    is, and the points are those where the evaluation of the result is
+    not continuous (a factorial of a numerator at a pole); and a result
+    with a factorial or a gamma function of a numerator at a pole where
+    the expression may be finite is not returned at all
+    (`binomial(0, n - k)/binomial(0, k - 2)` became a product with
+    `factorial(-k)*factorial(k - 1)`, `nan` at `k = 2`). A random search
+    over products of binomials and factorials, compared at the integer
+    points, found these; it still finds, once in some hundreds, a result
+    of `gammasimp` for an integer symbol of unknown sign which is `0*zoo`
+    at a point (a polynomial factor of a denominator beside the inverse
+    of a gamma function at its pole: `1/((n + 2)*gamma(n + 1))` at `n =
+    -2`), which is not handled. **Behaviour changes**: for integer symbols of
+    unknown sign `combsimp` returns more expressions as they are
+    (`binomial(n, k)*factorial(k)`, `binomial(n + 1, n - k)/binomial(n, n
+    - k)`, which was `(n + 1)/(k + 1)`, `0/0` at `n = k = -1` where the
+    quotient is 1) or with cases (`binomial(n, k)/binomial(n + 1, k +
+    1)`); `gammasimp` of an expression with such binomials is checked in
+    the same way (it was not checked at all); symbols which are not
+    integers, and nonnegative ones without such points, give the results
+    of before. New: `combsimp(e, generic=True)` and `gammasimp(e,
+    generic=True)` (and the methods of `Expr`) for the identity of
+    meromorphic functions without these checks, which the algorithms on
+    hypergeometric terms use (`concrete.zeilberger`, `creative`,
+    `convergence`, the hypergeometric sums, `limit_seq`, `solvers.recurr`).
+  - `limit` of a hypergeometric function at a point where it has no
+    leading term (an infinite argument, the singular point 1) stayed
+    unevaluated: `limit(hyper((1, 1), (2,), -x), x, oo)`. It is now the
+    limit of the closed form of `hyperexpand` (`log(x + 1)/x`) when there
+    is one without hypergeometric functions and it has the values of the
+    function at three points on the way (an expansion holds on a
+    branch). And **a wrong limit** (SymPy's too): `limit(x*exp(-x)*hyper(
+    (1,), (2,), x), x, oo)` was `0`; the product is `1 - exp(-x)`. `hyper`
+    was its own leading term where its argument is infinite, as if it
+    were bounded, and Gruntz's algorithm put it in the comparability
+    class of its argument: both refuse now (`NotImplementedError` inside,
+    an unevaluated limit when there is no closed form).
+  - The eigenvalues, `eigenvectors`, `diagonalize`, `jordan_form`,
+    `matrix_function`, `matrix_exp` and `matrix_power` of an exact matrix
+    with `I` whose characteristic polynomial has a factor of degree 3 or
+    4 irreducible over `QQ(I)` raised `NotImplementedError` ("the roots
+    are not expressed in radicals"; a factor with `I` had the quadratic
+    formula only). They are given by the formulas of Cardano and of
+    Ferrari with complex coefficients, every root checked numerically
+    against the factor. A factor of degree 5 or more raises as before,
+    as over the rational numbers (`eigenspaces`, `jordan_chains` and
+    `matrix_components` describe it). `svd` of a matrix with `I` still
+    raises (its algorithm is for rational entries).
+  - `Sum(x**i/factorial(i), (i, 0, n)).doit()` was `exp(x)` at `n = -1`
+    (SymPy's too), an empty sum: the closed form of the series from `n +
+    1` on, `hyper((1,), (n + 2,), x)` expanded for a generic parameter,
+    is 0 there, not `exp(x)`. The values of a symbol of the upper bound
+    where the sum has 0, -1 or -2 terms (Karr's convention: 0, `-f(a -
+    1)`, `-f(a - 1) - f(a - 2)`) are cases of the result when the closed
+    form is shown to differ there (symbolically not equal, and
+    numerically different or not a number): `Piecewise((0, Eq(n, -1)),
+    (..., n > -2), (Sum(...), True))`, and `(-1/x, Eq(n, -2))` for
+    `x**i/factorial(i + 1)`. **Behaviour change**: these results have
+    one more case for an upper bound which may be below the lower one.
+  - `gegenbauer(n, -1, x)` was 0 for every `n` (SymPy's rule): the
+    generating function `(1 - 2*x*t + t**2)**(-a)` is `1 - 2*x*t + t**2`
+    at `a = -1`, so that the polynomials are `1`, `-2*x`, `1` and 0 from
+    the degree 3 on (DLMF 18.5.10). With a symbolic degree and `2*a` a
+    nonpositive integer the closed forms at `x = 1`, `-1` and `0`
+    (quotients of gamma functions at their poles) were 0 or `nan` for the
+    low degrees too: such a `gegenbauer(n, a, x)` stays (0 where `n > -2*a`
+    is known for an integer `a`). `Gegenbauer.evalf` of an integer degree
+    is the value of the polynomial by its recurrence (`mpmath.gegenbauer(1,
+    -1, x)` is 0), and a negative degree which is not an integer is no
+    longer 0 (`gegenbauer(-1/2, a, x)` stays).
+  - `latex` and `pretty` printed a function of SymPy applied to native
+    arguments (`interop.AppliedSymPyFunction`) as the name of its class
+    (`\operatorname{elliptic\_k}{\left(x \right)}`, `elliptic_k(x)`): it is
+    printed by SymPy's own printers, as the wrapped objects are
+    (`K\left(x\right)`, `Y_{1}^{0}\left(x,y\right)`, `e^{x}`), the node as it
+    stands, bracketed by the framework from the binding of that output.
+
 - A third pass over the defects reported against SymPy (sympy/sympy#31275,
   #31017, #30902, #30900) which the earlier passes left open:
   - `series.limitseq.limit_seq` did not return on a quotient of sums

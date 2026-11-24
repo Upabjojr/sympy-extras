@@ -52,7 +52,7 @@ from typing import AbstractSet, Mapping, Optional, Sequence, Union
 import mpmath
 
 from sympy_extras.core.accumbounds import AccumBounds
-from sympy_extras.core.add import Add
+from sympy_extras.core.add import Add, add
 from sympy_extras.core.assume import AppliedPredicate, Predicate
 from sympy_extras.core.basic import Basic, ForeignPrint, PrintSetting
 from sympy_extras.core.sympify import sympify
@@ -827,17 +827,18 @@ def _requires_partial(e: Expr) -> bool:
 def _derivative(p: LatexPrinter, e: Derivative, ctx: Ctx) -> Res:
     d = r'\partial' if _requires_partial(e.expr) else p.diff_operator
     tex = ''
-    total = 0
-    for x, count in reversed(e.variable_count):
-        total += count
+    # the orders are integers or symbolic (\frac{d^{n}}{d x^{n}}); their sum is the order of the operator
+    total: Expr = Integer(0)
+    for x, count in reversed(e.variable_orders):
+        total = add(total, count)
         if count == 1:
             tex += '%s %s' % (d, p.inside(x, ctx))
         else:
-            tex += '%s %s^{%d}' % (d, p.print(x, ctx.base(None)).output, count)
+            tex += '%s %s^{%s}' % (d, p.print(x, ctx.base(None)).output, p.inside(count, ctx))
     if total == 1:
         tex = r'\frac{%s}{%s}' % (d, tex)
     else:
-        tex = r'\frac{%s^{%d}}{%s}' % (d, total, tex)
+        tex = r'\frac{%s^{%s}}{%s}' % (d, p.inside(total, ctx), tex)
     # the body is a product or tighter, and the derivative is bracketed
     # when a factor follows it (SymPy: \frac{d}{d x} f \frac{d}{d x} g)
     body = p.print(e.expr, ctx.body())

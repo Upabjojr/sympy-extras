@@ -192,7 +192,7 @@ def _clean(e: Expr, n: Symbol) -> Expr:
     forward = _real_dummies(e, n)
     back: dict[Basic, Basic] = {d: s for s, d in forward.items()}
     replaced = _replaced(e, forward)
-    cleaned = attempt(lambda: _simplify(combsimp(powsimp(replaced, force=True))), settings.timeout, native=True)
+    cleaned = attempt(lambda: _simplify(combsimp(powsimp(replaced, force=True), generic=True)), settings.timeout, native=True)
     if cleaned is None:
         return e
     return _replaced(cleaned, back)
@@ -473,7 +473,7 @@ def _constant_sign(term: Expr, ctx: _Context) -> Truth:
     # the core's own knowledge, with n a positive integer and the
     # parameters real numbers (the convention of the conditions returned)
     replacements = _real_dummies(term, ctx.n)
-    forms: list[Callable[[], Expr]] = [lambda: term, lambda: _factorial_form(term), lambda: combsimp(term)]
+    forms: list[Callable[[], Expr]] = [lambda: term, lambda: _factorial_form(term), lambda: combsimp(term, generic=True)]
     for form in forms:
         found = attempt(form, settings.timeout, native=True)
         if found is None:
@@ -756,7 +756,7 @@ def _is_convergent_native(term: Expr, n: Symbol, lower: Expr) -> Optional[bool]:
 
     # the ratio test
     next_term = _replaced(sequence_term, {sym: sym + 1})
-    ratio = combsimp(powsimp(next_term/sequence_term))
+    ratio = combsimp(powsimp(next_term/sequence_term), generic=True)
     lim_ratio = _limit_seq_of(ratio, sym)
     below_one = _is_number_below(abs_(lim_ratio) if lim_ratio is not None else None, 1)
     if below_one is not None:
@@ -764,7 +764,7 @@ def _is_convergent_native(term: Expr, n: Symbol, lower: Expr) -> Optional[bool]:
 
     # Raabe's test
     if lim_ratio is not None and lim_ratio == 1:
-        test_val = (sym*(sequence_term/_replaced(sequence_term, {sym: sym + 1}) - 1)).gammasimp()
+        test_val = (sym*(sequence_term/_replaced(sequence_term, {sym: sym + 1}) - 1)).gammasimp(generic=True)
         raabe = _is_number_below(_limit_seq_of(test_val, sym), 1)
         if raabe is not None:
             return not raabe

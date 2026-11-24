@@ -232,6 +232,11 @@ def mrv(e: Expr, x: Symbol) -> tuple[SubsSet, Expr]:
         found_args: list[tuple[SubsSet, Basic]] = []
         for argument in e.args:
             if isinstance(argument, Expr):
+                if argument.has(x) and _is_hypergeometric(e) and limitinf(argument, x).is_finite is not True:
+                    # not SymPy's: a hypergeometric function of an unbounded argument is no function of the
+                    # comparability class of its argument (hyper((1,), (2,), x) grows as exp(x)/x: SymPy's
+                    # limit of x*exp(-x)*hyper((1,), (2,), x) at oo is 0, and the product is 1 - exp(-x))
+                    raise NotImplementedError("Don't know how to calculate the mrv of '%s'" % (e,))
                 found_args.append(mrv(argument, x))
             elif argument.has(x):
                 raise NotImplementedError("Don't know how to calculate the mrv of '%s'" % (e,))
@@ -245,6 +250,11 @@ def mrv(e: Expr, x: Symbol) -> tuple[SubsSet, Expr]:
     if isinstance(e, Derivative):
         raise NotImplementedError("MRV set computation for derivatives not implemented yet.")
     raise NotImplementedError("Don't know how to calculate the mrv of '%s'" % (e,))
+
+
+def _is_hypergeometric(e: Expr) -> bool:
+    from sympy_extras.functions.special.hyper import Hyper, MeijerG
+    return isinstance(e, (Hyper, MeijerG))
 
 
 def _rebuild_assoc(e: Expr, args: list[Expr]) -> Expr:

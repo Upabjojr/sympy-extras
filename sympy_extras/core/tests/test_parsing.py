@@ -245,7 +245,8 @@ def test_integral_with_one_bound_is_the_antiderivative_at_it() -> None:
     assert parse('Integral(x*y, (x, a), (y, 0, 1))').doit() == a**2/4
     assert sympify('Integral(x, (x, 3))').doit() == Rational(9, 2)
     # what no native node has says why (it was "cannot parse" alone without the bridge)
-    for text, reason in [('Derivative(f(x), (x, n))', 'the variable (x, n) of a derivative'),
+    # (a symbolic order of differentiation was in this list: the node holds it since, test_core)
+    for text, reason in [('Derivative(f(x), (x, n, 2))', 'the variable (x, n, 2) of a derivative'),
                          ('Sum(k, k)', 'Sum requires values for lower and upper bounds'),
                          ('Integral(x, (x, 1, 2, 3))', 'the limit (x, 1, 2, 3) of an integral')]:
         with pytest.raises(ParseUnsupported, match=reason.replace('(', r'\(').replace(')', r'\)')):

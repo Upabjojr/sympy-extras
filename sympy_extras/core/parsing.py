@@ -316,35 +316,39 @@ class _Parser:
     def derivative_node(self, expr: Expr, rest: list[_Argument]) -> Expr:
         from .function import Derivative
         from .numbers import Integer
-        counts: list[tuple[Symbol, int]] = []
+        counts: list[tuple[Symbol, Expr]] = []
         after_symbol = False
         for a in rest:
             if a.grouped:
-                if len(a.items) != 2 or not isinstance(a.items[1], Integer):
-                    # a symbolic order, (x, n): the native node counts with integers
+                if len(a.items) != 2:
                     raise ParseUnsupported('the variable %s of a derivative in %r' % (a.items, self.text))
-                counts.append((self.the_symbol(a.items[0]), int(a.items[1])))
+                # (x, 2), or a symbolic order (x, n)
+                counts.append((self.the_symbol(a.items[0]), a.items[1]))
                 after_symbol = False
             elif isinstance(a.items[0], Integer):
                 if not after_symbol:
                     raise ParseUnsupported('the order %s must follow a variable in %r' % (a.items[0], self.text))
-                counts[-1] = (counts[-1][0], int(a.items[0]))
+                counts[-1] = (counts[-1][0], a.items[0])
                 after_symbol = False
             else:
-                counts.append((self.the_symbol(a.items[0]), 1))
+                counts.append((self.the_symbol(a.items[0]), Integer(1)))
                 after_symbol = True
         if not rest:
-            counts.append((self.the_free_symbol(expr), 1))
+            counts.append((self.the_free_symbol(expr), Integer(1)))
         if self.evaluate:
             # SymPy's constructor: the orders 0 dropped, the derivative of a
             # derivative merged
             counts = [c for c in counts if c[1] != 0]
             if isinstance(expr, Derivative):
-                counts = list(expr.variable_count) + counts
+                counts = list(expr.variable_orders) + counts
                 expr = expr.expr
             if not counts:
                 return expr
-        return Derivative(expr, *counts)
+        try:
+            return Derivative(expr, *counts)
+        except (TypeError, ValueError) as error:
+            # an order which is not a nonnegative integer
+            raise ParseUnsupported('%s in %r' % (error, self.text))
 
     # -- the leaves and the nodes
 
