@@ -83,7 +83,7 @@ from sympy_extras.polys.rings import PolyElement, PolyRing, lex
 
 from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
-from .linalg import _square
+from .linalg import _square, approximate_matrix, exact_matrix, float_precision
 
 __all__ = ['riccati_solutions', 'care_solve', 'lqr', 'closed_loop_is_stable', 'discrete_riccati_solutions', 'dare_solve',
            'dlqr']
@@ -101,6 +101,15 @@ def _rational_rows(M: ExprMatrix, name: str) -> _Rows:
             line.append(Fraction(e.p, e.q))
         rows.append(line)
     return rows
+
+
+def _exact(A: ExprMatrix, B: ExprMatrix, Q: ExprMatrix, R: ExprMatrix
+           ) -> tuple[ExprMatrix, ExprMatrix, ExprMatrix, ExprMatrix]:
+    """The matrices of a problem with floats, each float the rational
+    number it stores: the equation is solved exactly for them and the
+    solutions are written as floats (whether a solution is stabilising is
+    decided for the matrices as stored)."""
+    return exact_matrix(A), exact_matrix(B), exact_matrix(Q), exact_matrix(R)
 
 
 def _product(a: _Rows, b: _Rows) -> _Rows:
@@ -514,6 +523,9 @@ def riccati_solutions(A: ExprMatrix, B: ExprMatrix, Q: ExprMatrix, R: ExprMatrix
     ExprMatrix([[-sqrt(3), 1], [1, -sqrt(3)]])
     ExprMatrix([[sqrt(3), 1], [1, sqrt(3)]])
     """
+    digits = float_precision([A, B, Q, R])
+    if digits is not None:
+        return [approximate_matrix(X, digits) for X in riccati_solutions(*_exact(A, B, Q, R))]
     return [_matrix(X) for X in _Problem(A, B, Q, R).solutions()]
 
 
@@ -530,6 +542,10 @@ def care_solve(A: ExprMatrix, B: ExprMatrix, Q: ExprMatrix, R: ExprMatrix) -> Op
     >>> care_solve(ExprMatrix.from_rows([[1]]), ExprMatrix.zeros(1, 1), one, one) is None      # not stabilisable
     True
     """
+    digits = float_precision([A, B, Q, R])
+    if digits is not None:
+        found = care_solve(*_exact(A, B, Q, R))
+        return None if found is None else approximate_matrix(found, digits)
     problem = _Problem(A, B, Q, R)
     for X in problem.solutions():
         if _stabilising(problem, X):
@@ -548,6 +564,10 @@ def lqr(A: ExprMatrix, B: ExprMatrix, Q: ExprMatrix, R: ExprMatrix) -> tuple[Exp
     >>> K, X
     (ExprMatrix([[2]]), ExprMatrix([[2]]))
     """
+    digits = float_precision([A, B, Q, R])
+    if digits is not None:
+        gain_matrix, solution = lqr(*_exact(A, B, Q, R))
+        return approximate_matrix(gain_matrix, digits), approximate_matrix(solution, digits)
     problem = _Problem(A, B, Q, R)
     for X in problem.solutions():
         if _stabilising(problem, X):
@@ -574,6 +594,7 @@ def closed_loop_is_stable(A: ExprMatrix, B: ExprMatrix, K: ExprMatrix) -> bool:
     >>> closed_loop_is_stable(A, B, ExprMatrix.from_rows([[1, 2]])), closed_loop_is_stable(A, B, ExprMatrix.from_rows([[1, 0]]))
     (True, False)
     """
+    A, B, K = exact_matrix(A), exact_matrix(B), exact_matrix(K)
     a, b, k = _rational_rows(A, 'A'), _rational_rows(B, 'B'), _rational_rows(K, 'K')
     bk = _product(b, k)
     closed = [[Algebraic.from_rational(p - q) for p, q in zip(row, other)] for row, other in zip(a, bk)]
@@ -591,6 +612,9 @@ def discrete_riccati_solutions(A: ExprMatrix, B: ExprMatrix, Q: ExprMatrix, R: E
     >>> discrete_riccati_solutions(one, one, one, one)
     [ExprMatrix([[1/2 - sqrt(5)/2]]), ExprMatrix([[1/2 + sqrt(5)/2]])]
     """
+    digits = float_precision([A, B, Q, R])
+    if digits is not None:
+        return [approximate_matrix(X, digits) for X in discrete_riccati_solutions(*_exact(A, B, Q, R))]
     return [_matrix(X) for X, _ in _DiscreteProblem(A, B, Q, R).solutions()]
 
 
@@ -605,6 +629,10 @@ def dare_solve(A: ExprMatrix, B: ExprMatrix, Q: ExprMatrix, R: ExprMatrix) -> Op
     >>> dare_solve(one, one, one, one)                 # the golden ratio
     ExprMatrix([[1/2 + sqrt(5)/2]])
     """
+    digits = float_precision([A, B, Q, R])
+    if digits is not None:
+        found = dare_solve(*_exact(A, B, Q, R))
+        return None if found is None else approximate_matrix(found, digits)
     problem = _DiscreteProblem(A, B, Q, R)
     for X, K in problem.solutions():
         if problem.stabilising(K):
@@ -624,6 +652,10 @@ def dlqr(A: ExprMatrix, B: ExprMatrix, Q: ExprMatrix, R: ExprMatrix) -> tuple[Ex
     >>> dlqr(one, one, one, one)[0]
     ExprMatrix([[-1/2 + sqrt(5)/2]])
     """
+    digits = float_precision([A, B, Q, R])
+    if digits is not None:
+        gain_matrix, solution = dlqr(*_exact(A, B, Q, R))
+        return approximate_matrix(gain_matrix, digits), approximate_matrix(solution, digits)
     problem = _DiscreteProblem(A, B, Q, R)
     for X, K in problem.solutions():
         if problem.stabilising(K):

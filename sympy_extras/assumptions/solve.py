@@ -36,11 +36,18 @@ the triangular decompositions (:mod:`sympy_extras.polys.regularchains`),
 the cases of the parameters
 (:func:`sympy_extras.solvers.parametric.parametric_cases`) and the linear
 Diophantine systems (:mod:`sympy_extras.solvers.integers`) are native.
+
+A system with a transcendental equation which these methods do not solve
+is split by the factors of its equations and solved by substitution
+(``_by_splitting``): an equation linear in an unknown gives its value in
+the others, an equation in one unknown is solved by ``solveset``, and an
+equation which stays unsolved is the condition of a condition set with
+the values already found.
 """
 from __future__ import annotations
 
 import random
-from typing import Optional, Sequence, Union
+from typing import Final, Optional, Sequence, Union
 
 from sympy_extras.core.basic import Basic
 from sympy_extras.core.containers import Tuple
@@ -836,6 +843,7 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
     unsolved = False
     unchecked = solutions is None
     refuted = False
+    families: Set = EmptySet
     if solutions is None:
         solutions = _nonlinsolve(equations, symbols)
         unsolved = solutions is None
@@ -849,10 +857,17 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
         solutions = _by_regular_chains(equations, symbols, real, False)
         if solutions is None:
             if unsolved and not refuted:
-                raise NotImplementedError("the system cannot be solved")
-            # a refuted answer is not returned: the system as it is
-            return condition_set(Tuple(*symbols), and_(condition, *[eq(e, 0) for e in equations]),
-                                 product_set(*[dom] * len(symbols)))
+                split = _by_splitting(equations, symbols, dom, condition, facts)
+                if split is None:
+                    raise NotImplementedError("the system cannot be solved")
+                # the points go through the conditions below
+                solutions, families = split
+            else:
+                # a refuted answer is not returned: the system as it is
+                return condition_set(Tuple(*symbols), and_(condition, *[eq(e, 0) for e in equations]),
+                                     product_set(*[dom] * len(symbols)))
+    if isinstance(solutions, EmptySetClass) and not isinstance(families, EmptySetClass):
+        return families
     if not isinstance(solutions, PointSet):
         return condition_set(Tuple(*symbols), condition, solutions) if condition is not true else solutions
     kept: list[Tuple] = []
@@ -876,7 +891,205 @@ def _multivariate(statements: Sequence[Boolean], symbols: Sequence[Symbol], fact
         # complex one is not real)
         inside = and_(*[_membership(s, dom) for s in symbols]) if not isinstance(dom, ComplexesClass) else true
         result = union(result, condition_set(Tuple(*symbols), and_(condition, inside), point_set(*undecided)))
-    return result
+    return union(result, families)
+
+
+class _Branch:
+    """A family of solutions of a system found by substitution: the values
+    of the unknowns solved for (in terms of the other unknowns and of the
+    ``parameters``, which run through the ``base_sets``), and the
+    ``condition`` which is left unsolved."""
+
+    __slots__ = ('values', 'parameters', 'base_sets', 'condition')
+
+    def __init__(self, values: dict[Symbol, Expr], parameters: Sequence[Symbol], base_sets: Sequence[Set],
+                 condition: Boolean) -> None:
+        self.values: Final[dict[Symbol, Expr]] = values
+        self.parameters: Final[tuple[Symbol, ...]] = tuple(parameters)
+        self.base_sets: Final[tuple[Set, ...]] = tuple(base_sets)
+        self.condition: Final[Boolean] = condition
+
+
+def _vanishing_factors(e: Expr, symbols: Sequence[Symbol]) -> Optional[list[Expr]]:
+    """The factors of the numerator of ``e``, as it is written, which have
+    an unknown and may vanish (an exponential does not); ``None`` when the
+    numerator is zero, an empty list when it is a constant which is not."""
+    from sympy_extras.core.mul import Mul
+    from sympy_extras.core.power import Pow
+    from sympy_extras.functions.elementary.exponential import Exp
+    from sympy_extras.polys.rationaltools import together
+    from sympy_extras.simplify.radsimp import fraction
+    numerator = fraction(together(e))[0]
+    if numerator == 0 or numerator.expand() == 0:
+        return None
+    found: list[Expr] = []
+    for factor in Mul.make_args(numerator):
+        base = factor.base if isinstance(factor, Pow) and factor.exp.is_positive is True \
+            and not factor.exp.free_symbols & set(symbols) else factor
+        if not base.free_symbols & set(symbols) or isinstance(base, Exp):
+            continue
+        if base not in found:
+            found.append(base)
+    return found
+
+
+def _one_unknown(equation: Expr, v: Symbol, dom: Set) -> Optional[list[_Branch]]:
+    """The solutions of one equation in one unknown as branches: the
+    points and the images of the integers of
+    :func:`~sympy_extras.solvers.solveset.solveset`, the equation itself
+    as the condition of a branch when it is not solved."""
+    from sympy_extras.sets.fancysets import ImageSet
+    from sympy_extras.solvers.solveset import solveset
+    solved = attempt(lambda: solveset(eq(equation, 0), v, dom), settings.timeout, native=True)
+    unsolved = [_Branch({}, (), (), eq(equation, 0))]
+    if solved is None:
+        return unsolved
+    branches: list[_Branch] = []
+    for piece in (solved.sets if isinstance(solved, SetUnion) else (solved,)):
+        if isinstance(piece, EmptySetClass):
+            continue
+        if isinstance(piece, FiniteSet):
+            branches.extend(_Branch({v: as_expr(value)}, (), (), true) for value in piece.elements)
+        elif isinstance(piece, ImageSet) and isinstance(piece.image, Expr):
+            branches.append(_Branch({v: piece.image}, piece.variables, piece.base_sets, true))
+        else:
+            return unsolved
+    return branches
+
+
+def _split(equations: Sequence[Expr], symbols: Sequence[Symbol], dom: Set, depth: int) -> Optional[list[_Branch]]:
+    """The solutions of the system by the factors of its equations and by
+    substitution: an equation which is a product is the union of the
+    systems with each factor; an equation linear in an unknown, with a
+    coefficient free of the unknowns, gives its value in the others; an
+    equation in one unknown is solved for it. ``None`` when no equation
+    is of these kinds."""
+    from sympy_extras.core.function import diff
+    if depth > 2*len(symbols) + 4:
+        return None
+    system: list[list[Expr]] = []
+    for e in equations:
+        factors = _vanishing_factors(e, symbols)
+        if factors is None:
+            continue
+        if not factors:
+            return []
+        if factors not in system:
+            system.append(factors)
+    if not system:
+        return [_Branch({}, (), (), true)]
+    for index, factors in enumerate(system):
+        if len(factors) > 1:
+            others = [f[0] if len(f) == 1 else as_expr(_product(f)) for f in system[:index] + system[index + 1:]]
+            found: list[_Branch] = []
+            for factor in factors:
+                sub = _split(others + [factor], symbols, dom, depth + 1)
+                if sub is None:
+                    sub = [_Branch({}, (), (), and_(*[eq(o, 0) for o in others + [factor]]))]
+                found.extend(sub)
+            return found
+    single = [factors[0] for factors in system]
+    unknowns = [v for v in symbols if any(e.has(v) for e in single)]
+    if len(unknowns) == 1 and len(single) == 1:
+        return _one_unknown(single[0], unknowns[0], dom)
+    # an equation linear in an unknown, those in the fewest unknowns first
+    for e in sorted(single, key=lambda e: len(e.free_symbols & set(symbols))):
+        for u in symbols:
+            if not e.has(u):
+                continue
+            slope = diff(e, u)
+            if slope == 0 or slope.free_symbols & set(symbols):
+                continue
+            rest = as_expr(e.subs(u, Integer(0)))
+            if (e - slope*u - rest).expand() != 0:
+                continue
+            value = -rest/slope
+            reduced = [as_expr(o.subs(u, value)) for o in single if o is not e]
+            sub = _split(reduced, [v for v in symbols if v != u], dom, depth + 1)
+            if sub is None:
+                return None
+            return [_lifted(branch, u, value) for branch in sub]
+    # an equation in one unknown: its solutions in the others
+    for e in single:
+        present = [v for v in symbols if e.has(v)]
+        if len(present) != 1:
+            continue
+        v = present[0]
+        first = _one_unknown(e, v, dom)
+        if first is None or any(branch.condition is not true for branch in first):
+            continue
+        found_: list[_Branch] = []
+        for branch in first:
+            value = branch.values[v]
+            reduced = [as_expr(o.subs(v, value)) for o in single if o is not e]
+            sub = _split(reduced, [w for w in symbols if w != v], dom, depth + 1)
+            if sub is None:
+                return None
+            for b in sub:
+                found_.append(_Branch({**b.values, v: value}, branch.parameters + b.parameters,
+                                      branch.base_sets + b.base_sets, b.condition))
+        return found_
+    return None
+
+
+def _product(factors: Sequence[Expr]) -> Expr:
+    from sympy_extras.core.mul import mul
+    return mul(*factors)
+
+
+def _lifted(branch: _Branch, u: Symbol, value: Expr) -> _Branch:
+    """The branch of the system without ``u`` with ``u = value`` at it."""
+    rule: dict[Basic, Basic] = {k: v for k, v in branch.values.items()}
+    return _Branch({**branch.values, u: as_expr(value.subs(rule))}, branch.parameters, branch.base_sets,
+                   branch.condition)
+
+
+def _by_splitting(equations: Sequence[Expr], symbols: Sequence[Symbol], dom: Set, condition: Boolean,
+                  facts: Facts) -> Optional[tuple[Set, Set]]:
+    """The solutions of a system which the chains and the substitution of
+    polynomial equations do not solve (an equation is transcendental), by
+    :func:`_split`: the set of the points, and the union of the images of
+    the integers (the branches of a periodic inverse or of Lambert's
+    function) and, for what stays unsolved, of the condition sets of the
+    remaining equations with the values of the unknowns already solved
+    for. The points are not yet under the ``condition`` of the system; the
+    other sets are. ``None`` when nothing is solved.
+
+    The system ``[4*y*(2*x + 2*exp(y) + 1)*exp(2*x), 4*x*exp(2*x) +
+    4*y*exp(2*x + y) + 4*exp(2*x + y) + 1]`` of sympy/sympy#22413 has the
+    points ``(LambertW(-exp(2)/2, n)/2 - 1, 0)`` and the solutions with
+    ``x = -exp(y) - 1/2`` of an equation in ``y`` alone (SymPy's
+    ``nonlinsolve`` returns ``(x, 0)`` and a free ``y``,
+    sympy/sympy#31275 V276).
+    """
+    if not isinstance(dom, (ComplexesClass, RealsClass)):
+        return None
+    branches = attempt(lambda: _split(list(equations), list(symbols), dom, 0), settings.timeout, native=True)
+    if branches is None or (branches and all(not branch.values for branch in branches)):
+        return None
+    inside = true if isinstance(dom, ComplexesClass) else and_(*[_membership(v, dom) for v in symbols])
+    required = and_(condition, inside)
+    space = product_set(*[dom] * len(symbols))
+    unknown = Tuple(*symbols)
+    points: list[Tuple] = []
+    pieces: list[Set] = []
+    for branch in branches:
+        point = Tuple(*[branch.values.get(v, v) for v in symbols])
+        if branch.condition is not true:
+            if branch.parameters:
+                return None
+            solved = [eq(v, value) for v, value in branch.values.items()]
+            pieces.append(condition_set(unknown, and_(required, branch.condition, *solved), space))
+        elif branch.parameters:
+            values: dict[Basic, Basic] = {v: value for v, value in zip(symbols, point.args)}
+            holds = _holds_at(required, values, facts) if required is not true else True
+            if holds is False:
+                continue
+            family = image_set(Tuple(*branch.parameters), point, *branch.base_sets)
+            pieces.append(family if holds is True else condition_set(unknown, required, family))
+        elif point not in points:
+            points.append(point)
+    return (point_set(*points) if points else EmptySet), (union(*pieces) if pieces else EmptySet)
 
 
 def _nonlinsolve(equations: Sequence[Expr], symbols: Sequence[Symbol]) -> Optional[Set]:

@@ -66,7 +66,7 @@ from typing import Final, Optional, Sequence
 from sympy_extras.core.expr import Expr
 
 from .dense import ExprMatrix
-from .linalg import _square, conjugate_transpose, linear_solve
+from .linalg import _square, approximate_matrix, conjugate_transpose, exact_matrix, float_precision, linear_solve
 
 __all__ = ['MatrixSolution', 'kronecker_product', 'vec', 'unvec', 'adjoint', 'linear_matrix_equation', 'sylvester_solve',
            'lyapunov_solve', 'discrete_lyapunov_solve', 'commuting_matrices']
@@ -159,6 +159,16 @@ def linear_matrix_equation(terms: Sequence[tuple[ExprMatrix, ExprMatrix]], C: Ex
     """
     if not terms:
         raise ValueError('an equation without terms')
+    digits = float_precision([C] + [M for pair in terms for M in pair])
+    if digits is not None:
+        # floats are the rational numbers they store: the products of the
+        # system are not rounded, and whether the equation has a solution,
+        # and how many, is decided for the matrices as stored
+        exact = linear_matrix_equation([(exact_matrix(A), exact_matrix(B)) for A, B in terms], exact_matrix(C))
+        if exact is None:
+            return None
+        return MatrixSolution(approximate_matrix(exact.particular, digits),
+                              [approximate_matrix(H, digits) for H in exact.homogeneous])
     rows, cols = terms[0][0].cols, terms[0][1].rows
     for A, B in terms:
         if A.cols != rows or B.rows != cols or A.rows != C.rows or B.cols != C.cols:

@@ -74,6 +74,11 @@ ExprMatrix([[1, 0], [0, x**2]])
 >>> is_similar(ExprMatrix.from_rows([[1, 1], [0, 1]]), ExprMatrix.from_rows([[1, 0], [5, 1]]))
 True
 
+A matrix with floats is taken exactly, each float being the rational
+number it stores, and the numbers of the forms are written as floats (see
+"Floating point entries" in ``docs/matrices.md``): the invariant factors,
+the elementary divisors and similarity are those of the matrix as stored.
+
 References
 ==========
 
@@ -103,7 +108,8 @@ from sympy_extras.polys import densearith
 from .dense import ExprMatrix
 from .eigen import (_Field, _FunctionField, _GaussianField, _RationalField, _characteristic_factors, _coefficients,
                     _fresh_symbol)
-from .linalg import _PolynomialLift, _complex_lift, _kernels, _square
+from .linalg import (_PolynomialLift, _complex_lift, _kernels, _square, approximate, approximate_matrix, exact_matrix,
+                     float_precision)
 
 __all__ = ['SmithDecomposition', 'smith_normal_form', 'hermite_normal_form', 'popov_form', 'polynomial_matrix_rank', 'is_unimodular', 'invariant_factors', 'matrix_minimal_polynomial', 'companion_matrix',
            'frobenius_form', 'elementary_divisors', 'is_similar']
@@ -527,6 +533,11 @@ def smith_normal_form(M: ExprMatrix, x: Symbol) -> SmithDecomposition:
     >>> (D.U*M*D.V).applyfunc(lambda e: e.expand()) == D.S
     True
     """
+    digits = float_precision([M])
+    if digits is not None:
+        D = smith_normal_form(exact_matrix(M), x)
+        return SmithDecomposition(approximate_matrix(D.S, digits), approximate_matrix(D.U, digits),
+                                  approximate_matrix(D.V, digits))
     rows: _PolynomialRows = [[_entry_coefficients(e, x) for e in M.row(i)] for i in range(M.rows)]
     return _forms([c for row in rows for f in row for c in f]).smith(rows, M.cols, x)
 
@@ -551,6 +562,10 @@ def hermite_normal_form(M: ExprMatrix, x: Symbol) -> tuple[ExprMatrix, ExprMatri
     >>> hermite_normal_form(ExprMatrix.from_rows([[x**2 - 1, x - 1], [x + 1, 1]]), x)[0]       # of rank one
     ExprMatrix([[x + 1, 1], [0, 0]])
     """
+    digits = float_precision([M])
+    if digits is not None:
+        H, U = hermite_normal_form(exact_matrix(M), x)
+        return approximate_matrix(H, digits), approximate_matrix(U, digits)
     rows: _PolynomialRows = [[_entry_coefficients(e, x) for e in M.row(i)] for i in range(M.rows)]
     H, U, _ = _forms([c for row in rows for f in row for c in f]).hermite(rows, M.cols, x)
     return H, U
@@ -580,6 +595,10 @@ def popov_form(M: ExprMatrix, x: Symbol) -> tuple[ExprMatrix, ExprMatrix]:
            T. Kailath, *Linear Systems*, Prentice-Hall, 1980, Section 6.7
            (the Popov or polynomial-echelon form).
     """
+    digits = float_precision([M])
+    if digits is not None:
+        P, U = popov_form(exact_matrix(M), x)
+        return approximate_matrix(P, digits), approximate_matrix(U, digits)
     rows: _PolynomialRows = [[_entry_coefficients(e, x) for e in M.row(i)] for i in range(M.rows)]
     return _forms([c for row in rows for f in row for c in f]).popov(rows, M.cols, x)
 
@@ -587,6 +606,7 @@ def popov_form(M: ExprMatrix, x: Symbol) -> tuple[ExprMatrix, ExprMatrix]:
 def polynomial_matrix_rank(M: ExprMatrix, x: Symbol) -> int:
     """The rank over the field of the rational functions in ``x`` of a
     matrix of polynomials (the number of pivots of its Hermite form)."""
+    M = exact_matrix(M)
     rows: _PolynomialRows = [[_entry_coefficients(e, x) for e in M.row(i)] for i in range(M.rows)]
     return len(_forms([c for row in rows for f in row for c in f]).hermite(rows, M.cols, x)[2])
 
@@ -604,7 +624,7 @@ def is_unimodular(M: ExprMatrix, x: Symbol) -> bool:
     (True, False)
     """
     n = _square(M)
-    return hermite_normal_form(M, x)[0] == ExprMatrix.eye(n)
+    return hermite_normal_form(exact_matrix(M), x)[0] == ExprMatrix.eye(n)
 
 
 def invariant_factors(A: ExprMatrix, x: Expr) -> list[Expr]:
@@ -620,6 +640,9 @@ def invariant_factors(A: ExprMatrix, x: Expr) -> list[Expr]:
     ([x - 1, x - 1], [x**2 - 2*x + 1])
     """
     _square(A)
+    digits = float_precision([A])
+    if digits is not None:
+        return [approximate(f, digits) for f in invariant_factors(exact_matrix(A), x)]
     return [_polynomial_expr(f, x) for f in _forms(A.entries).invariants(A)]
 
 
@@ -683,6 +706,10 @@ def frobenius_form(A: ExprMatrix) -> tuple[ExprMatrix, ExprMatrix]:
     (ExprMatrix([[0, 1], [1/2, 2]]), ExprMatrix([[0, 2], [1, 5]]))
     """
     _square(A)
+    digits = float_precision([A])
+    if digits is not None:
+        P, F = frobenius_form(exact_matrix(A))
+        return approximate_matrix(P, digits), approximate_matrix(F, digits)
     return _forms(A.entries).frobenius(A)
 
 
@@ -702,6 +729,14 @@ def elementary_divisors(A: ExprMatrix, x: Symbol) -> list[tuple[Expr, int]]:
     [(x - 3, 1), (x - 2, 2)]
     """
     _square(A)
+    digits = float_precision([A])
+    if digits is not None:
+        # monic: the integer coefficients of the exact factors mean nothing for floats
+        monic: list[tuple[Expr, int]] = []
+        for f, k in elementary_divisors(exact_matrix(A), x):
+            coefficients = _coefficients(expand(f), x)
+            monic.append((approximate(_polynomial_expr([c/coefficients[0] for c in coefficients], x), digits), k))
+        return monic
     unknown = _fresh_symbol(A)
     _, factors = _characteristic_factors(A, unknown)
     forms = _forms(A.entries)
@@ -726,5 +761,6 @@ def is_similar(A: ExprMatrix, B: ExprMatrix) -> bool:
     """
     if _square(A) != _square(B):
         return False
+    A, B = exact_matrix(A), exact_matrix(B)
     forms = _forms(list(A.entries) + list(B.entries))
     return forms.invariants(A) == forms.invariants(B)

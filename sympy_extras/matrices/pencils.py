@@ -34,6 +34,12 @@ k**2 - 3*k*m*x + m**2*x**2
 >>> generalized_eigenvectors(ExprMatrix.from_rows([[2, 0], [0, 3]]), ExprMatrix.from_rows([[1, 0], [0, 1]]))
 [(2, 1, [ExprMatrix([[1], [0]])]), (3, 1, [ExprMatrix([[0], [1]])])]
 
+Matrices with floats are taken exactly, each float being the rational
+number it stores (see "Floating point entries" in ``docs/matrices.md``):
+the multiplicities and the eigenvectors are those of the pencil as
+stored, the eigenvalues the roots of the exact polynomial, of any degree,
+written as floats.
+
 References
 ==========
 
@@ -49,7 +55,7 @@ from typing import Sequence, TypeVar
 
 from sympy_extras.core.expr import Expr
 from sympy_extras.core.function import expand
-from sympy_extras.core.numbers import Integer, oo
+from sympy_extras.core.numbers import Integer, Rational, oo
 from sympy_extras.core.sorting import default_sort_key
 from sympy_extras.core.symbol import Symbol
 from sympy_extras.polys.domains.quotientfield import QuotientField
@@ -58,8 +64,9 @@ from sympy_extras.polys.polytools import factor_list
 from .dense import ExprMatrix
 from .domainmatrix import DomainMatrix
 from .eigen import (Eigenspace, _Field, _FunctionField, _RationalField, _coefficients, _column, _extension,
-                    _field_nullspace, _roots_in_radicals)
-from .linalg import _PolynomialLift, _kernels, _square, det, normal
+                    _field_nullspace, _numerical_order, _roots_in_radicals)
+from .linalg import (_PolynomialLift, _kernels, _square, approximate, approximate_matrix, det, exact_matrix,
+                     float_precision, normal)
 
 __all__ = ['pencil_polynomial', 'generalized_eigenspaces', 'generalized_eigenvalues', 'generalized_eigenvectors']
 
@@ -93,10 +100,18 @@ def pencil_polynomial(A: ExprMatrix, B: ExprMatrix, x: Expr) -> Expr:
     -4*x - 2
     """
     n = _check(A, B)
+    digits = float_precision([A, B])
     unknown = _fresh(A, B)
+    if digits is not None:
+        A, B = exact_matrix(A), exact_matrix(B)
     determinant = det((A - B*unknown).applyfunc(normal)) if n else Integer(1)
-    numerator = expand(normal(determinant).together().as_numer_denom()[0])
-    return numerator.subs(unknown, x)
+    numerator, denominator = normal(determinant).together().as_numer_denom()
+    if digits is not None:
+        # the determinant of the matrices as stored; a denominator which
+        # is a number (of the dyadic fractions) is not cleared
+        scaled = expand(numerator/denominator) if isinstance(denominator, Rational) else expand(numerator)
+        return approximate(scaled, digits).subs(unknown, x)
+    return expand(numerator).subs(unknown, x)
 
 
 def _spaces(field: _Field[T], A: ExprMatrix, B: ExprMatrix, factors: Sequence[tuple[Expr, int]], unknown: Symbol, x: Symbol
@@ -144,6 +159,7 @@ def generalized_eigenspaces(A: ExprMatrix, B: ExprMatrix, x: Symbol) -> list[Eig
     [Eigenspace(2*x**2 - 1, 1, [ExprMatrix([[2*x], [1]])])]
     """
     _check(A, B)
+    A, B = exact_matrix(A), exact_matrix(B)
     unknown = _fresh(A, B)
     kernels, factors, _ = _factors(A, B, unknown)
     if kernels:
@@ -151,15 +167,21 @@ def generalized_eigenspaces(A: ExprMatrix, B: ExprMatrix, x: Symbol) -> list[Eig
     return _spaces(_RationalField(), A, B, factors, unknown, x)
 
 
-def _explicit(A: ExprMatrix, B: ExprMatrix) -> list[tuple[Expr, Eigenspace]]:
+def _explicit(A: ExprMatrix, B: ExprMatrix, numerical: bool = False) -> list[tuple[Expr, Eigenspace]]:
+    """The finite eigenvalues with their spaces; with ``numerical`` (the
+    exact matrices of matrices with floats) as exact numbers to be
+    evaluated, in numerical order."""
     pairs: list[tuple[Expr, Eigenspace]] = []
     for space in generalized_eigenspaces(A, B, _fresh(A, B)):
-        values = _roots_in_radicals(space.factor, space.symbol)
+        values = space.isolated_values() if numerical else _roots_in_radicals(space.factor, space.symbol)
         if values is None:
             raise NotImplementedError('the roots of %s are not expressed in radicals: see generalized_eigenspaces'
                                       % (space.factor,))
         pairs.extend((value, space) for value in values)
-    pairs.sort(key=lambda pair: default_sort_key(pair[0]))
+    if numerical and all(not value.free_symbols for value, _ in pairs):
+        pairs.sort(key=lambda pair: _numerical_order(pair[0]))
+    else:
+        pairs.sort(key=lambda pair: default_sort_key(pair[0]))
     return pairs
 
 
@@ -174,8 +196,17 @@ def generalized_eigenvalues(A: ExprMatrix, B: ExprMatrix) -> dict[Expr, int]:
     {-1/2: 1, oo: 1}
     """
     n = _check(A, B)
+    digits = float_precision([A, B])
+    result: dict[Expr, int]
+    if digits is not None:
+        A, B = exact_matrix(A), exact_matrix(B)
+        result = {}
+        for value, space in _explicit(A, B, True):
+            key = approximate(value, digits)
+            result[key] = result.get(key, 0) + space.multiplicity
+    else:
+        result = {value: space.multiplicity for value, space in _explicit(A, B)}
     _, _, degree = _factors(A, B, _fresh(A, B))
-    result: dict[Expr, int] = {value: space.multiplicity for value, space in _explicit(A, B)}
     if degree < n:
         result[oo] = n - degree
     return result
@@ -184,4 +215,9 @@ def generalized_eigenvalues(A: ExprMatrix, B: ExprMatrix) -> dict[Expr, int]:
 def generalized_eigenvectors(A: ExprMatrix, B: ExprMatrix) -> list[tuple[Expr, int, list[ExprMatrix]]]:
     """``(eigenvalue, algebraic multiplicity, basis of the solutions of A
     v = eigenvalue B v)`` for every finite eigenvalue of the pencil."""
+    digits = float_precision([A, B])
+    if digits is not None:
+        return [(approximate(value, digits), space.multiplicity,
+                 [approximate_matrix(v, digits) for v in space.vectors(value)])
+                for value, space in _explicit(exact_matrix(A), exact_matrix(B), True)]
     return [(value, space.multiplicity, space.vectors(value)) for value, space in _explicit(A, B)]

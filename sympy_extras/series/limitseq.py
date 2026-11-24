@@ -149,7 +149,15 @@ def dominant(expr: ExprLike, n: Symbol) -> Optional[Expr]:
     >>> dominant(n**2 + 2*n + 1 + n**3*(1 - 1/n**3) - n**3, n) is None
     False
     """
-    terms = Add.make_args(to_expr(expr).expand(func=True))
+    return _dominant(to_expr(expr), n, 0)
+
+
+#: how deep :func:`dominant` and the limit of a sequence may call each other
+_MAX_DEPTH = 3
+
+
+def _dominant(expr: Expr, n: Symbol, depth: int) -> Optional[Expr]:
+    terms = Add.make_args(expr.expand(func=True))
     term0 = terms[-1]
     comparable = [term0]
     for t in terms[:-1]:
@@ -157,7 +165,7 @@ def dominant(expr: ExprLike, n: Symbol) -> Optional[Expr]:
         e = r.gammasimp()
         if e == r:
             e = r.factor()
-        lim = limit_seq(e, n)
+        lim = _limit_seq_of(e, n, 5, depth + 1)
         if lim is None:
             return None
         if lim.is_zero is True:
@@ -178,8 +186,70 @@ def _limit_inf(expr: Expr, n: Symbol) -> Optional[Expr]:
         return None
 
 
+def _asymptotic_factors(expr: Expr, n: Symbol, depth: int) -> Optional[Expr]:
+    """``expr`` with every factor ``Sum(f(k), (k, a, n))`` replaced by an
+    asymptotically equivalent ``c*f(n)``, ``None`` when a sum is not a
+    factor (or a power of one with a constant exponent) or has no such
+    equivalent.
+
+    When the quotient of consecutive terms ``f(n + 1)/f(n)`` tends to
+    ``r`` with ``|r| > 1``, the quotient of the sum and its last term,
+    ``sum(f(n - j)/f(n), j = 0..n - a)``, tends to the geometric series
+    ``r/(r - 1)`` (to 1 for an infinite ``r``): the theorem of Stolz and
+    Cesàro for a sum of geometric growth. Equivalent factors may replace
+    each other in a product, not in a sum.
+    """
+    from sympy_extras.concrete.expr_with_limits import Sum
+    if not _has_sum(expr):
+        return expr
+    if isinstance(expr, Mul):
+        factors: list[Expr] = []
+        for a in expr.args:
+            if not isinstance(a, Expr):
+                return None
+            factor = _asymptotic_factors(a, n, depth)
+            if factor is None:
+                return None
+            factors.append(factor)
+        return mul(*factors)
+    if isinstance(expr, Pow):
+        if expr.exp.has(n) or _has_sum(expr.exp):
+            return None
+        base = _asymptotic_factors(expr.base, n, depth)
+        return None if base is None else base**expr.exp
+    if isinstance(expr, Sum) and len(expr.limits) == 1:
+        k, lower, upper = expr.limits[0]
+        f = expr.function
+        if upper != n or lower.has(n) or f.has(n) or _has_sum(f):
+            return None
+        last = as_expr(f.subs(k, n))
+        ratio = _limit_inf((as_expr(f.subs(k, n + 1))/last).gammasimp(), n)
+        if ratio is None:
+            return None
+        if isinstance(ratio, (Infinity, NegativeInfinity)):
+            return last
+        if not ratio.is_number or (abs_(ratio) - 1).is_positive is not True:
+            return None
+        c = ratio/(ratio - 1)
+        return c*last
+    return None
+
+
 # PORTED FROM SYMPY: sympy/series/limitseq.py:_limit_seq
-def _limit_seq(expr: Expr, n: Symbol, trials: int) -> Optional[Expr]:
+def _limit_seq(expr: Expr, n: Symbol, trials: int, depth: int) -> Optional[Expr]:
+    if _has_sum(expr):
+        # not SymPy's: the sums which are factors by their last terms
+        equivalent = _asymptotic_factors(expr, n, depth)
+        if equivalent is not None and not _has_sum(equivalent):
+            result = _limit_inf(equivalent.gammasimp(), n)
+            if result is not None:
+                return result
+        # and the sums with a closed form
+        closed = expr.doit()
+        if not _has_sum(closed):
+            result = _limit_inf(closed, n)
+            if result is not None:
+                return result
     for _ in range(trials):
         if not _has_sum(expr):
             result = _limit_inf(expr, n)
@@ -203,11 +273,11 @@ def _limit_seq(expr: Expr, n: Symbol, trials: int) -> Optional[Expr]:
 
         num, den = expr.as_numer_denom()
 
-        dominant_num = dominant(num, n)
+        dominant_num = _dominant(num, n, depth)
         if dominant_num is None:
             return None
 
-        dominant_den = dominant(den, n)
+        dominant_den = _dominant(den, n, depth)
         if dominant_den is None:
             return None
 
@@ -246,7 +316,21 @@ def limit_seq(expr: ExprLike, n: Optional[Symbol] = None, trials: int = 5) -> Op
     >>> limit_seq(n**3/2**n, n)
     0
     """
-    e = to_expr(expr)
+    return _limit_seq_of(to_expr(expr), n, trials, 0)
+
+
+def _limit_seq_of(e: Expr, n: Optional[Symbol], trials: int, depth: int) -> Optional[Expr]:
+    """:func:`limit_seq` at a depth of the mutual recursion with
+    :func:`dominant`.
+
+    The comparison of two terms with sums is the limit of a quotient with
+    the same sums, whose differences have them again: SymPy's functions
+    call each other without end on ``Sum(a)/(Sum(b)*Sum(c))`` with
+    growing expressions (sympy/sympy#31275, V214). Beyond ``_MAX_DEPTH``
+    the limit is not found.
+    """
+    if depth > _MAX_DEPTH:
+        return None
     if n is None:
         free = [s for s in e.free_symbols if isinstance(s, Symbol)]
         if len(free) == 1:
@@ -269,19 +353,19 @@ def limit_seq(expr: ExprLike, n: Optional[Symbol] = None, trials: int = 5) -> Op
     powers = [(p.base, p.exp) for p in e.atoms(Pow) if isinstance(p, Pow)]
     first: Optional[Expr]
     if any(b.is_negative is True and x.has(n) for b, x in powers) or e.has(Cos, Sin):
-        first = _limit_seq(as_expr(e._xreplace_evaluated({n: n1})), n1, trials)
+        first = _limit_seq(as_expr(e._xreplace_evaluated({n: n1})), n1, trials, depth)
         if first is not None:
-            second = _limit_seq(as_expr(e._xreplace_evaluated({n: n2})), n2, trials)
+            second = _limit_seq(as_expr(e._xreplace_evaluated({n: n2})), n2, trials, depth)
             if second is None or first != second:
                 if second is not None and first.is_comparable and second.is_comparable:
                     return accum_bounds(min_(first, second), max_(first, second))
                 return None
     else:
-        first = _limit_seq(as_expr(e._xreplace_evaluated({n: n_})), n_, trials)
+        first = _limit_seq(as_expr(e._xreplace_evaluated({n: n_})), n_, trials, depth)
     if first is not None:
         return first
     if isinstance(e, Add):
-        limits = [limit_seq(term, n, trials) for term in e.args if isinstance(term, Expr)]
+        limits = [_limit_seq_of(term, n, trials, depth) for term in e.args if isinstance(term, Expr)]
         found: list[Expr] = []
         for result in limits:
             if result is None:
@@ -291,7 +375,7 @@ def limit_seq(expr: ExprLike, n: Optional[Symbol] = None, trials: int = 5) -> Op
     # the absolute value may be easier (not with a sum): when it tends to
     # 0, so does the sequence
     if not _has_sum(e):
-        lim = _limit_seq(abs_(as_expr(e._xreplace_evaluated({n: n_}))), n_, trials)
+        lim = _limit_seq(abs_(as_expr(e._xreplace_evaluated({n: n_}))), n_, trials, depth)
         if lim is not None and lim.is_zero is True:
             return Integer(0)
     return None

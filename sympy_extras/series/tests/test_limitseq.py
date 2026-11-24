@@ -133,3 +133,30 @@ def test_difference_delta_of_a_sum_with_the_index_in_the_summand() -> None:
         found = dd(e, n)
         for N in (1, 2, 5):
             assert cancel(found.subs(n, N).doit() - (e.subs(n, N + 1).doit() - e.subs(n, N).doit())) == 0, e
+
+
+def test_sympy_issue_31275_V214_quotient_of_sums() -> None:
+    # limit_seq did not return: dominant and the limit of the quotient of two terms with the same sums called
+    # each other without end (SymPy's too; its XFAIL test expects 3/7 for the summand 2**k/k*2, a typo of
+    # 2**k/k**2: as written the limit is 0)
+    from fractions import Fraction
+    from math import comb
+    from sympy_extras.concrete.expr_with_limits import Sum
+
+    def value(N: int, square: bool) -> Fraction:
+        a = sum((Fraction(2**j*comb(2*j, j), j**2) for j in range(1, N + 1)), Fraction(0))
+        b = sum((Fraction(2**j, j**2) if square else Fraction(2**(j + 1), j) for j in range(1, N + 1)), Fraction(0))
+        c = sum((Fraction(comb(2*j, j)) for j in range(1, N + 1)), Fraction(0))
+        return a/(b*c)
+
+    top = Sum(2**k*binomial(2*k, k)/k**2, (k, 1, n))
+    last = Sum(binomial(2*k, k), (k, 1, n))
+    assert limit_seq(top/(Sum(2**k/k**2, (k, 1, n))*last), n) == Rational(3, 7)
+    assert abs(value(300, True) - Fraction(3, 7)) < Fraction(1, 100)
+    assert limit_seq(top/(Sum(2**k/k*2, (k, 1, n))*last), n) == 0
+    assert abs(300*value(300, False) - Fraction(3, 14)) < Fraction(1, 100)
+    # a sum of geometric growth is equivalent to r/(r - 1) times its last term
+    assert limit_seq(Sum(2**k/k**2, (k, 1, n))*n**2/2**n, n) == 2
+    assert limit_seq(Sum(k**3, (k, 1, n))/Sum(k, (k, 1, n))**2, n) == 1
+    # the sums are of polynomial growth and have no closed form: not found, but it returns
+    assert limit_seq(Sum(k*log(k), (k, 1, n))/(Sum(1/k, (k, 1, n))*Sum(log(k), (k, 1, n))), n) is None

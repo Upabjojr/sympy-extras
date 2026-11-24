@@ -70,14 +70,15 @@ References
 from __future__ import annotations
 
 from math import gcd
-from typing import Final, Sequence
+from typing import Final, Optional, Sequence
 
 from sympy_extras.core.add import add
 from sympy_extras.core.expr import Expr, ExprLike
-from sympy_extras.core.numbers import Integer
+from sympy_extras.core.numbers import Float, Integer
 
 from .dense import ExprMatrix
-from .linalg import _square, inverse, linear_solve, normal, nullspace
+from .linalg import (_square, approximate, approximate_matrix, exact_matrix, float_precision, inverse, linear_solve,
+                     normal, nullspace)
 
 __all__ = ['CommunicatingClass', 'MarkovChain']
 
@@ -165,17 +166,49 @@ def _period(states: Sequence[int], successors: Sequence[Sequence[int]]) -> int:
     return result
 
 
+def _is_one(e: Expr) -> bool:
+    return isinstance(e, Float) and e.as_fraction() == 1
+
+
 class MarkovChain:
     """The chain with the transition matrix ``P`` (square, each row of
-    sum one; ``ValueError`` otherwise)."""
+    sum one; ``ValueError`` otherwise).
+
+    With floats in ``P`` every float is the rational number it stores
+    (see "Floating point entries" in ``docs/matrices.md``); the sum of a
+    row of such numbers is one only up to rounding, so a row whose sum is
+    1 at the precision of the floats is divided by its exact sum, and the
+    chain is computed exactly for these probabilities, with results
+    written as floats. A zero probability is an exact zero: the classes
+    of the states are those of the matrix as stored.
+
+    >>> from sympy_extras.core import Float
+    >>> from sympy_extras.matrices import ExprMatrix
+    >>> from sympy_extras.matrices.markov import MarkovChain
+    >>> MarkovChain(ExprMatrix.from_rows([[Float(0.1), Float(0.9)], [Float(0.3), Float(0.7)]])).stationary_distribution()
+    ExprMatrix([[0.250000000000000, 0.750000000000000]])
+    """
 
     def __init__(self, P: ExprMatrix) -> None:
         n = _square(P)
-        matrix = P.applyfunc(normal)
+        digits = float_precision([P])
+        matrix = exact_matrix(P).applyfunc(normal)
+        rows: list[list[Expr]] = []
         for i in range(n):
-            if normal(add(*matrix.row(i)) - 1) != 0:
-                raise ValueError('the row %d of the transition matrix has the sum %s, not 1' % (i, normal(add(*matrix.row(i)))))
-        self.P: Final[ExprMatrix] = matrix
+            total = normal(add(*matrix.row(i)))
+            if total == 1:
+                rows.append(list(matrix.row(i)))
+            elif digits is not None and _is_one(approximate(total, digits)):
+                # floats: the sum is 1 at their precision, and the row is
+                # the stored numbers divided by their sum
+                rows.append([normal(e/total) for e in matrix.row(i)])
+            else:
+                raise ValueError('the row %d of the transition matrix has the sum %s, not 1'
+                                 % (i, total if digits is None else approximate(total, digits)))
+        matrix = ExprMatrix(n, n, [e for row in rows for e in row])
+        self.P: Final[ExprMatrix] = matrix if digits is None else P
+        self._exact: Final[ExprMatrix] = matrix
+        self._digits: Final[Optional[int]] = digits
         self.size: Final[int] = n
         self._successors: Final[list[list[int]]] = [[j for j in range(n) if matrix[i, j] != 0] for i in range(n)]
         found: list[CommunicatingClass] = []
@@ -237,7 +270,7 @@ class MarkovChain:
     def _class_distribution(self, recurrent: CommunicatingClass) -> list[Expr]:
         states = recurrent.states
         k = len(states)
-        block = ExprMatrix(k, k, [self.P[i, j] for i in states for j in states])
+        block = ExprMatrix(k, k, [self._exact[i, j] for i in states for j in states])
         kernel = nullspace((block.transpose() - ExprMatrix.eye(k)).applyfunc(normal))
         if len(kernel) != 1:
             raise ArithmeticError('the recurrent class %s has %d invariant vectors' % (list(states), len(kernel)))
@@ -253,7 +286,7 @@ class MarkovChain:
         """The stationary distribution (a row) carried by each recurrent
         class, in the order of :meth:`recurrent_classes`; the stationary
         distributions of the chain are their convex combinations."""
-        return [ExprMatrix(1, self.size, self._class_distribution(c)) for c in self.recurrent_classes()]
+        return [self._shown(ExprMatrix(1, self.size, self._class_distribution(c))) for c in self.recurrent_classes()]
 
     def stationary_distribution(self) -> ExprMatrix:
         """The stationary distribution, a row ``pi`` with ``pi P = pi``,
@@ -277,31 +310,37 @@ class MarkovChain:
         r"""$N = (I - Q)^{-1}$ on the transient states (in increasing
         order): $N_{ij}$ is the expected number of visits to $j$ from
         $i$."""
+        return self._shown(self._fundamental())
+
+    def _fundamental(self) -> ExprMatrix:
         transient = self.transient_states()
         k = len(transient)
-        Q = ExprMatrix(k, k, [self.P[i, j] for i in transient for j in transient])
+        Q = ExprMatrix(k, k, [self._exact[i, j] for i in transient for j in transient])
         return inverse((ExprMatrix.eye(k) - Q).applyfunc(normal)) if k else ExprMatrix.zeros(0, 0)
 
     def expected_steps(self) -> ExprMatrix:
         """The expected number of steps before leaving the transient
         states, from each of them (a column, in increasing order of the
         states)."""
-        N = self.fundamental_matrix()
-        return ExprMatrix.column([normal(add(*N.row(i))) for i in range(N.rows)])
+        N = self._fundamental()
+        return self._shown(ExprMatrix.column([normal(add(*N.row(i))) for i in range(N.rows)]))
 
     def absorption_probabilities(self) -> ExprMatrix:
         """The probability, from each transient state (rows, in
         increasing order), of ending in each recurrent class (columns, in
         the order of :meth:`recurrent_classes`)."""
+        return self._shown(self._absorption())
+
+    def _absorption(self) -> ExprMatrix:
         transient = self.transient_states()
         recurrent = self.recurrent_classes()
-        N = self.fundamental_matrix()
+        N = self._fundamental()
         entries: list[Expr] = []
         for row in range(len(transient)):
             for target in recurrent:
                 total: list[Expr] = []
                 for position, state in enumerate(transient):
-                    step = add(*[self.P[state, j] for j in target.states])
+                    step = add(*[self._exact[state, j] for j in target.states])
                     if step != 0 and N[row, position] != 0:
                         total.append(N[row, position]*step)
                 entries.append(normal(add(*total)) if total else Integer(0))
@@ -329,7 +368,9 @@ class MarkovChain:
     def hitting_probabilities(self, targets: Sequence[int]) -> ExprMatrix:
         """The probability, from each state (a column), of ever being in
         one of the ``targets``."""
-        chosen = self._targets(targets)
+        return self._shown(self._hitting(self._targets(targets)))
+
+    def _hitting(self, chosen: Sequence[int]) -> ExprMatrix:
         able = self._can_reach(chosen)
         unknown = [state for state in range(self.size) if state in able and state not in chosen]
         zero: Expr = Integer(0)
@@ -337,8 +378,8 @@ class MarkovChain:
         if unknown:
             # h_i - sum_{j unknown} P_ij h_j = sum_{j in targets} P_ij
             k = len(unknown)
-            A = ExprMatrix(k, k, [(Integer(1) if i == j else zero) - self.P[i, j] for i in unknown for j in unknown])
-            rhs = ExprMatrix.column([add(*[self.P[i, j] for j in chosen]) for i in unknown])
+            A = ExprMatrix(k, k, [(Integer(1) if i == j else zero) - self._exact[i, j] for i in unknown for j in unknown])
+            rhs = ExprMatrix.column([add(*[self._exact[i, j] for j in chosen]) for i in unknown])
             solution = linear_solve(A.applyfunc(normal), rhs.applyfunc(normal))
             if solution is None or not solution.is_unique:
                 raise ArithmeticError('the hitting probabilities are not determined')
@@ -352,19 +393,19 @@ class MarkovChain:
         positive probability."""
         from sympy_extras.core.numbers import oo
         chosen = self._targets(targets)
-        probabilities = self.hitting_probabilities(chosen)
+        probabilities = self._hitting(chosen)
         certain = [state for state in range(self.size) if state not in chosen and normal(probabilities[state, 0] - 1) == 0]
         zero: Expr = Integer(0)
         result: list[Expr] = [zero if state in chosen else oo for state in range(self.size)]
         if certain:
             k = len(certain)
-            A = ExprMatrix(k, k, [(Integer(1) if i == j else zero) - self.P[i, j] for i in certain for j in certain])
+            A = ExprMatrix(k, k, [(Integer(1) if i == j else zero) - self._exact[i, j] for i in certain for j in certain])
             solution = linear_solve(A.applyfunc(normal), ExprMatrix.column([Integer(1)]*k))
             if solution is None or not solution.is_unique:
                 raise ArithmeticError('the mean hitting times are not determined')
             for position, state in enumerate(certain):
                 result[state] = solution.particular[position, 0]
-        return ExprMatrix.column(result)
+        return self._shown(ExprMatrix.column(result))
 
     def mean_return_time(self, state: int) -> Expr:
         """The expected number of steps to come back to a recurrent
@@ -373,7 +414,8 @@ class MarkovChain:
         from sympy_extras.core.numbers import oo
         for recurrent in self.recurrent_classes():
             if state in recurrent.states:
-                return normal(1/self._class_distribution(recurrent)[state])
+                time = normal(1/self._class_distribution(recurrent)[state])
+                return time if self._digits is None else approximate(time, self._digits)
         if not 0 <= state < self.size:
             raise ValueError('no state %d' % state)
         return oo
@@ -395,7 +437,7 @@ class MarkovChain:
         recurrent = self.recurrent_classes()
         distributions = [self._class_distribution(c) for c in recurrent]
         transient = self.transient_states()
-        absorption = self.absorption_probabilities()
+        absorption = self._absorption()
         zero: Expr = Integer(0)
         rows: list[list[Expr]] = [[zero]*self.size for _ in range(self.size)]
         for distribution, group in zip(distributions, recurrent):
@@ -404,14 +446,20 @@ class MarkovChain:
         for position, state in enumerate(transient):
             rows[state] = [normal(add(*[absorption[position, c]*distributions[c][j] for c in range(len(recurrent))]))
                            for j in range(self.size)]
-        return ExprMatrix(self.size, self.size, [e for row in rows for e in row])
+        return self._shown(ExprMatrix(self.size, self.size, [e for row in rows for e in row]))
 
     def distribution_after(self, initial: Sequence[ExprLike], steps: int) -> ExprMatrix:
         """The distribution (a row) after ``steps`` steps from the
         distribution ``initial``."""
         if len(initial) != self.size or steps < 0:
             raise ValueError('an initial distribution on %d states and a number of steps are needed' % self.size)
-        current = ExprMatrix(1, self.size, list(initial))
+        given = ExprMatrix(1, self.size, list(initial))
+        digits = float_precision([self.P, given])
+        current = exact_matrix(given)
         for _ in range(steps):
-            current = (current*self.P).applyfunc(normal)
-        return current
+            current = (current*self._exact).applyfunc(normal)
+        return current if digits is None else approximate_matrix(current, digits)
+
+    def _shown(self, M: ExprMatrix) -> ExprMatrix:
+        """The result with its numbers as floats for a chain given with floats."""
+        return M if self._digits is None else approximate_matrix(M, self._digits)
