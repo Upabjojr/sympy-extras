@@ -3717,6 +3717,92 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
                     .map_err(e)?;
                     tuple(vec![c.a0, c.an, c.bn, c.n, c.omega])
                 }
+                "sequence" => {
+                    // sequence(spec, action, args...): spec a nested Tuple (see seq_from)
+                    use sympy_extras_core::series::sequences as sq;
+                    let label = |t: String| sympy_extras_core::core::Symbol::new(&t, &[]).0;
+                    let s: sq::Seq = seq_from(&a[1]).map_err(e)?;
+                    let number = |b: &Basic| -> PyResult<i64> {
+                        b.to_string()
+                            .parse::<i64>()
+                            .map_err(|_| pyo3::exceptions::PyValueError::new_err("an integer"))
+                    };
+                    match a[2].to_string().as_str() {
+                        "str" => label(s.to_string()),
+                        "terms" => tuple(s.slice(0, Some(number(&a[3])?), 1).map_err(e)?),
+                        "coeff" => s.coeff(&a[3]).map_err(e)?,
+                        "length" => s.length().map_err(e)?,
+                        "interval" => tuple(vec![s.start().map_err(e)?, s.stop().map_err(e)?]),
+                        "recurrence" => {
+                            let d: Option<usize> = if a[4].to_string() == "NONE" {
+                                None
+                            } else {
+                                Some(number(&a[4])? as usize)
+                            };
+                            let g: Option<Basic> = if a[5].to_string() == "NONE" {
+                                None
+                            } else {
+                                Some(a[5].clone())
+                            };
+                            let (c, gf) = s.find_linear_recurrence(number(&a[3])?, d, g.as_ref()).map_err(e)?;
+                            tuple(vec![tuple(c), gf.unwrap_or_else(|| label("NONE".to_string()))])
+                        }
+                        other => {
+                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                "unknown action {}",
+                                other
+                            )))
+                        }
+                    }
+                }
+                "fourier_series" => {
+                    // fourier_series(spec, query, args...): spec a nested Tuple (see fourier_from)
+                    use sympy_extras_core::series::fourier::{Fourier, FourierBase};
+                    use sympy_extras_core::series::series_class::SeriesBase;
+                    let label = |t: &str| sympy_extras_core::core::Symbol::new(t, &[]).0;
+                    let pairs = |v: &[(Basic, Basic)]| {
+                        tuple(v.iter().map(|(k, x)| tuple(vec![k.clone(), x.clone()])).collect())
+                    };
+                    let count = |b: &Basic| -> PyResult<Option<usize>> {
+                        if b.to_string() == "NONE" {
+                            return Ok(None);
+                        }
+                        b.to_string()
+                            .parse::<usize>()
+                            .map(Some)
+                            .map_err(|_| pyo3::exceptions::PyValueError::new_err("a count"))
+                    };
+                    let f: Fourier = fourier_from(&a[1]).map_err(e)?;
+                    let query: String = a[2].to_string();
+                    match (&f, query.as_str()) {
+                        (Fourier::Expr(x), _) => tuple(vec![label("expr"), x.clone()]),
+                        (_, "kind") => label(if matches!(f, Fourier::Series(_)) {
+                            "series"
+                        } else {
+                            "finite"
+                        }),
+                        (Fourier::Series(s), "truncate") => s.truncate(count(&a[3])?).map_err(e)?,
+                        (Fourier::Finite(s), "truncate") => s.truncate(count(&a[3])?).map_err(e)?,
+                        (Fourier::Series(s), "term") => s.term(&a[3]).map_err(e)?,
+                        (Fourier::Finite(s), "term") => s.term(&a[3]).map_err(e)?,
+                        (Fourier::Series(s), "leading") => s.leading_term().map_err(e)?,
+                        (Fourier::Finite(s), "leading") => s.leading_term().map_err(e)?,
+                        (Fourier::Series(s), "sigma") => {
+                            s.sigma_approximation(count(&a[3])?.unwrap_or(3)).map_err(e)?
+                        }
+                        (Fourier::Series(s), "a0") => s.a0.clone(),
+                        (Fourier::Finite(s), "a0") => s.a0.clone(),
+                        (Fourier::Finite(s), "coefficients") => tuple(vec![pairs(&s.an), pairs(&s.bn)]),
+                        (Fourier::Finite(s), "length") => s.length().map_err(e)?,
+                        (Fourier::Series(s), "length") => s.length().map_err(e)?,
+                        (_, other) => {
+                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                "unknown query {}",
+                                other
+                            )))
+                        }
+                    }
+                }
                 "fourier_partial_sum" => {
                     let order: i64 = a[4]
                         .to_string()
@@ -7906,4 +7992,98 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(expand_mul, m)?)?;
     m.add_function(wrap_pyfunction!(expand_multinomial, m)?)?;
     Ok(())
+}
+
+/// A sequence from its encoding for the agree tests: `(formula, f, limits)`,
+/// `(per, Tuple(elements), limits)`, `(rec, f, y(n), n, Tuple(initial),
+/// start)`, `(add|mul, s, t)`, `(neg, s)`, `(coeff_mul, s, c)`; `limits` an
+/// empty Tuple, `(a, b)` or `(v, a, b)`.
+fn seq_from(spec: &Basic) -> sympy_extras_core::error::PolyResult<sympy_extras_core::series::sequences::Seq> {
+    use sympy_extras_core::series::sequences as sq;
+    let a: &[Basic] = spec.args();
+    let limits = |l: &Basic| -> Option<sq::SeqLimits> {
+        let v: &[Basic] = l.args();
+        match v.len() {
+            2 => Some(sq::SeqLimits::Range(v[0].clone(), v[1].clone())),
+            3 => Some(sq::SeqLimits::Variable(v[0].clone(), v[1].clone(), v[2].clone())),
+            _ => None,
+        }
+    };
+    match a[0].to_string().as_str() {
+        "formula" => sq::sequence(&sq::SeqSource::Formula(a[1].clone()), limits(&a[2]).as_ref()),
+        "per" => sq::sequence(&sq::SeqSource::Periodical(a[1].args().to_vec()), limits(&a[2]).as_ref()),
+        "rec" => Ok(sq::Seq::Recursive(sq::RecursiveSeq::new(
+            &a[1],
+            &a[2],
+            &a[3],
+            Some(a[4].args()),
+            &a[5],
+        )?)),
+        "add" => seq_from(&a[1])?.plus(&seq_from(&a[2])?),
+        "sub" => seq_from(&a[1])?.minus(&seq_from(&a[2])?),
+        "mul" => seq_from(&a[1])?.times(&seq_from(&a[2])?),
+        "neg" => seq_from(&a[1])?.neg(),
+        "coeff_mul" => seq_from(&a[1])?.coeff_mul(&a[2]),
+        other => Err(sympy_extras_core::error::value_error(format!(
+            "unknown sequence {}",
+            other
+        ))),
+    }
+}
+
+/// A Fourier series from its encoding for the agree tests: `(series, f,
+/// limits, finite)` with `limits` an empty Tuple, `(a, b)` or `(x, a, b)`
+/// and `finite` `True` or `False`; `(shift|shiftx|scale|scalex, s, c)`,
+/// `(neg, s)`, `(add|sub, s, t)`.
+fn fourier_from(spec: &Basic) -> sympy_extras_core::error::PolyResult<sympy_extras_core::series::fourier::Fourier> {
+    use sympy_extras_core::error::value_error;
+    use sympy_extras_core::series::fourier::{self as fs, Fourier};
+    let a: &[Basic] = spec.args();
+    let kind: String = a[0].to_string();
+    if kind == "series" {
+        let l: &[Basic] = a[2].args();
+        let limits: fs::GivenLimits = match l.len() {
+            0 => fs::GivenLimits::Default,
+            2 => fs::GivenLimits::Range(l[0].clone(), l[1].clone()),
+            _ => fs::GivenLimits::Variable(l[0].clone(), l[1].clone(), l[2].clone()),
+        };
+        return fs::fourier_series(&a[1], &limits, a[3].to_string() == "True");
+    }
+    let inner: Fourier = fourier_from(&a[1])?;
+    let unary = |s: &Fourier| -> sympy_extras_core::error::PolyResult<Fourier> {
+        match (s, kind.as_str()) {
+            (Fourier::Series(s), "shift") => Ok(Fourier::Series(s.shift(&a[2])?)),
+            (Fourier::Series(s), "shiftx") => Ok(Fourier::Series(s.shiftx(&a[2])?)),
+            (Fourier::Series(s), "scale") => Ok(Fourier::Series(s.scale(&a[2])?)),
+            (Fourier::Series(s), "scalex") => Ok(Fourier::Series(s.scalex(&a[2])?)),
+            (Fourier::Series(s), "neg") => Ok(Fourier::Series(s.neg()?)),
+            (Fourier::Finite(s), "shift") => Ok(Fourier::Finite(s.shift(&a[2])?)),
+            (Fourier::Finite(s), "shiftx") => Ok(Fourier::Finite(s.shiftx(&a[2])?)),
+            (Fourier::Finite(s), "scale") => Ok(Fourier::Finite(s.scale(&a[2])?)),
+            (Fourier::Finite(s), "scalex") => Ok(Fourier::Finite(s.scalex(&a[2])?)),
+            (Fourier::Finite(s), "neg") => Ok(Fourier::Finite(s.neg()?)),
+            _ => Err(value_error(format!("unknown operation {}", kind))),
+        }
+    };
+    match kind.as_str() {
+        "add" | "sub" => {
+            let mut other: Fourier = fourier_from(&a[2])?;
+            if kind == "sub" {
+                other = match other {
+                    Fourier::Series(s) => Fourier::Series(s.neg()?),
+                    Fourier::Finite(s) => Fourier::Finite(s.neg()?),
+                    Fourier::Expr(x) => Fourier::Expr(sympy_extras_core::core::mul::neg(&x)?),
+                };
+            }
+            match (&inner, &other) {
+                (Fourier::Series(s), Fourier::Series(t)) => s.plus(t),
+                (Fourier::Finite(s), t) => s.plus(t),
+                // FourierSeries + FiniteFourierSeries is an unevaluated Add in Python
+                _ => Err(sympy_extras_core::error::not_ported(
+                    "the sum of a Fourier series and an expression",
+                )),
+            }
+        }
+        _ => unary(&inner),
+    }
 }

@@ -983,6 +983,19 @@ pub fn dfinite_integral(
     t: &Basic,
     assumptions: &[Basic],
 ) -> PolyResult<Option<ConditionalValue>> {
+    // the differential equation in t holds for a continuous parameter: its
+    // solution at the integers lost the cases where the generic form is 0/0
+    // (the integral of cos(2*x)*cos(n*x) over (-pi, pi) was 0 for every
+    // positive integer n, pi at n = 2)
+    let integer: bool = crate::core::expr::is(t, crate::core::assumptions::Predicate::integer) == Some(true)
+        || crate::assumptions::ask::ask(
+            &crate::assumptions::facts::element(t, &Basic::atom(Head::Integers))?,
+            assumptions,
+            None,
+        )? == Some(true);
+    if integer {
+        return Ok(None);
+    }
     let Some(telescoper) = chyzak(f, x, t, 3, 6)? else {
         return Ok(None);
     };

@@ -120,3 +120,17 @@ def test_factors_outside_the_table() -> None:
     telescoper = chyzak(exp(-t*x)*besseli(0, x), x, t)
     assert telescoper is not None and telescoper.check()
     assert telescoper.coefficients == [t, t**2 - 1]
+
+
+def test_integer_parameters_are_refused() -> None:
+    # the differential equation in n holds for a continuous parameter: at
+    # the integers its solution 2*n*sin(pi*n)/(n**2 - 4) is 0, which is
+    # wrong at n = 2 (pi); the bug gave 0 for every positive integer n
+    from sympy_extras.assumptions.facts import element
+    from sympy_extras.core import pi
+    from sympy_extras.integrals.dfinite import dfinite_integral
+    from sympy_extras.sets import Naturals
+    n = Symbol('n', integer=True, positive=True)
+    assert dfinite_integral(cos(2*x)*cos(n*x), x, -pi, pi, n) is None
+    m = Symbol('m')
+    assert dfinite_integral(cos(2*x)*cos(m*x), x, -pi, pi, m, [element(m, Naturals)]) is None

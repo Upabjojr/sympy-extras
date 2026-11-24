@@ -50,6 +50,13 @@ with open(os.path.join(os.path.dirname(__file__), 'series_cases.json')) as _fh:
     CASES: list[list[str]] = json.load(_fh)
 
 
+def _renumbered(text: str) -> str:
+    """The fresh dummies (``_k27``) numbered by their first appearance: the
+    counters which name them run apart when other tests ran before."""
+    names: dict[str, str] = {}
+    return re.sub(r'_k\d+', lambda m: names.setdefault(m.group(0), '_k%d' % len(names)), text)
+
+
 def _outcome(f: Any) -> str:
     try:
         value = f()
@@ -87,6 +94,6 @@ def test_series(case: int) -> None:
     none = Symbol('NONE')
     args = [Symbol(name), f, x, a, b, Tuple() if assumptions is None else Tuple(assumptions),
             none if extra is None else Symbol('compute' if extra else 'nocompute') if isinstance(extra, bool) else extra]
-    found = _outcome(lambda: rc.logic_call('series_integral', args))
-    expected = _outcome(lambda: _python(name, f, x, a, b, assumptions, extra))
+    found = _renumbered(_outcome(lambda: rc.logic_call('series_integral', args)))
+    expected = _renumbered(_outcome(lambda: _python(name, f, x, a, b, assumptions, extra)))
     assert found == expected

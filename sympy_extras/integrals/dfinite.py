@@ -870,7 +870,16 @@ def dfinite_integral(F: ExprLike, x: Symbol, a: ExprLike, b: ExprLike, t: Symbol
     >>> dfinite_integral(x*exp(-x**2)*besselj(0, t*x), x, 0, oo, t)
     ConditionalValue(exp(-t**2/4)/2)
     """
+    from sympy_extras.assumptions.ask import ask
+    from sympy_extras.assumptions.facts import element
+    from sympy_extras.sets import Integers
     from .marichev import tidy
+    if t.is_integer or ask(element(t, Integers), assumptions) is True:
+        # the differential equation in t holds for a continuous parameter:
+        # its solution at the integers lost the cases where the generic
+        # form is 0/0 (the bug: the integral of cos(2*x)*cos(n*x) over
+        # (-pi, pi) was 0 for every positive integer n, pi at n = 2)
+        return None
     F_ = to_expr(F)
     a_, b_ = to_expr(a), to_expr(b)
     telescoper = chyzak(F_, x, t)
