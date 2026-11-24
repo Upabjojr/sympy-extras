@@ -530,7 +530,7 @@ def _eval_sum_hyper(f: Expr, i: Symbol, a: Expr) -> Optional[tuple[Expr, Conditi
     x = ab[0] / ab[1]
     h = hyper(ap, bq, x)
     statement: Condition = h.convergence_statement if isinstance(h, Hyper) else True
-    f = combsimp(f)
+    f = combsimp(f, generic=True)
     return _e(f.subs(i, ZERO)) * hyperexpand(h), statement
 
 
@@ -549,6 +549,73 @@ def _count_illegal(e: Expr) -> int:
     from sympy_extras.core.numbers import ComplexInfinity
     return sum(1 for node in preorder_traversal(e)
                if isinstance(node, (Infinity, NegativeInfinity, ComplexInfinity, NaN)))
+
+
+def _short_sum_cases(f: Expr, i: Symbol, a: Expr, b: Expr, closed: Expr, cond: Boolean) -> list[tuple[Expr, Boolean]]:
+    """The cases of the sum of ``f`` from ``a`` to ``b`` at the values
+    of a symbol of ``b`` with ``b = a - 1, a - 2, a - 3`` where the
+    closed form ``closed`` (valid under ``cond``) is shown not to have
+    the value of the sum (it is not a number there, or has another
+    numerical value at sample values of the symbols), 0 for ``b = a - 1``
+    and ``-(f(b + 1) + ... +
+    f(a - 1))`` below (Karr's convention).
+
+    The closed form is the difference of two series expanded by
+    ``hyperexpand``, the second one with ``b`` in its parameters, and an
+    expansion is one for generic parameters: that of ``hyper((1,), (n +
+    2,), x)`` is ``(n + 1)*x**(-n - 1)*exp(x)*lowergamma(n + 1, x)``, which
+    is not ``exp(x)`` at ``n = -1``, so that ``Sum(x**i/factorial(i), (i,
+    0, n))`` was ``exp(x)`` at ``n = -1`` (SymPy's too), an empty sum."""
+    from sympy_extras.core.function import diff, expand
+    from sympy_extras.core.logic import false
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.core.relational import eq
+    from sympy_extras.core.sorting import default_sort_key
+    cases: list[tuple[Expr, Boolean]] = []
+    symbols = sorted((s for s in b.free_symbols if s != i), key=default_sort_key)
+    for below in range(3):
+        length = expand(b - a + 1 + below)
+        for s in symbols:
+            slope = diff(length, s)
+            if not isinstance(slope, Rational) or slope.p == 0:
+                continue
+            point = expand(s - length/slope)
+            if s in point.free_symbols:
+                continue
+            if s.is_integer is True and point.is_integer is False:
+                break
+            where = eq(s, point)
+            if where is false or cond.subs(s, point) is false:
+                break
+            value = -add(*[_e(f.subs(i, a - t)) for t in range(1, below + 1)])
+            at_point = _e(closed.subs(s, point))
+            if _count_illegal(value) == 0 and at_point != value and expand(at_point - value) != 0 \
+                    and _numerically_different(at_point, value):
+                cases.append((value, where))
+            break
+    return cases
+
+
+def _numerically_different(u: Expr, v: Expr) -> bool:
+    """Whether ``u`` is not a number (``nan``, an infinity) or the two
+    expressions have different reliable numerical values at a sample
+    point of their symbols (integers for the symbols which are
+    integers); ``False`` when no values are found: the closed form of a
+    sum is kept where it is not shown to be wrong."""
+    from sympy_extras._numeric import reliable_complex
+    from sympy_extras.core.numbers import Rational
+    from sympy_extras.core.sorting import default_sort_key
+    if _count_illegal(u) > 0:
+        return True
+    symbols = sorted(u.free_symbols | v.free_symbols, key=default_sort_key)
+    for start in (3, 8):
+        values: dict[Symbol, Expr] = {}
+        for index, s in enumerate(symbols):
+            values[s] = Integer(start + 2*index) if s.is_integer is True else Rational(7*(start + index) + 2, 5)
+        first, second = reliable_complex(u, 25, values), reliable_complex(v, 25, values)
+        if first is not None and second is not None and abs(first - second) > 1e-12*max(1.0, abs(first), abs(second)):
+            return True
+    return False
 
 
 # PORTED FROM SYMPY: sympy/concrete/summations.py:eval_sum_hyper
@@ -579,7 +646,8 @@ def eval_sum_hyper(f: Expr, limits: Limits) -> Optional[Expr]:
         cond = and_(_cond(res1[1]), _cond(res2[1]))
         if cond is false:
             return None
-        return piecewise((res1[0] - res2[0], cond), (old_sum, true))
+        closed = res1[0] - res2[0]
+        return piecewise(*_short_sum_cases(f, i, a, b, closed, cond), (closed, cond), (old_sum, true))
     if isinstance(a, NegativeInfinity):
         r1 = _eval_sum_hyper(_e(f.subs(i, -i)), i, ONE)
         r2 = _eval_sum_hyper(f, i, ZERO)

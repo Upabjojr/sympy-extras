@@ -123,7 +123,7 @@ class Telescoper:
         n, k, F = self.n, self.k, self.term
         lhs = add(*[a*F.subs(n, n + j) for j, a in enumerate(self.coefficients)])
         G = self.certificate*F
-        difference = combsimp((lhs - G.subs(k, k + 1) + G)/F)
+        difference = combsimp((lhs - G.subs(k, k + 1) + G)/F, generic=True)
         return simplify(difference) == ZERO
 
     def __repr__(self) -> str:
@@ -132,11 +132,11 @@ class Telescoper:
 
 def _rational_ratio(f: Expr, g: Expr, k: Symbol) -> Optional[Expr]:
     """``f/g`` as a rational function of ``k``, or ``None``."""
-    ratio = cancel(combsimp(f/g))
+    ratio = cancel(combsimp(f/g, generic=True))
     if ratio.is_rational_function(k) is not True:
         # a second attempt through the hypergeometric simplifier
         try:
-            ratio = cancel(combsimp(ratio.rewrite(Gamma)))
+            ratio = cancel(combsimp(ratio.rewrite(Gamma), generic=True))
         except _Failures:
             return None
         if ratio.is_rational_function(k) is not True:
@@ -346,7 +346,7 @@ def wz_prove(term: ExprLike, closed_form: ExprLike, n: Symbol, k: Symbol, n0: in
     term_, closed = to_expr(term), to_expr(closed_form)
     F = term_/closed
     G = R*F
-    identity = simplify(combsimp((F.subs(n, n + 1) - F - G.subs(k, k + 1) + G)/F))
+    identity = simplify(combsimp((F.subs(n, n + 1) - F - G.subs(k, k + 1) + G)/F, generic=True))
     if identity != ZERO:
         return None
     # the base case, summed over the support
@@ -473,7 +473,7 @@ def _zeilberger_sum(F: Expr, k: Symbol, lo: Expr, hi: Expr, n: Symbol, max_order
     J = Z.order
     # G in a form which is finite where the term vanishes (the certificate
     # may have a pole there)
-    G = gammasimp(combsimp(Z.certificate*F))
+    G = gammasimp(combsimp(Z.certificate*F, generic=True), generic=True)
     Sfun = Function('S')
     # the telescoping identity summed over k from lo to K = hi(n + J),
     # beyond the range of every S(n + j):
@@ -494,7 +494,7 @@ def _zeilberger_sum(F: Expr, k: Symbol, lo: Expr, hi: Expr, n: Symbol, max_order
                 return None
             for i in range(1, count.p + 1):
                 rhs = rhs - a*F.subs(n, n + j).subs(k, upper + i)
-    rhs = simplify(combsimp(rhs))
+    rhs = simplify(combsimp(rhs, generic=True))
     recurrence = add(*[a*Sfun(n + j) for j, a in enumerate(Z.coefficients)]) - rhs
     # initial values, from the first n at which the leading coefficient
     # of the recurrence does not vanish any more
@@ -588,10 +588,10 @@ def _nicer(solution: Expr, n: Symbol) -> Expr:
                     return e.xreplace(replacement)
         return e
 
-    candidates = [simplify(combsimp(solution))]
-    candidates.append(combsimp(duplicate(candidates[0])))
-    candidates.append(combsimp(triplicate(candidates[-1])))
-    candidates.append(combsimp(candidates[-1].rewrite(Factorial)))
+    candidates = [simplify(combsimp(solution, generic=True))]
+    candidates.append(combsimp(duplicate(candidates[0]), generic=True))
+    candidates.append(combsimp(triplicate(candidates[-1]), generic=True))
+    candidates.append(combsimp(candidates[-1].rewrite(Factorial), generic=True))
     candidates.append(candidates[-1].rewrite(Binomial))
     candidates.append(simplify(candidates[-1]))
     return min(candidates, key=lambda e: (_ops(e), len(str(e))))

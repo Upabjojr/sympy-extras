@@ -111,6 +111,38 @@ def test_gegenbauer_at_minus_one() -> None:
         assert abs(mpmath.gegenbauer(order, 0.75, -1) - float(expected.p)/expected.q) < 1e-12
 
 
+def test_gegenbauer_where_twice_the_parameter_is_a_nonpositive_integer() -> None:
+    # gegenbauer(n, -1, x) was 0 for every n (SymPy's rule): the generating function (1 - 2*x*t + t**2)**(-a) is
+    # 1 - 2*x*t + t**2 at a = -1, so C_0 = 1, C_1 = -2*x, C_2 = 1 and 0 from the degree 3 on. With a symbolic n
+    # the closed forms at x = 1, -1, 0 were 0 or nan for 2*a = 0, -1, -2, ... (gamma functions at their poles)
+    from sympy_extras.core import expand
+    from sympy_extras.functions import Gegenbauer, gegenbauer
+    t = Symbol('t')
+    for parameter in (Integer(-1), Integer(-2), Integer(0), Integer(-3)):
+        generating = expand((1 - 2*x*t + t**2)**(-parameter))
+        for order in range(8):
+            assert expand(gegenbauer(Integer(order), parameter, x) - generating.coeff(t, order)) == 0, (parameter, order)
+    assert gegenbauer(Integer(1), Integer(-1), x) == -2*x and gegenbauer(Integer(2), Integer(-1), x) == 1
+    k = Symbol('k', integer=True, nonnegative=True)
+    degenerate: list[Rational] = [Integer(-1), Integer(-2), Integer(0), Rational(-1, 2), Rational(-3, 2)]
+    for twice in degenerate:
+        for point in (x, Integer(1), Integer(0)):
+            assert gegenbauer(k, twice, point) == Gegenbauer(k, twice, point), (twice, point)
+            assert point == 0 or gegenbauer(k, twice, -point) == (-1)**k*Gegenbauer(k, twice, point), (twice, point)
+            assert gegenbauer(s, twice, point) == Gegenbauer(s, twice, point), (twice, point)
+    # the polynomial is 0 where the degree is known to be above -2*a (an integer a)
+    big = Symbol('big', integer=True, positive=True)
+    assert gegenbauer(big + 2, Integer(-1), x) == 0 and gegenbauer(big, Integer(0), x) == 0
+    assert gegenbauer(big + 1, Integer(-1), x) == Gegenbauer(big + 1, Integer(-1), x)
+    # the numeric value of the node is the polynomial's (mpmath.gegenbauer(1, -1, 0.3) is 0)
+    assert abs(complex(Gegenbauer(Integer(1), Integer(-1), Rational(3, 10)).evalf(20)) + 0.6) < 1e-15
+    assert abs(complex(Gegenbauer(Integer(2), Integer(-2), Rational(3, 10)).evalf(20)) - 2.36) < 1e-15
+    assert abs(complex(Gegenbauer(Integer(4), Rational(3, 4), Rational(3, 10)).evalf(20)) - complex(mpmath.gegenbauer(4, 0.75, 0.3))) < 1e-14
+    # a negative degree which is not an integer is not a zero polynomial (it was 0)
+    assert gegenbauer(Rational(-1, 2), a, x) == Gegenbauer(Rational(-1, 2), a, x) and gegenbauer(Integer(-2), a, x) == 0
+    assert abs(mpmath.gegenbauer(-0.5, 0.7, 0.3)) > 0.5
+
+
 def test_hermite_prob_at_zero() -> None:
     # sympy/sympy#31275 (V110): He_n(0) = 2**(n/2)*sqrt(pi)/gamma((1 - n)/2); SymPy has no 2**(n/2)
     from sympy_extras.functions import hermite_prob
@@ -162,9 +194,15 @@ def test_jacobi_gegenbauer_assoc_legendre_hermite_prob_match_sympy() -> None:
 
     for order, alpha, z in itertools.product(orders, parameters, points):
         so, sa, sz = sympy_value(order), sympy_value(alpha), sympy_value(z)
-        check('gegenbauer', lambda: gegenbauer(order, alpha, z), lambda: sympy.gegenbauer(so, sa, sz))
+        degenerate = alpha in (Integer(0), Integer(-1), Rational(-1, 2)) and (alpha == -1 or not order.is_Number)
+        if not degenerate:
+            # (2*a a nonpositive integer: SymPy's 0 for a = -1 and its quotients of gamma functions at their poles
+            # are not the polynomials, see test_gegenbauer_where_twice_the_parameter_is_a_nonpositive_integer)
+            check('gegenbauer', lambda: gegenbauer(order, alpha, z), lambda: sympy.gegenbauer(so, sa, sz))
         for beta in [alpha, -alpha, b, Integer(2)]:
             sbeta = sympy_value(beta)
+            if beta == alpha and alpha in (Integer(-1), Rational(-1, 2)) and not order.is_Number:
+                continue  # the gegenbauer polynomials of the parameter -1/2 or 0, as above
             check('jacobi', lambda: jacobi(order, alpha, beta, z), lambda: sympy.jacobi(so, sa, sbeta, sz))
     for degree, order2, z in itertools.product(orders, [Integer(k) for k in range(-3, 4)] + [m, -m, p], points):
         sd, so2, sz = sympy_value(degree), sympy_value(order2), sympy_value(z)

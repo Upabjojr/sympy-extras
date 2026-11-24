@@ -976,7 +976,7 @@ def _product_expression(F: _Field[T], p: list[T], n: Symbol, start: int, k: Symb
 def _simplified(expr: Expr) -> Expr:
     """The quotients of rising factorials cancelled (``gammasimp``), when
     that keeps the expression free of gamma functions."""
-    candidate = gammasimp(expr)
+    candidate = gammasimp(expr, generic=True)
     if candidate.has(Gamma, Piecewise):
         candidate = expr
     replaced = candidate.replace(lambda e: isinstance(e, RisingFactorial), _factorial_form)

@@ -636,6 +636,74 @@ def test_derivative_with_an_integer_count() -> None:
     raises(TypeError, lambda: untyped(Derivative)(f, (x, Rational(1, 2))))
 
 
+def test_derivative_of_symbolic_order() -> None:
+    # Derivative(f(x), (x, n)) and diff(f(x), (x, n)) raised TypeError ('Symbol' object cannot be interpreted as
+    # an integer): the node holds a symbolic order, unevaluated until the order is a number
+    x, y = Symbol('x'), Symbol('y')
+    n, m = Symbol('n', integer=True), Symbol('m', integer=True, positive=True)
+    f = Function('f')
+    d = Derivative(f(x), (x, n))
+    assert d.args == (f(x), Tuple(x, n)) and d.func(*d.args) == d and d.has_symbolic_order
+    assert d.variable_orders == ((x, n),) and d.free_symbols == {x, n}
+    assert str(d) == 'Derivative(f(x), (x, n))'
+    assert srepr(d) == "Derivative(Function('f')(Symbol('x')), Tuple(Symbol('x'), Symbol('n', integer=True)))"
+    assert diff(f(x), (x, n)) == d and d.doit() == d and d == Derivative(f(x), (x, n)) and hash(d) == hash(diff(f(x), (x, n)))
+    # the order replaced by a number: the derivative of that order, which evaluates
+    assert d.subs(n, 2) == Derivative(f(x), (x, 2)) and d.subs(n, 0).doit() == f(x)
+    from sympy_extras.functions import sin
+    for order in range(5):
+        assert Derivative(x**5 + sin(x), (x, n)).subs(n, order).doit() == diff(x**5 + sin(x), (x, order))
+    assert d.xreplace({n: Integer(3)}) == Derivative(f(x), (x, 3)) and d.subs(n, m + 1) == Derivative(f(x), (x, m + 1))
+    raises(ValueError, lambda: d.subs(n, -1))
+    # not even an expression free of the variable is differentiated: the derivative of order 0 is the expression
+    assert diff(y, (x, n)) == Derivative(y, (x, n)) and diff(y, (x, n)).subs(n, 0).doit() == y
+    # the variable renamed or replaced, as for an integer order
+    assert d.subs(x, y) == Derivative(f(y), (y, n)) and str(d.subs(x, 0)) == 'Subs(Derivative(f(x), (x, n)), x, 0)'
+    # further differentiations: orders of one variable in a row add up, the others follow
+    assert diff(d, x) == Derivative(f(x), (x, n + 1)) and d.diff(x, 2) == Derivative(f(x), (x, n + 2))
+    assert diff(d, y) == 0 and diff(x**3, x, (x, n), x) == Derivative(3*x**2, (x, n + 1))
+    assert Derivative(f(x), (x, n), x, (x, 2)) == Derivative(f(x), (x, n + 3))
+    assert Derivative(f(x, y), (x, n), y).variable_orders == ((x, n), (y, 1))
+    assert Derivative(f(x), x, n + 1) == Derivative(f(x), (x, n + 1))
+    # a symbol after a symbol is a variable, as in SymPy
+    assert Derivative(f(x, n), x, n).variable_count == ((x, 1), (n, 1))
+    # the integer views say that they are not there
+    raises(ValueError, lambda: d.variable_count)
+    raises(ValueError, lambda: d.variables)
+    assert Derivative(f(x), (x, 2)).variable_count == ((x, 2),) and not Derivative(f(x), (x, 2)).has_symbolic_order
+    # an order which cannot be a nonnegative integer
+    raises(ValueError, lambda: Derivative(f(x), (x, Symbol('q', negative=True))))
+    raises(ValueError, lambda: Derivative(f(x), (x, Symbol('r', integer=False))))
+    raises(ValueError, lambda: Derivative(f(x), (x, pi)))
+    raises(ValueError, lambda: diff(f(x), (x, -n**2 - 1)))
+    # the node in expressions, in the parser, and to SymPy and back
+    assert expand((d + 1)**2) == d**2 + 2*d + 1 and (2*d).as_coeff_Mul() == (2, d)
+    assert sympify('Derivative(f(x), (x, n))') == Derivative(f(x), (x, Symbol('n')))
+    assert sympify(str(Derivative(f(x, y), (x, Symbol('n')), y, (x, Symbol('k') + 1)))) == \
+        Derivative(f(x, y), (x, Symbol('n')), y, (x, Symbol('k') + 1))
+    sx, sn = sympy.Symbol('x'), sympy.Symbol('n', integer=True)
+    assert to_sympy(d) == sympy.Derivative(sympy.Function('f')(sx), (sx, sn)) and from_sympy(to_sympy(d)) == d
+    from sympy_extras.simplify.radsimp import collect
+    assert collect(x*d + y*d + x*f(x).diff(x), f(x)) == x*f(x).diff(x) + x*d + y*d
+    from sympy_extras.core.sorting import ordered
+    assert list(ordered([d, x, f(x).diff(x)])) == [x, f(x).diff(x), d]
+
+
+def test_series_of_a_higher_derivative_has_its_order() -> None:
+    # the order term of the series of an unevaluated derivative was divided by x once whatever the order of
+    # differentiation (SymPy's rule): Derivative(exp(x), (x, 2)).series(x, 0, 3) was x + 1 + O(x**3) once
+    # evaluated, without x**2/2
+    from sympy_extras.functions import exp, sin
+    x = Symbol('x')
+    for function in (exp(x), sin(2*x) + x**4, 1/(1 - x)):
+        for order in (1, 2, 3):
+            series = Derivative(function, (x, order)).series(x, 0, 3)
+            assert series.doit() == diff(function, (x, order)).series(x, 0, 3), (function, order)
+    low = Derivative(exp(x), (x, 2)).nseries(x, n=3)
+    assert low.getO() == sympify('O(x)') and low.doit() == sympify('1 + O(x)')
+    raises(NotImplementedError, lambda: Derivative(exp(x), (x, Symbol('n', integer=True))).nseries(x, n=3))
+
+
 def test_a_wrapped_integral_differentiates() -> None:
     # the derivative of a wrapped unevaluated Integral(f, x) by x was the
     # unevaluated Derivative(Integral(f, x), x) (the native linear ODE

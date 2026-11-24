@@ -10,6 +10,8 @@ the results are facts: hand computations), and the differences."""
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
+import math
+
 from sympy_extras._testing import untyped
 from typing import Callable
 
@@ -160,3 +162,27 @@ def test_sympy_issue_31275_V214_quotient_of_sums() -> None:
     assert limit_seq(Sum(k**3, (k, 1, n))/Sum(k, (k, 1, n))**2, n) == 1
     # the sums are of polynomial growth and have no closed form: not found, but it returns
     assert limit_seq(Sum(k*log(k), (k, 1, n))/(Sum(1/k, (k, 1, n))*Sum(log(k), (k, 1, n))), n) is None
+
+
+def test_stolz_cesaro_on_a_sum_against_the_other_factors() -> None:
+    # limit_seq(log(n)*Sum(1/log(k + 1), (k, 1, n))/n, n) was None: the differences of the numerator log(n)*Sum and of
+    # the denominator n have the sum again. The sum is taken against b(n) = n/log(n), which is monotone and
+    # unbounded: the limit is that of 1/log(n + 2)/(b(n + 1) - b(n)), 1
+    from sympy_extras.concrete.expr_with_limits import Sum
+    m = Symbol('m', integer=True, positive=True)
+    k = Symbol('k', integer=True, positive=True)
+    assert limit_seq(log(m)*Sum(1/log(k + 1), (k, 1, m))/m, m) == 1
+    assert limit_seq(log(m)*Sum(k/log(k + 1), (k, 1, m))/m**2, m) == Rational(1, 2)
+    assert limit_seq(m/Sum(1/log(k + 1), (k, 1, m))/log(m), m) == 1
+    # a power of a sum of positive terms
+    assert limit_seq(m/Sum(sqrt(k), (k, 1, m))**Rational(2, 3), m) == Rational(3, 2)**Rational(2, 3)
+    assert limit_seq(sqrt(Sum(k**3, (k, 1, m)))/m**2, m) == Rational(1, 2)
+    # the values of the sequences: slowly, towards the limits (1.196 and 0.539 at 2000, 1.133 and 0.528 at 20000)
+    for size, first, second in ((2000, 1.196, 0.539), (20000, 1.133, 0.528)):
+        partial, weighted = 0.0, 0.0
+        for j in range(1, size + 1):
+            partial += 1/math.log(j + 1)
+            weighted += j/math.log(j + 1)
+        assert abs(math.log(size)*partial/size - first) < 2e-3 and abs(math.log(size)*weighted/size**2 - second) < 2e-3
+    # a factor which is not known to be monotone is not taken for b
+    assert limit_seq((2 + cos(m))*Sum(1/log(k + 1), (k, 1, m))*log(m)/m, m) is None

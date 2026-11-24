@@ -218,6 +218,10 @@ class Hyper(Expr):
         assert isinstance(o, Order)
         if x in lead.free_symbols and o.contains(lead):
             raise NotImplementedError('hyper has no _eval_as_leading_term routine')
+        if x0.is_infinite is True or (x in lead.free_symbols and not o.contains(lead)):
+            # not SymPy's, which answers the function itself, as if it were bounded and not 0: its limit of
+            # x*exp(-x)*hyper((1,), (2,), x) at oo is 0, and the product is 1 - exp(-x)
+            raise NotImplementedError('hyper has no leading term where its argument is infinite')
         return self
 
     def _continuous_parameters(self, x: Symbol) -> bool:

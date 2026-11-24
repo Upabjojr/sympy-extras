@@ -80,6 +80,11 @@ def test_hypergeometric_sums_match_sympy() -> None:
         ours = eval_sum_hyper(expr_from_sympy(f), limits)
         theirs = sympy_eval_sum_hyper(f, (v, lo, hi))
         assert (ours is None) == (theirs is None), f
+        if f == x**i/factorial(i) and hi == n:
+            # SymPy's closed form is exp(x) at n = -1, where the sum is empty: ours has the case (0, Eq(n, -1))
+            # before it (test_exponential_partial_sum_where_it_is_empty)
+            assert ours is not None and same(to_sympy(ours.args[1].args[0], evaluate=False), theirs), f
+            continue
         if ours is not None:
             assert same(to_sympy(ours, evaluate=False), theirs), f
         assert same(to_sympy(summation(expr_from_sympy(f), limits), evaluate=False), sympy.summation(f, (v, lo, hi))), f
@@ -240,3 +245,30 @@ def test_reversed_infinite_sums_follow_karr_convention() -> None:
     # the finite sums, right before: -(2 + 3 + 4)
     assert summation(t, (t, Integer(5), Integer(1))) == -9
     assert summation(t, (t, Integer(5), Integer(4))) == 0
+
+
+def test_exponential_partial_sum_where_it_is_empty() -> None:
+    # Sum(x**i/factorial(i), (i, 0, n)).doit() was exp(x) at n = -1 (SymPy's too): the closed form of the series
+    # from n + 1 on, hyper((1,), (n + 2,), x) expanded for a generic parameter, (n + 1)*x**(-n - 1)*exp(x)*
+    # lowergamma(n + 1, x), is 0 there, not exp(x). The sum from 0 to -1 is empty (Karr's convention, which the
+    # sums with numbers as bounds follow): the value 0 is a case
+    from sympy_extras.concrete.expr_with_limits import Sum
+    from sympy_extras.core import Eq, Rational
+    from sympy_extras.functions import factorial
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    x = Symbol('x')
+    n, i = Symbol('n', integer=True), Symbol('i', integer=True)
+    for term in (x**i/factorial(i), 1/factorial(i), x**i/factorial(i + 1), 2**i/factorial(i)):
+        closed = Sum(term, (i, 0, n)).doit()
+        assert isinstance(closed, Piecewise), term
+        for top in (-3, -2, -1, 0, 1, 2, 4):
+            direct = Sum(term, (i, 0, top)).doit()
+            difference = (closed.subs(n, top).doit() - direct).subs(x, Rational(7, 10))
+            assert abs(complex(difference.evalf(30))) < 1e-20, (term, top)
+    assert Sum(x**i/factorial(i), (i, 0, -1)).doit() == 0 and Sum(x**i/factorial(i + 1), (i, 0, -2)).doit() == -1/x
+    assert Sum(x**i/factorial(i), (i, 0, n)).doit().subs(n, -1) == 0
+    assert Sum(x**i/factorial(i + 1), (i, 0, n)).doit().subs(n, -2) == -1/x
+    # no case where the upper bound cannot be below the lower one, nor where the closed form is right
+    m = Symbol('m', integer=True, nonnegative=True)
+    assert not Sum(x**i/factorial(i), (i, 0, m)).doit().has(Eq(m, -1))
+    assert Sum(x**i/factorial(i), (i, 0, m)).doit().subs(m, 2).subs(x, 3).doit().expand() == Rational(17, 2)

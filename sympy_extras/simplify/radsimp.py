@@ -123,7 +123,7 @@ def _parse_derivative(d: Derivative) -> tuple[Expr, tuple[Symbol, Expr]]:
             order += 1
         else:
             raise NotImplementedError('Improve MV Derivative support in collect')
-    while isinstance(e, Derivative):
+    while isinstance(e, Derivative) and not e.has_symbolic_order:
         variables = e.variables
         s0 = variables[0]
         if any(s != s0 for s in variables):
@@ -142,7 +142,7 @@ def _parse_term(e: Expr) -> ParsedTerm:
     sexpr: Expr = e
     deriv: Deriv = None
     if isinstance(e, Pow):
-        if isinstance(e.base, Derivative):
+        if isinstance(e.base, Derivative) and not e.base.has_symbolic_order:
             sexpr, deriv = _parse_derivative(e.base)
         else:
             sexpr = e.base
@@ -170,7 +170,8 @@ def _parse_term(e: Expr) -> ParsedTerm:
         elif isinstance(arg, Mul):
             coeff, tail = arg.as_coeff_Mul(rational=True)
             sexpr, rat_expo = exp(tail), coeff
-    elif isinstance(e, Derivative):
+    elif isinstance(e, Derivative) and not e.has_symbolic_order:
+        # (a derivative of symbolic order, Derivative(f(x), (x, n)), is a term like any other)
         sexpr, deriv = _parse_derivative(e)
     return sexpr, rat_expo, sym_expo, deriv
 

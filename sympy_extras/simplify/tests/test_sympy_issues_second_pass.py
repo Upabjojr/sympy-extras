@@ -41,7 +41,10 @@ def test_combsimp_does_not_mirror_a_binomial_of_a_negative_upper_index() -> None
     assert combsimp(binomial(n + 1, k + 1)/binomial(n, k)) == (n + 1)/(k + 1)
     assert (combsimp(binomial(2*n + 2, n + 1)/binomial(2*n, n)) - 2*(2*n + 1)/(n + 1)).cancel() == 0
     assert combsimp(factorial(n)/(factorial(k)*factorial(n - k))) == binomial(n, k)
-    assert combsimp(binomial(n + 1, n - k)/binomial(n, n - k)) == (n + 1)/(k + 1)
+    # ((n + 1)/(k + 1) for this one was 0/0 at n = k = -1, where the quotient is binomial(0, 0)/binomial(-1, 0) = 1:
+    # it stays for integers of any sign, see test_combsimp_where_a_binomial_is_a_limit_of_gamma_functions)
+    assert combsimp(binomial(n + 1, n - k)/binomial(n, n - k)) == binomial(n + 1, n - k)/binomial(n, n - k)
+    assert combsimp(binomial(m + 1, m - k)/binomial(m, m - k)) == (m + 1)/(k + 1)
 
 
 def _g(bm: list[Expr], point: complex) -> complex:
@@ -97,7 +100,11 @@ def test_combsimp_of_binomials_where_the_gamma_quotient_fails() -> None:
     # in two symbols the points are not isolated: no rewriting unless the expression is undefined there
     two = [binomial(n, k)/binomial(n, k + 1), binomial(n, k)/binomial(n + 1, k + 1), binomial(n, k + 1)/binomial(n, k),
            binomial(n + 1, k + 1)/binomial(n, k)]
-    assert combsimp(two[0]) == two[0] and combsimp(two[1]) == two[1]
+    assert combsimp(two[0]) == two[0]
+    # (the second one stayed: it is (k + 1)/(n + 1) outside n = -1, where it is 0 at k = -1 and not finite elsewhere)
+    second = combsimp(two[1])
+    assert isinstance(second, Piecewise) and second.args[0].args[1] == eq(n, -1) and second.args[1].args[0] == (k + 1)/(n + 1)
+    assert second.subs(n, -1).subs(k, -1) == 0 == two[1].subs(n, -1).subs(k, -1)
     assert (combsimp(two[2]) - (n - k)/(k + 1)).cancel() == 0 and combsimp(two[3]) == (n + 1)/(k + 1)
     for e in two:
         simplified = combsimp(e)
@@ -115,3 +122,43 @@ def test_combsimp_of_binomials_where_the_gamma_quotient_fails() -> None:
     # a lower index which is not an integer has no such point (zeilberger_sum of
     # binomial(n, k)*binomial(n, k + a) lost its closed form)
     assert (combsimp(binomial(n, x + 1)/binomial(n, x)) - (n - x)/(x + 1)).cancel() == 0
+
+
+def test_combsimp_where_a_binomial_is_a_limit_of_gamma_functions() -> None:
+    # combsimp(binomial(n, k)*factorial(k)) was factorial(n)/factorial(n - k) for integers of any sign, zoo/zoo
+    # for every negative n, where the product is n*(n - 1)*...*(n - k + 1) (binomial(-2, 1)*factorial(1) is -2);
+    # combsimp(binomial(n, k)/binomial(n - 1, k)) was n/(n - k) for nonnegative integers too, 0/0 at n = k = 0,
+    # where the quotient is binomial(0, 0)/binomial(-1, 0) = 1. gammasimp gave the same in gamma functions
+    from sympy_extras.core import eq
+    from sympy_extras.functions.elementary.piecewise import Piecewise
+    from sympy_extras.simplify.gammasimp import gammasimp
+    assert binomial(-2, 1)*factorial(1) == -2 and binomial(0, 0)/binomial(-1, 0) == 1
+    product, quotient = binomial(n, k)*factorial(k), binomial(n, k)/binomial(n - 1, k)
+    assert combsimp(product) == product and gammasimp(product) == product
+    assert combsimp(quotient) == quotient and gammasimp(quotient) == quotient
+    # nonnegative integers: the product has no such point, the quotient the value n = 0 of one symbol
+    p, q = Symbol('p', integer=True, nonnegative=True), Symbol('q', integer=True, nonnegative=True)
+    assert combsimp(binomial(p, q)*factorial(q)) == factorial(p)/factorial(p - q)
+    found = combsimp(binomial(p, q)/binomial(p - 1, q))
+    assert isinstance(found, Piecewise) and found.args[0].args[1] == eq(p, 0)
+    assert found.subs(p, 3).subs(q, 1) == Rational(3, 2) and found.subs(p, 0).subs(q, 0) == 1
+    assert isinstance(gammasimp(binomial(p, q)/binomial(p - 1, q)), Piecewise)
+    for e, symbols in ((product, (n, k)), (quotient, (n, k)), (binomial(p, q)*factorial(q), (p, q)),
+                       (binomial(p, q)/binomial(p - 1, q), (p, q)), (binomial(p, q)/binomial(p - 1, q - 1), (p, q)),
+                       (binomial(n + 2, k + 2)/binomial(n, k), (n, k)), (binomial(n, k)/binomial(n + 1, k + 1), (n, k)),
+                       (binomial(n + 1, k)/binomial(n, k), (n, k)), (binomial(n + 1, n - k)/binomial(n, n - k), (n, k))):
+        for simplified in (combsimp(e), gammasimp(e)):
+            low = 0 if symbols[0].is_nonnegative else -5
+            for upper in range(low, 6):
+                for lower in range(low, 6):
+                    given = e.subs(symbols[0], upper).subs(symbols[1], lower)
+                    if given.is_finite is True:
+                        assert simplified.subs(symbols[0], upper).subs(symbols[1], lower) == given, (e, upper, lower)
+    # a lower index which is a number is a polynomial in the upper one, and a symbol in the upper indices only
+    # makes the quotient a rational function of it on every line: these are simplified as before
+    assert combsimp(binomial(n, 2)) == n*(n - 1)/2 and combsimp(binomial(n + 1, k + 1)/binomial(n, k)) == (n + 1)/(k + 1)
+    assert combsimp(binomial(n + 2, k + 2)/binomial(n, k)) == (n + 1)*(n + 2)/((k + 1)*(k + 2))
+    assert combsimp(binomial(n, k)*factorial(k)*factorial(n - k)) == factorial(n)
+    # symbols which are not integers are generic, as before
+    x, y = Symbol('x'), Symbol('y')
+    assert (combsimp(binomial(x, y)/binomial(x - 1, y)) - x/(x - y)).cancel() == 0

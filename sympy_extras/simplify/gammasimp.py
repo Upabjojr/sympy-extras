@@ -35,7 +35,7 @@ from sympy_extras.core.basic import Basic, preorder_traversal
 from sympy_extras.core.expr import Expr, ExprLike, factors_of, to_expr
 from sympy_extras.core.function import Application, count_ops
 from sympy_extras.core.mul import Mul, mul
-from sympy_extras.core.numbers import Integer, Rational, number_from_fraction, pi
+from sympy_extras.core.numbers import Integer, Rational, nan, number_from_fraction, oo, pi, zoo
 from sympy_extras.core.power import Pow, pow
 from sympy_extras.core.sorting import default_sort_key, ordered
 from sympy_extras.core.symbol import Dummy, Symbol
@@ -464,11 +464,34 @@ def _gammasimp(expr: Expr, as_comb: bool) -> Expr:
 
 
 # PORTED FROM SYMPY: sympy/simplify/gammasimp.py:gammasimp
-def gammasimp(expr: ExprLike) -> Expr:
+def gammasimp(expr: ExprLike, generic: bool = False) -> Expr:
     """The expression with its gamma functions (and the functions
-    rewritten as gamma) simplified."""
+    rewritten as gamma) simplified.
+
+    The result has the values of the expression at the integer points
+    which the assumptions of the symbols allow (see :func:`combsimp`);
+    with ``generic`` it is the simplified quotient of gamma functions,
+    an identity of meromorphic functions, as the algorithms on
+    hypergeometric terms need it."""
+    given = to_expr(expr)
+    found = _gammasimp_generic(given)
+    if found == given:
+        return given
+    if generic:
+        return found
+    # a binomial with an upper index which may be a negative integer is not the quotient of gamma functions
+    # at every integer point (gammasimp(binomial(n, k)*factorial(k)) was gamma(n + 1)/gamma(n - k + 1), nan
+    # for a negative integer n, where the product is n*(n - 1)*...*(n - k + 1))
+    return _checked_at_integer_points(given, found, _negative_upper_binomials(given), gammasimp, True)
+
+
+# PORTED FROM SYMPY: sympy/simplify/gammasimp.py:gammasimp
+def _gammasimp_generic(given: Expr) -> Expr:
+    """:func:`gammasimp` for generic values of the symbols (the integer
+    points where a binomial is not its quotient of gamma functions are
+    not looked at)."""
     from sympy_extras.functions.special.gamma_functions import Gamma
-    e = _expr(to_expr(expr).rewrite(Gamma))
+    e = _expr(given.rewrite(Gamma))
     functions = {f for f in e.atoms(Application)}
     gammas = {f for f in functions if isinstance(f, Gamma)}
     if not gammas:
@@ -545,10 +568,30 @@ def _gamma_as_comb(expr: Expr) -> Expr:
 
 
 # PORTED FROM SYMPY: sympy/simplify/combsimp.py:combsimp
-def combsimp(expr: ExprLike) -> Expr:
+def combsimp(expr: ExprLike, generic: bool = False) -> Expr:
     """The combinatorial expression (factorials, binomials, rising and
     falling factorials) simplified, as factorials and binomials; through
-    :func:`gammasimp` when a gamma argument is not an integer."""
+    :func:`gammasimp` when a gamma argument is not an integer.
+
+    The result has the value of the expression at every integer point
+    which the assumptions of the symbols allow and where the expression
+    is finite: where that is not known for a binomial whose upper index
+    may be a negative integer, the result has cases for finitely many
+    values of a symbol, or the expression is returned as it is. With
+    ``generic`` the points ``n < 0 <= k`` of a binomial are not looked
+    at (the result is then an identity of meromorphic functions which
+    may be ``0/0`` or ``zoo/zoo`` at such points), as the algorithms on
+    hypergeometric terms need it.
+
+    >>> from sympy_extras.core import Symbol
+    >>> from sympy_extras.functions import binomial, factorial
+    >>> n, k = Symbol('n', integer=True), Symbol('k', integer=True)
+    >>> combsimp(binomial(n, k)*factorial(k)), combsimp(binomial(n, k)*factorial(k), generic=True)
+    (binomial(n, k)*factorial(k), factorial(n)/factorial(-k + n))
+    >>> p, q = Symbol('p', integer=True, nonnegative=True), Symbol('q', integer=True, nonnegative=True)
+    >>> combsimp(binomial(p, q)*factorial(q)), combsimp(binomial(p, q)/binomial(p - 1, q))
+    (factorial(p)/factorial(p - q), Piecewise((binomial(0, q)/binomial(-1, q), Eq(p, 0)), (p/(p - q), True)))
+    """
     given = to_expr(expr)
     # binomial(n, k) is 0 for a negative integer k, whatever n: for an upper
     # index which may be a negative integer the quotient of gamma functions,
@@ -564,7 +607,7 @@ def combsimp(expr: ExprLike) -> Expr:
     back: dict[Basic, Basic] = {d: b for b, d in kept.items()}
     e = _expr(given.xreplace(kept)).rewrite(_gamma_types()[0], piecewise=False)
     if any(_is_gamma(node) and _expr(node.args[0]).is_integer is not True for node in preorder_traversal(e)):
-        result = gammasimp(e)
+        result = _gammasimp_generic(e)
     else:
         result = _gamma_as_comb(_gammasimp(e, as_comb=True))
     turned: dict[Basic, Basic] = {}
@@ -580,22 +623,44 @@ def combsimp(expr: ExprLike) -> Expr:
     found = _expr(_expr(result.xreplace(turned)).xreplace(back))
     if found == given:
         return given
-    # the quotient of gamma functions is not the binomial where k <= n < 0
-    # (binomial(-1, -1) is 0, the gamma functions have the limit 1):
-    # combsimp(binomial(2*n + 1, n)/binomial(2*n + 1, n + 1)) was 1, and the quotient is 0 at n = -1
     checked = [b for b in risky if b not in conflicts]
     checked.extend(b for b in _negative_upper_binomials(found) if b not in risky)
+    return _checked_at_integer_points(given, found, checked, lambda term: combsimp(term, generic), not generic)
+
+
+def _checked_at_integer_points(given: Expr, found: Expr, checked: list[Expr], again: Callable[[Expr], Expr],
+                               above: bool) -> Expr:
+    """``found``, the simplified form of ``given`` through gamma functions,
+    where it holds at the integer points of the binomials ``checked``
+    (those whose upper index may be a negative integer); with cases for
+    finitely many values of one symbol where it does not, and ``given``
+    (a sum term by term, with ``again``) where that is not known.
+
+    The quotient of gamma functions is not the binomial where ``k <= n <
+    0`` (``binomial(-1, -1)`` is 0, the gamma functions have the limit 1:
+    ``combsimp(binomial(2*n + 1, n)/binomial(2*n + 1, n + 1))`` was 1, and
+    the quotient is 0 at ``n = -1``). Where ``n < 0 <= k`` the binomial is
+    the limit in ``n`` of a quotient of two gamma functions at their
+    poles, which the simplified form need not have: ``binomial(n,
+    k)*factorial(k)`` became ``factorial(n)/factorial(n - k)``, ``nan``
+    for every negative ``n``, and ``binomial(n, k)/binomial(n - 1, k)``
+    became ``n/(n - k)``, ``0/0`` at ``n = k = 0``, where it is 1. The
+    second set is looked at with ``above`` only."""
     if not checked:
         return found
     poles, factorials = _undefined_factors(given)
     points: list[tuple[Symbol, int]] = []
     sound = True
     for b in checked:
-        uncovered = _uncovered_points(b, poles, factorials)
+        uncovered = _uncovered_points(b, poles, factorials, above)
         if uncovered is None:
             sound = False
             break
         points.extend(point for point in uncovered if point not in points)
+    if not sound and above:
+        on_lines = _line_points(given, found, checked)
+        if on_lines is not None:
+            sound, points = True, on_lines
     if sound and not points:
         return found
     if sound and len({symbol for symbol, _ in points}) == 1:
@@ -605,15 +670,71 @@ def combsimp(expr: ExprLike) -> Expr:
         cases: list[tuple[Expr, Boolean]] = []
         for symbol, value in sorted(points, key=lambda point: point[1]):
             at_point = _expr(given.subs(symbol, Integer(value)))
-            if at_point.is_finite is True and at_point != _expr(found.subs(symbol, Integer(value))):
+            if at_point == _expr(found.subs(symbol, Integer(value))):
+                continue
+            # a number which is not finite is no value of the expression; with other symbols the case is the
+            # expression at the point, as it stands
+            if at_point.is_finite is True or (at_point.free_symbols and at_point.is_finite is not False
+                                              and not at_point.has(zoo, nan, oo)):
                 cases.append((at_point, eq(symbol, Integer(value))))
         if not cases:
             return found
         return piecewise(*cases, (found, True))
     if isinstance(given, Add):
         # term by term: a binomial which stays as it is needs no proof
-        return add(*[combsimp(term) for term in given.args if isinstance(term, Expr)])
+        return add(*[again(term) for term in given.args if isinstance(term, Expr)])
     return given
+
+
+def _line_points(given: Expr, found: Expr, checked: list[Expr]) -> Optional[list[tuple[Symbol, int]]]:
+    """The values of a symbol, as pairs, outside which the rational
+    function ``found`` is known to be ``given`` at every integer point
+    where ``given`` is finite; ``None`` when this argument does not apply.
+
+    When a symbol ``s`` is in the upper index of every binomial of
+    ``checked`` and in no lower index of them, every factor of ``given``
+    is, on a line where the other symbols are integers, a meromorphic
+    function of ``s`` which has the value of the factor wherever that is
+    finite (``binomial(u(s), k)`` is a polynomial in ``u`` for an integer
+    ``k >= 0`` and 0 for ``k < 0``; a factorial and a gamma function are
+    themselves), and it is on that line the quotient of gamma functions
+    which was simplified. A rational function equal to it has its value
+    wherever its denominator is not 0: the roots of the denominator are
+    the values returned (``binomial(n + 1, k + 1)/binomial(n, k)`` is ``(n +
+    1)/(k + 1)`` outside ``k = -1``, where it is not finite); a factor of
+    the denominator in several symbols (``n/(n - k)`` for ``binomial(n,
+    k)/binomial(n - 1, k)``, which is 1 at ``n = k = 0``) is not handled."""
+    from sympy_extras.functions.combinatorial.factorials import Binomial, Factorial
+    from sympy_extras.polys.polytools import cancel, factor_list
+    from sympy_extras.simplify.radsimp import fraction
+    if any(not isinstance(f, (Binomial, Factorial, _gamma_types()[0])) for f in given.atoms(Application)):
+        return None
+    if found.atoms(Application) or found.is_rational_function() is not True:
+        return None
+    lines: Optional[set[Symbol]] = None
+    for b in checked:
+        upper, lower = _expr(b.args[0]), _expr(b.args[1])
+        own = {x for x in upper.free_symbols - lower.free_symbols if upper.is_polynomial(x) is True}
+        lines = own if lines is None else lines & own
+    if not lines:
+        return None
+    denominator = fraction(cancel(found))[1]
+    points: list[tuple[Symbol, int]] = []
+    for base, _ in factor_list(denominator)[1]:
+        symbols = [x for x in base.free_symbols if isinstance(x, Symbol)]
+        if len(symbols) != 1:
+            return None
+        form = _linear(base, symbols[0])
+        if form is None or form[0] == 0:
+            return None
+        root = -form[1]/form[0]
+        low, high = _symbol_bounds(symbols[0])
+        if root.denominator != 1 or symbols[0].is_integer is False or (low is not None and root < low) \
+                or (high is not None and root > high):
+            continue
+        if (symbols[0], root.numerator) not in points:
+            points.append((symbols[0], root.numerator))
+    return points
 
 
 def _undefined_factors(e: Expr) -> tuple[list[Expr], list[Expr]]:
@@ -664,57 +785,98 @@ def _at_least(a: Fraction, b: Fraction, strict: bool,
     return low, high
 
 
-def _uncovered_points(b: Expr, poles: list[Expr], factorials: list[Expr]) -> Optional[list[tuple[Symbol, int]]]:
-    """The points of the set ``k <= n < 0`` of the binomial ``b = binomial(n,
-    k)``, where it is not the quotient of gamma functions, at which the
+def _covered(shifts: list[Expr], poles: list[Expr], factorials: list[Expr]) -> bool:
+    """Whether the expression is known not to be finite on a set of
+    integer points where every one of ``shifts`` is negative: a binomial
+    of the denominator with a lower index ``k'`` (it is 0 for a negative
+    integer ``k'``) or a factorial of the numerator of ``m`` with ``k' <=
+    shift`` or ``m <= shift`` for one of them."""
+    for pole in poles:
+        k_pole = _expr(pole.args[1])
+        if k_pole.is_integer is True and any(add(shift, mul(Integer(-1), k_pole)).is_nonnegative is True for shift in shifts):
+            return True
+    for m in factorials:
+        if m.is_integer is True and any(add(shift, mul(Integer(-1), m)).is_nonnegative is True for shift in shifts):
+            return True
+    return False
+
+
+def _symbol_bounds(symbol: Symbol) -> tuple[Optional[int], Optional[int]]:
+    if symbol.is_positive is True:
+        return (1, None)
+    if symbol.is_nonnegative is True:
+        return (0, None)
+    if symbol.is_negative is True:
+        return (None, -1)
+    if symbol.is_nonpositive is True:
+        return (None, 0)
+    return (None, None)
+
+
+def _uncovered_points(b: Expr, poles: list[Expr], factorials: list[Expr],
+                      above_too: bool) -> Optional[list[tuple[Symbol, int]]]:
+    """The points of the sets ``k <= n < 0`` and ``n < 0 <= k`` of the
+    binomial ``b = binomial(n, k)``, where it is not the quotient of gamma
+    functions, or is one only as a limit in ``n``, at which the
     expression with the ``poles`` and the ``factorials`` of
     :func:`_undefined_factors` may be finite, as pairs of a symbol and
-    its value; ``None`` when the set is not known to be covered up to
-    finitely many points."""
+    its value (every point with that value of the symbol is meant);
+    ``None`` when the sets are not known to be covered up to finitely
+    many values of one symbol."""
     upper, lower = _expr(b.args[0]), _expr(b.args[1])
-    if upper.is_nonnegative is True or add(upper, mul(Integer(-1), lower)).is_negative is True:
+    if upper.is_nonnegative is True:
         return []
     if lower.is_integer is not True:
         # a lower index which is not an integer (a symbol of no assumption is generic, as elsewhere)
         return []
-    # binomial(n', k') is 0 for a negative integer k', and k <= n < 0 is in k' < 0 for k' <= k or k' <= n
-    for pole in poles:
-        k_pole = _expr(pole.args[1])
-        if k_pole.is_integer is True and (add(lower, mul(Integer(-1), k_pole)).is_nonnegative is True
-                                          or add(upper, mul(Integer(-1), k_pole)).is_nonnegative is True):
-            return []
-    for m in factorials:
-        if m.is_integer is True and (add(lower, mul(Integer(-1), m)).is_nonnegative is True
-                                     or add(upper, mul(Integer(-1), m)).is_nonnegative is True):
-            return []
-    symbols = [x for x in (upper.free_symbols | lower.free_symbols) if isinstance(x, Symbol)]
+    difference = add(upper, mul(Integer(-1), lower))
+    # k <= n < 0: binomial(n', k') is 0 for a negative integer k', and the set is in k' < 0 for k' <= k or k' <= n
+    below = not (difference.is_negative is True or _covered([lower, upper], poles, factorials))
+    # n < 0 <= k: a polynomial in n for a number k, the quotient of gamma functions as it is simplified
+    above = above_too and not (isinstance(lower, Integer) or lower.is_negative is True
+                               or _covered([upper, difference], poles, factorials))
+    if not below and not above:
+        return []
+    symbols = [x for x in upper.free_symbols if isinstance(x, Symbol)]
     if len(symbols) != 1 or symbols[0].is_integer is not True:
         return None
     symbol = symbols[0]
-    n_form, k_form = _linear(upper, symbol), _linear(lower, symbol)
-    if n_form is None or k_form is None:
+    n_form = _linear(upper, symbol)
+    if n_form is None:
         return None
-    start: tuple[Optional[int], Optional[int]] = (None, None)
-    if symbol.is_positive is True:
-        start = (1, None)
-    elif symbol.is_nonnegative is True:
-        start = (0, None)
-    elif symbol.is_negative is True:
-        start = (None, -1)
-    elif symbol.is_nonpositive is True:
-        start = (None, 0)
-    # n - k >= 0 and -n > 0
-    first = _at_least(n_form[0] - k_form[0], n_form[1] - k_form[1], False, start)
-    if first is None:
-        return []
-    second = _at_least(-n_form[0], -n_form[1], True, first)
-    if second is None:
-        return []
-    low, high = second
-    if low is None or high is None or high - low > 16:
+    k_form: Optional[tuple[Fraction, Fraction]] = None
+    if not (lower.free_symbols - {symbol}):
+        k_form = _linear(lower, symbol)
+        if k_form is None:
+            return None
+    elif not above_too:
+        # (the first set alone, with another symbol in the lower index: not looked into)
         return None
+    # -n > 0
+    negative = _at_least(-n_form[0], -n_form[1], True, _symbol_bounds(symbol))
+    if negative is None:
+        return []
+    ranges: list[tuple[Optional[int], Optional[int]]] = []
+    if k_form is None:
+        ranges.append(negative)
+    else:
+        if below:
+            # n - k >= 0
+            first = _at_least(n_form[0] - k_form[0], n_form[1] - k_form[1], False, negative)
+            if first is not None:
+                ranges.append(first)
+        if above:
+            # k >= 0
+            second = _at_least(k_form[0], k_form[1], False, negative)
+            if second is not None:
+                ranges.append(second)
+    values: list[int] = []
+    for low, high in ranges:
+        if low is None or high is None or high - low > 16:
+            return None
+        values.extend(value for value in range(low, high + 1) if value not in values)
     uncovered: list[tuple[Symbol, int]] = []
-    for value in range(low, high + 1):
+    for value in sorted(values):
         at = Integer(value)
         if any(_expr(_expr(pole.args[1]).subs(symbol, at)).is_negative is True
                and _expr(_expr(pole.args[1]).subs(symbol, at)).is_integer is True for pole in poles):

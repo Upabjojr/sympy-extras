@@ -1723,15 +1723,15 @@ class Expr(Basic):
         from sympy_extras.simplify.trigsimp import trigsimp
         return trigsimp(self)
 
-    def combsimp(self) -> Expr:
+    def combsimp(self, generic: bool = False) -> Expr:
         """Combinatorial simplification (:func:`sympy_extras.simplify.gammasimp.combsimp`)."""
         from sympy_extras.simplify.gammasimp import combsimp
-        return combsimp(self)
+        return combsimp(self, generic)
 
-    def gammasimp(self) -> Expr:
+    def gammasimp(self, generic: bool = False) -> Expr:
         """Gamma function simplification (:func:`sympy_extras.simplify.gammasimp.gammasimp`)."""
         from sympy_extras.simplify.gammasimp import gammasimp
-        return gammasimp(self)
+        return gammasimp(self, generic)
 
     def nsimplify(self, constants: Sequence[Expr] = (), tolerance: Optional[float] = None, full: bool = False,
                   rational: Optional[bool] = None) -> Expr:

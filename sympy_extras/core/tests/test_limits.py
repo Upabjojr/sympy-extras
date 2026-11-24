@@ -177,3 +177,34 @@ def test_exponentials_of_one_class_with_symbolic_ratio() -> None:
     assert limit(log(n**a + n**(2*a))/log(n), n, oo) == 2*a
     assert limit(exp(a*n)*exp(b*n)/(exp((a + b)*n) + 1), n, oo) == 1
     assert limit(n**a*exp(-b*n), n, oo) == 0
+
+
+def test_limits_of_hypergeometric_functions_through_their_closed_forms() -> None:
+    # limit(hyper((1, 1), (2,), -x), x, oo) and the like stayed unevaluated (the function has no leading term
+    # where its argument is infinite, nor at the singular point 1): the limit is that of the closed form of
+    # hyperexpand, log(x + 1)/x here, when the closed form has the values of the function on the way
+    import mpmath
+    from sympy_extras.core import Rational, oo, pi, sqrt
+    from sympy_extras.functions import exp, hyper
+    x = Symbol('x')
+    half = Rational(1, 2)
+    assert limit(hyper([1, 1], [2], -x), x, oo) == 0 and limit(x*hyper([1, 1], [2], -x), x, oo) == oo
+    assert limit(hyper([1], [2], x), x, oo) == oo and limit(hyper([1], [2], -x), x, oo) == 0
+    assert limit(x*hyper([1], [2], -x), x, oo) == 1 and limit(hyper([1], [2], x), x, -oo) == 0
+    assert limit(x*hyper([half, 1], [3*half], -x**2), x, oo) == pi/2
+    assert limit(x*hyper([half], [3*half], -x**2), x, oo) == sqrt(pi)/2
+    assert limit(hyper([1, 1], [2], x), x, 1, '-') == oo
+    assert limit(hyper([half, half], [3*half], x), x, 1, '-') == pi/2
+    assert limit(hyper([half, 1], [2], 1 - 1/x), x, oo) == 2
+    # against the values of the functions far on the way
+    assert abs(1000*mpmath.hyp1f1(1, 2, -1000) - 1) < 1e-12
+    assert abs(1e4*mpmath.hyp2f1(0.5, 1, 1.5, -1e8) - mpmath.pi/2) < 1e-3
+    assert abs(mpmath.hyp2f1(0.5, 0.5, 1.5, 1 - 1e-12) - mpmath.pi/2) < 1e-5
+    # the limit of x*exp(-x)*hyper((1,), (2,), x) was 0 (SymPy's too): the function was its own leading term,
+    # as if it were bounded, and Gruntz's algorithm put it in the class of x. The product is 1 - exp(-x)
+    assert limit(x*exp(-x)*hyper([1], [2], x), x, oo) == 1
+    assert abs(50*mpmath.exp(-50)*mpmath.hyp1f1(1, 2, 50) - 1) < 1e-12
+    assert limit(exp(-x)*hyper([1], [2], x), x, oo) == 0
+    # where there is no closed form the limit stays
+    assert isinstance(limit(hyper([1, x], [2], Rational(1, 3)), x, oo), Limit)
+    assert isinstance(limit(hyper([Rational(1, 3), Rational(1, 5)], [Rational(1, 7)], -x), x, oo), Limit)
