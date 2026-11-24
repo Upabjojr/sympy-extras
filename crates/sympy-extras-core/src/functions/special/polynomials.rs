@@ -219,7 +219,9 @@ pub fn assoc_laguerre(n: &Basic, alpha: &Basic, x: &Basic) -> PolyResult<Basic> 
 
 /// `(-1)**n*f(n, -x)` when `x` has a minus sign (`_minus_x`).
 fn minus_x(f: Function, n: &Basic, x: &Basic) -> PolyResult<Option<Basic>> {
-    if could_extract_minus_sign(x) {
+    // for an integer degree only: the functions of a noninteger degree have
+    // no parity (legendre(1/2, -x) is real on (-1, 1))
+    if is_true(n, Predicate::integer) && could_extract_minus_sign(x) {
         let inner: Basic = orthogonal(f, &[n.clone(), neg(x)?])?;
         return Ok(Some(mul(&[pow(&Basic::negative_one(), n)?, inner])?));
     }
@@ -645,7 +647,8 @@ fn jacobi_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
         ])?));
     }
     if !n.is_number_class() {
-        if could_extract_minus_sign(x) {
+        // (an integer degree only: no parity otherwise)
+        if is_true(n, Predicate::integer) && could_extract_minus_sign(x) {
             let inner: Basic = jacobi(n, b, a, &neg(x)?)?;
             return Ok(Some(mul(&[pow(&Basic::negative_one(), n)?, inner])?));
         }
@@ -738,7 +741,8 @@ fn gegenbauer_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
             let bottom: Basic = lmul(&[gamma(&two_a)?, gamma(&n1)?])?;
             return Ok(Some(div(&top, &bottom)?));
         }
-        if could_extract_minus_sign(x) {
+        // (an integer degree only: no parity otherwise)
+        if is_true(n, Predicate::integer) && could_extract_minus_sign(x) {
             let inner: Basic = gegenbauer(n, a, &neg(x)?)?;
             return Ok(Some(mul(&[pow(&Basic::negative_one(), n)?, inner])?));
         }

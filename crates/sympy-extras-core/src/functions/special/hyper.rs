@@ -132,6 +132,65 @@ fn unpolarified_argument(ap: &[Basic], bq: &[Basic], z: &Basic) -> PolyResult<Ba
 }
 
 /// The derivative in the argument: `prod(ap)/prod(bq)*hyper(ap + 1, bq + 1, z)`.
+/// Whether the parameters of `e` depend on `x`.
+pub(crate) fn parameters_depend(e: &Basic, x: &Basic) -> bool {
+    depends(hyper_ap(e), x) || depends(hyper_bq(e), x)
+}
+
+/// `hyper` at `x = 0` when it is continuous there in its parameters and
+/// its argument (of the value `z0`; `_value_at_parameters`): finite
+/// parameters, no lower one a nonpositive integer, and `p <= q`, or
+/// `p = q + 1` with `|z0| < 1` or `z0 = 1` and `re(sum(bq) - sum(ap)) > 0`;
+/// `None` otherwise or for the value zero (which is no leading term).
+pub(crate) fn value_at_parameters(e: &Basic, x: &Basic, z0: &Basic) -> PolyResult<Option<Basic>> {
+    use crate::core::expr::is;
+    use crate::functions::elementary::complexes::{abs_, re};
+    let zero: Basic = Basic::zero();
+    let ap0: Vec<Basic> = hyper_ap(e)
+        .iter()
+        .map(|a| crate::core::subs::subs(a, x, &zero))
+        .collect::<PolyResult<_>>()?;
+    let bq0: Vec<Basic> = hyper_bq(e)
+        .iter()
+        .map(|b| crate::core::subs::subs(b, x, &zero))
+        .collect::<PolyResult<_>>()?;
+    if z0.free_symbols().contains(x)
+        || !ap0
+            .iter()
+            .chain(&bq0)
+            .chain(std::iter::once(z0))
+            .all(|c| is(c, Predicate::finite) == Some(true))
+    {
+        return Ok(None);
+    }
+    if bq0
+        .iter()
+        .any(|b| !(is(b, Predicate::integer) == Some(false) || is(b, Predicate::positive) == Some(true)))
+    {
+        return Ok(None);
+    }
+    if ap0.len() > bq0.len() + 1 {
+        return Ok(None);
+    }
+    if ap0.len() == bq0.len() + 1 {
+        let inside: bool = is(&sub(&Basic::one(), &abs_(z0)?)?, Predicate::positive) == Some(true);
+        let gauss: bool =
+            *z0 == Basic::one() && is(&re(&sub(&add(&bq0)?, &add(&ap0)?)?)?, Predicate::positive) == Some(true);
+        if !(inside || gauss) {
+            return Ok(None);
+        }
+    }
+    if ap0.iter().any(|a| is(a, Predicate::zero) == Some(true)) {
+        return Ok(Some(Basic::one()));
+    }
+    let value: Basic = hyper(&ap0, &bq0, z0)?;
+    Ok(if is(&value, Predicate::zero) == Some(true) {
+        None
+    } else {
+        Some(value)
+    })
+}
+
 pub fn hyper_derivative_in_argument(e: &Basic) -> PolyResult<Basic> {
     let (ap, bq, z) = (hyper_ap(e), hyper_bq(e), &e.args()[2]);
     let factor: Basic = div(&mul(ap)?, &mul(bq)?)?;

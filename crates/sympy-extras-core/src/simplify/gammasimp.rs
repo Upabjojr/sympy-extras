@@ -850,12 +850,95 @@ fn gamma_as_comb(expr: &Basic) -> PolyResult<Basic> {
 /// factorials) simplified, as factorials and binomials; through
 /// [`gammasimp`] when a gamma argument is not an integer (`combsimp`).
 pub fn combsimp(expr: &Basic) -> PolyResult<Basic> {
-    let e: Basic = rewrite_gamma(expr, false)?;
-    if e.preorder()
+    // binomial(n, k) is 0 for a negative integer k, whatever n: for an upper
+    // index which may be a negative integer the quotient of gamma functions,
+    // symmetric in k and n - k, is not both binomial(n, k) and
+    // binomial(n, n - k). Binomials mirrored in the input are kept as they
+    // are, and one which comes back mirrored is turned again (not SymPy's,
+    // sympy/sympy#31275 V225, sympy/sympy#14612)
+    let risky: Vec<Basic> = negative_upper_binomials(expr);
+    // (binomial(2*n, n) and binomial(2*n + 2, n + 1) are mirrored and
+    // aligned: one family)
+    let conflicts: Vec<Basic> = risky
+        .iter()
+        .filter(|b| {
+            risky
+                .iter()
+                .any(|c| mirrored(b, c).unwrap_or(false) && !aligned(b, c).unwrap_or(false))
+        })
+        .cloned()
+        .collect();
+    let kept: HashMap<Basic, Basic> = conflicts
+        .iter()
+        .map(|b| (b.clone(), crate::core::symbol::Dummy::new("binomial", &[]).0))
+        .collect();
+    let back: HashMap<Basic, Basic> = kept.iter().map(|(b, d)| (d.clone(), b.clone())).collect();
+    let e: Basic = rewrite_gamma(&expr.xreplace(&kept), false)?;
+    let result: Basic = if e
+        .preorder()
         .iter()
         .any(|node| is_gamma(node) && is(&node.args()[0], Predicate::integer) != Some(true))
     {
-        return gammasimp(&e);
+        gammasimp(&e)?
+    } else {
+        gamma_as_comb(&gammasimp_inner(&e, true)?)?
+    };
+    let mut turned: HashMap<Basic, Basic> = HashMap::new();
+    for b in negative_upper_binomials(&result) {
+        let mut aligned_any: bool = false;
+        let mut mirrored_any: bool = false;
+        for c in &risky {
+            aligned_any |= aligned(&b, c)?;
+            mirrored_any |= mirrored(&b, c)?;
+        }
+        if aligned_any || !mirrored_any {
+            continue;
+        }
+        let (upper, lower) = (&b.args()[0], &b.args()[1]);
+        let mut mirror: Option<Basic> = None;
+        for c in &risky {
+            if c.args()[0] == *upper && add(&[c.args()[1].clone(), lower.clone()])? == *upper {
+                mirror = Some(c.clone());
+                break;
+            }
+        }
+        let Some(m) = mirror else {
+            // mirrored up to a shift: no form of the result is known to hold
+            return Ok(expr.clone());
+        };
+        turned.insert(b, m);
     }
-    gamma_as_comb(&gammasimp_inner(&e, true)?)
+    Ok(result.xreplace(&turned).xreplace(&back))
+}
+
+/// The binomials of `e` whose upper index is an integer which may be
+/// negative (`_negative_upper_binomials`).
+fn negative_upper_binomials(e: &Basic) -> Vec<Basic> {
+    let mut found: Vec<Basic> = Vec::new();
+    for node in e.preorder() {
+        if node.is_function(Function::Binomial) && !found.contains(&node) {
+            let upper: &Basic = &node.args()[0];
+            if is(upper, Predicate::integer) == Some(true) && is(upper, Predicate::nonnegative) != Some(true) {
+                found.push(node.clone());
+            }
+        }
+    }
+    found
+}
+
+fn constant_difference(a: &Basic, b: &Basic) -> PolyResult<bool> {
+    Ok(crate::core::add::sub(a, b)?.is_integer_value())
+}
+
+/// The upper and the lower indices of the binomials differ by integers
+/// (`_aligned`).
+fn aligned(b: &Basic, c: &Basic) -> PolyResult<bool> {
+    Ok(constant_difference(&b.args()[0], &c.args()[0])? && constant_difference(&b.args()[1], &c.args()[1])?)
+}
+
+/// The lower index of one binomial is, up to integers, the upper index
+/// minus the lower index of the other (`_mirrored`).
+fn mirrored(b: &Basic, c: &Basic) -> PolyResult<bool> {
+    Ok(constant_difference(&b.args()[0], &c.args()[0])?
+        && constant_difference(&add(&[b.args()[1].clone(), c.args()[1].clone()])?, &b.args()[0])?)
 }

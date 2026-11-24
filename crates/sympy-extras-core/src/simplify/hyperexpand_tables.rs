@@ -84,6 +84,25 @@ const MEIJER_FORMULAE: &[(&[&str], &[&str], &[&str], &[&str], Matrix, Matrix, Ma
         (1, 3, &["-2", "0", "0"]),
         (3, 3, &["_a - 1/2", "-1", "0", "_z", "_a", "1/2", "0", "0", "_a"]),
     ),
+    // not in SymPy's table (hyperexpand(meijerg([], [], [0, 0], [], z))
+    // stays there, sympy/sympy#31017): G^{2,0}_{0,2}(z | rho, rho) =
+    // 2*z**rho*K_0(2*sqrt(z)), DLMF 16.18.1 with 10.25
+    (
+        &[],
+        &[],
+        &["_rho", "_rho"],
+        &[],
+        (
+            2,
+            1,
+            &[
+                "_z**_rho*besselk(0, 2*sqrt(_z))",
+                "_z**(_rho + 1/2)*besselk(1, 2*sqrt(_z))",
+            ],
+        ),
+        (1, 2, &["2", "0"]),
+        (2, 2, &["_rho", "-1", "-_z", "_rho"]),
+    ),
 ];
 
 struct Names {
@@ -155,7 +174,7 @@ pub(crate) fn add_meijerg_formulae(formulae: &mut Vec<MeijerFormula>) -> PolyRes
     MEIJER_NAMES.with(|names| -> PolyResult<()> {
         let z: Basic = names.get("z");
         let symbols: Vec<Basic> = ["a", "b", "c", "rho"].iter().map(|n| names.get(n)).collect();
-        let matchers: [Matcher; 2] = [Matcher::UpperGamma, Matcher::ThreeOneOneThree];
+        let matchers: [Matcher; 3] = [Matcher::UpperGamma, Matcher::ThreeOneOneThree, Matcher::BesselK];
         for ((an, ap, bm, bq, b, c, m), matcher) in MEIJER_FORMULAE.iter().zip(matchers) {
             let func = GFunction::new(&names.list(an)?, &names.list(ap)?, &names.list(bm)?, &names.list(bq)?)?;
             formulae.push(MeijerFormula::new(
@@ -241,4 +260,26 @@ pub(crate) fn detect_3113(func: &GFunction, symbols: &[Basic]) -> PolyResult<Opt
     let bm: Vec<Basic> = sig.iter().map(|t| a2(&shifted, t)).collect::<PolyResult<_>>()?;
     let repl: Vec<(Basic, Basic)> = vec![(symbols[0].clone(), x.clone())];
     Ok(Some((repl, GFunction::new(std::slice::from_ref(x), &[], &bm, &[])?)))
+}
+
+/// `detect_besselk` of the third Meijer formula: `G^{2,0}_{0,2}(z | b1, b2)`
+/// with `b1 - b2` an integer, for which Slater's theorem has no formula
+/// (the poles are double); the lower of the two parameters, the other
+/// reached by raising it.
+pub(crate) fn detect_besselk(
+    func: &GFunction,
+    symbols: &[Basic],
+) -> PolyResult<Option<(Vec<(Basic, Basic)>, GFunction)>> {
+    let (u, v) = (&func.bm[0], &func.bm[1]);
+    let difference: Basic = simplify(&super::hyperexpand::s2(u, v)?)?;
+    let Some(p) = difference.as_rational().filter(|r| r.is_int()) else {
+        return Ok(None);
+    };
+    let y: Basic = if *p >= crate::numbers::Rat::from(0) {
+        v.clone()
+    } else {
+        u.clone()
+    };
+    let repl: Vec<(Basic, Basic)> = vec![(symbols[3].clone(), y.clone())];
+    Ok(Some((repl, GFunction::new(&[], &[], &[y.clone(), y], &[])?)))
 }

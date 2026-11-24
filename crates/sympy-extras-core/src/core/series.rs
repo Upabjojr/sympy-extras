@@ -55,6 +55,20 @@ fn expand(e: &Basic) -> R {
 fn exp(e: &Basic) -> R {
     crate::functions::elementary::exponential::exp(e)
 }
+
+/// The factor of `f**e` for a negative `f` approached from a side of the
+/// cut which the parameters decide (`_undecided_side`): `exp(-2*pi*I*e)`
+/// from below (`imaginary`, the imaginary part of the direction,
+/// negative), 1 from above, as the Heaviside jump of the series of `log`.
+/// Not SymPy's, which takes the upper side whenever the sign is not known
+/// (sympy/sympy#31275, V212).
+fn undecided_side(e: &Basic, imaginary: &Basic) -> R {
+    let jump: Basic = crate::functions::special::delta_functions::heaviside(
+        &mul(&[int(-1), imaginary.clone()])?,
+        Some(&Basic::zero()),
+    )?;
+    exp(&mul(&[int(-2), Basic::pi(), Basic::imaginary_unit(), e.clone(), jump])?)
+}
 fn log(e: &Basic) -> R {
     crate::functions::elementary::exponential::log(e)
 }
@@ -207,6 +221,8 @@ pub fn leadterm(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) -> Pol
 /// The function classes whose SymPy counterpart has an
 /// `_eval_as_leading_term` of its own (`_SYMPY_OWN_LEADING_TERM`).
 const OWN_LEADING_TERM: &[&str] = &[
+    // Abs: its rule is not SymPy's
+    "Abs",
     "Acos",
     "Acosh",
     "Acot",
@@ -580,6 +596,17 @@ fn hyper_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) 
     if x0 == zero {
         return Ok(Basic::one());
     }
+    if crate::functions::special::hyper::parameters_depend(e, x) {
+        // not SymPy's (it raises AttributeError, sympy/sympy#31017 C5): the
+        // value at the limits of the parameters where the series converges
+        // locally uniformly in them
+        return match crate::functions::special::hyper::value_at_parameters(e, x, &x0)? {
+            Some(v) => Ok(v),
+            None => Err(PolyError::NotImplemented(
+                "hyper has no _eval_as_leading_term routine for these parameters".to_string(),
+            )),
+        };
+    }
     let lead: Basic = as_leading_term(arg, std::slice::from_ref(x), logx, &zero)?;
     let o: Basic = order(&Basic::one(), &[(x.clone(), zero.clone())])?;
     if lead.free_symbols().contains(x) && crate::core::order::contains(&o, &lead)? == Some(true) {
@@ -936,6 +963,9 @@ fn pow_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) ->
             if is(&log_leadterm, Predicate::infinite) == Some(false) {
                 return exp(&mul(&[ex.clone(), log_leadterm])?);
             }
+        } else if is(&im_ndir, Predicate::negative).is_none() {
+            let doit: Basic = crate::core::function::doit(&crate::core::power::pow_node(f.clone(), ex.clone()))?;
+            return mul(&[doit, undecided_side(ex, &im_ndir)?]);
         }
     }
     pow(&f, ex)
@@ -2330,6 +2360,8 @@ fn pow_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &Basic)
             )?
         } else if yes(&im_ndir, Predicate::zero) {
             coeff_exp_by_factors(&lt(&exp(&mul(&[ex.clone(), log(&b)?])?)?, x, logx, cdir)?, x)?
+        } else if is(&im_ndir, Predicate::negative).is_none() {
+            coeff_exp_by_factors(&mul(&[pow(&f, &ex)?, undecided_side(&ex, &im_ndir)?])?, x)?
         } else {
             coeff_exp_by_factors(&pow(&f, &ex)?, x)?
         }

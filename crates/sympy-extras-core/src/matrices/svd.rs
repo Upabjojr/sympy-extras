@@ -60,7 +60,13 @@ fn size(e: &Basic) -> PolyResult<f64> {
 /// (`singular_values`).
 pub fn singular_values(m: &ExprMatrix) -> PolyResult<Vec<Basic>> {
     let mut values: Vec<Basic> = Vec::new();
-    let g: ExprMatrix = gram(m)?;
+    // the smaller Gram matrix: min(rows, columns) singular values (A^* A
+    // and A A^* have the same nonzero eigenvalues)
+    let g: ExprMatrix = if m.cols > m.rows {
+        gram(&crate::matrices::linalg::conjugate_transpose(m)?)?
+    } else {
+        gram(m)?
+    };
     if g.entries.iter().all(|e| e.is_rational_class()) {
         // the real forms of the roots (a cubic with three real roots)
         let unknown: Basic = crate::matrices::eigen::fresh_symbol(&g);

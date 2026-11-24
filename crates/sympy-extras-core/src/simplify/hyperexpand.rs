@@ -731,11 +731,13 @@ impl FormulaCollection {
     }
 }
 
-/// How a Meijer formula takes a G-function (`detect_uppergamma`, `detect_3113`).
+/// How a Meijer formula takes a G-function (`detect_uppergamma`, `detect_3113`,
+/// `detect_besselk`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Matcher {
     UpperGamma,
     ThreeOneOneThree,
+    BesselK,
 }
 
 /// A closed form of a Meijer G-function (`MeijerFormula`).
@@ -783,6 +785,7 @@ impl MeijerFormula {
         let found = match matcher {
             Matcher::UpperGamma => super::hyperexpand_tables::detect_uppergamma(func_, &self.symbols)?,
             Matcher::ThreeOneOneThree => super::hyperexpand_tables::detect_3113(func_, &self.symbols)?,
+            Matcher::BesselK => super::hyperexpand_tables::detect_besselk(func_, &self.symbols)?,
         };
         let Some((repl, newfunc)) = found else { return Ok(None) };
         Ok(Some(MeijerFormula::new(

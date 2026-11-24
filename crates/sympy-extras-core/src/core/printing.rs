@@ -146,11 +146,33 @@ fn rest_factors(term: &Basic) -> Vec<Basic> {
     factors_of(&rest)
 }
 
+/// The value of a factor without free symbols as a complex float, `None`
+/// when it has none (an infinity, `Sum(f(k), (k, 0, 1))`) or does not fit
+/// a float (`_numeric_value`, Python's `to_complex`).
+fn factor_value(f: &Basic) -> Option<(f64, f64)> {
+    let value = numeric_value(f, 53)?;
+    let (re, im) = parts(&value);
+    let (re, im): (f64, f64) = (re.to_f64().value(), im.to_f64().value());
+    if re.is_finite() && im.is_finite() {
+        Some((re, im))
+    } else {
+        None
+    }
+}
+
+/// Whether the factor counts in the numerical coefficient of its term
+/// (`_is_numeric`): SymPy's `as_terms` takes the factors without free
+/// symbols which have a numerical value; one which has none is a
+/// generator (`oo*I`, `zoo**EulerGamma`).
+fn is_numeric(f: &Basic) -> bool {
+    is_number(f) && factor_value(f).is_some()
+}
+
 fn monomial_key(term: &Basic, gens: &[Basic]) -> Vec<Rat> {
     let mut bases: Vec<Basic> = Vec::new();
     let mut exponents: Vec<Rat> = Vec::new();
     for f in rest_factors(term) {
-        if matches!(f.head(), Head::ImaginaryUnit) || is_number_symbol(&f) || is_number(&f) {
+        if matches!(f.head(), Head::ImaginaryUnit) || is_number_symbol(&f) || is_numeric(&f) {
             continue;
         }
         let (b, n) = decompose_power(&f);
@@ -176,10 +198,12 @@ fn monomial_key(term: &Basic, gens: &[Basic]) -> Vec<Rat> {
 fn generators(term: &Basic) -> Vec<Basic> {
     let mut gens: Vec<Basic> = Vec::new();
     for f in rest_factors(term) {
-        if f.is_number_class() || matches!(f.head(), Head::ImaginaryUnit) || is_number_symbol(&f) || is_number(&f) {
+        if f.is_number_class() || matches!(f.head(), Head::ImaginaryUnit) || is_number_symbol(&f) || is_numeric(&f) {
             continue;
         }
-        if is_false(&f, Predicate::commutative) {
+        // SymPy's as_terms: the factors which are not known to commute (a
+        // Limit, whose commutativity is unknown) are not generators
+        if !is_true(&f, Predicate::commutative) {
             continue;
         }
         let (b, _) = decompose_power(&f);
@@ -243,21 +267,16 @@ impl CoefficientRank {
 }
 
 fn coefficient_rank(term: &Basic) -> CoefficientRank {
-    let numbers: Vec<Basic> = factors_of(term).into_iter().filter(is_number).collect();
-    let zero = CoefficientRank {
-        imaginary: false,
-        imag: 0.0,
-        real: 0.0,
-        imag_again: 0.0,
-    };
-    let Ok(coefficient) = mul(&numbers) else {
-        return zero;
-    };
-    let Some(value) = numeric_value(&coefficient, 53 + 20) else {
-        return zero;
-    };
-    let (re, im) = parts(&value);
-    let (real, imag): (f64, f64) = (re.to_f64().value(), im.to_f64().value());
+    // the product of the values of the numeric factors, as SymPy's
+    // as_terms: a factor without a value is a generator
+    let (mut real, mut imag): (f64, f64) = (1.0, 0.0);
+    for f in factors_of(term) {
+        if is_number(&f) {
+            if let Some((a, b)) = factor_value(&f) {
+                (real, imag) = (real * a - imag * b, real * b + imag * a);
+            }
+        }
+    }
     CoefficientRank {
         imaginary: imag != 0.0,
         imag,

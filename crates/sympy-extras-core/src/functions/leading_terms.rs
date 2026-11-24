@@ -289,6 +289,30 @@ fn arg_rule(f: &Basic, x: &Basic, cdir: &Basic) -> R {
     Err(crate::error::pole_error(&format!("Cannot expand {} around 0", f)))
 }
 
+/// The absolute value of the leading term of the argument, on the ray of
+/// the direction (`x = cdir*t`, `t > 0`): `Abs(x**6 - x**5)` is `x**5` from
+/// the right (`_abs`, not SymPy's: its `Abs` has no rule). No power of `x`
+/// (a logarithm) or no leading term at all (an oscillating argument,
+/// bounds) take SymPy's rule of functions.
+fn abs_rule(f: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) -> R {
+    let t: Basic = crate::core::symbol::Dummy::new("t", &[(Predicate::positive, true)]).0;
+    let d: Basic = if *cdir == int(0) { int(1) } else { cdir.clone() };
+    let leading: Basic = lead(&arg_of(f, 0), x, logx, cdir)?;
+    let (coefficient, _) = crate::solvers::solvers::as_coeff_exponent(&leading, x)?;
+    let unbounded: bool = leading.preorder().iter().any(|n| {
+        matches!(
+            n.head(),
+            Head::AccumBounds | Head::ComplexInfinity | Head::Infinity | Head::NegativeInfinity | Head::NaN
+        )
+    });
+    if coefficient.free_symbols().contains(x) || unbounded {
+        return generic(f, x, logx);
+    }
+    let on_ray: Basic = crate::core::subs::subs(&leading, x, &m2(&d, &t)?)?;
+    let size: Basic = crate::functions::elementary::complexes::abs_(&on_ray)?;
+    crate::core::subs::subs(&size, &t, &crate::core::mul::div(x, &d)?)
+}
+
 fn rounding(f: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic, up: bool) -> R {
     let arg: Basic = arg_of(f, 0);
     let mut arg0: Basic = subs0(&arg, x)?;
@@ -535,6 +559,7 @@ pub fn leading_term_rule(f: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basi
         "FresnelS" => fresnel(f, x, logx, cdir, true)?,
         "FresnelC" => fresnel(f, x, logx, cdir, false)?,
         "Arg" => arg_rule(f, x, cdir)?,
+        "Abs" => abs_rule(f, x, logx, cdir)?,
         "Frac" => frac(f, x, logx, cdir)?,
         "Floor" => rounding(f, x, logx, cdir, false)?,
         "Ceiling" => rounding(f, x, logx, cdir, true)?,

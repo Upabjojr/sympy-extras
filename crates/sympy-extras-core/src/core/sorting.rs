@@ -281,10 +281,25 @@ pub fn as_ordered_factors(e: &Basic) -> Vec<Basic> {
     factors
 }
 
+/// The number of nodes by which SymPy's `ordered` sorts (`_nodes`): the
+/// nodes of the tree, and for a derivative those of the function plus the
+/// number of differentiations (`Derivative(f(y), y)` counts 3). SymPy's
+/// half node of a float has no counterpart: the core has no floats.
+fn nodes(e: &Basic) -> usize {
+    if matches!(e.head(), Head::Derivative) {
+        let counts: usize = e.args()[1..]
+            .iter()
+            .map(|pair| pair.args()[1].to_string().parse::<usize>().unwrap_or(1))
+            .sum();
+        return nodes(&e.args()[0]) + counts;
+    }
+    e.count_nodes()
+}
+
 /// SymPy's `ordered` (`core.sorting.ordered`): by the number of nodes, then
 /// the canonical key.
 pub fn ordered(items: Vec<Basic>) -> Vec<Basic> {
     let mut items: Vec<Basic> = items;
-    items.sort_by_cached_key(|e| (e.count_nodes(), sort_key(e)));
+    items.sort_by_cached_key(|e| (nodes(e), sort_key(e)));
     items
 }
