@@ -137,6 +137,164 @@ pub(crate) fn parameters_depend(e: &Basic, x: &Basic) -> bool {
     depends(hyper_ap(e), x) || depends(hyper_bq(e), x)
 }
 
+/// Whether the parameters are finite at `x = 0` and no lower one is a
+/// nonpositive integer there, or may be one (`_continuous_parameters`).
+pub(crate) fn continuous_parameters(e: &Basic, x: &Basic) -> PolyResult<bool> {
+    use crate::core::expr::is;
+    let zero: Basic = Basic::zero();
+    let ap0: Vec<Basic> = hyper_ap(e)
+        .iter()
+        .map(|a| crate::core::subs::subs(a, x, &zero))
+        .collect::<PolyResult<_>>()?;
+    let bq0: Vec<Basic> = hyper_bq(e)
+        .iter()
+        .map(|b| crate::core::subs::subs(b, x, &zero))
+        .collect::<PolyResult<_>>()?;
+    Ok(ap0.iter().chain(&bq0).all(|c| is(c, Predicate::finite) == Some(true))
+        && bq0
+            .iter()
+            .all(|b| is(b, Predicate::integer) == Some(false) || is(b, Predicate::positive) == Some(true)))
+}
+
+/// The leading term at `x = 0` when one lower parameter `b(x)` tends to a
+/// nonpositive integer `-m` and the function is continuous in the other
+/// parameters (`_pole_in_a_lower_parameter`): the terms of the series from
+/// `z**(m + 1)` on have the factor `1/(b + m)`, and
+///
+/// `(b + m)*hyper(ap, [b] + cq, z) -> (-1)**m*prod((a)_(m+1))*z**(m+1)/(m!*(m + 1)!*prod((c)_(m+1)))*hyper(ap + m + 1, cq + m + 1 + [m + 2], z)`.
+///
+/// With an upper parameter a
+/// nonpositive integer `-j`, `j <= m`, not depending on `x`, the function is
+/// a polynomial of degree `j` whose terms have no pole: its value. `None`
+/// when the limit is not of these kinds.
+pub(crate) fn pole_in_a_lower_parameter(
+    e: &Basic,
+    x: &Basic,
+    z0: &Basic,
+    logx: Option<&Basic>,
+    cdir: &Basic,
+) -> PolyResult<Option<Basic>> {
+    use crate::core::expr::is;
+    use crate::functions::combinatorial::factorials::{factorial, rf};
+    use crate::functions::elementary::complexes::abs_;
+    let zero: Basic = Basic::zero();
+    let (ap, bq) = (hyper_ap(e), hyper_bq(e));
+    let ap0: Vec<Basic> = ap
+        .iter()
+        .map(|a| crate::core::subs::subs(a, x, &zero))
+        .collect::<PolyResult<_>>()?;
+    let bq0: Vec<Basic> = bq
+        .iter()
+        .map(|b| crate::core::subs::subs(b, x, &zero))
+        .collect::<PolyResult<_>>()?;
+    if z0.free_symbols().contains(x)
+        || !ap0
+            .iter()
+            .chain(&bq0)
+            .chain(std::iter::once(z0))
+            .all(|c| is(c, Predicate::finite) == Some(true))
+    {
+        return Ok(None);
+    }
+    let unsafe_: Vec<usize> = bq0
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| !(is(b, Predicate::integer) == Some(false) || is(b, Predicate::positive) == Some(true)))
+        .map(|(i, _)| i)
+        .collect();
+    if unsafe_.len() != 1 {
+        return Ok(None);
+    }
+    let index: usize = unsafe_[0];
+    let Some(pole) = integer_of(&bq0[index]) else {
+        return Ok(None);
+    };
+    if !bq[index].free_symbols().contains(x) {
+        return Ok(None);
+    }
+    let m: Int = -pole;
+    let truncating: Vec<(Int, &Basic)> = ap0
+        .iter()
+        .zip(ap)
+        .filter_map(|(a, given)| {
+            integer_of(a)
+                .filter(|p| *p <= Int::ZERO && -p.clone() <= m)
+                .map(|p| (-p, given))
+        })
+        .collect();
+    if !truncating.is_empty() {
+        if truncating.iter().any(|(_, given)| given.free_symbols().contains(x)) {
+            return Ok(None); // 0/0 in the terms
+        }
+        let degree: Int = truncating.iter().map(|(j, _)| j.clone()).min().expect("nonempty");
+        let degree: i64 = degree.to_string().parse().unwrap_or(0);
+        let mut terms: Vec<Basic> = Vec::new();
+        for k in 0..=degree {
+            let kk: Basic = int(k);
+            let mut num: Vec<Basic> = ap0.iter().map(|a| rf(a, &kk)).collect::<PolyResult<_>>()?;
+            num.push(crate::core::power::pow(z0, &kk)?);
+            let mut den: Vec<Basic> = bq0.iter().map(|b| rf(b, &kk)).collect::<PolyResult<_>>()?;
+            den.push(factorial(&kk)?);
+            terms.push(div(&mul(&num)?, &mul(&den)?)?);
+        }
+        let value: Basic = add(&terms)?;
+        return Ok(if is(&value, Predicate::zero) == Some(true) {
+            None
+        } else {
+            Some(value)
+        });
+    }
+    if ap0.len() > bq0.len() + 1
+        || (ap0.len() == bq0.len() + 1 && is(&sub(&Basic::one(), &abs_(z0)?)?, Predicate::positive) != Some(true))
+    {
+        return Ok(None);
+    }
+    let m_i: i64 = m.to_string().parse().unwrap_or(0);
+    let shift: Basic = int(m_i + 1);
+    let others: Vec<Basic> = bq0
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != index)
+        .map(|(_, b)| b.clone())
+        .collect();
+    let mut num: Vec<Basic> = vec![crate::core::power::pow(&int(-1), &int(m_i))?];
+    for a in &ap0 {
+        num.push(rf(a, &shift)?);
+    }
+    num.push(crate::core::power::pow(z0, &shift)?);
+    let mut den: Vec<Basic> = vec![factorial(&int(m_i))?, factorial(&shift)?];
+    for c in &others {
+        den.push(rf(c, &shift)?);
+    }
+    let upper: Vec<Basic> = ap0
+        .iter()
+        .map(|a| add(&[a.clone(), shift.clone()]))
+        .collect::<PolyResult<_>>()?;
+    let mut lower: Vec<Basic> = others
+        .iter()
+        .map(|c| add(&[c.clone(), shift.clone()]))
+        .collect::<PolyResult<_>>()?;
+    lower.push(int(m_i + 2));
+    // in closed form when it has one: its sign is the sign of an infinite limit
+    let expanded: Basic = crate::simplify::hyperexpand::hyperexpand(
+        &hyper(&upper, &lower, z0)?,
+        false,
+        crate::simplify::hyperexpand::Rewrite::Default,
+        None,
+    )?;
+    let residue: Basic = mul(&[div(&mul(&num)?, &mul(&den)?)?, expanded])?;
+    if is(&residue, Predicate::zero) == Some(true) {
+        return Ok(None);
+    }
+    let lead: Basic = crate::core::series::as_leading_term(
+        &add(&[bq[index].clone(), int(m_i)])?,
+        std::slice::from_ref(x),
+        logx,
+        cdir,
+    )?;
+    Ok(Some(div(&residue, &lead)?))
+}
+
 /// `hyper` at `x = 0` when it is continuous there in its parameters and
 /// its argument (of the value `z0`; `_value_at_parameters`): finite
 /// parameters, no lower one a nonpositive integer, and `p <= q`, or

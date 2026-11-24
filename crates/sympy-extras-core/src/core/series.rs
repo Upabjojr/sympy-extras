@@ -594,13 +594,27 @@ fn hyper_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) 
         x0 = crate::core::limits::limit(arg, x, &zero, if negative { "-" } else { "+" })?;
     }
     if x0 == zero {
+        // 1 when the terms of the series tend to 0: not with a parameter
+        // which is infinite at 0, nor with a lower one tending to a
+        // nonpositive integer (hyper([1], [x], x) tends to 2)
+        if crate::functions::special::hyper::parameters_depend(e, x)
+            && !crate::functions::special::hyper::continuous_parameters(e, x)?
+        {
+            return Err(PolyError::NotImplemented(
+                "hyper has no _eval_as_leading_term routine for these parameters".to_string(),
+            ));
+        }
         return Ok(Basic::one());
     }
     if crate::functions::special::hyper::parameters_depend(e, x) {
         // not SymPy's (it raises AttributeError, sympy/sympy#31017 C5): the
         // value at the limits of the parameters where the series converges
         // locally uniformly in them
-        return match crate::functions::special::hyper::value_at_parameters(e, x, &x0)? {
+        let value: Option<Basic> = match crate::functions::special::hyper::value_at_parameters(e, x, &x0)? {
+            Some(v) => Some(v),
+            None => crate::functions::special::hyper::pole_in_a_lower_parameter(e, x, &x0, logx, cdir)?,
+        };
+        return match value {
             Some(v) => Ok(v),
             None => Err(PolyError::NotImplemented(
                 "hyper has no _eval_as_leading_term routine for these parameters".to_string(),
