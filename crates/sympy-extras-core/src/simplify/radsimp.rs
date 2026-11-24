@@ -637,6 +637,11 @@ fn is_derivative(e: &Basic) -> bool {
     matches!(e.head(), Head::Derivative)
 }
 
+/// A derivative whose orders are numbers (a symbolic order is no count).
+fn is_counted_derivative(e: &Basic) -> bool {
+    is_derivative(e) && !crate::core::function::has_symbolic_order(e)
+}
+
 /// The variables of a derivative, repeated by their counts.
 fn derivative_variables(d: &Basic) -> Vec<Basic> {
     let mut result: Vec<Basic> = Vec::new();
@@ -661,7 +666,7 @@ fn parse_derivative(d: &Basic) -> PolyResult<(Basic, (Basic, Basic))> {
             return Err(crate::error::not_ported("Improve MV Derivative support in collect"));
         }
     }
-    while is_derivative(&e) {
+    while is_counted_derivative(&e) {
         let inner: Vec<Basic> = derivative_variables(&e);
         let s0: Basic = inner[0].clone();
         if inner.iter().any(|s| *s != s0) {
@@ -686,7 +691,7 @@ fn parse_term(e: &Basic) -> PolyResult<ParsedTerm> {
     let mut deriv: Deriv = None;
     if e.is_pow() {
         let (base, ex) = (&e.args()[0], &e.args()[1]);
-        if is_derivative(base) {
+        if is_counted_derivative(base) {
             let (s, d) = parse_derivative(base)?;
             sexpr = s;
             deriv = Some(d);
@@ -723,7 +728,7 @@ fn parse_term(e: &Basic) -> PolyResult<ParsedTerm> {
             sexpr = exp(&tail)?;
             rat_expo = coeff;
         }
-    } else if is_derivative(e) {
+    } else if is_counted_derivative(e) {
         let (s, d) = parse_derivative(e)?;
         sexpr = s;
         deriv = Some(d);

@@ -201,6 +201,21 @@ fn pow_heuristics(e: &Basic, z: &Basic, z0: &Basic) -> PolyResult<Option<Basic>>
 
 /// `Limit.doit`: the limit, the node itself when it is not found.
 pub fn doit(node: &Basic, deep: bool) -> R {
+    let found: Basic = doit_inner(node, deep)?;
+    let (e, z, z0, dir) = parts(node);
+    if is_limit(&found) && dir != "+-" {
+        let e: Basic = if deep { crate::core::function::doit(&e)? } else { e };
+        if let Some(closed) = hypergeometric_closed_form(&e, &z, &z0, &dir)? {
+            let through: Basic = limit(&closed, &z, &z0, &dir)?;
+            if !is_limit(&through) {
+                return Ok(through);
+            }
+        }
+    }
+    Ok(found)
+}
+
+fn doit_inner(node: &Basic, deep: bool) -> R {
     let (mut e, z, mut z0, mut dir) = parts(node);
     if dir == "+-" {
         let r: Basic = limit(&e, &z, &z0, "+")?;
@@ -385,8 +400,119 @@ pub fn doit(node: &Basic, deep: bool) -> R {
             Some(found) => Ok(found),
             None => Ok(node.clone()),
         },
+        // a function with the variable in a tuple of parameters (hyper,
+        // meijerg) or of an unbounded argument: Gruntz's algorithm has no
+        // mrv set for it, and the limit is not found
+        Err(PolyError::NotImplemented(m))
+            if !m.starts_with(crate::error::NOT_PORTED_PREFIX)
+                && (variable_in_parameters(&e, &z) || unbounded_hypergeometric(&e, &z, &z0, &dir)?) =>
+        {
+            Ok(node.clone())
+        }
         Err(err) => Err(err),
     }
+}
+
+/// Whether a function of `e` has `z` in an argument which is not an
+/// expression, the parameter tuples of `hyper` and `meijerg`
+/// (`_variable_in_parameters`).
+fn variable_in_parameters(e: &Basic, z: &Basic) -> bool {
+    e.preorder()
+        .iter()
+        .any(|node| matches!(node.head(), Head::Hyper | Head::MeijerG) && node.args()[..2].iter().any(|a| a.has(z)))
+}
+
+/// Whether `e` has a hypergeometric function whose argument is not known
+/// to stay finite as `z` tends to `z0` (`_unbounded_hypergeometric`).
+fn unbounded_hypergeometric(e: &Basic, z: &Basic, z0: &Basic, dir: &str) -> PolyResult<bool> {
+    for h in e.preorder() {
+        if !matches!(h.head(), Head::Hyper | Head::MeijerG) || !h.args()[2].has(z) {
+            continue;
+        }
+        match limit(&h.args()[2], z, z0, dir) {
+            Ok(at) => {
+                if is(&at, Predicate::finite) != Some(true) {
+                    return Ok(true);
+                }
+            }
+            Err(PolyError::NotImplemented(m)) if !m.starts_with(crate::error::NOT_PORTED_PREFIX) => return Ok(true),
+            Err(PolyError::Value(_) | PolyError::Pole(_)) => return Ok(true),
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(false)
+}
+
+/// `e` with its hypergeometric functions of `z` (in the argument only)
+/// replaced by their closed forms, when `hyperexpand` has one for each
+/// without hypergeometric functions and the closed form has the values of
+/// the function at three points on the way of `z` to `z0`; `None` otherwise
+/// (`_hypergeometric_closed_form`: the limit of `hyper((1, 1), (2,), -x)` at
+/// infinity is that of `log(x + 1)/x`).
+fn hypergeometric_closed_form(e: &Basic, z: &Basic, z0: &Basic, dir: &str) -> PolyResult<Option<Basic>> {
+    let mut functions: Vec<Basic> = Vec::new();
+    for h in e.preorder() {
+        if matches!(h.head(), Head::Hyper) && h.has(z) && !functions.contains(&h) {
+            functions.push(h);
+        }
+    }
+    let single: std::collections::BTreeSet<Basic> = std::iter::once(z.clone()).collect();
+    if functions.is_empty()
+        || e.preorder().iter().any(|n| matches!(n.head(), Head::MeijerG))
+        || e.free_symbols() != single
+    {
+        return Ok(None);
+    }
+    let sign: i64 = if dir == "-" { -1 } else { 1 };
+    let points: Vec<Basic> = if *z0 == Basic::oo() {
+        vec![Basic::int(7), Basic::int(23), Basic::int(61)]
+    } else if *z0 == crate::core::mul::neg(&Basic::oo())? {
+        vec![Basic::int(-7), Basic::int(-23), Basic::int(-61)]
+    } else if is(z0, Predicate::finite) == Some(true) && z0.free_symbols().is_empty() {
+        let mut v: Vec<Basic> = Vec::new();
+        for d in [8i64, 32, 128] {
+            let step: Basic = Basic::rational(Int::from(sign), Int::from(d))?;
+            v.push(crate::core::add::add(&[z0.clone(), step])?);
+        }
+        v
+    } else {
+        return Ok(None);
+    };
+    let mut closed_forms: std::collections::HashMap<Basic, Basic> = std::collections::HashMap::new();
+    for h in &functions {
+        if h.args()[..2].iter().any(|t| t.has(z)) {
+            return Ok(None);
+        }
+        let closed: Basic =
+            crate::simplify::hyperexpand::hyperexpand(h, false, crate::simplify::hyperexpand::Rewrite::Default, None)?;
+        let bad: bool = closed.preorder().iter().any(|n| {
+            matches!(
+                n.head(),
+                Head::Hyper
+                    | Head::MeijerG
+                    | Head::NaN
+                    | Head::ComplexInfinity
+                    | Head::Infinity
+                    | Head::NegativeInfinity
+            )
+        });
+        if bad {
+            return Ok(None);
+        }
+        for point in &points {
+            let at: Vec<(Basic, Basic)> = vec![(z.clone(), point.clone())];
+            let value = crate::numeric::reliable_complex(h, 20, &at);
+            let other = crate::numeric::reliable_complex(&closed, 20, &at);
+            let (Some(v), Some(o)) = (value, other) else {
+                return Ok(None);
+            };
+            if (v.0 - o.0).hypot(v.1 - o.1) > 1e-9 * (1.0 + v.0.hypot(v.1)) {
+                return Ok(None);
+            }
+        }
+        closed_forms.insert(h.clone(), closed);
+    }
+    Ok(Some(e.xreplace(&closed_forms)))
 }
 
 /// `Abs`, `sign`, `arg` and `Heaviside` of arguments of known sign at the
@@ -1009,6 +1135,18 @@ fn mrv(e: &Basic, x: &Basic) -> PolyResult<(SubsSet, Basic)> {
         let mut found: Vec<(SubsSet, Basic)> = Vec::new();
         for argument in e.args() {
             if is_expression(argument) {
+                // not SymPy's: a hypergeometric function of an unbounded
+                // argument is no function of the comparability class of its
+                // argument (hyper((1,), (2,), x) grows as exp(x)/x)
+                if argument.has(x)
+                    && matches!(e.head(), Head::Hyper | Head::MeijerG)
+                    && is(&limitinf(argument, x)?, Predicate::finite) != Some(true)
+                {
+                    return Err(PolyError::NotImplemented(format!(
+                        "Don't know how to calculate the mrv of '{}'",
+                        e
+                    )));
+                }
                 found.push(mrv(argument, x)?);
             } else if argument.has(x) {
                 return Err(PolyError::NotImplemented(format!(

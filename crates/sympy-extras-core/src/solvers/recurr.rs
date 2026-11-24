@@ -1469,7 +1469,7 @@ fn product_expression(field: &Field, p: &[Elem], n: &Basic, start: i64, k: &Basi
 /// The quotients of rising factorials cancelled (`gammasimp`), when that
 /// keeps the expression free of gamma functions (`_simplified`).
 fn simplified(expr: &Basic) -> R {
-    let mut candidate: Basic = crate::simplify::gammasimp::gammasimp(expr)?;
+    let mut candidate: Basic = crate::simplify::gammasimp::gammasimp_generic(expr)?;
     if has_function(&candidate, &[Function::Gamma])
         || candidate.preorder().iter().any(|e| matches!(e.head(), Head::Piecewise))
     {

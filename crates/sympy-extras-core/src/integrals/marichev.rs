@@ -384,6 +384,9 @@ fn is_order_derivative_at_zero(node: &Basic) -> bool {
     if !matches!(derivative.head(), Head::Derivative) || func(&derivative.args()[0]) != Some(Function::BesselI) {
         return false;
     }
+    if crate::core::function::has_symbolic_order(derivative) {
+        return false;
+    }
     let counts = crate::core::function::derivative_counts(derivative);
     let variables: Vec<Basic> = counts
         .iter()

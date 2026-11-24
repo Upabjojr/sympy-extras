@@ -23,8 +23,13 @@ pub fn rebuild_evaluated(e: &Basic, args: Vec<Basic>) -> PolyResult<Basic> {
         Head::Pow => pow(&args[0], &args[1]),
         Head::Function(f) => crate::functions::apply_function(*f, &args),
         Head::Derivative => {
-            // Derivative._evaluated: diff of the new expression
-            let counts: Vec<(Basic, u64)> = derivative_counts(&e.rebuild(args.clone()));
+            // Derivative._evaluated: diff of the new expression; a symbolic
+            // order stays until it is a number
+            let rebuilt: Basic = e.rebuild(args.clone());
+            if has_symbolic_order(&rebuilt) {
+                return derivative_node_orders(&args[0], &derivative_orders(&rebuilt));
+            }
+            let counts: Vec<(Basic, u64)> = derivative_counts(&rebuilt);
             diff(&args[0], &counts)
         }
         Head::RootSum => crate::polys::rootoftools::evaluated(&args),
@@ -1019,7 +1024,43 @@ pub fn derivative_node(expr: &Basic, counts: &[(Basic, u64)]) -> Basic {
     Basic::new(Head::Derivative, args)
 }
 
-/// The variables and counts of a `Derivative` node.
+/// Whether an order of differentiation of a `Derivative` node is not a
+/// number (`Derivative(f(x), (x, n))`, `has_symbolic_order`).
+pub fn has_symbolic_order(e: &Basic) -> bool {
+    e.args()[1..].iter().any(|pair| !pair.args()[1].is_integer_value())
+}
+
+/// The variables of a `Derivative` node with their orders as expressions
+/// (`variable_orders`).
+pub fn derivative_orders(e: &Basic) -> Vec<(Basic, Basic)> {
+    e.args()[1..]
+        .iter()
+        .map(|pair| (pair.args()[0].clone(), pair.args()[1].clone()))
+        .collect()
+}
+
+/// The node `Derivative(expr, *orders)` with consecutive equal variables
+/// merged, their orders added (`_merge_orders`).
+pub fn derivative_node_orders(expr: &Basic, orders: &[(Basic, Basic)]) -> PolyResult<Basic> {
+    let mut merged: Vec<(Basic, Basic)> = Vec::new();
+    for (s, n) in orders {
+        if let Some(last) = merged.last_mut() {
+            if last.0 == *s {
+                last.1 = add(&[last.1.clone(), n.clone()])?;
+                continue;
+            }
+        }
+        merged.push((s.clone(), n.clone()));
+    }
+    let mut args: Vec<Basic> = vec![expr.clone()];
+    for (s, n) in merged {
+        args.push(tuple(vec![s, n]));
+    }
+    Ok(Basic::new(Head::Derivative, args))
+}
+
+/// The variables and counts of a `Derivative` node (integer orders only;
+/// see [`derivative_orders`]).
 pub fn derivative_counts(e: &Basic) -> Vec<(Basic, u64)> {
     e.args()[1..]
         .iter()
@@ -1050,7 +1091,7 @@ pub fn substituted(expr: &Basic, variables: &[Basic], point: &[Basic]) -> PolyRe
     for (v, p) in variables.iter().zip(point) {
         let differentiated: bool = derivatives
             .iter()
-            .any(|d| derivative_counts(d).iter().any(|(s, _)| s == v));
+            .any(|d| derivative_orders(d).iter().any(|(s, _)| s == v));
         let capturing: bool = !p.is_symbol() || (free_symbols.contains(p) && p != v);
         if differentiated && capturing {
             blocked.push((v.clone(), p.clone()));
@@ -1166,6 +1207,11 @@ pub fn derivative(e: &Basic, s: &Basic) -> PolyResult<Basic> {
             Ok(derivative_node(e, &[(s.clone(), 1)]))
         }
         Head::Derivative => {
+            if has_symbolic_order(e) {
+                let mut orders: Vec<(Basic, Basic)> = derivative_orders(e);
+                orders.push((s.clone(), Basic::one()));
+                return derivative_node_orders(&e.args()[0], &orders);
+            }
             let mut counts: Vec<(Basic, u64)> = derivative_counts(e);
             counts.push((s.clone(), 1));
             Ok(derivative_node(&e.args()[0], &counts))

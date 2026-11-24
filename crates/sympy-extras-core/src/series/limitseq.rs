@@ -9,6 +9,7 @@ use crate::core::assumptions::Predicate;
 use crate::core::basic::{Basic, Function, Head};
 use crate::core::expr::is;
 use crate::error::{PolyError, PolyResult};
+use crate::numbers::Rat;
 
 type R = PolyResult<Basic>;
 type OptR = PolyResult<Option<Basic>>;
@@ -132,7 +133,7 @@ fn dominant_at(expr: &Basic, n: &Basic, depth: usize) -> OptR {
     let mut comparable: Vec<Basic> = vec![term0.clone()];
     for t in &terms[..terms.len() - 1] {
         let r: Basic = d2(&term0, t)?;
-        let mut e: Basic = crate::simplify::gammasimp::gammasimp(&r)?;
+        let mut e: Basic = crate::simplify::gammasimp::gammasimp_generic(&r)?;
         if e == r {
             e = crate::polys::polytools::factor(&r, &[], false, true)?;
         }
@@ -204,7 +205,7 @@ fn asymptotic_factors(expr: &Basic, n: &Basic) -> OptR {
         }
         let last: Basic = subs(f, &k, n)?;
         let next: Basic = subs(f, &k, &a2(n, &Basic::one())?)?;
-        let Some(ratio) = limit_inf(&crate::simplify::gammasimp::gammasimp(&d2(&next, &last)?)?, n)? else {
+        let Some(ratio) = limit_inf(&crate::simplify::gammasimp::gammasimp_generic(&d2(&next, &last)?)?, n)? else {
             return Ok(None);
         };
         if matches!(ratio.head(), Head::Infinity | Head::NegativeInfinity) {
@@ -222,13 +223,146 @@ fn asymptotic_factors(expr: &Basic, n: &Basic) -> OptR {
     Ok(None)
 }
 
+/// Whether `e` is built from `n` and constants by sums, products, powers with
+/// a constant exponent or a constant positive base, exponentials and
+/// logarithms (`_is_exp_log`): such functions form a Hardy field (every one,
+/// and its difference `e(n + 1) - e(n)`, has a constant sign from some point
+/// on).
+fn is_exp_log(e: &Basic, n: &Basic) -> bool {
+    if !e.has(n) {
+        return e.free_symbols().is_empty() && is(e, Predicate::real) == Some(true);
+    }
+    if e == n {
+        return true;
+    }
+    if e.is_add() || e.is_mul() {
+        return e.args().iter().all(|a| is_exp_log(a, n));
+    }
+    if e.is_pow() {
+        let (b, x) = (&e.args()[0], &e.args()[1]);
+        if !x.has(n) {
+            return is(x, Predicate::real) == Some(true) && x.free_symbols().is_empty() && is_exp_log(b, n);
+        }
+        return !b.has(n)
+            && is(b, Predicate::positive) == Some(true)
+            && b.free_symbols().is_empty()
+            && is_exp_log(x, n);
+    }
+    if e.is_function(Function::Exp) || e.is_function(Function::Log) {
+        return is_exp_log(&e.args()[0], n);
+    }
+    false
+}
+
+/// The limit of `g(n)*Sum(f(k), (k, a, n))**p` (`p` a rational number;
+/// positive terms `f` unless `p` is 1 or -1) by the theorem of Stolz and
+/// Cesaro on the sum against `b(n) = g(n)**(-1/p)` (`_stolz_cesaro`): when
+/// `b`, a function of exponentials and logarithms, tends to an infinity and
+/// `f(n + 1)/(b(n + 1) - b(n))` has the limit `L`, the expression is `L**p`.
+/// `None` when this does not apply.
+fn stolz_cesaro(expr: &Basic, n: &Basic) -> OptR {
+    let mut sums: Vec<Basic> = Vec::new();
+    let mut others: Vec<Basic> = Vec::new();
+    let mut power: Rat = Rat::from(1);
+    for factor in crate::core::expr::factors_of(expr) {
+        let (base, exponent) = crate::core::expr::as_base_exp(&factor)?;
+        let exponent_rational: Option<Rat> = exponent.as_rational().cloned();
+        if matches!(base.head(), Head::Sum) && exponent_rational.as_ref().is_some_and(|r| *r != Rat::from(0)) {
+            sums.push(base);
+            power = exponent_rational.expect("checked");
+        } else if has_sum(&factor) {
+            return Ok(None);
+        } else {
+            others.push(factor);
+        }
+    }
+    if sums.len() != 1 {
+        return Ok(None);
+    }
+    let total: &Basic = &sums[0];
+    let lims = crate::concrete::expr_with_limits::limits(total);
+    if lims.len() != 1 {
+        return Ok(None);
+    }
+    let (k, lower, upper) = lims[0].clone();
+    let f: &Basic = &total.args()[0];
+    if upper != *n || lower.has(n) || f.has(n) || has_sum(f) {
+        return Ok(None);
+    }
+    // the sum against b: g*Sum**p is (Sum/b)**p with b = g**(-1/p)
+    let rest: Basic = crate::core::mul::mul(&others)?;
+    let one: Rat = Rat::from(1);
+    let plain: bool = power == one || power == -one.clone();
+    let inverse: Rat = -(one.clone() / power.clone());
+    let b: Basic = pw(&rest, &Basic::from_rational(inverse))?;
+    if !is_exp_log(&b, n) {
+        return Ok(None);
+    }
+    let Some(at_infinity) = limit_inf(&b, n)? else {
+        return Ok(None);
+    };
+    let positive_infinity: bool = matches!(at_infinity.head(), Head::Infinity);
+    if !(positive_infinity || matches!(at_infinity.head(), Head::NegativeInfinity)) {
+        return Ok(None);
+    }
+    if !plain
+        && !(positive_infinity
+            && is(f, Predicate::positive) == Some(true)
+            && is(&lower, Predicate::integer) == Some(true))
+    {
+        // another power is that of a positive quotient
+        return Ok(None);
+    }
+    let next: Basic = subs(&b, n, &a2(n, &Basic::one())?)?;
+    let quotient: Basic = d2(&subs(f, &k, &a2(n, &Basic::one())?)?, &s2(&next, &b)?)?;
+    let Some(found) = limit_inf(&quotient, n)? else {
+        return Ok(None);
+    };
+    if matches!(found.head(), Head::Limit | Head::AccumBounds) || found.has(n) {
+        return Ok(None);
+    }
+    if power == one {
+        return Ok(Some(found));
+    }
+    let infinite: bool = matches!(found.head(), Head::Infinity | Head::NegativeInfinity);
+    let power_basic: Basic = Basic::from_rational(power.clone());
+    if infinite {
+        if power < Rat::from(0) {
+            return Ok(Some(Basic::zero()));
+        }
+        if plain {
+            return Ok(Some(found));
+        }
+        return Ok(if matches!(found.head(), Head::NegativeInfinity) {
+            None
+        } else {
+            Some(found)
+        });
+    }
+    if crate::core::assumptions::is_number(&found)
+        && is(&found, Predicate::finite) == Some(true)
+        && (is(&found, Predicate::positive) == Some(true) || (plain && is(&found, Predicate::zero) == Some(false)))
+    {
+        return Ok(Some(pw(&found, &power_basic)?));
+    }
+    if !plain && is(&found, Predicate::zero) == Some(true) {
+        // a positive quotient which tends to 0
+        return Ok(Some(if power > Rat::from(0) {
+            Basic::zero()
+        } else {
+            Basic::oo()
+        }));
+    }
+    Ok(None)
+}
+
 fn limit_seq_trials(expr: &Basic, n: &Basic, trials: usize, depth: usize) -> OptR {
     let mut expr: Basic = expr.clone();
     if has_sum(&expr) {
         // not SymPy's: the sums which are factors by their last terms
         if let Some(equivalent) = asymptotic_factors(&expr, n)? {
             if !has_sum(&equivalent) {
-                if let Some(result) = limit_inf(&crate::simplify::gammasimp::gammasimp(&equivalent)?, n)? {
+                if let Some(result) = limit_inf(&crate::simplify::gammasimp::gammasimp_generic(&equivalent)?, n)? {
                     return Ok(Some(result));
                 }
             }
@@ -239,6 +373,10 @@ fn limit_seq_trials(expr: &Basic, n: &Basic, trials: usize, depth: usize) -> Opt
             if let Some(result) = limit_inf(&closed, n)? {
                 return Ok(Some(result));
             }
+        }
+        // and a sum which is the only one, a factor, against the rest
+        if let Some(result) = stolz_cesaro(&expr, n)? {
+            return Ok(Some(result));
         }
     }
     for _ in 0..trials {
@@ -255,7 +393,7 @@ fn limit_seq_trials(expr: &Basic, n: &Basic, trials: usize, depth: usize) -> Opt
         let one: Basic = Basic::one();
         let num: Basic = difference_delta(&crate::core::function::expand_default(&num)?, n, &one)?;
         let den: Basic = difference_delta(&crate::core::function::expand_default(&den)?, n, &one)?;
-        expr = crate::simplify::gammasimp::gammasimp(&d2(&num, &den)?)?;
+        expr = crate::simplify::gammasimp::gammasimp_generic(&d2(&num, &den)?)?;
         if !has_sum(&expr) {
             if let Some(result) = limit_inf(&expr, n)? {
                 return Ok(Some(result));
@@ -268,7 +406,7 @@ fn limit_seq_trials(expr: &Basic, n: &Basic, trials: usize, depth: usize) -> Opt
         let Some(dominant_den) = dominant_at(&den, n, depth)? else {
             return Ok(None);
         };
-        expr = crate::simplify::gammasimp::gammasimp(&d2(&dominant_num, &dominant_den)?)?;
+        expr = crate::simplify::gammasimp::gammasimp_generic(&d2(&dominant_num, &dominant_den)?)?;
     }
     Ok(None)
 }

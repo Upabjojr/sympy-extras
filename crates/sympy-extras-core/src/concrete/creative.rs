@@ -64,8 +64,10 @@ fn subs_mapping(e: &Basic, pairs: &[(Basic, Basic)]) -> R {
 fn cancel(e: &Basic) -> R {
     crate::polys::polytools::cancel(e, &[])
 }
+/// `combsimp(e, generic=True)`: the identity of meromorphic functions the
+/// algorithms on hypergeometric terms need.
 fn combsimp(e: &Basic) -> R {
-    crate::simplify::gammasimp::combsimp(e)
+    crate::simplify::gammasimp::combsimp_generic(e)
 }
 fn simplify(e: &Basic) -> R {
     crate::simplify::simplify::simplify(e, &crate::simplify::simplify::Options::default())

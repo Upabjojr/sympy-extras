@@ -702,7 +702,9 @@ fn gegenbauer_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
     let half: Basic = Basic::half();
     let pi: Basic = Basic::pi();
     let (n, a, x) = (&args[0], &args[1], &args[2]);
-    if is_true(n, Predicate::negative) {
+    // (an integer degree only: the function of a negative degree which is
+    // not an integer is not 0)
+    if is_true(n, Predicate::negative) && is_true(n, Predicate::integer) {
         return Ok(Some(Basic::zero()));
     }
     if *a == half {
@@ -711,11 +713,30 @@ fn gegenbauer_eval(args: &[Basic]) -> PolyResult<Option<Basic>> {
     if *a == one {
         return Ok(Some(chebyshevu(n, x)?));
     }
-    if *a == Basic::negative_one() {
-        return Ok(Some(Basic::zero()));
-    }
     if !n.is_number_class() {
         let two_a: Basic = mul(&[int(2), a.clone()])?;
+        if two_a
+            .as_rational()
+            .is_some_and(|r| r.is_int() && *r <= crate::numbers::Rat::from(0))
+        {
+            // (1 - 2*x*t + t**2)**(-a) with 2*a = -m: the closed forms below
+            // are quotients of gamma functions at their poles, where the
+            // polynomials of degree n <= m are not 0 (SymPy returns 0 for
+            // a = -1 and every n); for an integer a the generating function
+            // is a polynomial of degree m in t: 0 for n > m
+            if a.as_rational().is_some_and(|r| r.is_int())
+                && is_true(&add(&[n.clone(), two_a.clone()])?, Predicate::positive)
+            {
+                return Ok(Some(Basic::zero()));
+            }
+            if is_true(n, Predicate::integer) && could_extract_minus_sign(x) {
+                return Ok(Some(mul(&[
+                    pow(&Basic::negative_one(), n)?,
+                    gegenbauer(n, a, &neg(x)?)?,
+                ])?));
+            }
+            return Ok(None);
+        }
         let n1: Basic = add(&[n.clone(), one.clone()])?;
         if *x == Basic::negative_one() {
             if gt(&re(a)?, &half)? == true_() {
@@ -944,6 +965,26 @@ pub fn orthogonal_value(
         ),
         Function::Gegenbauer => {
             let a: &Complex = &values[1];
+            let (nr, ni) = crate::core::evalf::parts(n);
+            let degree: f64 = nr.to_f64().value();
+            if ni == crate::core::evalf::Real::ZERO && degree == degree.trunc() && (0.0..=10000.0).contains(&degree) {
+                // a polynomial, by its recurrence k*C(k) = 2*x*(k + a -
+                // 1)*C(k - 1) - (k + 2*a - 2)*C(k - 2): mpmath's product of a
+                // binomial coefficient and a 2F1 is 0 for every degree where
+                // 2*a is a nonpositive integer
+                let x: &Complex = &values[2];
+                let k_of = |k: i64| c(k, 1);
+                let (mut before, mut value): (Complex, Complex) = (c(0, 1), c(1, 1));
+                for k in 1..=(degree as i64) {
+                    let kk: Complex = k_of(k);
+                    let first: Complex = &(&(&k_of(2) * x) * &(&(&kk + a) - &k_of(1))) * &value;
+                    let second: Complex = &(&(&kk + &(a + a)) - &k_of(2)) * &before;
+                    let next: Complex = &(&first - &second) / &kk;
+                    before = value;
+                    value = next;
+                }
+                return Some(value);
+            }
             let two_a: Complex = a + a;
             let b: Complex = binomial(&(&(n + &two_a) - &one), n)?;
             let h: Complex = hyper_value(&[mn, n + &two_a], &[a + &c(1, 2)], &half_one_minus(&values[2]), prec)?;

@@ -562,8 +562,18 @@ pub(crate) fn eval_as_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, c
         Head::Derivative => {
             // the derivative of the first term of the series with a
             // nonzero derivative
-            let counts: Vec<(Basic, u64)> = crate::core::function::derivative_counts(e);
             let mut terms = LSeries::new(&e.args()[0], Some(x), &Basic::zero(), "+", None, &Basic::zero())?;
+            if crate::core::function::has_symbolic_order(e) {
+                // the derivative of symbolic order of the first term stays
+                return match terms.next_term()? {
+                    Some(term) => crate::core::function::derivative_node_orders(
+                        &term,
+                        &crate::core::function::derivative_orders(e),
+                    ),
+                    None => Ok(Basic::zero()),
+                };
+            }
+            let counts: Vec<(Basic, u64)> = crate::core::function::derivative_counts(e);
             let mut d: Basic = Basic::zero();
             while let Some(term) = terms.next_term()? {
                 d = crate::core::function::diff(&term, &counts)?;
@@ -626,6 +636,14 @@ fn hyper_leading_term(e: &Basic, x: &Basic, logx: Option<&Basic>, cdir: &Basic) 
     if lead.free_symbols().contains(x) && crate::core::order::contains(&o, &lead)? == Some(true) {
         return Err(PolyError::NotImplemented(
             "hyper has no _eval_as_leading_term routine".to_string(),
+        ));
+    }
+    let contained: bool = crate::core::order::contains(&o, &lead)? == Some(true);
+    if is(&x0, Predicate::infinite) == Some(true) || (lead.free_symbols().contains(x) && !contained) {
+        // not SymPy's, which answers the function itself, as if it were
+        // bounded and not 0 (x*exp(-x)*hyper((1,), (2,), x) at oo)
+        return Err(PolyError::NotImplemented(
+            "hyper has no leading term where its argument is infinite".to_string(),
         ));
     }
     Ok(e.clone())
@@ -1360,13 +1378,27 @@ pub fn eval_nseries(e: &Basic, x: &Basic, n: i64, logx: Option<&Basic>, cdir: &B
         Head::Derivative => {
             let arg: Basic = nseries(&e.args()[0], x, n, logx, &Basic::zero())?;
             let o: Option<Basic> = get_o(&arg)?;
-            let counts: Vec<(Basic, u64)> = crate::core::function::derivative_counts(e);
-            let mut terms: Vec<Basic> = terms_of(&remove_o(&arg)?)
-                .iter()
-                .map(|a| crate::core::function::derivative_node(a, &counts))
-                .collect();
+            // the order term divided by x once for every differentiation
+            // with respect to x (SymPy divides it once whatever the order)
+            let orders: Vec<(Basic, Basic)> = crate::core::function::derivative_orders(e);
+            let mut times: i64 = 0;
+            for (s, count) in &orders {
+                if s == x {
+                    let Some(c) = count.as_rational().filter(|r| r.is_int()) else {
+                        return Err(PolyError::NotImplemented(format!(
+                            "the series of the derivative of symbolic order {}",
+                            e
+                        )));
+                    };
+                    times += c.to_string().parse::<i64>().unwrap_or(1);
+                }
+            }
+            let mut terms: Vec<Basic> = Vec::new();
+            for a in terms_of(&remove_o(&arg)?) {
+                terms.push(crate::core::function::derivative_node_orders(&a, &orders)?);
+            }
             if let Some(o) = o {
-                terms.push(div(&o, x)?);
+                terms.push(div(&o, &pow(x, &int(times))?)?);
             }
             add(&terms)
         }

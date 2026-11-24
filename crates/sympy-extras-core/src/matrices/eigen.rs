@@ -111,12 +111,155 @@ fn is_polynomial_error(e: &PolyError) -> bool {
 
 /// The roots of an irreducible factor in radicals, or `None`
 /// (`_roots_in_radicals`).
+/// The roots of a cubic with complex-number coefficients (highest degree
+/// first) by Cardano's formula `-(b + u*C + D0/(u*C))/3` on the monic
+/// polynomial, `D0 = b**2 - 3*c`, `D1 = 2*b**3 - 9*b*c + 27*d`, `C` a cube root
+/// of `(D1 + sqrt(D1**2 - 4*D0**3))/2` and `u` the cube roots of 1
+/// (`_cubic_roots`).
+fn cubic_roots(cs: &[Basic]) -> PolyResult<Vec<Basic>> {
+    let lead: &Basic = &cs[0];
+    let b: Basic = expand(&d2(&cs[1], lead)?)?;
+    let c: Basic = expand(&d2(&cs[2], lead)?)?;
+    let d: Basic = expand(&d2(&cs[3], lead)?)?;
+    let d0: Basic = expand(&s2(&m2(&b, &b)?, &m2(&int(3), &c)?)?)?;
+    let d1: Basic = expand(&a2(
+        &s2(&m2(&int(2), &pw(&b, &int(3))?)?, &m2(&m2(&int(9), &b)?, &c)?)?,
+        &m2(&int(27), &d)?,
+    )?)?;
+    let third: Basic = Basic::rational(crate::numbers::Int::from(1), crate::numbers::Int::from(3))?;
+    let big_c: Basic = if d0 == Basic::zero() {
+        pw(&d1, &third)?
+    } else {
+        let disc: Basic = sqrt(&expand(&s2(&m2(&d1, &d1)?, &m2(&int(4), &pw(&d0, &int(3))?)?)?)?)?;
+        pw(&d2(&a2(&d1, &disc)?, &int(2))?, &third)?
+    };
+    let half: Basic = Basic::half();
+    let turn: Basic = m2(&m2(&half, &sqrt(&int(3))?)?, &Basic::imaginary_unit())?;
+    let units: [Basic; 3] = [int(1), a2(&neg(&half)?, &turn)?, s2(&neg(&half)?, &turn)?];
+    let mut roots: Vec<Basic> = Vec::new();
+    for u in &units {
+        let uc: Basic = m2(u, &big_c)?;
+        roots.push(d2(&neg(&a2(&a2(&b, &uc)?, &d2(&d0, &uc)?)?)?, &int(3))?);
+    }
+    Ok(roots)
+}
+
+/// The roots of a quartic with complex-number coefficients by Ferrari's
+/// method on the depressed quartic `y**4 + p*y**2 + q*y + r`, `x = y - b/4`,
+/// with a root `m` of the resolvent `8*m**3 + 8*p*m**2 + (2*p**2 - 8*r)*m -
+/// q**2` and `s = sqrt(2*m)`; for `q = 0` a quadratic in `y**2`
+/// (`_quartic_roots`).
+fn quartic_roots(cs: &[Basic]) -> PolyResult<Vec<Basic>> {
+    let lead: &Basic = &cs[0];
+    let k = |i: usize| -> R { expand(&d2(&cs[i], lead)?) };
+    let (b, c, d, e) = (k(1)?, k(2)?, k(3)?, k(4)?);
+    let r8 = |n: i64, den: i64| -> R { Basic::rational(crate::numbers::Int::from(n), crate::numbers::Int::from(den)) };
+    let p: Basic = expand(&s2(&c, &m2(&r8(3, 8)?, &m2(&b, &b)?)?)?)?;
+    let q: Basic = expand(&a2(
+        &s2(&d, &m2(&r8(1, 2)?, &m2(&b, &c)?)?)?,
+        &m2(&r8(1, 8)?, &pw(&b, &int(3))?)?,
+    )?)?;
+    let r: Basic = expand(&a2(
+        &a2(
+            &s2(&e, &m2(&r8(1, 4)?, &m2(&b, &d)?)?)?,
+            &m2(&r8(1, 16)?, &m2(&m2(&b, &b)?, &c)?)?,
+        )?,
+        &neg(&m2(&r8(3, 256)?, &pw(&b, &int(4))?)?)?,
+    )?)?;
+    let shift: Basic = d2(&b, &int(4))?;
+    if q == Basic::zero() {
+        let inner: Basic = sqrt(&expand(&s2(&m2(&p, &p)?, &m2(&int(4), &r)?)?)?)?;
+        let first: Basic = sqrt(&d2(&a2(&neg(&p)?, &inner)?, &int(2))?)?;
+        let second: Basic = sqrt(&d2(&s2(&neg(&p)?, &inner)?, &int(2))?)?;
+        return Ok(vec![
+            s2(&first, &shift)?,
+            s2(&neg(&first)?, &shift)?,
+            s2(&second, &shift)?,
+            s2(&neg(&second)?, &shift)?,
+        ]);
+    }
+    let resolvent: Vec<Basic> = vec![
+        int(8),
+        m2(&int(8), &p)?,
+        expand(&s2(&m2(&int(2), &m2(&p, &p)?)?, &m2(&int(8), &r)?)?)?,
+        expand(&neg(&m2(&q, &q)?)?)?,
+    ];
+    let m: Basic = cubic_roots(&resolvent)?.remove(0);
+    let sv: Basic = sqrt(&m2(&int(2), &m)?)?;
+    let base: Basic = s2(&m2(&int(-2), &m)?, &m2(&int(2), &p)?)?;
+    let q_over: Basic = d2(&m2(&int(2), &q)?, &sv)?;
+    let plus: Basic = sqrt(&s2(&base, &q_over)?)?;
+    let minus: Basic = sqrt(&a2(&base, &q_over)?)?;
+    Ok(vec![
+        s2(&d2(&a2(&sv, &plus)?, &int(2))?, &shift)?,
+        s2(&d2(&s2(&sv, &plus)?, &int(2))?, &shift)?,
+        s2(&d2(&a2(&neg(&sv)?, &minus)?, &int(2))?, &shift)?,
+        s2(&d2(&s2(&neg(&sv)?, &minus)?, &int(2))?, &shift)?,
+    ])
+}
+
+/// The roots in radicals of a polynomial whose coefficients are rational
+/// numbers and `I` when their numerical values (40 digits) are the roots
+/// (`_checked_roots`): every one a root to 30 digits, and the candidates
+/// distinct (an irreducible factor has simple roots); `None` otherwise (a
+/// root evaluated on another branch than its formula's would be no root).
+fn checked_roots(cs: &[Basic], candidates: &[Basic]) -> PolyResult<Option<Vec<Basic>>> {
+    let mut pairs: Vec<(f64, f64)> = Vec::new();
+    for k in cs {
+        let Some((re, im)) = crate::functions::elementary::complexes::as_real_imag(k, true, None)? else {
+            return Ok(None);
+        };
+        let (Some(a), Some(b)) = (re.as_rational().cloned(), im.as_rational().cloned()) else {
+            return Ok(None);
+        };
+        let f = |r: &Rat| -> f64 {
+            let p: f64 = numer(r).to_string().parse::<f64>().unwrap_or(f64::NAN);
+            let q: f64 = crate::numbers::denom(r).to_string().parse::<f64>().unwrap_or(f64::NAN);
+            p / q
+        };
+        pairs.push((f(&a), f(&b)));
+    }
+    let scale: f64 = pairs.iter().map(|(a, b)| a.hypot(*b)).fold(1.0, f64::max);
+    let mut numbers: Vec<(f64, f64)> = Vec::new();
+    for root in candidates {
+        let Some(value) = crate::numeric::reliable_complex(root, 40, &[]) else {
+            return Ok(None);
+        };
+        let (mut rr, mut ri): (f64, f64) = (0.0, 0.0);
+        for (a, b) in &pairs {
+            (rr, ri) = (rr * value.0 - ri * value.1 + a, rr * value.1 + ri * value.0 + b);
+        }
+        let size: f64 = value.0.hypot(value.1).max(1.0);
+        if rr.hypot(ri) > 1e-9 * scale * size.powi(pairs.len() as i32 - 1) {
+            return Ok(None);
+        }
+        numbers.push(value);
+    }
+    let largest: f64 = numbers.iter().map(|v| v.0.hypot(v.1)).fold(1.0, f64::max);
+    let mut gap: f64 = f64::INFINITY;
+    for (i, u) in numbers.iter().enumerate() {
+        for v in &numbers[i + 1..] {
+            gap = gap.min((u.0 - v.0).hypot(u.1 - v.1));
+        }
+    }
+    if gap < 1e-6 * largest {
+        return Ok(None);
+    }
+    Ok(Some(sorted_by_key(candidates.to_vec())))
+}
+
 pub fn roots_in_radicals(factor: &Basic, x: &Basic) -> PolyResult<Option<Vec<Basic>>> {
     let cs: Vec<Basic> = coefficients(factor, x)?;
     if cs.len() == 2 {
         return Ok(Some(vec![d2(&neg(&cs[1])?, &cs[0])?]));
     }
     if cs.iter().any(has_i) {
+        if cs.len() == 4 {
+            return checked_roots(&cs, &cubic_roots(&cs)?);
+        }
+        if cs.len() == 5 {
+            return checked_roots(&cs, &quartic_roots(&cs)?);
+        }
         if cs.len() != 3 {
             return Ok(None);
         }

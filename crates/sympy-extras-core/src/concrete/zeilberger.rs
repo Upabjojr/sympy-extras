@@ -53,11 +53,14 @@ fn cancel(e: &Basic) -> R {
 fn factor(e: &Basic) -> R {
     crate::polys::polytools::factor(e, &[], false, true)
 }
+/// `combsimp(e, generic=True)`: the identity of meromorphic functions the
+/// algorithms on hypergeometric terms need.
 fn combsimp(e: &Basic) -> R {
-    crate::simplify::gammasimp::combsimp(e)
+    crate::simplify::gammasimp::combsimp_generic(e)
 }
+/// `gammasimp(e, generic=True)`.
 fn gammasimp(e: &Basic) -> R {
-    crate::simplify::gammasimp::gammasimp(e)
+    crate::simplify::gammasimp::gammasimp_generic(e)
 }
 fn simplify(e: &Basic) -> R {
     crate::simplify::simplify::simplify(e, &crate::simplify::simplify::Options::default())

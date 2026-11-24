@@ -14,7 +14,7 @@ use super::add::add;
 use super::assumptions::Predicate;
 use super::basic::{Basic, Function, Head};
 use super::expr::{as_base_exp, as_coeff_mul_tuple, is_integer_class, is_rational_value, is_true};
-use super::function::{derivative_counts, derivative_node, rebuild_evaluated, subs_node};
+use super::function::{rebuild_evaluated, subs_node};
 use super::mul::mul;
 use super::power::pow;
 use super::sorting::sort_key;
@@ -184,8 +184,8 @@ fn diff_wrt(e: &Basic) -> bool {
 /// a captured free symbol, or a renaming onto a symbol of the expression
 /// make a `Subs`.
 fn derivative_subs(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Option<Basic>> {
-    let counts: Vec<(Basic, u64)> = derivative_counts(e);
-    let wrt: Vec<Basic> = counts.iter().map(|(v, _)| v.clone()).collect();
+    let orders: Vec<(Basic, Basic)> = crate::core::function::derivative_orders(e);
+    let wrt: Vec<Basic> = orders.iter().map(|(v, _)| v.clone()).collect();
     let expr: &Basic = &e.args()[0];
     if old.is_symbol() && wrt.contains(old) && !diff_wrt(new) {
         return Ok(Some(subs_node(e, vec![old.clone()], vec![new.clone()])));
@@ -215,12 +215,16 @@ fn derivative_subs(e: &Basic, old: &Basic, new: &Basic) -> PolyResult<Option<Bas
     if !renamed.iter().all(|(_, nv)| nv.is_symbol()) {
         return Ok(None);
     }
-    let new_counts: Vec<(Basic, u64)> = renamed
-        .into_iter()
-        .zip(&counts)
-        .map(|((_, nv), (_, n))| (nv, *n))
-        .collect();
-    Ok(Some(derivative_node(&new_expr, &new_counts)))
+    // (a symbolic order is substituted too: Derivative(f(x), (x,
+    // n)).subs(n, 2) is Derivative(f(x), (x, 2)))
+    let mut new_orders: Vec<(Basic, Basic)> = Vec::new();
+    for ((_, nv), (_, n)) in renamed.into_iter().zip(&orders) {
+        new_orders.push((nv, subs_node_rec(n, old, new)?));
+    }
+    Ok(Some(crate::core::function::derivative_node_orders(
+        &new_expr,
+        &new_orders,
+    )?))
 }
 
 /// `Subs._subs_partial`: the bound variables respected.

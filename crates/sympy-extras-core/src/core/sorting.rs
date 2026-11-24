@@ -287,9 +287,13 @@ pub fn as_ordered_factors(e: &Basic) -> Vec<Basic> {
 /// half node of a float has no counterpart: the core has no floats.
 fn nodes(e: &Basic) -> usize {
     if matches!(e.head(), Head::Derivative) {
+        // an integer order counts as itself, a symbolic one by its nodes
         let counts: usize = e.args()[1..]
             .iter()
-            .map(|pair| pair.args()[1].to_string().parse::<usize>().unwrap_or(1))
+            .map(|pair| {
+                let n: &Basic = &pair.args()[1];
+                n.to_string().parse::<usize>().unwrap_or_else(|_| nodes(n))
+            })
             .sum();
         return nodes(&e.args()[0]) + counts;
     }

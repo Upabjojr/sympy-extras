@@ -247,7 +247,7 @@ fn clean(e: &Basic, n: &Basic) -> R {
             true,
             &crate::core::function::count_ops,
         )?;
-        simplify(&crate::simplify::gammasimp::combsimp(&p)?)
+        simplify(&crate::simplify::gammasimp::combsimp_generic(&p)?)
     })?;
     match cleaned {
         None => Ok(e.clone()),
@@ -639,7 +639,7 @@ fn constant_sign(term: &Basic, ctx: &Context) -> PolyResult<Option<bool>> {
                 "factorial",
                 &crate::core::rewriting::RewriteHints::default(),
             ),
-            _ => crate::simplify::gammasimp::combsimp(term),
+            _ => crate::simplify::gammasimp::combsimp_generic(term),
         })?;
         let Some(found) = found else {
             continue;
@@ -1026,10 +1026,9 @@ fn is_convergent_native(term: &Basic, n: &Basic, lower: &Basic) -> PolyResult<Op
     }
     // the ratio test
     let next_term: Basic = replaced(&sequence_term, &[(sym.clone(), add(&[sym.clone(), int(1)])?)])?;
-    let quotient: Basic = crate::simplify::gammasimp::combsimp(&crate::simplify::powsimp::powsimp_default(&div(
-        &next_term,
-        &sequence_term,
-    )?)?)?;
+    let quotient: Basic = crate::simplify::gammasimp::combsimp_generic(&crate::simplify::powsimp::powsimp_default(
+        &div(&next_term, &sequence_term)?,
+    )?)?;
     let lim_ratio: Option<Basic> = limit_seq_of(&quotient, &sym)?;
     let magnitude: Option<Basic> = match &lim_ratio {
         Some(v) => Some(abs_(v)?),
@@ -1040,7 +1039,7 @@ fn is_convergent_native(term: &Basic, n: &Basic, lower: &Basic) -> PolyResult<Op
     }
     // Raabe's test
     if lim_ratio.as_ref().is_some_and(|v| *v == Basic::one()) {
-        let test_val: Basic = crate::simplify::gammasimp::gammasimp(&mul(&[
+        let test_val: Basic = crate::simplify::gammasimp::gammasimp_generic(&mul(&[
             sym.clone(),
             sub(&div(&sequence_term, &next_term)?, &int(1))?,
         ])?)?;

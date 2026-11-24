@@ -685,7 +685,7 @@ fn sum_hyper_at(f: &Basic, i: &Basic, a: &Basic) -> PolyResult<Option<(Basic, Ba
     } else {
         true_()
     };
-    let f: Basic = crate::simplify::gammasimp::combsimp(f)?;
+    let f: Basic = crate::simplify::gammasimp::combsimp_generic(f)?;
     use crate::simplify::hyperexpand::{hyperexpand, Rewrite};
     Ok(Some((
         m2(&subs(&f, i, &int(0))?, &hyperexpand(&h, false, Rewrite::Default, None)?)?,
@@ -713,6 +713,106 @@ fn is_hypergeometric(f: &Basic, i: &Basic) -> PolyResult<Option<bool>> {
 }
 
 /// The sum of a hypergeometric term through `hyperexpand` (`eval_sum_hyper`).
+/// The cases of the sum of `f` from `a` to `b` at the values of a symbol of
+/// `b` with `b = a - 1, a - 2, a - 3` where the closed form `closed` (valid
+/// under `cond`) is shown not to have the value of the sum (it is not a
+/// number there, or has another numerical value at sample values of the
+/// symbols): 0 for `b = a - 1` and `-(f(b + 1) + ... + f(a - 1))` below
+/// (Karr's convention) (`_short_sum_cases`). The closed form is an
+/// expansion for generic parameters: `Sum(x**i/factorial(i), (i, 0, n))`
+/// was `exp(x)` at `n = -1`, an empty sum.
+fn short_sum_cases(
+    f: &Basic,
+    i: &Basic,
+    a: &Basic,
+    b: &Basic,
+    closed: &Basic,
+    cond: &Basic,
+) -> PolyResult<Vec<(Basic, Basic)>> {
+    use crate::core::function::expand_default as expand;
+    let mut cases: Vec<(Basic, Basic)> = Vec::new();
+    let mut symbols: Vec<Basic> = b.free_symbols().into_iter().filter(|s| s != i).collect();
+    symbols.sort_by_cached_key(crate::core::sorting::sort_key);
+    for below in 0..3i64 {
+        let length: Basic = expand(&a2(&s2(b, a)?, &int(1 + below))?)?;
+        for sym in &symbols {
+            let slope: Basic = crate::core::function::derivative(&length, sym)?;
+            if slope.as_rational().is_none() || slope == Basic::zero() {
+                continue;
+            }
+            let point: Basic = expand(&s2(sym, &crate::core::mul::div(&length, &slope)?)?)?;
+            if point.free_symbols().contains(sym) {
+                continue;
+            }
+            if yes(sym, Predicate::integer) && crate::core::expr::is(&point, Predicate::integer) == Some(false) {
+                break;
+            }
+            let at_where: Basic = crate::core::relational::eq(sym, &point)?;
+            let false_b: Basic = Basic::atom(Head::BooleanFalse);
+            if at_where == false_b || subs(cond, sym, &point)? == false_b {
+                break;
+            }
+            let mut terms: Vec<Basic> = Vec::new();
+            for t in 1..=below {
+                terms.push(subs(f, i, &s2(a, &int(t))?)?);
+            }
+            let value: Basic = neg(&crate::core::add::add(&terms)?)?;
+            let at_point: Basic = subs(closed, sym, &point)?;
+            if count_illegal(&value) == 0
+                && at_point != value
+                && expand(&s2(&at_point, &value)?)? != Basic::zero()
+                && numerically_different(&at_point, &value)
+            {
+                cases.push((value, at_where));
+            }
+            break;
+        }
+    }
+    Ok(cases)
+}
+
+/// Whether `u` is not a number (`nan`, an infinity) or the two expressions
+/// have different reliable numerical values at a sample point of their
+/// symbols (integers for the integer symbols); `false` when no values are
+/// found (`_numerically_different`).
+fn numerically_different(u: &Basic, v: &Basic) -> bool {
+    if count_illegal(u) > 0 {
+        return true;
+    }
+    let mut symbols: Vec<Basic> = u.free_symbols().into_iter().chain(v.free_symbols()).collect();
+    symbols.sort_by_cached_key(crate::core::sorting::sort_key);
+    symbols.dedup();
+    for start in [3i64, 8] {
+        let values: Vec<(Basic, Basic)> = symbols
+            .iter()
+            .enumerate()
+            .map(|(index, sym)| {
+                let index: i64 = index as i64;
+                let value: Basic = if yes(sym, Predicate::integer) {
+                    int(start + 2 * index)
+                } else {
+                    Basic::rational(
+                        crate::numbers::Int::from(7 * (start + index) + 2),
+                        crate::numbers::Int::from(5),
+                    )
+                    .unwrap_or_else(|_| int(start))
+                };
+                (sym.clone(), value)
+            })
+            .collect();
+        let first = crate::numeric::reliable_complex(u, 25, &values);
+        let second = crate::numeric::reliable_complex(v, 25, &values);
+        if let (Some(x), Some(y)) = (first, second) {
+            let size = |z: (f64, f64)| z.0.hypot(z.1);
+            let gap: f64 = (x.0 - y.0).hypot(x.1 - y.1);
+            if gap > 1e-12 * size(x).max(size(y)).max(1.0) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn eval_sum_hyper(f: &Basic, limits: &Limit) -> OptR {
     use crate::core::logic::{and_, false_};
     let (i, a, b) = limits;
@@ -747,7 +847,11 @@ pub fn eval_sum_hyper(f: &Basic, limits: &Limit) -> OptR {
         if cond == false_() {
             return Ok(None);
         }
-        return Ok(Some(piecewise(&[(s2(&r1, &r2)?, cond), (old_sum, true_())])?));
+        let closed: Basic = s2(&r1, &r2)?;
+        let mut pieces: Vec<(Basic, Basic)> = short_sum_cases(f, i, a, b, &closed, &cond)?;
+        pieces.push((closed, cond));
+        pieces.push((old_sum, true_()));
+        return Ok(Some(piecewise(&pieces)?));
     }
     if is_neg_oo(a) {
         let (Some((r1, c1)), Some((r2, c2))) = (

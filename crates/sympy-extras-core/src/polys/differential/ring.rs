@@ -506,6 +506,9 @@ impl DifferentialRing {
         }
         if matches!(expr.head(), Head::Derivative) {
             let a: usize = self.functions.iter().position(|f| *f == expr.args()[0])?;
+            if crate::core::function::has_symbolic_order(expr) {
+                return None;
+            }
             let mut orders: Monomial = vec![0; self.n()];
             for (s, count) in derivative_counts(expr) {
                 let i: usize = self.variables.iter().position(|v| *v == s)?;
