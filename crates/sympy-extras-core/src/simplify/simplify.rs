@@ -483,6 +483,12 @@ fn expand_with(e: &Basic, power_exp: bool, log: bool) -> PolyResult<Basic> {
 
 fn eval_simplify(e: &Basic, o: &Options) -> PolyResult<Option<Basic>> {
     match e.head() {
+        Head::Sum => return Ok(Some(sum_eval_simplify(e, o)?)),
+        Head::Product => {
+            // Product._eval_simplify
+            let rv: Basic = product_simplify(e, o)?;
+            return Ok(Some(if o.doit { crate::core::function::doit(&rv)? } else { rv }));
+        }
         Head::Hyper => {
             // hyper._eval_simplify
             use super::hyperexpand::{hyperexpand, Rewrite};
@@ -596,10 +602,8 @@ fn zero_case_at_a_pole(e: &Basic, rewritten: &Basic) -> PolyResult<bool> {
 
 /// The expression simplified: the shortest of SymPy's heuristics by the
 /// measure, the input when every result is more than `ratio` times longer
-/// (`simplify`). Not ported: the simplification of `Piecewise` conditions,
-/// `hyper`/`meijerg` (`hyperexpand`), the Bessel functions (`besselsimp`)
-/// and noncommutative products (`nc_simplify`); the core has no `Sum`,
-/// `Product` or `Float`.
+/// (`simplify`). Not ported: noncommutative products (`nc_simplify`); the
+/// core has no `Float`.
 pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
     use crate::core::function::expand_mul;
     let measure: Measure = o.measure;
@@ -736,6 +740,12 @@ pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
     ) {
         e = super::gammasimp::combsimp(&e)?;
     }
+    if has_head(&e, &|n| matches!(n.head(), Head::Sum)) {
+        e = sum_simplify(&e, o)?;
+    }
+    if has_head(&e, &|n| matches!(n.head(), Head::Product)) {
+        e = product_simplify(&e, o)?;
+    }
     use super::powsimp::{powsimp, Combine};
     let count = |x: &Basic| crate::core::function::count_ops(x);
     let mut short: Basic = shorter(
@@ -796,6 +806,256 @@ pub fn simplify(expr: &Basic, o: &Options) -> PolyResult<Basic> {
         e = original;
     }
     done(&e)
+}
+
+// ---------------------------------------------------------------------
+// the sums and products (sum_simplify, product_simplify)
+
+// PORTED FROM SYMPY: sympy/simplify/simplify.py:sum_simplify, sum_combine, factor_sum, sum_add,
+// product_simplify, product_mul; sympy/concrete/summations.py:Sum._eval_simplify (SymPy 1.14, BSD
+// license, through sympy_extras/simplify/simplify.py)
+
+fn make_args(e: &Basic, add: bool) -> Vec<Basic> {
+    if (add && e.is_add()) || (!add && e.is_mul()) {
+        e.args().to_vec()
+    } else {
+        vec![e.clone()]
+    }
+}
+
+fn is_sum(e: &Basic) -> bool {
+    matches!(e.head(), Head::Sum)
+}
+
+fn is_product(e: &Basic) -> bool {
+    matches!(e.head(), Head::Product)
+}
+
+fn add_all(v: &[Basic]) -> PolyResult<Basic> {
+    crate::core::add::add(v)
+}
+
+/// The sums of `s` simplified and combined (the same limits joined,
+/// adjacent ranges of the same summand merged) (`sum_simplify`).
+pub fn sum_simplify(s: &Basic, o: &Options) -> PolyResult<Basic> {
+    let mut s: Basic = s.clone();
+    if !s.is_add() {
+        let mut reps: std::collections::HashMap<Basic, Basic> = std::collections::HashMap::new();
+        for a in s.preorder() {
+            if a.is_add() && has_head(&a, &is_sum) && !reps.contains_key(&a) {
+                let simplified: Basic = sum_simplify(&a, o)?;
+                reps.insert(a, simplified);
+            }
+        }
+        s = crate::core::function::xreplace_evaluated(&s, &reps)?;
+    }
+    s = crate::core::function::expand_default(&s)?;
+    if !s.is_add() {
+        return Ok(s);
+    }
+    let mut s_t: Vec<Basic> = Vec::new();
+    let mut o_t: Vec<Basic> = Vec::new();
+    for term in make_args(&s, true) {
+        let factors: Vec<Basic> = make_args(&term, false);
+        let sum_terms: Vec<&Basic> = factors.iter().filter(|f| is_sum(f)).collect();
+        if sum_terms.is_empty() {
+            o_t.push(term);
+            continue;
+        }
+        let other: Vec<Basic> = factors.iter().filter(|f| !is_sum(f)).cloned().collect();
+        let mut parts: Vec<Basic> = vec![mul(&other)?];
+        for st in sum_terms {
+            parts.push(sum_eval_simplify(st, o)?);
+        }
+        s_t.push(mul(&parts)?);
+    }
+    let mut all: Vec<Basic> = vec![sum_combine(s_t, o)?];
+    all.extend(o_t);
+    add_all(&all)
+}
+
+/// The terms with sums combined pairwise by [`sum_add`] (first the same
+/// limits, then adjacent ranges) (`sum_combine`).
+fn sum_combine(mut s_t: Vec<Basic>, o: &Options) -> PolyResult<Basic> {
+    let mut used: Vec<bool> = vec![false; s_t.len()];
+    for method in 0..2 {
+        for i in 0..s_t.len() {
+            if used[i] {
+                continue;
+            }
+            let mut s_term1: Basic = s_t[i].clone();
+            for j in 0..s_t.len() {
+                if !used[j] && i != j {
+                    let temp: Basic = sum_add(&s_term1, &s_t[j], method, o)?;
+                    if is_sum(&temp) || temp.is_mul() {
+                        s_t[i] = temp;
+                        s_term1 = s_t[i].clone();
+                        used[j] = true;
+                    }
+                }
+            }
+        }
+    }
+    let mut result: Basic = Basic::zero();
+    for (i, s_term) in s_t.iter().enumerate() {
+        if !used[i] {
+            result = add_all(&[result, s_term.clone()])?;
+        }
+    }
+    Ok(result)
+}
+
+/// The factors free of the variables taken out of the sum (`factor_sum`).
+fn factor_sum(e: &Basic, limits: Option<&[Basic]>) -> PolyResult<Basic> {
+    let whole: Basic = match limits {
+        Some(l) if !l.is_empty() => crate::concrete::expr_with_limits::sum_(e, l)?,
+        _ => e.clone(),
+    };
+    crate::core::exprtools::factor_terms(&whole, false, false, false, true)
+}
+
+/// A limit `(i, a, b)` as its three parts.
+fn limit_parts(l: &Basic) -> (Basic, Basic, Basic) {
+    (l.args()[0].clone(), l.args()[1].clone(), l.args()[2].clone())
+}
+
+fn limit(i: &Basic, a: &Basic, b: &Basic) -> Basic {
+    crate::core::function::tuple(vec![i.clone(), a.clone(), b.clone()])
+}
+
+/// Two terms with sums added into one sum: the same limits (method 0) or
+/// adjacent ranges of the same summand (method 1) (`sum_add`).
+fn sum_add(this: &Basic, other: &Basic, method: usize, o: &Options) -> PolyResult<Basic> {
+    let refactor = |val: &Basic| -> PolyResult<Basic> {
+        let factors: Vec<Basic> = make_args(val, false);
+        let sumv: Basic = factors.iter().find(|f| is_sum(f)).expect("a sum").clone();
+        let constant: Basic = mul(&factors.iter().filter(|f| **f != sumv).cloned().collect::<Vec<Basic>>())?;
+        crate::concrete::expr_with_limits::sum_(&mul(&[constant, sumv.args()[0].clone()])?, &sumv.args()[1..])
+    };
+    let rself: Basic = if this.is_mul() { refactor(this)? } else { this.clone() };
+    let rother: Basic = if other.is_mul() {
+        refactor(other)?
+    } else {
+        other.clone()
+    };
+    if is_sum(&rself) && is_sum(&rother) {
+        let (f1, f2) = (&rself.args()[0], &rother.args()[0]);
+        let (l1, l2) = (&rself.args()[1..], &rother.args()[1..]);
+        if method == 0 {
+            if l1 == l2 {
+                let joined: Basic = add_all(&[f1.clone(), f2.clone()])?;
+                return factor_sum(&crate::concrete::expr_with_limits::sum_(&joined, l1)?, None);
+            }
+        } else if simplify(&crate::core::add::sub(f1, f2)?, o)? == Basic::zero() && l1.len() == 1 && l2.len() == 1 {
+            let (i, x1, y1) = limit_parts(&l1[0]);
+            let (j, x2, y2) = limit_parts(&l2[0]);
+            if i == j {
+                let one: Basic = Basic::one();
+                if x2 == add_all(&[y1.clone(), one.clone()])? {
+                    let merged: Basic = crate::concrete::expr_with_limits::sum_(f1, &[limit(&i, &x1, &y2)])?;
+                    return factor_sum(&merged, None);
+                }
+                if x1 == add_all(&[y2.clone(), one])? {
+                    let merged: Basic = crate::concrete::expr_with_limits::sum_(f1, &[limit(&i, &x2, &y1)])?;
+                    return factor_sum(&merged, None);
+                }
+            }
+        }
+    }
+    add_all(&[this.clone(), other.clone()])
+}
+
+/// A sum simplified: its summand, the sums in it combined, the free
+/// factors taken out (`Sum._eval_simplify`).
+fn sum_eval_simplify(s: &Basic, o: &Options) -> PolyResult<Basic> {
+    let function: Basic = simplify(&s.args()[0], o)?;
+    let mut s_t: Vec<Basic> = Vec::new();
+    let mut o_t: Vec<Basic> = Vec::new();
+    for term in make_args(&crate::core::function::expand_default(&function)?, true) {
+        if has_head(&term, &is_sum) {
+            let mut out_terms: Vec<Basic> = Vec::new();
+            for sub in make_args(&crate::core::function::expand_default(&term)?, false) {
+                out_terms.push(if is_sum(&sub) { sum_eval_simplify(&sub, o)? } else { sub });
+            }
+            s_t.push(mul(&out_terms)?);
+        } else {
+            o_t.push(term);
+        }
+    }
+    let mut all: Vec<Basic> = vec![sum_combine(s_t, o)?];
+    all.extend(o_t);
+    let result: Basic = add_all(&all)?;
+    factor_sum(&result, Some(&s.args()[1..]))
+}
+
+/// The products of `s` with their factors simplified and combined (the
+/// same limits joined, adjacent ranges merged) (`product_simplify`).
+pub fn product_simplify(s: &Basic, o: &Options) -> PolyResult<Basic> {
+    use crate::concrete::expr_with_limits::product_;
+    let mut p_t: Vec<Basic> = Vec::new();
+    let mut o_t: Vec<Basic> = Vec::new();
+    for term in make_args(s, false) {
+        if is_product(&term) {
+            p_t.push(product_(&simplify(&term.args()[0], o)?, &term.args()[1..])?);
+        } else {
+            o_t.push(term);
+        }
+    }
+    let mut used: Vec<bool> = vec![false; p_t.len()];
+    for method in 0..2 {
+        for i in 0..p_t.len() {
+            if used[i] {
+                continue;
+            }
+            // SymPy's loop keeps the first p_term1 of the pass (it is not
+            // refreshed after a merge, unlike sum_combine)
+            let p_term1: Basic = p_t[i].clone();
+            for j in 0..p_t.len() {
+                if !used[j] && i != j {
+                    let tmp_prod: Basic = product_mul(&p_term1, &p_t[j], method, o)?;
+                    if is_product(&tmp_prod) {
+                        p_t[i] = tmp_prod;
+                        used[j] = true;
+                    }
+                }
+            }
+        }
+    }
+    let mut result: Basic = mul(&o_t)?;
+    for (i, p_term) in p_t.iter().enumerate() {
+        if !used[i] {
+            result = mul(&[result, p_term.clone()])?;
+        }
+    }
+    Ok(result)
+}
+
+/// Two products multiplied into one: the same limits (method 0) or
+/// adjacent ranges of the same factor (method 1) (`product_mul`).
+fn product_mul(this: &Basic, other: &Basic, method: usize, o: &Options) -> PolyResult<Basic> {
+    use crate::concrete::expr_with_limits::product_;
+    if is_product(this) && is_product(other) {
+        let (f1, f2) = (&this.args()[0], &other.args()[0]);
+        let (l1, l2) = (&this.args()[1..], &other.args()[1..]);
+        if method == 0 {
+            if l1 == l2 {
+                return product_(&mul(&[f1.clone(), f2.clone()])?, l1);
+            }
+        } else if simplify(&crate::core::add::sub(f1, f2)?, o)? == Basic::zero() && l1.len() == 1 && l2.len() == 1 {
+            let (i, x1, y1) = limit_parts(&l1[0]);
+            let (j, x2, y2) = limit_parts(&l2[0]);
+            if i == j {
+                let one: Basic = Basic::one();
+                if x2 == add_all(&[y1.clone(), one.clone()])? {
+                    return product_(f1, &[limit(&i, &x1, &y2)]);
+                }
+                if x1 == add_all(&[y2.clone(), one])? {
+                    return product_(f1, &[limit(&i, &x2, &y1)]);
+                }
+            }
+        }
+    }
+    mul(&[this.clone(), other.clone()])
 }
 
 // ---------------------------------------------------------------------

@@ -98,6 +98,34 @@ def test_simplify_random(rust: Any, seed: int) -> None:
     assert not different, different[:3]
 
 
+def _sum_cases() -> list[Any]:
+    from sympy_extras.concrete.expr_with_limits import product_, sum_
+    from sympy_extras.core import Integer, Symbol
+    from sympy_extras.functions import cos, sin
+    x = Symbol('x')
+    k, n, m = Symbol('k', integer=True), Symbol('n', integer=True), Symbol('m', integer=True)
+    one = Integer(1)
+    return [sum_(k, (k, one, n)) + sum_(k**2, (k, one, n)), sum_(x*k, (k, one, n)),
+            sum_(k, (k, one, n)) + sum_(k, (k, n + 1, m)), 2*sum_(k, (k, Integer(0), n)) - sum_(k, (k, Integer(0), n)),
+            sum_(sin(k)**2 + cos(k)**2, (k, one, n)), sum_(k, (k, one, n)) + x, x*sum_(k**3, (k, one, n)),
+            product_(k, (k, one, n))*product_(k, (k, n + 1, m)), product_(x*k, (k, one, n)),
+            product_(k, (k, one, n))*product_(k**2, (k, one, n)), product_(k, (k, one, n)) + sum_(k, (k, one, n)),
+            sum_(sum_(k*m, (k, one, n)), (m, one, n))]
+
+
+@pytest.mark.parametrize("index", range(len(_sum_cases())))
+def test_simplify_sums(rust: Any, index: int) -> None:
+    """The sums and products (sum_simplify, Sum._eval_simplify,
+    product_simplify): the free factors taken out, the same limits joined,
+    adjacent ranges merged; with and without doit."""
+    e = _sum_cases()[index]
+    for options in ({}, {'doit': False}):
+        got, expected = _compare(e, **options)
+        if got[0] == 'SKIP':
+            continue
+        assert got == expected, (e, options)
+
+
 def test_helpers(rust: Any) -> None:
     from sympy_extras.core import Integer, Symbol
     from sympy_extras.functions import Abs, KroneckerDelta, acosh, asin, asinh, atan, cosh, erf, erfinv, exp, log, sin, sinh, tan
