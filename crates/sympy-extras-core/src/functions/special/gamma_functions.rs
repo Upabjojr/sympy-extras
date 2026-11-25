@@ -309,7 +309,8 @@ pub fn gamma_fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<Basic>
             if argindex == 2 {
                 return polygamma(&add(&[args[0].clone(), Basic::one()])?, &args[1]);
             }
-            Err(not_ported("the derivative of polygamma in its order"))
+            // DefinedFunction.fdiff: a Derivative, or a Subs of one
+            crate::functions::special::hyper::default_fdiff(e, argindex)
         }
         Function::DiGamma => polygamma(&Basic::one(), &args[0]),
         _ => polygamma(&int(2), &args[0]),
@@ -736,19 +737,27 @@ pub fn incomplete_fdiff(f: Function, e: &Basic, argindex: usize) -> PolyResult<B
             }
         }
         (Function::LowerGamma, 1) | (Function::UpperGamma, 1) => {
-            Err(not_ported("meijerg (the derivative in the order)"))
-        }
-        _ => {
-            let v: &Basic = &args[argindex - 1];
-            let elsewhere: bool = args
-                .iter()
-                .enumerate()
-                .any(|(i, w)| i != argindex - 1 && w.free_symbols().contains(v));
-            if v.is_symbol() && !elsewhere {
-                return Ok(crate::core::function::derivative_node(e, &[(v.clone(), 1)]));
+            // gamma(a)*digamma(a) - log(z)*uppergamma(a, z) - G, and
+            // uppergamma(a, z)*log(z) + G, G = meijerg([], [1, 1], [0, 0, a], [], z)
+            let (a, z) = (&args[0], &args[1]);
+            let (one, zero) = (Basic::one(), Basic::zero());
+            let g: Basic = crate::functions::special::hyper::meijerg(
+                &[],
+                &[one.clone(), one],
+                &[zero.clone(), zero, a.clone()],
+                &[],
+                z,
+            )?;
+            let log_z: Basic = crate::functions::apply_function(Function::Log, std::slice::from_ref(z))?;
+            if f == Function::UpperGamma {
+                return crate::core::add::add(&[mul(&[uppergamma(a, z)?, log_z])?, g]);
             }
-            Err(not_ported("a derivative as a Subs"))
+            let digamma: Basic = crate::functions::apply_function(Function::DiGamma, std::slice::from_ref(a))?;
+            let first: Basic = sub(&mul(&[gamma(a)?, digamma])?, &mul(&[log_z, uppergamma(a, z)?])?)?;
+            sub(&first, &g)
         }
+        // DefinedFunction.fdiff: a Derivative, or a Subs of one
+        _ => crate::functions::special::hyper::default_fdiff(e, argindex),
     }
 }
 

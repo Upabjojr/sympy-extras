@@ -104,3 +104,22 @@ def test_values(rust: Any) -> None:
                     assert (ve is None) == (vr is None), (e, prec)
                     if ve is not None:
                         assert close(vr, ve, prec), (e, prec)
+
+
+def test_derivative_in_the_order(rust: Any) -> None:
+    """The derivatives in the order: lowergamma and uppergamma through
+    meijerg (SymPy's fdiff), polygamma and multigamma as a Derivative or a
+    Subs of one (DefinedFunction.fdiff)."""
+    from sympy_extras.core import Integer, Symbol
+    from sympy_extras.core.function import diff
+    from sympy_extras.functions.special import gamma_functions as gf
+    rc = load("sympy_extras_rs.core")
+    x, z = Symbol('x'), Symbol('z')
+    for name, args in [('lowergamma', [x, z]), ('uppergamma', [x, z]), ('uppergamma', [x, x]),
+                       ('lowergamma', [x**2, z]), ('polygamma', [x, z]), ('polygamma', [x, x]),
+                       ('multigamma', [x**2, Integer(2)])]:
+        e = getattr(gf, name)(*args)
+        r = rc.logic_call(name, args)
+        got = outcome(lambda: rc.diff(r, (x, 1)))
+        assert got != 'SKIP', (name, args)
+        assert got == outcome(lambda: diff(e, x)), (name, args)
