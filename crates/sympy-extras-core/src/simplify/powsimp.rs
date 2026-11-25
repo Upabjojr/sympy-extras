@@ -1,9 +1,8 @@
 //! Port of `sympy_extras/simplify/powsimp.py` (itself ported from SymPy's
 //! `sympy.simplify.powsimp`): `powsimp` combines the powers of equal bases
 //! (`combine = Exp`), of equal exponents (`Base`) or both (`All`);
-//! `powdenest` denests powers of powers where valid. The Rust core has no
-//! polar numbers: `is_polar` never holds, and `powdenest` with `polar` is
-//! not implemented.
+//! `powdenest` denests powers of powers where valid (with `polar`, through
+//! `polarify` and `unpolarify` of `functions/elementary/polar.rs`).
 
 #![allow(clippy::mutable_key_type, clippy::collapsible_if)]
 

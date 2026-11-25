@@ -60,8 +60,7 @@ pub fn hyperrep_arity(f: Function) -> usize {
     }
 }
 
-/// The evaluating function (`HyperRep.eval`): the parameters unpolarified
-/// (the core has no polar numbers: a reevaluation).
+/// The evaluating function (`HyperRep.eval`): the parameters unpolarified.
 pub fn hyperrep(f: Function, args: &[Basic]) -> PolyResult<Basic> {
     let node = |args: Vec<Basic>| Basic::new(Head::Function(f), args);
     if !evaluate() {

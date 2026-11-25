@@ -32,7 +32,8 @@ def node(rng: random.Random) -> Any:
     var = lambda: rng.choice([x, y, 2*x, n])
     builders = [lambda: gamma(var() + shift()), lambda: gamma(shift()),
                 lambda: polygamma(rng.choice([0, 1, 2, -1, s, Rational(1, 2)]), rng.choice([var() + shift(), 3*x, shift()])),
-                lambda: loggamma(rng.choice([Rational(1, 3), Rational(2, 5), x, Integer(3)])),
+                lambda: loggamma(rng.choice([Rational(1, 3), Rational(2, 5), x, Integer(3), Rational(7, 3), Rational(-5, 2)])),
+                lambda: harmonic(rng.choice([Rational(1, 3), Rational(7, 3), Rational(5, 4)])),
                 lambda: digamma(var() + rng.randint(-2, 2)), lambda: trigamma(rng.choice([x + 2, 2*x, Rational(1, 2)])),
                 lambda: beta(var(), var() + 1), lambda: binomial(var() + rng.randint(0, 3), rng.choice([n, 2, x, n - 1])),
                 lambda: binomial(rng.choice([Integer(5), Rational(1, 2)]), x),
@@ -57,10 +58,16 @@ def node(rng: random.Random) -> Any:
             continue
 
 
+def _undummied(e: Any) -> Any:
+    from sympy_extras.core.symbol import Dummy, Symbol
+    return e.xreplace({d: Symbol(d.name) for d in e.atoms(Dummy)})
+
+
 @pytest.mark.parametrize("seed", range(40))
 def test_expand_func(rust: Any, seed: int) -> None:
     from sympy_extras.core import Symbol
     from sympy_extras.core.function import expand
+    from sympy_extras.core.symbol import Dummy
     rc = load("sympy_extras_rs.core")
     rng = random.Random(stable_seed("expand func", seed))
     x = Symbol('x')
@@ -77,6 +84,13 @@ def test_expand_func(rust: Any, seed: int) -> None:
             try:
                 got = rc.expand(e, func=True, **hints)
             except NotImplementedError:
+                continue
+            if expected.atoms(Dummy):
+                # fresh dummies (the sums of loggamma and harmonic at rationals) are counted apart
+                # on the two sides, and their counters order the terms: compared as named symbols
+                got, expected = _undummied(got), _undummied(expected)
+                assert shape(got) == shape(expected) and str(got) == str(expected), (e, hints)
+                compared += 1
                 continue
             assert shape(got) == shape(expected) and rc.sstr(got) == str(expected), (e, hints)
             compared += 1

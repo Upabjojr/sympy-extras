@@ -27,7 +27,7 @@ use crate::core::function::{diff, expand_method, expand_mul, expand_with, rebuil
 use crate::core::mul::{div, mul, neg, raw_mul};
 use crate::core::power::pow;
 use crate::core::subs::subs;
-use crate::error::{not_ported, PolyResult};
+use crate::error::PolyResult;
 use crate::functions::apply_function;
 
 fn int(n: i64) -> Basic {
@@ -270,7 +270,26 @@ fn loggamma_rule(node: &Basic) -> PolyResult<Option<Basic>> {
             if n == 0 {
                 return Ok(Some(call(Function::LogGamma, &[q(p, qq)?])?));
             }
-            return Err(not_ported("expand_func of loggamma at a rational (a Sum)"));
+            // loggamma(p/q) - n*log(q) and the sum of the logarithms of the shifts
+            let k: Basic = crate::core::Dummy::new("k", &[]).0;
+            let qb: Basic = int(qq);
+            let log = |e: &Basic| call(Function::Log, std::slice::from_ref(e));
+            let base: Basic = sub(&call(Function::LogGamma, &[q(p, qq)?])?, &m2(&int(n), &log(&qb)?)?)?;
+            if n > 0 {
+                let term: Basic = log(&a2(&m2(&sub(&k, &one())?, &qb)?, &int(p))?)?;
+                let lims: Basic = crate::core::function::tuple(vec![k, one(), int(n)]);
+                return Ok(Some(a2(
+                    &base,
+                    &crate::concrete::expr_with_limits::sum_(&term, &[lims])?,
+                )?));
+            }
+            let term: Basic = log(&sub(&m2(&k, &qb)?, &int(p))?)?;
+            let lims: Basic = crate::core::function::tuple(vec![k, one(), int(-n)]);
+            let shifted: Basic = a2(&base, &m2(&m2(&Basic::pi(), &Basic::imaginary_unit())?, &int(n))?)?;
+            return Ok(Some(sub(
+                &shifted,
+                &crate::concrete::expr_with_limits::sum_(&term, &[lims])?,
+            )?));
         }
     }
     Ok(Some(node.clone()))
@@ -367,7 +386,34 @@ fn harmonic_rule(node: &Basic) -> PolyResult<Option<Basic>> {
             let u: i64 = p0.div_euclid(qq);
             let p: i64 = p0 - u * qq;
             if u >= 0 && 0 < p && p < qq {
-                return Err(not_ported("expand_func of harmonic at a rational (a Sum)"));
+                // Gauss's digamma theorem: q*sum(1/(q*k + p), (k, 0, u))
+                // + 2*sum(cos(2*pi*p*k/q)*log(sin(pi*k/q))) - pi/2*cot(pi*p/q) - log(2*q)
+                use crate::concrete::expr_with_limits::sum_;
+                let k: Basic = crate::core::Dummy::new("k", &[]).0;
+                let (qb, pb) = (int(qq), int(p));
+                let one_arg = |f: Function, e: &Basic| call(f, std::slice::from_ref(e));
+                let t1_term: Basic = inv(&a2(&m2(&qb, &k)?, &pb)?)?;
+                let t1: Basic = m2(
+                    &qb,
+                    &sum_(
+                        &t1_term,
+                        &[crate::core::function::tuple(vec![k.clone(), Basic::zero(), int(u)])],
+                    )?,
+                )?;
+                let angle: Basic = mul(&[int(2), Basic::pi(), pb.clone(), k.clone(), inv(&qb)?])?;
+                let sine: Basic = one_arg(Function::Sin, &mul(&[Basic::pi(), k.clone(), inv(&qb)?])?)?;
+                let t2_term: Basic = m2(&one_arg(Function::Cos, &angle)?, &one_arg(Function::Log, &sine)?)?;
+                let upper: Basic = one_arg(Function::Floor, &m2(&a2(&qb, &minus_one())?, &q(1, 2)?)?)?;
+                let t2: Basic = m2(
+                    &int(2),
+                    &sum_(&t2_term, &[crate::core::function::tuple(vec![k, one(), upper])])?,
+                )?;
+                let cot: Basic = one_arg(Function::Cot, &mul(&[Basic::pi(), pb, inv(&qb)?])?)?;
+                let t3: Basic = a2(
+                    &m2(&m2(&Basic::pi(), &q(1, 2)?)?, &cot)?,
+                    &one_arg(Function::Log, &m2(&int(2), &qb)?)?,
+                )?;
+                return Ok(Some(add(&[t1, t2, neg(&t3)?])?));
             }
         }
     }
