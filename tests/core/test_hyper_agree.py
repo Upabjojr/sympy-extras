@@ -167,6 +167,7 @@ def test_values(rust: Any) -> None:
     from sympy_extras.core.evalf import numeric_value
     from sympy_extras.functions.special import hyper as hy
     rc = load("sympy_extras_rs.core")
+    t3 = ((Rational(1, 2), Rational(1, 3), Rational(1, 4)), (Rational(3, 2), 2))
     cases = [((), (), Integer(3)), ((Rational(1, 2),), (Rational(3, 2),), -Integer(4)), ((1, 2), (3,), Rational(1, 2)),
              ((Integer(-3), Rational(1, 3)), (Rational(5, 2),), Integer(7)), ((1 + I,), (2,), 2*I),
              ((), (Rational(1, 2), 2), -Integer(20)), ((Rational(1, 3), 1), (Rational(1, 2),), -Rational(2, 3)),
@@ -178,7 +179,7 @@ def test_values(rust: Any) -> None:
              ((Rational(1, 2), Rational(1, 2)), (1,), Rational(9, 10)),
              ((Rational(1, 2), Rational(1, 3)), (2,), -Rational(9, 10)),
              # (q+1)Fq beyond the unit circle (mpmath's 1/z transformation; integer gaps of ap perturbed)
-             ((Rational(1, 2), Rational(1, 3), Rational(1, 4)), (Rational(3, 2), 2), -Integer(2)),
+             (*t3, -Integer(2)),
              ((1, 2, Rational(1, 2)), (3, Rational(5, 2)), Integer(3)),
              ((Rational(1, 2), Rational(1, 3), 1), (2, Rational(7, 3)), 2 + I),
              ((Rational(1, 2), Rational(1, 3), Rational(1, 5), Rational(1, 7)), (2, 3, 4), -Integer(5)),
@@ -191,7 +192,15 @@ def test_values(rust: Any) -> None:
              ((Rational(1, 2),), (Rational(3, 2), Rational(5, 3)), -Integer(10)**6),
              ((Rational(1, 3),), (Rational(1, 2), 2), Integer(10)**6),
              ((Rational(1, 2), Rational(1, 3)), (Rational(3, 2), 2, Rational(5, 4)), -Integer(10)**6),
-             ((Rational(1, 4), 1), (Rational(1, 2), Rational(3, 2), 2), Integer(10)**6)]
+             ((Rational(1, 4), 1), (Rational(1, 2), Rational(3, 2), 2), Integer(10)**6),
+             # (q+1)Fq near the unit circle (mpmath's _hypq1fq: the direct series up to hypsum's maxterms,
+             # the 'r+s' acceleration of nsum, the alternate summation of 3F2 near 1)
+             (*t3, Rational(9, 10)), (*t3, -Integer(1)),
+             (*t3, Rational(3, 5) + 4*I/5), (*t3, Rational(51, 50)),
+             (*t3, Rational(97, 100) + I/50),
+             ((Rational(1, 2), Rational(1, 3), Rational(1, 4), Rational(1, 5)), (Rational(3, 2), 2, Rational(5, 2)),
+              -Rational(21, 20)),
+             ((1, 1, 1), (2, 2), -Integer(1))]
     for ap, bq, z in cases:
         args = [Tuple(*ap), Tuple(*bq), z]
         e, r = hy.hyper(*args), rc.logic_call('hyper', args)

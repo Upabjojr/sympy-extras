@@ -149,6 +149,20 @@ fn shanks(seq: &[Value], mut table: Vec<Vec<Value>>, p: usize) -> Vec<Vec<Value>
 /// precision `(prec + 10)*4` passed to `term`. `None` when a term has no
 /// value.
 pub fn nsum(term: &mut dyn FnMut(i64, usize) -> Option<Value>, prec: usize) -> Option<Value> {
+    adaptive_extrapolation(term, prec, false)
+}
+
+/// [`nsum`] with `strict=True`: `None` also when neither extrapolation
+/// reaches the tolerance within `maxterms` (mpmath's `NoConvergence`).
+pub fn nsum_strict(term: &mut dyn FnMut(i64, usize) -> Option<Value>, prec: usize) -> Option<Value> {
+    adaptive_extrapolation(term, prec, true)
+}
+
+fn adaptive_extrapolation(
+    term: &mut dyn FnMut(i64, usize) -> Option<Value>,
+    prec: usize,
+    strict: bool,
+) -> Option<Value> {
     let eps: Real = two_pow_neg(prec - 1, prec + 20);
     let tol: Real = at(&(eps / real(1024, prec + 20)), prec + 20);
     let dps: i64 = ((prec as f64 / std::f64::consts::LOG2_10).round() as i64 - 1).max(1);
@@ -219,6 +233,9 @@ pub fn nsum(term: &mut dyn FnMut(i64, usize) -> Option<Value>, prec: usize) -> O
             }
         }
         let _ = error;
+    }
+    if strict {
+        return None;
     }
     Some(round(&best))
 }

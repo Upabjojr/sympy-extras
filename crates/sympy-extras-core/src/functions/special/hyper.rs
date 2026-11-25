@@ -848,7 +848,14 @@ fn nonpositive_integer(v: &Complex) -> Option<i64> {
 /// The sum of the defining series, at the working precision `wp`;
 /// `None` when it does not settle. Returns the sum and the log2 of the
 /// largest term (for the cancellation).
-fn series(ap: &[Complex], bq: &[Complex], z: &Complex, terms: Option<i64>, wp: usize) -> Option<(Complex, f64)> {
+fn series(
+    ap: &[Complex],
+    bq: &[Complex],
+    z: &Complex,
+    terms: Option<i64>,
+    wp: usize,
+    maxterms: i64,
+) -> Option<(Complex, f64)> {
     let mut term: Complex = c_int(1, wp);
     let mut total: Complex = term.clone();
     let mut largest: f64 = 0.0;
@@ -883,7 +890,7 @@ fn series(ap: &[Complex], bq: &[Complex], z: &Complex, terms: Option<i64>, wp: u
             if small && (k as f64) > 2.0 * scale + 2.0 && (k as f64) > 2.0 * size {
                 break;
             }
-            if k > 200_000 {
+            if k > maxterms {
                 return None;
             }
         }
@@ -921,20 +928,31 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
         // mpmath's _hyp2f1: the transformations outside the disc |z| <= 0.8
         return hyp2f1_continued(&ap[0], &ap[1], &bq[0], z, prec);
     }
-    if terms.is_none() && ap.len() == bq.len() + 1 && ap.len() >= 3 && size >= 1.0 {
-        // mpmath's _hypq1fq beyond the unit circle: the 1/z transformation
-        // where mpmath takes it (|z| >= 1.1, or re(z) > 1 away from the
-        // alternate summation of 3F2 near 1); its acceleration of the
-        // series near the circle is not ported (no value)
-        let near_one: bool = modulus(&(z - &c_int(1, prec + 10))) < 0.05;
-        let re_beyond: bool = parts(z).0 > real_int(&Int::ONE, prec);
+    if terms.is_none() && ap.len() == bq.len() + 1 && ap.len() >= 3 && size >= 0.75 {
+        // mpmath's _hypq1fq: the direct summation inside the unit circle
+        // (hypsum's maxterms, wp*100), on NoConvergence or beyond it the
+        // alternate summation of 3F2 near 1, the 'r+s' acceleration of
+        // the series near the circle (its Euler-Maclaurin summation after
+        // them is not ported: no value), the 1/z transformation outside
+        if size < 1.0 {
+            if let Some(v) = defining_series_value(ap, bq, z, None, prec, ((prec + 50) * 100) as i64) {
+                return Some(v);
+            }
+        }
         if *z == c_int(1, prec) {
             return None; // Saalschütz-type sums and the poles at 1: not ported
         }
-        if size >= 1.1 || (re_beyond && !(ap.len() == 3 && near_one)) {
-            return hypq1fq_reciprocal(ap, bq, z, prec);
+        let near_one: bool = modulus(&(z - &c_int(1, prec + 10))) < 0.05;
+        if ap.len() == 3 && near_one {
+            if let Some(v) = hyp3f2_near_one(ap, bq, z, prec) {
+                return Some(v);
+            }
         }
-        return None;
+        let re_beyond: bool = parts(z).0 > real_int(&Int::ONE, prec);
+        if size < 1.1 && !re_beyond {
+            return hypq1fq_accelerated(ap, bq, z, prec);
+        }
+        return hypq1fq_reciprocal(ap, bq, z, prec);
     }
     if terms.is_none() {
         let fits: bool =
@@ -948,6 +966,20 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
             return None;
         }
     }
+    defining_series_value(ap, bq, z, terms, prec, 200_000)
+}
+
+/// The defining series at `prec` bits, the working precision raised by the
+/// loss to cancellation; `terms` for a terminating series, `None` after
+/// `maxterms` terms.
+fn defining_series_value(
+    ap: &[Complex],
+    bq: &[Complex],
+    z: &Complex,
+    terms: Option<i64>,
+    prec: usize,
+    maxterms: i64,
+) -> Option<Complex> {
     let real: bool = ap
         .iter()
         .chain(bq)
@@ -957,7 +989,7 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
     for _ in 0..4 {
         let lift = |v: &Complex| raise_to(v, wp);
         let (a, b): (Vec<Complex>, Vec<Complex>) = (ap.iter().map(lift).collect(), bq.iter().map(lift).collect());
-        let (total, largest) = series(&a, &b, &lift(z), terms, wp)?;
+        let (total, largest) = series(&a, &b, &lift(z), terms, wp, maxterms)?;
         let size: f64 = modulus(&total);
         let lost: f64 = if size > 0.0 {
             largest - size.log2()
@@ -1098,6 +1130,98 @@ fn hyp2f1_continued(a: &Complex, b: &Complex, c: &Complex, z: &Complex, prec: us
         hyp2f1_gosper(&a, &b, &c, &z, wp)?
     };
     Some(raise_to(&value, prec))
+}
+
+/// `(q+1)Fq` on and near the unit circle (`|z| < 1.1`, `re(z) <= 1`) by
+/// mpmath's `nsum` of the defining series with the `'r+s'` acceleration
+/// (`_hypq1fq`'s `sum_method` without `'e'`); `None` where it does not
+/// converge (mpmath's Euler-Maclaurin summation after it is not ported).
+fn hypq1fq_accelerated(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> Option<Complex> {
+    // PORTED FROM MPMATH: mpmath/functions/hypergeometric.py:_hypq1fq (the nsum branch)
+    let mut cache: Vec<Complex> = Vec::new();
+    let mut term = |k: i64, wp: usize| -> Option<(Real, Real)> {
+        let k: usize = usize::try_from(k).ok()?;
+        while cache.len() <= k {
+            let n: usize = cache.len();
+            let t: Complex = if n == 0 {
+                c_int(1, wp)
+            } else {
+                let m: Complex = c_int(n as i64 - 1, wp);
+                let mut t: Complex = cache[n - 1].clone();
+                for a in ap {
+                    t = &t * &(&raise_to(a, wp) + &m);
+                }
+                for b in bq {
+                    t = &t / &(&raise_to(b, wp) + &m);
+                }
+                &(&t * &raise_to(z, wp)) / &c_int(n as i64, wp)
+            };
+            if has_infinity(&t) {
+                return None;
+            }
+            cache.push(t);
+        }
+        Some(parts(&cache[k]))
+    };
+    let (re, im) = crate::integrals::extrapolation::nsum_strict(&mut term, prec)?;
+    Some(complex(re, im))
+}
+
+/// `3F2(a1, a2, a3; b1, b2; z)` for `|z - 1| < 0.05` by mpmath's alternate
+/// summation (Bühring's expansion at unit argument): `nsum` over
+/// `t_k 2F1(a1, a2; b1 + b2 - a3 + k; z)` times
+/// `gammaprod([b1, b2], [a1, a2, a3])`; `None` where it does not converge.
+fn hyp3f2_near_one(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> Option<Complex> {
+    // PORTED FROM MPMATH: mpmath/functions/hypergeometric.py:_hypq1fq (the alternate summation of 3F2)
+    use crate::functions::combinatorial::factorials::gamma_product;
+    let mut cache: Vec<Complex> = Vec::new();
+    let mut term = |k: i64, wp: usize| -> Option<(Real, Real)> {
+        let k: usize = usize::try_from(k).ok()?;
+        let lift = |v: &Complex| raise_to(v, wp);
+        let (a1, a2, a3, b1, b2) = (lift(&ap[0]), lift(&ap[1]), lift(&ap[2]), lift(&bq[0]), lift(&bq[1]));
+        let one: Complex = c_int(1, wp);
+        let u0: Complex = &(&b1 + &b2) - &a3;
+        if cache.is_empty() {
+            let initial: Complex = gamma_product(
+                &[&b2 - &a3, &b1 - &a3, a1.clone(), a2.clone()],
+                &[&b2 - &a3, &b1 - &a3, one.clone(), u0.clone()],
+                wp,
+            )?;
+            cache.push(initial);
+        }
+        while cache.len() <= k {
+            let n: usize = cache.len();
+            let kk: Complex = c_int(n as i64, wp);
+            let u: Complex = &u0 + &kk;
+            let mut t: Complex = cache[n - 1].clone();
+            t = &(&t * &(&(&(&b1 + &kk) - &a3) - &one)) * &(&(&(&b2 + &kk) - &a3) - &one);
+            let den: Complex = &kk * &(&u - &one);
+            if is_zero_value(&den) {
+                return None;
+            }
+            t = &t / &den;
+            if has_infinity(&t) {
+                return None;
+            }
+            cache.push(t);
+        }
+        let u: Complex = &u0 + &c_int(k as i64, wp);
+        let h: Complex = hyper_value(&[a1, a2], &[u], &lift(z), wp)?;
+        Some(parts(&(&cache[k] * &h)))
+    };
+    let (re, im) = crate::integrals::extrapolation::nsum_strict(&mut term, prec)?;
+    let lift = |v: &Complex| raise_to(v, prec + 20);
+    let factor: Complex = gamma_product(
+        &[lift(&bq[0]), lift(&bq[1])],
+        &[lift(&ap[0]), lift(&ap[1]), lift(&ap[2])],
+        prec + 20,
+    )?;
+    let v: Complex = &complex(re, im) * &factor;
+    let (re, im) = parts(&v);
+    Some(complex(
+        re.with_precision(prec).value(),
+        im.with_precision(prec).value(),
+    ))
 }
 
 /// `(q+1)Fq(ap; bq; z)` for `|z| > 1` by the `1/z` transformation (mpmath's
