@@ -21,6 +21,25 @@ from .test_factorials_agree import finite
 from .test_integers_agree import outcome
 
 
+def close_in_modulus(rust_value: Any, python_value: Any, prec: int) -> bool:
+    """``close`` with both parts measured against the modulus: the
+    reference of a huge real value (``1F2`` at ``10**6``, ``e**2000``)
+    carries an imaginary part of rounding noise, far below the precision
+    of the modulus but not of itself."""
+    from fractions import Fraction
+    if rust_value is None or python_value is None:
+        return rust_value is None and python_value is None
+    re, im = rust_value
+    approx: list[Fraction] = []
+    for part in (python_value.real, python_value.imag):
+        sign, man, exp, _ = part._mpf_
+        value = Fraction(int(man) * 2**int(exp)) if exp >= 0 else Fraction(int(man), 2**int(-exp))
+        approx.append(-value if sign else value)
+    scale = max(Fraction(1), abs(approx[0]) + abs(approx[1]))
+    tolerance = Fraction(1, 2**(prec - 12)) * scale
+    return abs(re - approx[0]) <= tolerance and abs(im - approx[1]) <= tolerance
+
+
 def parameter(rng: random.Random) -> Any:
     from sympy_extras.core import I, Integer, Rational, Symbol
     a, b = Symbol('a'), Symbol('b')
@@ -163,14 +182,23 @@ def test_values(rust: Any) -> None:
              ((1, 2, Rational(1, 2)), (3, Rational(5, 2)), Integer(3)),
              ((Rational(1, 2), Rational(1, 3), 1), (2, Rational(7, 3)), 2 + I),
              ((Rational(1, 2), Rational(1, 3), Rational(1, 5), Rational(1, 7)), (2, 3, 4), -Integer(5)),
-             ((1, 2, 3), (4, 5), -Integer(4))]
+             ((1, 2, 3), (4, 5), -Integer(4)),
+             # p <= q at a large argument (mpmath's asymptotic expansions of 0F1, 1F2, 2F2, 2F3)
+             ((), (Rational(3, 2),), Integer(10)**4), ((), (Rational(1, 3),), -Integer(10)**4),
+             ((Rational(1, 2), Rational(1, 3)), (Rational(5, 2), 2), Integer(50)),
+             ((Rational(1, 2), Rational(1, 3)), (Rational(5, 2), 2), -Integer(50)),
+             ((1, Rational(1, 3)), (Rational(3, 2), Rational(7, 4)), 20 + 30*I),
+             ((Rational(1, 2),), (Rational(3, 2), Rational(5, 3)), -Integer(10)**6),
+             ((Rational(1, 3),), (Rational(1, 2), 2), Integer(10)**6),
+             ((Rational(1, 2), Rational(1, 3)), (Rational(3, 2), 2, Rational(5, 4)), -Integer(10)**6),
+             ((Rational(1, 4), 1), (Rational(1, 2), Rational(3, 2), 2), Integer(10)**6)]
     for ap, bq, z in cases:
         args = [Tuple(*ap), Tuple(*bq), z]
         e, r = hy.hyper(*args), rc.logic_call('hyper', args)
         for prec in (53, 200):
             vr = rc.numeric_value(r, prec)
             assert vr is not None, (e, prec)
-            assert close(vr, finite(numeric_value(e, prec + 200)), prec), (e, prec)
+            assert close_in_modulus(vr, finite(numeric_value(e, prec + 200)), prec), (e, prec)
 
 
 def test_meijerg_values(rust: Any) -> None:

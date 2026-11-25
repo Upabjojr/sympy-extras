@@ -816,6 +816,12 @@ pub fn print_hyper(e: &Basic, doprint: &dyn Fn(&Basic) -> String) -> String {
 /// `|w|` as a float: `hypot`, which does not overflow where the squares
 /// would (the perturbed terms of `hypercomb` pass `2**512`, and a modulus
 /// of `inf` stopped the series as if it diverged).
+/// Whether either part of `w` is an infinity, on which dashu panics.
+fn has_infinity(w: &Complex) -> bool {
+    let (wr, wi) = parts(w);
+    wr.repr().is_infinite() || wi.repr().is_infinite()
+}
+
 fn modulus(w: &Complex) -> f64 {
     let (wr, wi) = parts(w);
     wr.to_f64().value().hypot(wi.to_f64().value())
@@ -899,6 +905,14 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
         // mpmath's _hyp1f1: the asymptotic series for mag(z) >= 7, the
         // convergent one when they do not converge (NoConvergence)
         if let Some(v) = hyp1f1_asymptotic(&ap[0], &bq[0], z, prec) {
+            return Some(v);
+        }
+    }
+    if terms.is_none() && matches!((ap.len(), bq.len()), (0, 1) | (1, 2) | (2, 2) | (2, 3)) {
+        // mpmath's _hyp0f1, _hyp1f2, _hyp2f2, _hyp2f3: the asymptotic
+        // expansions for a large argument, the series when they do not
+        // apply or converge
+        if let Some(v) = small_pq_asymptotic(ap, bq, z, prec) {
             return Some(v);
         }
     }
@@ -1381,6 +1395,10 @@ fn check_need_perturb(terms: &[HyperTerm]) -> (bool, bool, usize, Vec<usize>) {
 /// `w**c` on the principal branch, `0**c = 0` for a positive real part;
 /// `None` for zero to a power of nonpositive real part (mpmath raises).
 fn complex_power(w: &Complex, c: &Complex, wp: usize) -> Option<Complex> {
+    if has_infinity(w) || has_infinity(c) {
+        // an overflow saturated to an infinity, on which dashu panics
+        return None;
+    }
     if is_zero_value(c) {
         return Some(c_int(1, wp));
     }
@@ -1394,11 +1412,70 @@ fn complex_power(w: &Complex, c: &Complex, wp: usize) -> Option<Complex> {
     Some((c * &w.ln()).exp())
 }
 
+thread_local! {
+    /// The `maxterms` of mpmath's `force_series=True` while an asymptotic
+    /// branch runs its `hypercomb`: the series of the terms summed as they
+    /// are (divergent ones until their terms are below the precision),
+    /// without the transformations of `hyper_value`.
+    static FORCED: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+/// `f` with the series of `hypercomb`'s terms forced (`force_series=True,
+/// maxterms=maxterms`).
+fn with_forced_series<T>(maxterms: usize, f: impl FnOnce() -> T) -> T {
+    /// Restores the previous setting on drop, a panic unwinding through
+    /// `f` included (else the later values of the thread stay forced).
+    struct Restore(Option<usize>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            FORCED.with(|c| c.set(self.0));
+        }
+    }
+    let _restore: Restore = Restore(FORCED.with(|c| c.replace(Some(maxterms))));
+    f()
+}
+
+/// The defining series summed as it is, the convergent and the asymptotic
+/// ones alike, until a term is below the working precision; `None` after
+/// `maxterms` terms (mpmath's `NoConvergence`).
+fn forced_series(ap: &[Complex], bq: &[Complex], z: &Complex, wp: usize, maxterms: usize) -> Option<Complex> {
+    let mut term: Complex = c_int(1, wp);
+    let mut total: Complex = term.clone();
+    for k in 0..maxterms as i64 {
+        let kk: Complex = c_int(k, wp);
+        let mut num: Complex = z.clone();
+        for a in ap {
+            num = &num * &(a + &kk);
+        }
+        let mut den: Complex = c_int(k + 1, wp);
+        for b in bq {
+            den = &den * &(b + &kk);
+        }
+        if is_zero_value(&den) {
+            return None;
+        }
+        term = &(&term * &num) / &den;
+        total = &total + &term;
+        let t: f64 = modulus(&term);
+        if !t.is_finite() {
+            return None;
+        }
+        if t == 0.0 || t.log2() < modulus(&total).log2() - wp as f64 {
+            return Some(total);
+        }
+    }
+    None
+}
+
 /// The value of one term at the working precision; `None` where a
 /// factor has no value.
 fn term_value(term: &HyperTerm, wp: usize) -> Option<Complex> {
     use crate::functions::special::gamma_numeric::gamma;
-    let mut v: Complex = hyper_value(&term.upper, &term.lower, &term.argument, wp)?;
+    let forced: Option<usize> = FORCED.with(|c| c.get());
+    let mut v: Complex = match forced {
+        Some(maxterms) => forced_series(&term.upper, &term.lower, &term.argument, wp, maxterms)?,
+        None => hyper_value(&term.upper, &term.lower, &term.argument, wp)?,
+    };
     for a in &term.gamma_numerator {
         v = &v * &gamma(a, wp)?;
     }
@@ -1780,4 +1857,537 @@ pub fn appellf1_value(v: &[Complex], prec: usize) -> Option<Complex> {
         }
     }
     Some(s)
+}
+
+// -- mpmath's asymptotic expansions of 0F1, 1F2, 2F2 and 2F3 for a large
+//    argument (functions.wolfram.com), through hypercomb with the series
+//    of its terms forced
+
+fn c_rat(p: i64, q: i64, wp: usize) -> Complex {
+    complex_real(real_rat(&crate::numbers::rat(p, q), wp), wp)
+}
+
+/// mpmath's `mag` of a complex number: `floor(log2|z|) + 1`.
+fn mag(z: &Complex) -> f64 {
+    let m: f64 = modulus(z);
+    if m == 0.0 {
+        return f64::NEG_INFINITY;
+    }
+    m.log2().floor() + 1.0
+}
+
+fn all_real(values: &[&Complex]) -> bool {
+    values.iter().all(|v| parts(v).1 == Real::ZERO)
+}
+
+fn real_part(v: &Complex, wp: usize) -> Complex {
+    complex_real(parts(v).0, wp)
+}
+
+/// `exp(i x)`.
+fn expj(x: &Complex, wp: usize) -> Complex {
+    (&complex(Real::ZERO.with_precision(wp).value(), real_int(&Int::ONE, wp)) * x).exp()
+}
+
+fn pi_c(wp: usize) -> Complex {
+    complex_real(Real::pi(wp), wp)
+}
+
+fn term(
+    bases: Vec<Complex>,
+    exponents: Vec<Complex>,
+    gamma_numerator: Vec<Complex>,
+    gamma_denominator: Vec<Complex>,
+    upper: Vec<Complex>,
+    lower: Vec<Complex>,
+    argument: Complex,
+) -> HyperTerm {
+    HyperTerm {
+        bases,
+        exponents,
+        gamma_numerator,
+        gamma_denominator,
+        upper,
+        lower,
+        argument,
+    }
+}
+
+/// `0F1(; b; z)` for `mag(z) >= 8` (mpmath's `_hyp0f1`, Hypergeometric0F1/06/02/03/0004).
+fn hyp0f1_asymptotic(b: &Complex, z: &Complex, prec: usize) -> Option<Complex> {
+    use crate::functions::special::gamma_numeric::gamma;
+    let magz: f64 = mag(z);
+    if magz.is_nan() || magz < 8.0 {
+        return None;
+    }
+    let wp: usize = prec + 12 + (magz as usize) / 2;
+    let (b, z) = (raise_to(b, wp), raise_to(z, wp));
+    let function = |_: &[Complex]| -> Vec<HyperTerm> {
+        let w: Complex = crate::core::evalf::complex_sqrt(&(&c_int(0, wp) - &z), wp);
+        let jw: Complex = &complex(Real::ZERO.with_precision(wp).value(), real_int(&Int::ONE, wp)) * &w;
+        let u: Complex = &c_int(1, wp) / &(&c_int(4, wp) * &jw);
+        let c: Complex = &c_rat(1, 2, wp) - &b;
+        let e: Complex = (&c_int(2, wp) * &jw).exp();
+        let upper: Vec<Complex> = vec![&b - &c_rat(1, 2, wp), &c_rat(3, 2, wp) - &b];
+        vec![
+            term(
+                vec![&c_int(0, wp) - &jw, e.clone()],
+                vec![c.clone(), c_int(-1, wp)],
+                vec![],
+                vec![],
+                upper.clone(),
+                vec![],
+                &c_int(0, wp) - &u,
+            ),
+            term(
+                vec![jw.clone(), e],
+                vec![c, c_int(1, wp)],
+                vec![],
+                vec![],
+                upper,
+                vec![],
+                u.clone(),
+            ),
+        ]
+    };
+    let v: Complex = with_forced_series(4 * wp, || hypercomb(&function, &[], wp))?;
+    let front: Complex = &gamma(&b, wp)? / &(&c_int(2, wp) * &crate::core::evalf::complex_sqrt(&pi_c(wp), wp));
+    let mut v: Complex = &front * &v;
+    if all_real(&[&b, &z]) {
+        v = real_part(&v, wp);
+    }
+    Some(raise_to(&v, prec))
+}
+
+/// The two exponential sums `s1`, `s2` of the leading series of 1F2 and
+/// 2F3, from the coefficients `c(k)`; `None` when the series does not
+/// converge quickly enough (mpmath's `NoConvergence`).
+fn exponential_sums(c: &dyn Fn(usize) -> Option<Complex>, z: &Complex, wp: usize) -> Option<(Complex, Complex)> {
+    let minus_z: Complex = &c_int(0, wp) - z;
+    let eps: f64 = 2f64.powi(1 - wp as i32);
+    let (mut s1, mut s2) = (c_int(0, wp), c_int(0, wp));
+    let i: Complex = complex(Real::ZERO.with_precision(wp).value(), real_int(&Int::ONE, wp));
+    let minus_i: Complex = &c_int(0, wp) - &i;
+    let (mut p1, mut p2) = (c_int(1, wp), c_int(1, wp));
+    let mut tprev: f64 = 0.0;
+    let mut negligible: bool = false;
+    let half: Complex = c_rat(1, 2, wp);
+    let mut k: usize = 0;
+    loop {
+        let exponent: Complex = &c_rat(-(k as i64), 2, wp) * &c_int(1, wp);
+        let ck: Complex = c(k)?;
+        let power: Complex = complex_power(&minus_z, &exponent, wp)?;
+        if has_infinity(&ck) || has_infinity(&power) {
+            return None;
+        }
+        let w: Complex = &ck * &power;
+        if has_infinity(&w) {
+            return None;
+        }
+        let t1: Complex = &p1 * &w;
+        let t2: Complex = &p2 * &w;
+        let size: f64 = modulus(&t1);
+        if !size.is_finite() {
+            return None;
+        }
+        // two terms in a row below the precision: mpmath stops at the first,
+        // which ends the sum too early where a coefficient vanishes exactly
+        // (c1 of 1F2(1/3; 1/2, 2; z))
+        if size < 0.1 * eps {
+            if negligible {
+                break;
+            }
+            negligible = true;
+        } else {
+            negligible = false;
+            if k > 5 && tprev / size < 1.5 {
+                return None;
+            }
+        }
+        s1 = &s1 + &t1;
+        s2 = &s2 + &t2;
+        if !negligible {
+            tprev = size;
+        }
+        k += 1;
+        p1 = &(&p1 * &minus_i) * &half;
+        p2 = &(&p2 * &i) * &half;
+        if k > 4 * wp {
+            return None;
+        }
+    }
+    Some((s1, s2))
+}
+
+/// `1F2(a1; b1, b2; z)` for a large argument (mpmath's `_hyp1f2`,
+/// Hypergeometric1F2/06/02/03).
+fn hyp1f2_asymptotic(a1: &Complex, b1: &Complex, b2: &Complex, z: &Complex, prec: usize) -> Option<Complex> {
+    let absz: f64 = modulus(z);
+    if !(absz.log2().floor() + 1.0 > 19.0 && absz.sqrt() > 1.5 * prec as f64) {
+        return None;
+    }
+    let wp: usize = prec + (mag(z) as usize) / 2;
+    let (a1, b1, b2, z) = (raise_to(a1, wp), raise_to(b1, wp), raise_to(b2, wp), raise_to(z, wp));
+    let function = |p: &[Complex]| -> Vec<HyperTerm> {
+        let (a1, b1, b2) = (&p[0], &p[1], &p[2]);
+        let r = |n: i64, d: i64| c_rat(n, d, wp);
+        let x: Complex = &r(1, 2) * &(&(&(a1 - b1) - b2) + &r(1, 2));
+        let d: Complex = &(a1 - b1) - b2;
+        let three_a: Complex = &(&(&(&c_int(3, wp) * a1) + b1) + b2) - &c_int(2, wp);
+        let bb: Complex = b1 * b2;
+        let c1: Complex = &c_int(2, wp) * &(&(&(&r(1, 4) * &(&three_a * &d)) + &bb) - &r(3, 16));
+        let inner: Complex = &(&bb + &(&r(1, 4) * &(&d * &three_a))) - &r(3, 16);
+        let cubic: Complex = &(&(&(&c_int(-8, wp) * &(a1 * a1)) + &(&c_int(11, wp) * a1)) + &(b1 + b2)) - &c_int(2, wp);
+        // c2 = 2*inner**2 + (-16*(2*a1 - 3)*b1*b2 + 4*(a1 - b1 - b2)*cubic - 3)/16
+        let first: Complex = &(&c_int(-16, wp) * &(&(&c_int(2, wp) * a1) - &c_int(3, wp))) * &bb;
+        let second: Complex = &(&c_int(4, wp) * &d) * &cubic;
+        let bracket: Complex = &(&first + &second) - &c_int(3, wp);
+        let c2: Complex = &(&c_int(2, wp) * &(&inner * &inner)) + &(&r(1, 16) * &bracket);
+        let coefficients = std::cell::RefCell::new(vec![c_int(1, wp), c1, c2]);
+        let c = |k: usize| -> Option<Complex> {
+            let mut cs = coefficients.borrow_mut();
+            while cs.len() <= k {
+                let k_: Complex = c_int(cs.len() as i64, wp);
+                let n: usize = cs.len();
+                // uu1 = 3k**2 + (-6a1 + 2b1 + 2b2 - 4)k + 3a1**2 - (b1 - b2)**2
+                //       - 2a1(b1 + b2 - 2) + 1/4
+                let linear: Complex =
+                    &(&(&(&c_int(-6, wp) * a1) + &(&c_int(2, wp) * b1)) + &(&c_int(2, wp) * b2)) - &c_int(4, wp);
+                let diff: Complex = b1 - b2;
+                let mut uu1: Complex = &(&c_int(3, wp) * &(&k_ * &k_)) + &(&linear * &k_);
+                uu1 = &uu1 + &(&c_int(3, wp) * &(a1 * a1));
+                uu1 = &uu1 - &(&diff * &diff);
+                uu1 = &uu1 - &(&(&c_int(2, wp) * a1) * &(&(b1 + b2) - &c_int(2, wp)));
+                uu1 = &uu1 + &r(1, 4);
+                let uu2: Complex = &(&(&(&(&(&k_ - a1) + b1) - b2) - &r(1, 2))
+                    * &(&(&(&(&k_ - a1) - b1) + b2) - &r(1, 2)))
+                    * &(&(&(&(&k_ - a1) + b1) + b2) - &r(5, 2));
+                let next: Complex = &(&(&uu1 * &cs[n - 1]) - &(&uu2 * &cs[n - 2])) / &(&c_int(2, wp) * &k_);
+                if has_infinity(&next) {
+                    return None;
+                }
+                cs.push(next);
+            }
+            Some(cs[k].clone())
+        };
+        let Some((s1, s2)) = exponential_sums(&c, &z, wp) else {
+            return Vec::new();
+        };
+        let minus_z: Complex = &c_int(0, wp) - &z;
+        let phase: Complex = &(&pi_c(wp) * &x) + &(&c_int(2, wp) * &crate::core::evalf::complex_sqrt(&minus_z, wp));
+        let s: Complex = &(&expj(&phase, wp) * &s1) + &(&expj(&(&c_int(0, wp) - &phase), wp) * &s2);
+        vec![
+            term(
+                vec![&r(1, 2) * &s, pi_c(wp), minus_z.clone()],
+                vec![c_int(1, wp), r(-1, 2), x.clone()],
+                vec![b1.clone(), b2.clone()],
+                vec![a1.clone()],
+                vec![],
+                vec![],
+                c_int(0, wp),
+            ),
+            term(
+                vec![minus_z.clone()],
+                vec![&c_int(0, wp) - a1],
+                vec![b1.clone(), b2.clone()],
+                vec![b1 - a1, b2 - a1],
+                vec![a1.clone(), &(a1 - b1) + &c_int(1, wp), &(a1 - b2) + &c_int(1, wp)],
+                vec![],
+                &c_int(1, wp) / &z,
+            ),
+        ]
+    };
+    asymptotic_combination(
+        &function,
+        &[a1.clone(), b1.clone(), b2.clone()],
+        &[&a1, &b1, &b2, &z],
+        prec,
+        wp,
+    )
+}
+
+/// `hypercomb` of an asymptotic branch with its series forced, the real
+/// part for real data, `None` when the leading series does not converge
+/// (an empty list of terms) or hypercomb gives up.
+fn asymptotic_combination(
+    function: &dyn Fn(&[Complex]) -> Vec<HyperTerm>,
+    params: &[Complex],
+    data: &[&Complex],
+    prec: usize,
+    wp: usize,
+) -> Option<Complex> {
+    // the leading series of the branch did not converge (mpmath's
+    // NoConvergence): an empty list of terms, which hypercomb would sum to 0
+    let failed: std::cell::Cell<bool> = std::cell::Cell::new(false);
+    let checked = |p: &[Complex]| -> Vec<HyperTerm> {
+        let terms: Vec<HyperTerm> = function(p);
+        if terms.is_empty() {
+            failed.set(true);
+        }
+        terms
+    };
+    let found: Option<Complex> = with_forced_series(4 * wp, || hypercomb(&checked, params, wp));
+    if failed.get() {
+        return None;
+    }
+    let mut v: Complex = found?;
+    if all_real(data) {
+        v = real_part(&v, wp);
+    }
+    Some(raise_to(&v, prec))
+}
+
+/// `2F2(a1, a2; b1, b2; z)` for `mag(|z|) > 3` (mpmath's `_hyp2f2`,
+/// Hypergeometric2F2/06/02/02/0002).
+fn hyp2f2_asymptotic(
+    a1: &Complex,
+    a2: &Complex,
+    b1: &Complex,
+    b2: &Complex,
+    z: &Complex,
+    prec: usize,
+) -> Option<Complex> {
+    if mag(z).is_nan() || mag(z) <= 3.0 {
+        return None;
+    }
+    let wp: usize = prec + mag(z) as usize;
+    let (a1, a2, b1, b2, z) = (
+        raise_to(a1, wp),
+        raise_to(a2, wp),
+        raise_to(b1, wp),
+        raise_to(b2, wp),
+        raise_to(z, wp),
+    );
+    let function = |p: &[Complex]| -> Vec<HyperTerm> {
+        let (a1, a2, b1, b2) = (&p[0], &p[1], &p[2], &p[3]);
+        let x: Complex = &(&(a1 + a2) - b1) - b2;
+        let a_2: Complex = a1 + a2;
+        let b_2: Complex = b1 + b2;
+        let c1: Complex = &(&(&(&a_2 - &c_int(1, wp)) * &x) + &(b1 * b2)) - &(a1 * a2);
+        let coefficients = std::cell::RefCell::new(vec![c_int(1, wp), c1]);
+        let eps: f64 = 2f64.powi(1 - wp as i32);
+        let mut s1: Complex = c_int(0, wp);
+        let mut tprev: f64 = 0.0;
+        let mut negligible: bool = false;
+        let mut zk: Complex = c_int(1, wp);
+        let inverse: Complex = &c_int(1, wp) / &z;
+        let mut k: usize = 0;
+        loop {
+            {
+                let mut cs = coefficients.borrow_mut();
+                while cs.len() <= k {
+                    let n: usize = cs.len();
+                    let k_: Complex = c_int(n as i64, wp);
+                    let uu1: Complex = &(&(&(&(&(&(&(&(&(&c_int(1, wp) - &b_2) + &(&c_int(2, wp) * a1))
+                        + &(a1 * a1))
+                        + &(&c_int(2, wp) * a2))
+                        + &(a2 * a2))
+                        - &(&a_2 * &b_2))
+                        + &(a1 * a2))
+                        + &(b1 * b2))
+                        + &(&(&(&c_int(2, wp) * &b_2) - &(&c_int(3, wp) * &(&a_2 + &c_int(1, wp)))) * &k_))
+                        + &(&c_int(2, wp) * &(&k_ * &k_));
+                    let uu2: Complex = &(&(&(&(&k_ - &a_2) + b1) - &c_int(1, wp))
+                        * &(&(&(&k_ - &a_2) + b2) - &c_int(1, wp)))
+                        * &(&(&k_ - &x) - &c_int(2, wp));
+                    let next: Complex = &(&(&uu1 * &cs[n - 1]) - &(&uu2 * &cs[n - 2])) / &k_;
+                    if has_infinity(&next) {
+                        return Vec::new();
+                    }
+                    cs.push(next);
+                }
+            }
+            let t1: Complex = &coefficients.borrow()[k] * &zk;
+            let size: f64 = modulus(&t1);
+            if !size.is_finite() {
+                return Vec::new();
+            }
+            // two terms in a row below the precision: mpmath stops at the first,
+            // which ends the sum too early where a coefficient vanishes exactly
+            // (c1 of 1F2(1/3; 1/2, 2; z))
+            if size < 0.1 * eps {
+                if negligible {
+                    break;
+                }
+                negligible = true;
+            } else {
+                negligible = false;
+                if k > 5 && tprev / size < 1.5 {
+                    return Vec::new();
+                }
+            }
+            s1 = &s1 + &t1;
+            if !negligible {
+                tprev = size;
+            }
+            k += 1;
+            zk = &zk * &inverse;
+            if k > 4 * wp {
+                return Vec::new();
+            }
+        }
+        let s: Complex = &z.exp() * &s1;
+        let minus_z: Complex = &c_int(0, wp) - &z;
+        let minus_inverse: Complex = &c_int(0, wp) - &inverse;
+        let one: Complex = c_int(1, wp);
+        vec![
+            term(
+                vec![z.clone(), s],
+                vec![x.clone(), one.clone()],
+                vec![b1.clone(), b2.clone()],
+                vec![a1.clone(), a2.clone()],
+                vec![],
+                vec![],
+                c_int(0, wp),
+            ),
+            term(
+                vec![minus_z.clone()],
+                vec![&c_int(0, wp) - a1],
+                vec![b1.clone(), b2.clone(), a2 - a1],
+                vec![a2.clone(), b1 - a1, b2 - a1],
+                vec![a1.clone(), &(a1 - b1) + &one, &(a1 - b2) + &one],
+                vec![&(a1 - a2) + &one],
+                minus_inverse.clone(),
+            ),
+            term(
+                vec![minus_z],
+                vec![&c_int(0, wp) - a2],
+                vec![b1.clone(), b2.clone(), a1 - a2],
+                vec![a1.clone(), b1 - a2, b2 - a2],
+                vec![a2.clone(), &(a2 - b1) + &one, &(a2 - b2) + &one],
+                vec![&(a2 - a1) + &one],
+                minus_inverse,
+            ),
+        ]
+    };
+    asymptotic_combination(
+        &function,
+        &[a1.clone(), a2.clone(), b1.clone(), b2.clone()],
+        &[&a1, &a2, &b1, &b2, &z],
+        prec,
+        wp,
+    )
+}
+
+/// `2F3(a1, a2; b1, b2, b3; z)` for a large argument (mpmath's `_hyp2f3`,
+/// Hypergeometric2F3/06/02/03/01/0002).
+fn hyp2f3_asymptotic(a: &[Complex], b: &[Complex], z: &Complex, prec: usize) -> Option<Complex> {
+    let absz: f64 = modulus(z);
+    if !(absz.log2().floor() + 1.0 > 19.0 && absz.sqrt() > 1.5 * prec as f64) {
+        return None;
+    }
+    let wp: usize = prec + (mag(z) as usize) / 2;
+    let params: Vec<Complex> = a.iter().chain(b).map(|v| raise_to(v, wp)).collect();
+    let z: Complex = raise_to(z, wp);
+    let function = |p: &[Complex]| -> Vec<HyperTerm> {
+        let (a1, a2, b1, b2, b3) = (&p[0], &p[1], &p[2], &p[3], &p[4]);
+        let r = |n: i64, d: i64| c_rat(n, d, wp);
+        let ci = |n: i64| c_int(n, wp);
+        let x: Complex = &r(1, 2) * &(&(&(&(&(a1 + a2) - b1) - b2) - b3) + &r(1, 2));
+        let a_2: Complex = a1 + a2;
+        let b_3: Complex = &(b1 + b2) + b3;
+        let aa: Complex = a1 * a2;
+        let bb: Complex = &(&(b1 * b2) + &(b3 * b2)) + &(b1 * b3);
+        let rr: Complex = &(b1 * b2) * b3;
+        let c1: Complex = &ci(2)
+            * &(&(&(&bb - &aa) + &(&(&r(1, 4) * &(&(&(&ci(3) * &a_2) + &b_3) - &ci(2))) * &(&a_2 - &b_3))) - &r(3, 16));
+        let quad: Complex = &(&(&(&(&ci(-8) * &(&a_2 * &a_2)) + &(&ci(11) * &a_2)) + &(&ci(8) * &aa)) + &b_3) - &ci(2);
+        let c2: Complex = &(&r(1, 2) * &(&c1 * &c1))
+            + &(&r(1, 16)
+                * &(&(&(&(&ci(-16) * &(&(&ci(2) * &a_2) - &ci(3))) * &(&bb - &aa)) + &(&ci(32) * &rr))
+                    + &(&(&(&ci(4) * &quad) * &(&a_2 - &b_3)) - &ci(3))));
+        let coefficients = std::cell::RefCell::new(vec![ci(1), c1.clone(), c2]);
+        let c = |k: usize| -> Option<Complex> {
+            let mut cs = coefficients.borrow_mut();
+            while cs.len() <= k {
+                let n: usize = cs.len();
+                let k_: Complex = ci(n as i64);
+                let km: Complex = &k_ - &ci(1);
+                let two_x: Complex = &ci(2) * &x;
+                let uu1: Complex = &(&(&(&(&k_ - &two_x) - &ci(3)) * &(&(&(&k_ - &two_x) - &(&ci(2) * b1)) - &ci(1)))
+                    * &(&(&(&k_ - &two_x) - &(&ci(2) * b2)) - &ci(1)))
+                    * &(&(&(&k_ - &two_x) - &(&ci(2) * b3)) - &ci(1));
+                let km2: Complex = &km * &km;
+                let km3: Complex = &km2 * &km;
+                let x2: Complex = &x * &x;
+                let x3: Complex = &x2 * &x;
+                let uu2: Complex = &(&(&(&(&(&(&(&(&ci(4) * &km3)
+                    - &(&(&ci(6) * &(&(&ci(4) * &x) + &b_3)) * &km2))
+                    + &(&(&ci(2)
+                        * &(&(&(&(&(&ci(24) * &x2) + &(&(&ci(12) * &b_3) * &x)) + &(&ci(4) * &bb)) + &b_3)
+                            - &ci(1)))
+                        * &km))
+                    - &(&ci(32) * &x3))
+                    - &(&(&ci(24) * &b_3) * &x2))
+                    - &(&ci(4) * &bb))
+                    - &(&ci(8) * &rr))
+                    - &(&(&ci(4) * &(&(&(&ci(4) * &bb) + &b_3) - &ci(1))) * &x))
+                    + &(&(&ci(2) * &b_3) - &ci(1));
+                let uu3: Complex = &(&(&ci(5) * &km2)
+                    + &(&(&ci(2) * &(&(&(&(&ci(-10) * &x) + &a_2) - &(&ci(3) * &b_3)) + &ci(3))) * &km))
+                    + &(&ci(2) * &c1);
+                let next: Complex =
+                    &(&(&(&uu1 * &cs[n - 3]) - &(&uu2 * &cs[n - 2])) + &(&uu3 * &cs[n - 1])) / &(&ci(2) * &k_);
+                if has_infinity(&next) {
+                    return None;
+                }
+                cs.push(next);
+            }
+            Some(cs[k].clone())
+        };
+        let Some((s1, s2)) = exponential_sums(&c, &z, wp) else {
+            return Vec::new();
+        };
+        let minus_z: Complex = &ci(0) - &z;
+        let phase: Complex = &(&pi_c(wp) * &x) + &(&ci(2) * &crate::core::evalf::complex_sqrt(&minus_z, wp));
+        let s: Complex = &(&expj(&phase, wp) * &s1) + &(&expj(&(&ci(0) - &phase), wp) * &s2);
+        let one: Complex = ci(1);
+        let inverse: Complex = &one / &z;
+        vec![
+            term(
+                vec![&r(1, 2) * &s, pi_c(wp), minus_z.clone()],
+                vec![one.clone(), r(-1, 2), x.clone()],
+                vec![b1.clone(), b2.clone(), b3.clone()],
+                vec![a1.clone(), a2.clone()],
+                vec![],
+                vec![],
+                ci(0),
+            ),
+            term(
+                vec![minus_z.clone()],
+                vec![&ci(0) - a1],
+                vec![b1.clone(), b2.clone(), b3.clone(), a2 - a1],
+                vec![a2.clone(), b1 - a1, b2 - a1, b3 - a1],
+                vec![a1.clone(), &(a1 - b1) + &one, &(a1 - b2) + &one, &(a1 - b3) + &one],
+                vec![&(a1 - a2) + &one],
+                inverse.clone(),
+            ),
+            term(
+                vec![minus_z],
+                vec![&ci(0) - a2],
+                vec![b1.clone(), b2.clone(), b3.clone(), a1 - a2],
+                vec![a1.clone(), b1 - a2, b2 - a2, b3 - a2],
+                vec![a2.clone(), &(a2 - b1) + &one, &(a2 - b2) + &one, &(a2 - b3) + &one],
+                vec![&(a2 - a1) + &one],
+                inverse,
+            ),
+        ]
+    };
+    let data: Vec<&Complex> = params.iter().chain(std::iter::once(&z)).collect();
+    asymptotic_combination(&function, &params, &data, prec, wp)
+}
+
+/// The asymptotic branch of mpmath's `hyper` for `0F1`, `1F2`, `2F2` and
+/// `2F3` at a large argument, `None` elsewhere (the defining series then).
+fn small_pq_asymptotic(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> Option<Complex> {
+    if has_infinity(z) || ap.iter().chain(bq).any(has_infinity) {
+        return None;
+    }
+    match (ap.len(), bq.len()) {
+        (0, 1) => hyp0f1_asymptotic(&bq[0], z, prec),
+        (1, 2) => hyp1f2_asymptotic(&ap[0], &bq[0], &bq[1], z, prec),
+        (2, 2) => hyp2f2_asymptotic(&ap[0], &ap[1], &bq[0], &bq[1], z, prec),
+        (2, 3) => hyp2f3_asymptotic(ap, bq, z, prec),
+        _ => None,
+    }
 }
