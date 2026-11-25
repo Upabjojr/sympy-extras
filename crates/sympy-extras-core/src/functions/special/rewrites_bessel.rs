@@ -4,12 +4,8 @@
 //! `bessel.py` and `spherical_harmonics.py`), keyed by the head and the
 //! SymPy name of the target. A rule returns `None` where SymPy leaves the
 //! node. The Bessel rules of `functions/special/_rewrites.py` are here
-//! too. Not ported: the rules through `polar_lift` (`besselj` and
-//! `besseli` into each other, `besseli` into `bessely` and `jn`, and the
-//! rules composed with them, `bessely` into `besseli` and `besselk` into
-//! `besselj`, `bessely` and `yn` for a non-integer order; the core has no
-//! polar numbers) and those of `Ynm`
-//! into `cos` and `sin` (they need `simplify`).
+//! too. Not ported: the rules of `Ynm` into `cos` and `sin` (they need
+//! `simplify`).
 
 use crate::core::assumptions::Predicate;
 use crate::core::basic::{Basic, Function};
@@ -169,10 +165,45 @@ fn besselk_besselj(_e: &Basic, args: &[Basic], h: &RewriteHints) -> O {
     rewritten(besselk_as_besseli(&args[0], &args[1])?, "besselj", h)
 }
 
-fn polar(_e: &Basic, _args: &[Basic], _h: &RewriteHints) -> O {
-    Err(not_ported(
-        "besseli through polar_lift(I) (the core has no polar numbers)",
-    ))
+/// `exp(sign*I*pi*nu/2)*f(nu, polar_lift(-sign*I)*z)`: `besselj` as
+/// `besseli` (`sign = 1`) and `besseli` as `besselj` (`sign = -1`).
+fn polar_form(f: Function, sign: i64, nu: &Basic, z: &Basic) -> R {
+    use crate::functions::elementary::polar::polar_lift;
+    let phase: Basic = crate::functions::elementary::exponential::exp(&div(
+        &mul(&[int(sign), i_unit(), pi(), nu.clone()])?,
+        &int(2),
+    )?)?;
+    let lifted: Basic = polar_lift(&mul(&[int(-sign), i_unit()])?)?;
+    mul(&[phase, b(f, nu, &mul(&[lifted, z.clone()])?)?])
+}
+
+fn besselj_besseli(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    Ok(Some(polar_form(Function::BesselI, 1, &args[0], &args[1])?))
+}
+
+fn besseli_besselj(_e: &Basic, args: &[Basic], _h: &RewriteHints) -> O {
+    Ok(Some(polar_form(Function::BesselJ, -1, &args[0], &args[1])?))
+}
+
+/// `besseli` as `besselj`, `None` where `besselj` evaluates back to
+/// `besseli` (an integer order: `besselj(n, polar_lift(I)*z)` is
+/// `I**n*besseli(n, z)`, which SymPy rewrites again without end).
+fn besseli_through_besselj(e: &Basic) -> PolyResult<Option<Basic>> {
+    let (nu, z) = order_arg(e);
+    let form: Basic = polar_form(Function::BesselJ, -1, &nu, &z)?;
+    Ok(if has_besseli(&form) { None } else { Some(form) })
+}
+
+fn has_besseli(e: &Basic) -> bool {
+    e.is_function(Function::BesselI) || e.args().iter().any(has_besseli)
+}
+
+fn besseli_bessely(e: &Basic, _args: &[Basic], h: &RewriteHints) -> O {
+    rewritten(besseli_through_besselj(e)?, "bessely", h)
+}
+
+fn besseli_jn(e: &Basic, _args: &[Basic], h: &RewriteHints) -> O {
+    rewritten(besseli_through_besselj(e)?, "jn", h)
 }
 
 // -- the spherical Bessel functions
@@ -672,13 +703,15 @@ pub fn rule_for(f: Function, target: &str) -> Option<Rule> {
         (F::Ei, "li") => ei_li,
         (F::BesselJ, "bessely") => besselj_bessely,
         (F::BesselJ, "jn") => besselj_jn,
-        (F::BesselJ, "besseli") | (F::BesselI, "besselj") => polar,
+        (F::BesselJ, "besseli") => besselj_besseli,
+        (F::BesselI, "besselj") => besseli_besselj,
         (F::BesselY, "besselj") => bessely_besselj,
         (F::BesselK, "besseli") => besselk_besseli,
         (F::BesselK, "besselj") => besselk_besselj,
         (F::BesselY, "besseli") => bessely_besseli,
         (F::BesselY, "yn") => bessely_yn,
-        (F::BesselI, "bessely") | (F::BesselI, "jn") => polar,
+        (F::BesselI, "bessely") => besseli_bessely,
+        (F::BesselI, "jn") => besseli_jn,
         (F::BesselK, "bessely") => besselk_bessely,
         (F::BesselK, "yn") => besselk_yn,
         (F::SphericalJ, "besselj") => jn_besselj,

@@ -525,7 +525,7 @@ fn spherical_rule(node: &Basic) -> PolyResult<Option<Basic>> {
 }
 
 // PORTED FROM SYMPY: sympy/functions/special/zeta_functions.py:lerchphi._eval_expand_func
-fn lerchphi_rule(node: &Basic) -> PolyResult<Option<Basic>> {
+pub(crate) fn lerchphi_rule(node: &Basic) -> PolyResult<Option<Basic>> {
     use crate::functions::combinatorial::factorials::binomial;
     use crate::functions::special::zeta_functions::zeta;
     let (z, s, a) = (&node.args()[0], &node.args()[1], &node.args()[2]);
@@ -797,8 +797,17 @@ fn meijerg_rule(node: &Basic) -> PolyResult<Option<Basic>> {
         .map(Some)
 }
 
-fn not_ported_rule(node: &Basic) -> PolyResult<Option<Basic>> {
-    Err(not_ported(&format!("expand_func of {}", node.class_name())))
+/// `_to_erf`: `node.rewrite(erf)`.
+fn to_erf_rule(node: &Basic) -> PolyResult<Option<Basic>> {
+    let hints = crate::core::rewriting::RewriteHints::default();
+    Ok(Some(crate::core::rewriting::rewrite(node, &[], "erf", &hints)?))
+}
+
+/// `_expint`: `node.rewrite(Ei).rewrite(expint)`.
+fn expint_rule(node: &Basic) -> PolyResult<Option<Basic>> {
+    let hints = crate::core::rewriting::RewriteHints::default();
+    let ei: Basic = crate::core::rewriting::rewrite(node, &[], "Ei", &hints)?;
+    Ok(Some(crate::core::rewriting::rewrite(&ei, &[], "expint", &hints)?))
 }
 
 fn rule_for(e: &Basic) -> Option<Rule> {
@@ -819,8 +828,9 @@ fn rule_for(e: &Basic) -> Option<Rule> {
             F::BesselJ | F::BesselY | F::BesselI | F::BesselK | F::Hankel1 | F::Hankel2 => bessel_rule,
             F::SphericalJ | F::SphericalY | F::SphericalHankel1 | F::SphericalHankel2 => spherical_rule,
             F::Ynm => ynm_rule,
-            // erf rewrites, Ei rewrites, pattern matching: not ported
-            F::Erfc | F::Erfi | F::Erf2 | F::Expint => not_ported_rule,
+            // erfc, erfi and erf2 as erf (`_to_erf`), expint through Ei
+            F::Erfc | F::Erfi | F::Erf2 => to_erf_rule,
+            F::Expint => expint_rule,
             F::AiryAi | F::AiryBi | F::AiryAiPrime | F::AiryBiPrime => airy_rule,
             _ => return None,
         },

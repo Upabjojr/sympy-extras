@@ -21,7 +21,7 @@ HINTS: list[dict[str, bool]] = [{}, {"deep": False}, {"mul": False, "multinomial
 
 def node(rng: random.Random) -> Any:
     from sympy_extras.core import GoldenRatio, I, Integer, Rational, Symbol, TribonacciConstant, pi
-    from sympy_extras.functions import (Ynm, airyai, airyaiprime, airybi, airybiprime, beta, exp, besseli, besselj, besselk, bessely, binomial, digamma, gamma, hankel1,
+    from sympy_extras.functions import (Ynm, erf2, erfc, erfi, expint, airyai, airyaiprime, airybi, airybiprime, beta, exp, besseli, besselj, besselk, bessely, binomial, digamma, gamma, hankel1,
                                         harmonic, hn1, hn2, hyper, jn, lerchphi, loggamma, polygamma, polylog,
                                         trigamma, yn, zeta)
     x, y = Symbol('x'), Symbol('y')
@@ -45,6 +45,8 @@ def node(rng: random.Random) -> Any:
                 lambda: rng.choice([jn, yn, hn1, hn2])(rng.choice([0, 1, 2, -1, -2, s]), x),
                 lambda: Ynm(rng.choice([0, 1, 2]), rng.choice([0, 1, -1]), y, x),
                 lambda: hyper([x, y], [s], 1), lambda: GoldenRatio, lambda: TribonacciConstant,
+                lambda: rng.choice([erfc, erfi])(rng.choice([x, 2*x + 1, I*x, Rational(1, 2)])), lambda: erf2(x, y + 1),
+                lambda: expint(rng.choice([Integer(1), Integer(2), Integer(3), s, Rational(1, 2)]), rng.choice([x, 2*x])),
                 lambda: rng.choice([airyai, airybi, airyaiprime, airybiprime])(
                     rng.choice([(2*x**3)**Rational(1, 3), 3*(x**3)**Rational(2, 3), (x**6)**Rational(1, 3), x, (x**2)**Rational(1, 2),
                                 (y*x**3)**Rational(1, 3), 2*x + 1]))]

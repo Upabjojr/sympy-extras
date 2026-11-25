@@ -14,6 +14,7 @@ pub mod mathieu_functions;
 pub mod polynomials;
 pub mod rewrites_bessel;
 pub mod rewrites_polynomials;
+pub mod rewrites_special;
 pub mod singularity_functions;
 pub mod spherical_harmonics;
 pub mod tensor_functions;

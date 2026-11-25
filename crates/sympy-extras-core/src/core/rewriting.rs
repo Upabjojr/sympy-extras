@@ -400,6 +400,7 @@ pub fn rewrite(e: &Basic, patterns: &[Function], target: &str, hints: &RewriteHi
     if !PORTED_TARGETS.contains(&target)
         && !crate::functions::special::rewrites_bessel::TARGETS.contains(&target)
         && !crate::functions::special::rewrites_polynomials::TARGETS.contains(&target)
+        && !crate::functions::special::rewrites_special::TARGETS.contains(&target)
         && target != "polynomial"
     {
         return Err(not_ported(&format!("rewrite in terms of {}", target)));
@@ -432,6 +433,11 @@ fn rewrite_rec(e: &Basic, patterns: &[Function], target: &str, hints: &RewriteHi
         })
         .or_else(|| match e.head() {
             Head::Function(f) => crate::functions::special::rewrites_polynomials::rule_for(*f, target),
+            _ => None,
+        })
+        .or_else(|| match e.head() {
+            Head::Function(f) => crate::functions::special::rewrites_special::rule_for(*f, target),
+            Head::Hyper if target == "Sum" => Some(crate::functions::special::rewrites_special::hyper_sum as Rule),
             _ => None,
         });
         if let Some(rule) = rule {

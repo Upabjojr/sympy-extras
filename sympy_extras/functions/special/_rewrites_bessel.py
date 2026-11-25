@@ -15,6 +15,7 @@ where SymPy's leaves the node as it is.
 # see sympy_extras/LICENSE-SymPy.
 # Changes: typed; a table keyed by (class, target) in place of methods; hn1, hn2 as hankel1, hankel2 of
 # order nu + 1/2 and the order -2/3 in airyaiprime as besseli off the right half plane (SymPy's are bugs).
+# besseli of an integer order into bessely and jn left as it is (SymPy's recurse without end).
 # ---------------------------------------------------------------------
 from __future__ import annotations
 
@@ -102,16 +103,28 @@ def _bessely_yn(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optiona
     return sqrt(2 * z / pi) * yn(nu - HALF, _order_arg(e)[1])
 
 
+def _besseli_through_besselj(e: Expr) -> Optional[Expr]:
+    """``besseli`` as ``besselj``, ``None`` where ``besselj`` evaluates back
+    to ``besseli`` (an integer order: ``besselj(n, polar_lift(I)*z)`` is
+    ``I**n*besseli(n, z)``; SymPy then rewrites that ``besseli`` again,
+    without end: a RecursionError)."""
+    from .bessel import BesselI
+    form = _besseli_as_besselj(*_order_arg(e))
+    return None if form.has(BesselI) else form
+
+
 # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besseli._eval_rewrite_as_bessely
 def _besseli_bessely(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from .bessel import BesselY
-    return _rewritten(_besseli_as_besselj(*_order_arg(e)), BesselY, hints)
+    form = _besseli_through_besselj(e)
+    return None if form is None else _rewritten(form, BesselY, hints)
 
 
 # PORTED FROM SYMPY: sympy/functions/special/bessel.py:besseli._eval_rewrite_as_jn
 def _besseli_jn(e: Expr, args: tuple[Expr, ...], hints: RewriteHints) -> Optional[Expr]:
     from .bessel import SphericalJ
-    return _rewritten(_besseli_as_besselj(*_order_arg(e)), SphericalJ, hints)
+    form = _besseli_through_besselj(e)
+    return None if form is None else _rewritten(form, SphericalJ, hints)
 
 
 def _besselk_as_bessely(e: Expr, hints: RewriteHints) -> Optional[Expr]:

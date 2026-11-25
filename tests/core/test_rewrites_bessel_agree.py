@@ -60,12 +60,8 @@ def test_rewrite(rust: Any, index: int) -> None:
         assert got == expected, (e, name, got, expected)
 
 
-#: the rules the Rust port does not have: through polar_lift (the core has
-#: no polar numbers; bessely into besseli and besselk into bessely and yn
-#: compose with them), and Ynm into cos and sin (simplify)
-NOT_PORTED = {('BesselJ', 'besseli'), ('BesselI', 'besselj'), ('BesselI', 'bessely'), ('BesselI', 'jn'),
-              ('BesselK', 'besselj'), ('BesselY', 'besseli'), ('BesselK', 'bessely'), ('BesselK', 'yn'),
-              ('YnmNode', 'cos'), ('YnmNode', 'sin')}
+#: the rules the Rust port does not have: Ynm into cos and sin (simplify)
+NOT_PORTED = {('YnmNode', 'cos'), ('YnmNode', 'sin')}
 
 
 def _not_ported(e: Any, target: str) -> bool:

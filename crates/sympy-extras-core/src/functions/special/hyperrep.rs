@@ -425,7 +425,7 @@ fn big_minus(f: Function, p: &[Basic], x: &Basic, n: &Basic) -> PolyResult<Basic
 /// The closed form of a `HyperRep` node: for small arguments
 /// (`nonrepsmall`), or on every branch (`nonrep`: the big form for `|x| >
 /// 1`).
-fn closed_form(f: Function, e: &Basic, small_only: bool) -> PolyResult<Basic> {
+pub(crate) fn closed_form(f: Function, e: &Basic, small_only: bool) -> PolyResult<Basic> {
     use crate::core::relational::gt;
     use crate::functions::elementary::complexes::abs_;
     let args: &[Basic] = e.args();
