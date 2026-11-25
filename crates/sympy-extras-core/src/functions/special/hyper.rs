@@ -940,7 +940,18 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
             }
         }
         if *z == c_int(1, prec) {
-            return None; // Saalschütz-type sums and the poles at 1: not ported
+            // the series diverges at 1 unless re(sum b - sum a) > 0 (mpmath:
+            // infinity); else the summations below, as mpmath
+            let mut excess: Complex = c_int(0, prec + 10);
+            for b in bq {
+                excess = &excess + b;
+            }
+            for a in ap {
+                excess = &excess - a;
+            }
+            if parts(&excess).0 <= Real::ZERO {
+                return None;
+            }
         }
         let near_one: bool = modulus(&(z - &c_int(1, prec + 10))) < 0.05;
         if ap.len() == 3 && near_one {

@@ -200,7 +200,9 @@ def test_values(rust: Any) -> None:
              (*t3, Rational(97, 100) + I/50),
              ((Rational(1, 2), Rational(1, 3), Rational(1, 4), Rational(1, 5)), (Rational(3, 2), 2, Rational(5, 2)),
               -Rational(21, 20)),
-             ((1, 1, 1), (2, 2), -Integer(1))]
+             ((1, 1, 1), (2, 2), -Integer(1)),
+             # at 1 where the series converges (zeta(2))
+             ((1, 1, 1), (2, 2), Integer(1))]
     for ap, bq, z in cases:
         args = [Tuple(*ap), Tuple(*bq), z]
         e, r = hy.hyper(*args), rc.logic_call('hyper', args)
