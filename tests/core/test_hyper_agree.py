@@ -212,6 +212,27 @@ def test_values(rust: Any) -> None:
             assert close_in_modulus(vr, finite(numeric_value(e, prec + 200)), prec), (e, prec)
 
 
+def test_euler_maclaurin_values(rust: Any) -> None:
+    """``(q+1)Fq`` where mpmath's acceleration fails and its Euler-Maclaurin
+    summation gives the value (at 53 bits: the 200-bit references take
+    minutes)."""
+    from sympy_extras.core import Integer, Rational
+    from sympy_extras.core.containers import Tuple
+    from sympy_extras.core.evalf import numeric_value
+    from sympy_extras.functions.special import hyper as hy
+    rc = load("sympy_extras_rs.core")
+    cases = [((Rational(1, 2), Rational(1, 3), Rational(1, 4)), (Rational(3, 2), 2), Integer(1)),
+             ((Rational(1, 2), Rational(1, 3), Rational(1, 4), Rational(1, 5)), (Rational(3, 2), 2, Rational(5, 2)),
+              Integer(1)),
+             ((Rational(1, 2), Rational(1, 2), Rational(1, 2)), (1, 1), Rational(999, 1000))]
+    for ap, bq, z in cases:
+        args = [Tuple(*ap), Tuple(*bq), z]
+        e, r = hy.hyper(*args), rc.logic_call('hyper', args)
+        vr = rc.numeric_value(r, 53)
+        assert vr is not None, e
+        assert close_in_modulus(vr, finite(numeric_value(e, 120)), 53), e
+
+
 def test_meijerg_values(rust: Any) -> None:
     """The values of ``meijerg`` by Slater's theorem (mpmath's ``meijerg``):
     distinct ``b``, ``b`` differing by integers (the perturbation of the

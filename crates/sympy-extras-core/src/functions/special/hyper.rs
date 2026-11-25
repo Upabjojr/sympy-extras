@@ -932,8 +932,8 @@ pub fn hyper_value(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> 
         // mpmath's _hypq1fq: the direct summation inside the unit circle
         // (hypsum's maxterms, wp*100), on NoConvergence or beyond it the
         // alternate summation of 3F2 near 1, the 'r+s' acceleration of
-        // the series near the circle (its Euler-Maclaurin summation after
-        // them is not ported: no value), the 1/z transformation outside
+        // the series near the circle and its Euler-Maclaurin summation
+        // when that fails, the 1/z transformation outside
         if size < 1.0 {
             if let Some(v) = defining_series_value(ap, bq, z, None, prec, ((prec + 50) * 100) as i64) {
                 return Some(v);
@@ -1145,8 +1145,8 @@ fn hyp2f1_continued(a: &Complex, b: &Complex, c: &Complex, z: &Complex, prec: us
 
 /// `(q+1)Fq` on and near the unit circle (`|z| < 1.1`, `re(z) <= 1`) by
 /// mpmath's `nsum` of the defining series with the `'r+s'` acceleration
-/// (`_hypq1fq`'s `sum_method` without `'e'`); `None` where it does not
-/// converge (mpmath's Euler-Maclaurin summation after it is not ported).
+/// (`_hypq1fq`'s `sum_method` without `'e'`), mpmath's Euler-Maclaurin
+/// summation where it does not converge.
 fn hypq1fq_accelerated(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> Option<Complex> {
     // PORTED FROM MPMATH: mpmath/functions/hypergeometric.py:_hypq1fq (the nsum branch)
     let mut cache: Vec<Complex> = Vec::new();
@@ -1174,8 +1174,11 @@ fn hypq1fq_accelerated(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize)
         }
         Some(parts(&cache[k]))
     };
-    let (re, im) = crate::integrals::extrapolation::nsum_strict(&mut term, prec)?;
-    Some(complex(re, im))
+    match crate::integrals::extrapolation::nsum_strict(&mut term, prec) {
+        Some((re, im)) => Some(complex(re, im)),
+        // mpmath's sum_method 'r+s+e': Euler-Maclaurin after the acceleration
+        None => hypq1fq_euler_maclaurin(ap, bq, z, prec),
+    }
 }
 
 /// `3F2(a1, a2, a3; b1, b2; z)` for `|z - 1| < 0.05` by mpmath's alternate
@@ -2525,4 +2528,250 @@ fn small_pq_asymptotic(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize)
         (2, 3) => hyp2f3_asymptotic(ap, bq, z, prec),
         _ => None,
     }
+}
+
+// -- mpmath's Euler-Maclaurin summation of (q+1)Fq near the unit circle
+//    (_hypq1fq after the acceleration fails; sumem, diffs_exp, dpoly)
+
+/// mpmath's `dpoly(n)` for `n = 0, 1, ...`: the `n`-th derivative of
+/// `exp(f)` is `exp(f)` times the sum of `count * prod f^(k+1)**p` over
+/// the `(powers, count)` of row `n` (Faà di Bruno).
+struct ExpDerivativePolynomials {
+    rows: Vec<std::collections::BTreeMap<Vec<u32>, Int>>,
+}
+
+impl ExpDerivativePolynomials {
+    fn new() -> Self {
+        let mut first: std::collections::BTreeMap<Vec<u32>, Int> = std::collections::BTreeMap::new();
+        first.insert(vec![0], Int::ONE);
+        ExpDerivativePolynomials { rows: vec![first] }
+    }
+
+    fn row(&mut self, n: usize) -> &std::collections::BTreeMap<Vec<u32>, Int> {
+        while self.rows.len() <= n {
+            let previous = &self.rows[self.rows.len() - 1];
+            let mut next: std::collections::BTreeMap<Vec<u32>, Int> = std::collections::BTreeMap::new();
+            for (powers, count) in previous {
+                let mut powers: Vec<u32> = powers.clone();
+                powers.push(0);
+                let mut powers1: Vec<u32> = powers.clone();
+                powers1[0] += 1;
+                *next.entry(powers1).or_insert(Int::ZERO) += count.clone();
+                for k in 0..powers.len() {
+                    let p: u32 = powers[k];
+                    if p == 0 {
+                        continue;
+                    }
+                    let mut powers2: Vec<u32> = powers.clone();
+                    powers2[k] -= 1;
+                    powers2[k + 1] += 1;
+                    *next.entry(powers2).or_insert(Int::ZERO) += Int::from(p) * count.clone();
+                }
+            }
+            self.rows.push(next);
+        }
+        &self.rows[n]
+    }
+}
+
+/// The `n`-th derivative of `exp(f)` from the derivatives `f^(k)`,
+/// `k = 0..=n` (mpmath's `diffs_exp`).
+fn exp_derivative(
+    polynomials: &mut ExpDerivativePolynomials,
+    f: &dyn Fn(usize) -> Option<Complex>,
+    n: usize,
+    wp: usize,
+) -> Option<Complex> {
+    let f0: Complex = f(0)?.exp();
+    if n == 0 {
+        return Some(f0);
+    }
+    let mut s: Complex = c_int(0, wp);
+    for (powers, count) in polynomials.row(n).clone() {
+        let mut product: Complex = complex_real(real_int(&count, wp), wp);
+        for (k, p) in powers.iter().enumerate() {
+            if *p == 0 {
+                continue;
+            }
+            let fk: Complex = f(k + 1)?;
+            for _ in 0..*p {
+                product = &product * &fk;
+            }
+        }
+        s = &s + &product;
+    }
+    Some(&s * &f0)
+}
+
+/// `(q+1)Fq(ap; bq; z)` by mpmath's Euler-Maclaurin summation: the terms
+/// up to `trunc = 50*dps` summed, the tail by `sumem` (the derivatives at
+/// `trunc` of the term through those of its logarithm, `loggamma` and
+/// `psi`, the integral by tanh-sinh), `trunc` doubled and the precision
+/// raised by half up to five times; `None` where it does not converge.
+fn hypq1fq_euler_maclaurin(ap: &[Complex], bq: &[Complex], z: &Complex, prec: usize) -> Option<Complex> {
+    // PORTED FROM MPMATH: mpmath/functions/hypergeometric.py:_hypq1fq (the Euler-Maclaurin branch),
+    // mpmath/calculus/extrapolation.py:sumem, mpmath/calculus/differentiation.py:diffs_exp, dpoly
+    use crate::functions::combinatorial::factorials::gamma_product;
+    use crate::functions::special::gamma_numeric::{bernoulli, loggamma, polygamma};
+    use crate::integrals::quadrature::{quad, Point, Value};
+    let tol: f64 = 2f64.powi(1 - prec as i32) / 1024.0;
+    let dps: usize = ((prec as f64 / std::f64::consts::LOG2_10).round() as usize)
+        .saturating_sub(1)
+        .max(1);
+    let mut trunc: usize = 50 * dps;
+    let mut wp: usize = prec + 20;
+    let mut polynomials: ExpDerivativePolynomials = ExpDerivativePolynomials::new();
+    for attempt in 0..5 {
+        let lift = |v: &Complex| raise_to(v, wp + 10);
+        let (a_s, b_s, zw): (Vec<Complex>, Vec<Complex>, Complex) =
+            (ap.iter().map(lift).collect(), bq.iter().map(lift).collect(), lift(z));
+        let w: usize = wp + 10;
+        // the head: the terms below trunc by their recurrence
+        let mut t: Complex = c_int(1, w);
+        let mut head: Complex = t.clone();
+        for k in 1..trunc {
+            let m: Complex = c_int(k as i64 - 1, w);
+            for a in &a_s {
+                t = &t * &(a + &m);
+            }
+            for b in &b_s {
+                t = &t / &(b + &m);
+            }
+            t = &(&t * &zw) / &c_int(k as i64, w);
+            head = &head + &t;
+        }
+        if has_infinity(&head) {
+            return None;
+        }
+        // the term at a real k: z**k/k! prod rf(a, k)/prod rf(b, k), by
+        // loggamma (exp of a difference of logs, the branches cancel); the
+        // constant gammaprod(b, a) included, unlike in the derivatives
+        let log_z: Complex = zw.ln();
+        let mut b1: Vec<Complex> = b_s.clone();
+        b1.push(c_int(1, w));
+        let mut constant: Complex = c_int(0, w);
+        for a in &a_s {
+            constant = &constant - &loggamma(a, w)?;
+        }
+        for b in &b1 {
+            constant = &constant + &loggamma(b, w)?;
+        }
+        let term_at = |x: &Real| -> Option<Value> {
+            // the loggammas are of size k log k and cancel to the log of
+            // the term: as many more bits (mpmath's gamma raises its
+            // precision alike)
+            let log2_x: f64 = if *x > real_int(&Int::from(2), 64) {
+                x.clone().with_precision(64).value().ln().to_f64().value() / std::f64::consts::LN_2
+            } else {
+                1.0
+            };
+            let extra: usize = (log2_x + log2_x.max(1.0).log2()).ceil().max(0.0) as usize + 10;
+            let wx: usize = w + extra;
+            let up = |v: &Complex| raise_to(v, wx);
+            let kk: Complex = complex_real(x.clone().with_precision(wx).value(), wx);
+            let mut log_t: Complex = &(&kk * &up(&log_z)) + &up(&constant);
+            for a in &a_s {
+                log_t = &log_t + &loggamma(&(&up(a) + &kk), wx)?;
+            }
+            for b in &b1 {
+                log_t = &log_t - &loggamma(&(&up(b) + &kk), wx)?;
+            }
+            let v: Complex = raise_to(&log_t.exp(), w);
+            if has_infinity(&v) {
+                return None;
+            }
+            Some(parts(&v))
+        };
+        // the derivatives of the term's logarithm at trunc (mpmath's
+        // log_diffs, without the constant gammaprod)
+        let k0: Complex = c_int(trunc as i64, w);
+        let log_derivative = |i: usize| -> Option<Complex> {
+            if i == 0 {
+                let mut v: Complex = &k0 * &log_z;
+                for a in &a_s {
+                    v = &v + &loggamma(&(a + &k0), w)?;
+                }
+                for b in &b1 {
+                    v = &v - &loggamma(&(b + &k0), w)?;
+                }
+                return Some(v);
+            }
+            let order: u64 = (i - 1) as u64;
+            let mut v: Complex = c_int(0, w);
+            for a in &a_s {
+                v = &v + &polygamma(order, &(a + &k0), w)?;
+            }
+            for b in &b1 {
+                v = &v - &polygamma(order, &(b + &k0), w)?;
+            }
+            if i == 1 {
+                v = &v + &log_z;
+            }
+            Some(v)
+        };
+        let c: Complex = gamma_product(&b_s, &a_s, w)?;
+        // sumem over [trunc, inf] with _fast_abort: the correction terms
+        // -f^(k)(trunc) B_(k+1)/(k+1)! for odd k
+        let mut s: Complex = c_int(0, w);
+        let mut err: f64 = 0.0;
+        let mut previous: f64 = 0.0;
+        let mut aborted: bool = false;
+        let mut converged: bool = false;
+        let mut factorial: Int = Int::ONE;
+        for k in 0..2000usize {
+            factorial *= Int::from(k + 1);
+            if k & 1 == 0 {
+                continue;
+            }
+            let da: Complex = &c * &exp_derivative(&mut polynomials, &log_derivative, k, w)?;
+            let coefficient: Complex = complex_real(
+                real_rat(&(bernoulli(k + 1) / crate::numbers::Rat::from(factorial.clone())), w),
+                w,
+            );
+            let term: Complex = &(&c_int(0, w) - &da) * &coefficient;
+            let size: f64 = modulus(&term);
+            if !size.is_finite() {
+                return None;
+            }
+            if k > 4 && size < tol {
+                s = &s + &term;
+                converged = true;
+                break;
+            } else if k > 4 && previous / size < 10.0 {
+                err += size;
+                aborted = true;
+                break;
+            }
+            s = &s + &term;
+            previous = size;
+        }
+        if !aborted && !converged {
+            return None;
+        }
+        if !aborted {
+            // the endpoint and the integral of the tail
+            let trunc_real: Real = real_int(&Int::from(trunc as i64), w);
+            let (fa_re, fa_im) = term_at(&trunc_real)?;
+            let half: Complex = c_rat(1, 2, w);
+            s = &s + &(&complex(fa_re, fa_im) * &half);
+            let mut integrand = |x: &Real| -> Option<Value> { term_at(x) };
+            let ((ire, iim), ierr) = quad(&mut integrand, &[Point::Finite(trunc_real), Point::PosInf], w)?;
+            s = &s + &complex(ire, iim);
+            err += ierr.to_f64().value();
+        }
+        if err < tol {
+            let v: Complex = &head + &s;
+            let (re, im) = parts(&v);
+            return Some(complex(
+                re.with_precision(prec).value(),
+                im.with_precision(prec).value(),
+            ));
+        }
+        if attempt == 4 {
+            return None;
+        }
+        trunc *= 2;
+        wp += wp / 2;
+    }
+    None
 }
