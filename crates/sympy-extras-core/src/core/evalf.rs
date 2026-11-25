@@ -428,6 +428,13 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
             }
             crate::functions::special::bessel::bessel_value(*g, &values, prec)
         }
+        Head::Function(super::basic::Function::AppellF1) if e.args().len() == 6 => {
+            let mut values: Vec<Complex> = Vec::new();
+            for a in e.args() {
+                values.push(numeric_value(a, prec + 40)?);
+            }
+            crate::functions::special::hyper::appellf1_value(&values, prec)
+        }
         Head::MeijerG => crate::functions::special::hyper::meijerg_node_value(e, prec),
         Head::Function(
             g @ (super::basic::Function::Legendre
@@ -670,7 +677,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
                 super::basic::Function::Hermite
                 | super::basic::Function::AssocLegendre
                 | super::basic::Function::HermiteProb => return None,
-                // mpmath's appellf1 is not ported
+                // evaluated above with its six arguments
                 super::basic::Function::AppellF1 => return None,
                 // no numeric value in Python either (a DefinedFunction without mpmath)
                 super::basic::Function::QPochhammer | super::basic::Function::Coeff => return None,

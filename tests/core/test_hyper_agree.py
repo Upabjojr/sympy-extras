@@ -4,9 +4,9 @@ common parameters to cancel, nonpositive integers, symbols) and
 arguments, compared by structure (or the error), facts, conjugates,
 derivatives (``meijerg``'s in its parameters too), ``hyper``'s
 ``radius_of_convergence``, ``eta`` and ``convergence_statement``,
-``meijerg``'s ``nu``, ``delta`` and ``get_period``, and values (Rust has
-``hyper``'s defining series only: where it gives a value it must agree;
-``meijerg`` and ``appellf1`` have no Rust value)."""
+``meijerg``'s ``nu``, ``delta`` and ``get_period``, and values (the
+ports of mpmath's ``hyper``, ``meijerg`` and ``appellf1``: where Rust
+gives a value it must agree)."""
 
 from __future__ import annotations
 
@@ -195,6 +195,33 @@ def test_meijerg_values(rust: Any) -> None:
     for an, ap, bm, bq, z in cases:
         args = [Tuple(*an), Tuple(*ap), Tuple(*bm), Tuple(*bq), z]
         e, r = hy.meijerg(*args), rc.logic_call('meijerg', args)
+        for prec in (53, 120):
+            vr = rc.numeric_value(r, prec)
+            ve = finite(numeric_value(e, prec + 200))
+            assert vr is not None and ve is not None and close(vr, ve, prec), (e, prec, vr, ve)
+
+
+def test_appellf1_values(rust: Any) -> None:
+    """The values of ``appellf1`` (mpmath's ``appellf1``): the double
+    series through ``2F1`` with the smaller argument outside, the
+    terminating cases, complex arguments, and the transformation to
+    ``(x - y)/(x - 1)`` when both arguments are near or beyond the unit
+    circle."""
+    from sympy_extras.core import I, Integer, Rational
+    from sympy_extras.core.evalf import numeric_value
+    from sympy_extras.functions.special import hyper as hy
+    rc = load("sympy_extras_rs.core")
+    h = Rational(1, 2)
+    cases = [(Integer(1), Integer(2), Integer(3), Integer(5), Rational(1, 4), h),
+             (h, Rational(1, 3), Rational(1, 5), Integer(2), -Rational(1, 3), h),
+             (Integer(1), Integer(1), Integer(1), Integer(2), h, Rational(1, 3)),
+             (Integer(-3), h, Rational(1, 3), Integer(2), Integer(2), Integer(3)),
+             (h, Integer(-2), Rational(1, 3), Rational(3, 2), Rational(1, 5), Integer(4)),
+             (h, Rational(1, 3), Rational(1, 4), Rational(3, 2), h + I/4, -Rational(1, 3) + I/5),
+             (h, Rational(1, 3), Rational(1, 4), Rational(3, 2), Integer(-1), -Rational(6, 5)),
+             (Rational(1, 3), Integer(1), h, Integer(2), Rational(1, 2), Integer(-3))]
+    for args in cases:
+        e, r = hy.appellf1(*args), rc.logic_call('appellf1', list(args))
         for prec in (53, 120):
             vr = rc.numeric_value(r, prec)
             ve = finite(numeric_value(e, prec + 200))

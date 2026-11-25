@@ -1693,3 +1693,91 @@ pub fn appellf1_facts() -> FactList {
     facts.set(Predicate::commutative, true);
     facts
 }
+
+/// The numerical value of `appellf1(a, b1, b2, c, x, y)`, mpmath's
+/// `appellf1`: the smaller of `x`, `y` in the outer loop of the double
+/// series, which `hyper2d` sums as `sum_m (a)_m (b1)_m/((c)_m m!) x**m
+/// 2F1(b2, a + m; c + m; y)`; for `|x| >= 0.99` the transformation to
+/// `(x - y)/(x - 1)` (`None` when it does not bring the argument inside,
+/// mpmath's "Analytic continuation not implemented").
+pub fn appellf1_value(v: &[Complex], prec: usize) -> Option<Complex> {
+    // PORTED FROM MPMATH: mpmath/functions/hypergeometric.py:appellf1, hyper2d
+    let (a, mut b1, mut b2, c, mut x, mut y) = (
+        v[0].clone(),
+        v[1].clone(),
+        v[2].clone(),
+        v[3].clone(),
+        v[4].clone(),
+        v[5].clone(),
+    );
+    // the smaller in the outer loop
+    if modulus(&x) > modulus(&y) {
+        std::mem::swap(&mut x, &mut y);
+        std::mem::swap(&mut b1, &mut b2);
+    }
+    let ok = |z: &Complex| modulus(z) < 0.99;
+    // the finite cases
+    if nonpositive_integer(&a).is_some() || nonpositive_integer(&b1).is_some() {
+    } else if nonpositive_integer(&b2).is_some() {
+        std::mem::swap(&mut x, &mut y);
+        std::mem::swap(&mut b1, &mut b2);
+    } else if !ok(&x) {
+        // 2F1 has the analytic continuation, |y| > 1 is fine
+        let one: Complex = c_int(1, prec);
+        let u1: Complex = &(&x - &y) / &(&x - &one);
+        if !ok(&u1) {
+            return None;
+        }
+        let (one_x, one_y) = (&one - &x, &one - &y);
+        if modulus(&one_x) == 0.0 || modulus(&one_y) == 0.0 {
+            return None;
+        }
+        let power = |z: &Complex, w: &Complex| -> Complex { (w * &z.ln()).exp() };
+        let front: Complex = &power(&one_x, &(&c_int(0, prec) - &b1)) * &power(&one_y, &(&(&c - &a) - &b2));
+        let inner: Complex = appellf1_value(
+            &[&c - &a, b1.clone(), &(&c - &b1) - &b2, c.clone(), u1, y.clone()],
+            prec,
+        )?;
+        return Some(&front * &inner);
+    }
+    let wp: usize = prec + 10;
+    let tol: f64 = 2f64.powi(1 - wp as i32);
+    let maxterms: usize = 20 * prec;
+    let (a, b1, b2, c, x, y) = (
+        raise_to(&a, wp),
+        raise_to(&b1, wp),
+        raise_to(&b2, wp),
+        raise_to(&c, wp),
+        raise_to(&x, wp),
+        raise_to(&y, wp),
+    );
+    let mut s: Complex = c_int(0, wp);
+    let mut outer: Complex = c_int(1, wp);
+    let mut ok_count: usize = 0;
+    let mut m: usize = 0;
+    loop {
+        let shift: Complex = c_int(m as i64, wp);
+        let (am, b1m, cm) = (&a + &shift, &b1 + &shift, &c + &shift);
+        let inner: Complex = hyper_value(&[b2.clone(), am.clone()], std::slice::from_ref(&cm), &y, wp)?;
+        let term: Complex = &outer * &inner;
+        if modulus(&term) < tol {
+            ok_count += 1;
+        } else {
+            ok_count = 0;
+        }
+        if ok_count >= 3 || modulus(&outer) == 0.0 {
+            break;
+        }
+        s = &s + &term;
+        if modulus(&cm) == 0.0 {
+            return None;
+        }
+        outer = &(&(&outer * &b1m) * &am) / &cm;
+        m += 1;
+        outer = &(&outer * &x) / &c_int(m as i64, wp);
+        if m > maxterms {
+            return None;
+        }
+    }
+    Some(s)
+}
