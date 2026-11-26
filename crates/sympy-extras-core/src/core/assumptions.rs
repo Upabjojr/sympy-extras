@@ -533,6 +533,13 @@ fn number_facts(n: &Basic) -> FactList {
                 facts.set(composite, false);
             }
         }
+        Head::Float { value, .. } => {
+            facts.update(&[(real, true), (finite, true), (imaginary, false), (composite, false)]);
+            facts.set(zero, value.is_zero());
+            facts.set(positive, !value.is_zero() && !crate::numbers::rat_is_negative(value));
+            facts.set(negative, crate::numbers::rat_is_negative(value));
+            facts.set(noninteger, !value.is_int());
+        }
         Head::Infinity => facts.update(&[
             (extended_real, true),
             (real, false),

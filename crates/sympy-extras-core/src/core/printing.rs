@@ -109,6 +109,7 @@ pub fn precedence(e: &Basic) -> i32 {
                 PREC_ATOM
             }
         }
+        Head::Float { value, .. } if rat_is_negative(value) => PREC_ADD,
         Head::NegativeInfinity => PREC_ADD,
         _ => PREC_ATOM,
     }
@@ -135,6 +136,12 @@ fn decompose_power(f: &Basic) -> (Basic, Rat) {
             if let Ok(r) = pow(&b, &rest) {
                 return (r, v.clone());
             }
+        }
+    }
+    if negative_float(&c) {
+        // SymPy's as_coeff_Mul(rational=True) takes the sign of a float: exp(-2.5*z) is (exp(2.5*z), -1)
+        if let Ok(r) = crate::core::mul::mul(&[negated_float(&c), rest]).and_then(|m| pow(&b, &m)) {
+            return (r, -Rat::ONE);
         }
     }
     (f.clone(), Rat::ONE)
@@ -218,7 +225,20 @@ fn generators(term: &Basic) -> Vec<Basic> {
 /// Whether the exponent has a negative numerical coefficient.
 fn negative_exponent(e: &Basic) -> bool {
     let (c, _) = as_coeff_mul(e);
-    c.as_rational().is_some_and(rat_is_negative)
+    c.exact_value().is_some_and(rat_is_negative)
+}
+
+/// A negative float (`isinstance(c, Float) and c.as_fraction() < 0`).
+fn negative_float(c: &Basic) -> bool {
+    c.is_float() && c.exact_value().is_some_and(rat_is_negative)
+}
+
+/// The float with the opposite value and the same precision.
+fn negated_float(c: &Basic) -> Basic {
+    Basic::float(
+        &-c.exact_value().expect("a float").clone(),
+        c.float_precision().expect("a float"),
+    )
 }
 
 /// Whether the arguments are as an evaluating function stores them: a
@@ -295,7 +315,14 @@ fn leads_a_difference(number: &Basic, term: &Basic) -> bool {
         return false;
     }
     let (c, rest) = as_coeff_mul(term);
-    c.as_rational().is_some_and(rat_is_negative) && !rest.is_mul()
+    if rest.is_mul() {
+        return false;
+    }
+    if c.is_rational_class() {
+        return c.as_rational().is_some_and(rat_is_negative);
+    }
+    // a negative float times a single factor (SymPy: 6.25 - 2.5*x); a float alone is not a product
+    negative_float(&c) && !rest.is_number_node()
 }
 
 /// The terms of a sum in the printing order: decreasing degrees in the
@@ -353,6 +380,7 @@ struct StrPrinter;
 impl StrPrinter {
     fn doprint(&self, e: &Basic) -> String {
         match e.head() {
+            Head::Float { value, prec } => crate::core::float::float_short_str(value, *prec),
             Head::Add => self.print_add(e.args()),
             Head::Mul => self.print_mul(e.args()),
             Head::Pow => self.print_pow(&e.args()[0], &e.args()[1]),
@@ -538,6 +566,11 @@ impl StrPrinter {
                 }
                 continue;
             }
+            if i == 0 && negative_float(f) {
+                sign = "-";
+                numerator.push(self.doprint(&negated_float(f)));
+                continue;
+            }
             if f.is_pow() && negative_exponent(&f.args()[1]) && is_commutative_maybe(f) {
                 let (base, exp) = (&f.args()[0], &f.args()[1]);
                 let inverse: Basic = match neg(exp) {
@@ -591,6 +624,10 @@ impl StrPrinter {
 
 /// The string form of `e` in SymPy's notation (`str(e)`).
 pub fn sstr(e: &Basic) -> String {
+    // a float alone shows its trailing zeros, inside an expression it does not
+    if let Head::Float { value, prec } = e.head() {
+        return crate::core::float::float_str(value, *prec);
+    }
     StrPrinter.doprint(e)
 }
 

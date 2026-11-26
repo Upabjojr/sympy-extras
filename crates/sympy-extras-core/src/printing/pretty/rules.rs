@@ -52,12 +52,10 @@ fn rational_parts(e: &Basic) -> Option<(Int, Int)> {
         .map(|v| (crate::numbers::numer(v), crate::numbers::denom(v)))
 }
 
-/// Python's `isinstance(e, Number)`: a rational, the infinities, `nan`.
+/// Python's `isinstance(e, Number)`: a rational, a float, the
+/// infinities, `nan`.
 fn is_number_node(e: &Basic) -> bool {
-    matches!(
-        e.head(),
-        Head::Rational { .. } | Head::Infinity | Head::NegativeInfinity | Head::ComplexInfinity | Head::NaN
-    )
+    e.is_number_class()
 }
 
 fn is_integer_node(e: &Basic) -> bool {
@@ -75,6 +73,27 @@ pub fn rule(p: &PrettyPrinter, e: &Basic, ctx: &PrettyContext) -> PolyResult<Opt
     let s = &p.symbology;
     Ok(Some(match e.head() {
         Head::Rational { .. } => rational(p, e, ctx),
+        Head::Float { value, prec } => {
+            // all the digits for a float alone, as SymPy prints it (full_prec='auto')
+            let full: bool = p.settings.full_prec.unwrap_or(ctx.position == Position::Top);
+            let text: String = if full {
+                crate::core::float::float_str(value, *prec)
+            } else {
+                crate::core::float::float_short_str(value, *prec)
+            };
+            if let Some(magnitude) = text.strip_prefix('-') {
+                // a negative float is not an atom: (-2.5)**n (sympy/sympy#30844, root cause 5)
+                negative(Picture::of(magnitude), false)
+            } else {
+                // 1.0e-5 is a product as a base: (1.0e-5)**2
+                let binding: Binding = if text.contains('e') {
+                    Binding::Product
+                } else {
+                    Binding::Atom
+                };
+                PrintResult::new(Picture::of(&text), binding)
+            }
+        }
         Head::Infinity => p.atom(&s.atom("Infinity", "oo")),
         Head::NegativeInfinity => negative(Picture::of(&s.atom("Infinity", "oo")), false),
         Head::ComplexInfinity => p.atom("zoo"),
@@ -288,6 +307,7 @@ fn product(
 
 fn is_negative_number(e: &Basic) -> bool {
     rational_parts(e).is_some_and(|(n, _)| n < Int::ZERO)
+        || (e.is_float() && e.exact_value().is_some_and(crate::numbers::rat_is_negative))
 }
 
 fn absolute(e: &Basic) -> PolyResult<Basic> {
@@ -309,7 +329,7 @@ fn mul_rule(p: &PrettyPrinter, e: &Basic, ctx: &PrettyContext) -> R {
         numerator.push(if signed { absolute(first)? } else { first.clone() });
         numerator.extend(args[1..].iter().cloned());
     } else {
-        for item in &args {
+        for (i, item) in args.iter().enumerate() {
             if item.is_pow()
                 && is(item, Predicate::commutative) != Some(false)
                 && rational_parts(&item.args()[1]).is_some_and(|(n, _)| n < Int::ZERO)
@@ -328,6 +348,9 @@ fn mul_rule(p: &PrettyPrinter, e: &Basic, ctx: &PrettyContext) -> R {
                 if q != Int::ONE {
                     denominator.push(Basic::integer(q));
                 }
+            } else if i == 0 && signed {
+                // a negative float first
+                numerator.push(absolute(item)?);
             } else {
                 numerator.push(item.clone());
             }

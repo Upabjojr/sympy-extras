@@ -25,6 +25,8 @@ pub struct PrettySettings {
     pub root_notation: bool,
     pub use_unicode_sqrt_char: bool,
     pub imaginary_unit: String,
+    /// the floats with all their digits; `None`: a float alone only
+    pub full_prec: Option<bool>,
 }
 
 impl Default for PrettySettings {
@@ -37,6 +39,7 @@ impl Default for PrettySettings {
             root_notation: true,
             use_unicode_sqrt_char: true,
             imaginary_unit: "i".to_string(),
+            full_prec: None,
         }
     }
 }

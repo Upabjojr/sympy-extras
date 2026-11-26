@@ -169,6 +169,7 @@ pub fn exp_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
 /// The exponential of `x`, evaluated (`exp`, `Exp.apply`).
 pub fn exp(x: &Basic) -> PolyResult<Basic> {
     if evaluate() {
+        crate::core::float::refuse_floats(x, "exp")?;
         if let Some(value) = exp_eval(x)? {
             return Ok(value);
         }
@@ -287,6 +288,7 @@ pub fn log_eval(arg: &Basic) -> PolyResult<Option<Basic>> {
 /// The natural logarithm of `x`, evaluated (`Log.apply`).
 pub fn log(x: &Basic) -> PolyResult<Basic> {
     if evaluate() {
+        crate::core::float::refuse_floats(x, "log")?;
         if let Some(value) = log_eval(x)? {
             return Ok(value);
         }

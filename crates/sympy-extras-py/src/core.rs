@@ -37,6 +37,21 @@ struct Dummies {
 
 static DUMMIES: Mutex<Option<Dummies>> = Mutex::new(None);
 
+thread_local! {
+    /// Whether a Python `Float` may become a Rust node: only the entry
+    /// points which handle floats open it (`with_floats`); elsewhere a float
+    /// stays a `TypeError`, as before the Rust core had them.
+    static FLOATS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// `f` with the Python floats converted.
+fn with_floats<T>(f: impl FnOnce() -> T) -> T {
+    let before: bool = FLOATS.with(|c| c.replace(true));
+    let result: T = f();
+    FLOATS.with(|c| c.set(before));
+    result
+}
+
 fn with_dummies<T>(f: impl FnOnce(&mut Dummies) -> T) -> T {
     let mut guard = DUMMIES.lock().expect("an unpoisoned registry");
     let dummies: &mut Dummies = guard.get_or_insert_with(|| Dummies {
@@ -82,6 +97,13 @@ pub fn from_python(ob: &Bound<'_, PyAny>) -> PyResult<Basic> {
             let p: Int = extract_int(&ob.getattr("p")?)?;
             let q: Int = extract_int(&ob.getattr("q")?)?;
             Basic::rational(p, q).map_err(crate::convert::err)?
+        }
+        "Float" if FLOATS.with(|c| c.get()) => {
+            let value = ob.call_method0("as_fraction")?;
+            let p: Int = extract_int(&value.getattr("numerator")?)?;
+            let q: Int = extract_int(&value.getattr("denominator")?)?;
+            let prec: u32 = ob.getattr("precision")?.extract()?;
+            Basic::float(&rat_from_parts(p, q), prec)
         }
         "Infinity" => Basic::oo(),
         "NegativeInfinity" => Basic::negative_oo(),
@@ -425,6 +447,14 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
                     .getattr("Rational")?
                     .call1((out_int(py, value.numerator())?, out_int(py, &denom(value))?))?
             }
+        }
+        Head::Float { value, prec } => {
+            let exact = numbers
+                .getattr("Rational")?
+                .call1((out_int(py, value.numerator())?, out_int(py, &denom(value))?))?;
+            let kwargs: Bound<'py, PyDict> = PyDict::new(py);
+            kwargs.set_item("precision", *prec)?;
+            numbers.getattr("Float")?.call((exact,), Some(&kwargs))?
         }
         Head::Infinity => numbers.getattr("oo")?,
         Head::NegativeInfinity => numbers.getattr("oo")?.call_method0("__neg__")?,
@@ -835,13 +865,13 @@ pub fn to_python<'py>(py: Python<'py>, e: &Basic) -> PyResult<Bound<'py, PyAny>>
 /// The round trip `to_python(from_python(e))`.
 #[pyfunction]
 fn roundtrip<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(py, &from_python(e)?)
+    with_floats(|| to_python(py, &from_python(e)?))
 }
 
 /// The facts of `facts_of`, as a dict of predicate names.
 #[pyfunction]
 fn facts<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
-    let node: Basic = from_python(e)?;
+    let node: Basic = with_floats(|| from_python(e))?;
     let d: Bound<'py, PyDict> = PyDict::new(py);
     for (p, v) in facts_of(&node) {
         d.set_item(p.name(), *v)?;
@@ -885,7 +915,7 @@ fn numeric_value_py<'py>(py: Python<'py>, e: &Bound<'py, PyAny>, prec: usize) ->
 /// `a.compare(b)`.
 #[pyfunction]
 fn compare(a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<i32> {
-    Ok(from_python(a)?.compare(&from_python(b)?))
+    with_floats(|| Ok(from_python(a)?.compare(&from_python(b)?)))
 }
 
 #[pyfunction]
@@ -907,7 +937,7 @@ fn free_symbols<'py>(py: Python<'py>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'
 /// Equality of the two Rust nodes (Python's structural `==`).
 #[pyfunction]
 fn equal(a: &Bound<'_, PyAny>, b: &Bound<'_, PyAny>) -> PyResult<bool> {
-    Ok(from_python(a)? == from_python(b)?)
+    with_floats(|| Ok(from_python(a)? == from_python(b)?))
 }
 
 fn nodes(args: &Bound<'_, PyTuple>) -> PyResult<Vec<Basic>> {
@@ -921,51 +951,59 @@ fn nodes(args: &Bound<'_, PyTuple>) -> PyResult<Vec<Basic>> {
 /// `add(*args)` of the Rust core.
 #[pyfunction(signature = (*args))]
 fn add<'py>(py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(py, &rust_core::add::add(&nodes(args)?).map_err(crate::convert::err)?)
+    with_floats(|| to_python(py, &rust_core::add::add(&nodes(args)?).map_err(crate::convert::err)?))
 }
 
 /// `mul(*args)` of the Rust core.
 #[pyfunction(signature = (*args))]
 fn mul<'py>(py: Python<'py>, args: &Bound<'py, PyTuple>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(py, &rust_core::mul::mul(&nodes(args)?).map_err(crate::convert::err)?)
+    with_floats(|| to_python(py, &rust_core::mul::mul(&nodes(args)?).map_err(crate::convert::err)?))
 }
 
 #[pyfunction]
 fn pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(
-        py,
-        &rust_core::power::pow(&from_python(b)?, &from_python(e)?).map_err(crate::convert::err)?,
-    )
+    with_floats(|| {
+        to_python(
+            py,
+            &rust_core::power::pow(&from_python(b)?, &from_python(e)?).map_err(crate::convert::err)?,
+        )
+    })
 }
 
 #[pyfunction]
 fn sub<'py>(py: Python<'py>, a: &Bound<'py, PyAny>, b: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(
-        py,
-        &rust_core::add::sub_operator(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
-    )
+    with_floats(|| {
+        to_python(
+            py,
+            &rust_core::add::sub_operator(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
+        )
+    })
 }
 
 #[pyfunction]
 fn div<'py>(py: Python<'py>, a: &Bound<'py, PyAny>, b: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(
-        py,
-        &rust_core::mul::div_operator(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
-    )
+    with_floats(|| {
+        to_python(
+            py,
+            &rust_core::mul::div_operator(&from_python(a)?, &from_python(b)?).map_err(crate::convert::err)?,
+        )
+    })
 }
 
 #[pyfunction]
 fn neg<'py>(py: Python<'py>, a: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(
-        py,
-        &rust_core::mul::neg_operator(&from_python(a)?).map_err(crate::convert::err)?,
-    )
+    with_floats(|| {
+        to_python(
+            py,
+            &rust_core::mul::neg_operator(&from_python(a)?).map_err(crate::convert::err)?,
+        )
+    })
 }
 
 /// `str(e)` printed by the Rust core.
 #[pyfunction]
 fn sstr(e: &Bound<'_, PyAny>) -> PyResult<String> {
-    Ok(rust_core::printing::sstr(&from_python(e)?))
+    with_floats(|| Ok(rust_core::printing::sstr(&from_python(e)?)))
 }
 
 /// `latex(e, **settings)` printed by the Rust core (the settings as a dict:
@@ -1002,6 +1040,9 @@ fn latex(e: &Bound<'_, PyAny>, settings: Option<&Bound<'_, pyo3::types::PyDict>>
                 "decimal_separator" => s.decimal_separator = v.extract()?,
                 "parenthesize_super" => s.parenthesize_super = v.extract()?,
                 "diff_operator" => s.diff_operator = v.extract()?,
+                "full_prec" => s.full_prec = v.extract()?,
+                "min" => s.min = if v.is_none() { None } else { Some(v.extract()?) },
+                "max" => s.max = if v.is_none() { None } else { Some(v.extract()?) },
                 other => {
                     return Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(
                         "not ported: the LaTeX setting {}",
@@ -1011,7 +1052,8 @@ fn latex(e: &Bound<'_, PyAny>, settings: Option<&Bound<'_, pyo3::types::PyDict>>
             }
         }
     }
-    sympy_extras_core::printing::latex::latex(&from_python(e)?, s).map_err(crate::convert::err)
+    let node: Basic = with_floats(|| from_python(e))?;
+    sympy_extras_core::printing::latex::latex(&node, s).map_err(crate::convert::err)
 }
 
 /// `pretty(e, **settings)` printed by the Rust core (the settings as a
@@ -1032,6 +1074,7 @@ fn pretty(e: &Bound<'_, PyAny>, settings: Option<&Bound<'_, pyo3::types::PyDict>
                 "root_notation" => s.root_notation = v.extract()?,
                 "use_unicode_sqrt_char" => s.use_unicode_sqrt_char = v.extract()?,
                 "imaginary_unit" => s.imaginary_unit = v.extract()?,
+                "full_prec" => s.full_prec = if v.is_none() { None } else { Some(v.extract()?) },
                 other => {
                     return Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(
                         "not ported: the pretty setting {}",
@@ -1041,7 +1084,8 @@ fn pretty(e: &Bound<'_, PyAny>, settings: Option<&Bound<'_, pyo3::types::PyDict>
             }
         }
     }
-    sympy_extras_core::printing::pretty::pretty(&from_python(e)?, s).map_err(crate::convert::err)
+    let node: Basic = with_floats(|| from_python(e))?;
+    sympy_extras_core::printing::pretty::pretty(&node, s).map_err(crate::convert::err)
 }
 
 #[pyfunction]
@@ -8146,10 +8190,12 @@ fn logic_call<'py>(py: Python<'py>, name: &str, args: Vec<Bound<'py, PyAny>>) ->
 
 #[pyfunction]
 fn number_pow<'py>(py: Python<'py>, b: &Bound<'py, PyAny>, e: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
-    to_python(
-        py,
-        &rust_core::power::number_pow(&from_python(b)?, &from_python(e)?).map_err(crate::convert::err)?,
-    )
+    with_floats(|| {
+        to_python(
+            py,
+            &rust_core::power::number_pow(&from_python(b)?, &from_python(e)?).map_err(crate::convert::err)?,
+        )
+    })
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {

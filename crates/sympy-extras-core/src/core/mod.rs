@@ -36,6 +36,7 @@ pub mod basic;
 pub mod evalf;
 pub mod expr;
 pub mod exprtools;
+pub mod float;
 pub mod foreign_names;
 pub mod function;
 pub mod fuzzy;

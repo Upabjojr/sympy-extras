@@ -3,8 +3,8 @@
 //! of the tree.
 //!
 //! `number_add` and `number_mul` are the arithmetic of the numbers (the
-//! infinities and `nan` included). `Float` (arbitrary precision, `mpmath` in
-//! Python) and `AlgebraicNumber` come later.
+//! infinities and `nan` included), floats included (`core.float`).
+//! `AlgebraicNumber` comes later.
 
 use crate::error::{zero_division, PolyResult};
 use crate::numbers::*;
@@ -121,6 +121,15 @@ impl Basic {
                     1
                 }
             }
+            Head::Float { value, .. } => {
+                if value.is_zero() {
+                    0
+                } else if rat_is_negative(value) {
+                    -1
+                } else {
+                    1
+                }
+            }
             Head::Infinity => 1,
             Head::NegativeInfinity => -1,
             _ => 0,
@@ -137,8 +146,35 @@ impl Basic {
 
     /// Whether the number is a rational or a float (`is_finite_number`).
     pub fn is_finite_number(&self) -> bool {
-        self.is_rational_class()
+        self.is_rational_class() || self.is_float()
     }
+
+    /// `Float(value, precision=prec)`: the value rounded to `prec` bits.
+    pub fn float(value: &Rat, prec: u32) -> Basic {
+        Basic::atom(Head::Float {
+            value: super::float::round_to_prec(value, prec),
+            prec,
+        })
+    }
+}
+
+/// The larger precision of the floats among `a` and `b`, `None` when
+/// neither is a float.
+pub fn float_operand_precision(a: &Basic, b: &Basic) -> Option<u32> {
+    match (a.float_precision(), b.float_precision()) {
+        (None, None) => None,
+        (p, q) => Some(p.unwrap_or(0).max(q.unwrap_or(0))),
+    }
+}
+
+/// The float result of an operation on floats; zero is the exact `0`, as
+/// SymPy's `Float._new` makes it (`0*2.5` and `2.5 - 2.5` are `0`)
+/// (`_float_from_fraction`).
+pub fn float_from_fraction(value: &Rat, prec: u32) -> Basic {
+    if value.is_zero() {
+        return Basic::zero();
+    }
+    Basic::float(value, prec)
 }
 
 fn expect_number(a: &Basic) {
@@ -173,9 +209,12 @@ pub fn number_add(a: &Basic, b: &Basic) -> Basic {
         return if s > 0 { Basic::oo() } else { Basic::negative_oo() };
     }
     let (va, vb) = (
-        a.as_rational().expect("a rational"),
-        b.as_rational().expect("a rational"),
+        a.exact_value().expect("a finite number"),
+        b.exact_value().expect("a finite number"),
     );
+    if let Some(prec) = float_operand_precision(a, b) {
+        return float_from_fraction(&(va + vb), prec);
+    }
     Basic::from_rational(va + vb)
 }
 
@@ -198,9 +237,12 @@ pub fn number_mul(a: &Basic, b: &Basic) -> Basic {
         return if sign > 0 { Basic::oo() } else { Basic::negative_oo() };
     }
     let (va, vb) = (
-        a.as_rational().expect("a rational"),
-        b.as_rational().expect("a rational"),
+        a.exact_value().expect("a finite number"),
+        b.exact_value().expect("a finite number"),
     );
+    if let Some(prec) = float_operand_precision(a, b) {
+        return float_from_fraction(&(va * vb), prec);
+    }
     Basic::from_rational(va * vb)
 }
 

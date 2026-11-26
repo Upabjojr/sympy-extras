@@ -207,9 +207,22 @@ fn rational_pow(b: &Rat, e: &Rat) -> PolyResult<Basic> {
     mul(&parts)
 }
 
+/// A power with a float base or exponent (`_float_pow`): an integer
+/// exponent which is not a float is exact; the other powers go through
+/// mpmath in Python, whose last bits are not reproduced.
+fn float_pow(vb: &Rat, ve: &Rat, float_exponent: bool, prec: u32) -> PolyResult<Basic> {
+    if ve.is_int() && !float_exponent {
+        let n: Int = numer(ve);
+        let k: usize = usize::try_from(abs(&n)).map_err(|_| not_ported("a float to a huge integer power"))?;
+        let power: Rat = rat_from_parts(numer(vb).pow(k), denom(vb).pow(k));
+        return Ok(Basic::float(&if is_negative(&n) { recip(&power) } else { power }, prec));
+    }
+    Err(not_ported("a power of floats (mpmath.power)"))
+}
+
 /// Powers involving `oo`, `-oo` or `zoo` (`_infinite_pow`).
 fn infinite_pow(b: &Basic, e: &Basic) -> PolyResult<Basic> {
-    if let Some(ev) = e.as_rational() {
+    if let Some(ev) = e.exact_value() {
         let sign: i32 = e.number_sign();
         return Ok(match b.head() {
             Head::Infinity => {
@@ -264,7 +277,7 @@ fn infinite_pow(b: &Basic, e: &Basic) -> PolyResult<Basic> {
             _ => Basic::nan(),
         });
     }
-    let Some(vb) = b.as_rational() else {
+    let Some(vb) = b.exact_value() else {
         return Ok(Basic::nan());
     };
     let one: Rat = Rat::ONE;
@@ -316,20 +329,27 @@ pub fn number_pow(b: &Basic, e: &Basic) -> PolyResult<Basic> {
         return infinite_pow(b, e);
     }
     let (vb, ve) = (
-        b.as_rational().expect("a rational"),
-        e.as_rational().expect("a rational"),
+        b.exact_value().expect("a finite number"),
+        e.exact_value().expect("a finite number"),
     );
-    if *vb == Rat::ONE {
+    if *vb == Rat::ONE && !b.is_float() {
         return Ok(Basic::one());
     }
     if vb.is_zero() {
-        if !rat_is_negative(ve) {
-            return Ok(Basic::zero());
+        if *ve > Rat::ZERO {
+            return Ok(if b.is_float() && e.is_float() {
+                Basic::float(&Rat::ZERO, 53)
+            } else {
+                Basic::zero()
+            });
         }
         if divide_error() {
             return Err(zero_division("division by zero"));
         }
         return Ok(Basic::zoo());
+    }
+    if let Some(prec) = super::numbers::float_operand_precision(b, e) {
+        return float_pow(vb, ve, e.is_float(), prec);
     }
     if ve.is_int() {
         let n: Int = numer(ve);

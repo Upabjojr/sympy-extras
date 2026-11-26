@@ -44,6 +44,12 @@ pub struct LatexSettings {
     pub decimal_separator: String,
     pub parenthesize_super: bool,
     pub diff_operator: String,
+    /// the floats with all the digits of their precision
+    pub full_prec: bool,
+    /// the bounds of the fixed-point notation of the floats (mpmath's
+    /// `min_fixed` and `max_fixed`)
+    pub min: Option<i64>,
+    pub max: Option<i64>,
 }
 
 impl Default for LatexSettings {
@@ -65,6 +71,9 @@ impl Default for LatexSettings {
             decimal_separator: "period".to_string(),
             parenthesize_super: true,
             diff_operator: "d".to_string(),
+            full_prec: false,
+            min: None,
+            max: None,
         }
     }
 }
@@ -416,12 +425,10 @@ fn is_one(e: &Basic) -> bool {
     *e == Basic::one()
 }
 
-/// Python's `isinstance(e, Number)`: a rational, the infinities, `nan`.
+/// Python's `isinstance(e, Number)`: a rational, a float, the
+/// infinities, `nan`.
 fn is_number_node(e: &Basic) -> bool {
-    matches!(
-        e.head(),
-        Head::Rational { .. } | Head::Infinity | Head::NegativeInfinity | Head::ComplexInfinity | Head::NaN
-    )
+    e.is_number_class()
 }
 
 /// A negative constant: what SymPy's `fraction(exact=True)` moves to the
@@ -456,6 +463,13 @@ fn split_fraction(factors: &[Basic]) -> PolyResult<(bool, Vec<Basic>, Vec<Basic>
                     denominator.push(Basic::integer(q));
                 }
                 continue;
+            }
+            if let Head::Float { value, prec } = f.head() {
+                if crate::numbers::rat_is_negative(value) {
+                    negative = true;
+                    numerator.push(Basic::float(&-value.clone(), *prec));
+                    continue;
+                }
             }
         }
         if f.is_pow() && commutative_maybe(&f.args()[0]) && negative_number(&f.args()[1]) {
@@ -497,6 +511,7 @@ fn sorted_args(e: &Basic) -> Vec<Basic> {
 fn rule(p: &LatexPrinter, e: &Basic, ctx: &Ctx) -> R {
     match e.head() {
         Head::Rational { .. } => rational(p, e, ctx),
+        Head::Float { value, prec } => float(p, value, *prec),
         Head::Infinity => Ok(atom(r"\infty")),
         Head::NegativeInfinity => {
             let mut r: Res = PrintResult::new(r"-\infty".to_string(), Binding::Negation);
@@ -637,6 +652,37 @@ fn rational(p: &LatexPrinter, e: &Basic, ctx: &Ctx) -> R {
         return Ok(r);
     }
     Ok(PrintResult::new(magnitude, binding))
+}
+
+// PORTED FROM SYMPY: sympy/printing/latex.py:LatexPrinter._print_Float
+fn float(p: &LatexPrinter, value: &crate::numbers::Rat, prec: u32) -> R {
+    let s: &LatexSettings = &p.settings;
+    let mut digits: String =
+        crate::core::float::to_str(value, crate::core::float::prec_to_dps(prec), !s.full_prec, s.min, s.max)?;
+    let negative: bool = digits.starts_with('-');
+    if negative {
+        digits.remove(0);
+    }
+    let mut binding: Binding = Binding::Atom;
+    if let Some((mantissa, exponent)) = digits.clone().split_once('e') {
+        let exponent: &str = exponent.strip_prefix('+').unwrap_or(exponent);
+        let mantissa: String = if s.decimal_separator == "comma" {
+            mantissa.replace('.', "{,}")
+        } else {
+            mantissa.to_string()
+        };
+        // a product as printed: bracketed as the base of a power (SymPy: {2.5 \cdot 10^{20}}^{2})
+        digits = format!("{}{}10^{{{}}}", mantissa, p.number_separator, exponent);
+        binding = Binding::Product;
+    } else if s.decimal_separator == "comma" {
+        digits = digits.replace('.', "{,}");
+    }
+    if negative {
+        let mut r: Res = PrintResult::new(format!("-{}", digits), Binding::Negation);
+        r.unsigned = Some(digits);
+        return Ok(r);
+    }
+    Ok(PrintResult::new(digits, binding))
 }
 
 fn add_rule(p: &LatexPrinter, e: &Basic, ctx: &Ctx) -> R {

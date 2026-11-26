@@ -231,7 +231,7 @@ pub fn numeric_value(e: &Basic, prec: usize) -> Option<Complex> {
         }
         Head::Integral => crate::integrals::evalf::integral_value(e, prec),
         Head::Sum => crate::concrete::evalf::sum_value(e, prec),
-        Head::Rational { value, .. } => real(real_rat(value, wp)),
+        Head::Rational { value, .. } | Head::Float { value, .. } => real(real_rat(value, wp)),
         Head::IndexedRoot => crate::polys::cad::indexedroot::indexed_root_value(e, wp),
         Head::TranscendentalRoot => crate::solvers::isolation::numeric_value(e, wp),
         Head::RootSum => crate::polys::rootoftools::numeric_value(e, wp),

@@ -32,6 +32,12 @@ pub enum Head {
         value: Rat,
         integer_class: bool,
     },
+    /// `Float`: an exact dyadic value, already rounded to `prec` bits
+    /// (`core.float`); equal to the floats of the same value.
+    Float {
+        value: Rat,
+        prec: u32,
+    },
     Infinity,
     NegativeInfinity,
     ComplexInfinity,
@@ -950,6 +956,7 @@ impl Head {
             Head::Rational {
                 integer_class: false, ..
             } => "Rational",
+            Head::Float { .. } => "Float",
             Head::Infinity => "Infinity",
             Head::NegativeInfinity => "NegativeInfinity",
             Head::ComplexInfinity => "ComplexInfinity",
@@ -1134,6 +1141,8 @@ impl Head {
         match (self, other) {
             // a Rational equals the Integer of the same value
             (Head::Rational { value: a, .. }, Head::Rational { value: b, .. }) => a == b,
+            // the precision is not compared (SymPy's Float.__eq__)
+            (Head::Float { value: a, .. }, Head::Float { value: b, .. }) => a == b,
             (Head::Symbol(a), Head::Symbol(b)) => a.name == b.name && a.assumptions == b.assumptions,
             (Head::Dummy(a, i), Head::Dummy(b, j)) => i == j && a.name == b.name,
             (Head::Wild(a), Head::Wild(b)) => a.same(b),
@@ -1150,7 +1159,7 @@ impl Head {
         match self {
             Head::Relational(op) => op.hash(state),
             Head::Predicate(p) => p.hash(state),
-            Head::Rational { value, .. } => {
+            Head::Rational { value, .. } | Head::Float { value, .. } => {
                 value.numerator().hash(state);
                 value.denominator().hash(state);
             }
@@ -1285,8 +1294,33 @@ impl Basic {
     pub fn is_number_class(&self) -> bool {
         matches!(
             self.0.head,
-            Head::Rational { .. } | Head::Infinity | Head::NegativeInfinity | Head::ComplexInfinity | Head::NaN
+            Head::Rational { .. }
+                | Head::Float { .. }
+                | Head::Infinity
+                | Head::NegativeInfinity
+                | Head::ComplexInfinity
+                | Head::NaN
         )
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self.0.head, Head::Float { .. })
+    }
+
+    /// The exact value of a rational or a float (`exact_value`).
+    pub fn exact_value(&self) -> Option<&Rat> {
+        match &self.0.head {
+            Head::Rational { value, .. } | Head::Float { value, .. } => Some(value),
+            _ => None,
+        }
+    }
+
+    /// The precision in bits of a float.
+    pub fn float_precision(&self) -> Option<u32> {
+        match &self.0.head {
+            Head::Float { prec, .. } => Some(*prec),
+            _ => None,
+        }
     }
 
     pub fn is_rational_class(&self) -> bool {
@@ -1350,6 +1384,19 @@ impl Basic {
                 vec![
                     CompareItem::Int(value.numerator().clone()),
                     CompareItem::Int(denom(value)),
+                ]
+            }
+            Head::Float { value, prec } => {
+                // SymPy compares the sign, the mantissa and the exponent:
+                // the negative floats sort after the positive ones
+                vec![
+                    CompareItem::Int(Int::from(rat_is_negative(value) as u8)),
+                    CompareItem::Rat(if rat_is_negative(value) {
+                        -value.clone()
+                    } else {
+                        value.clone()
+                    }),
+                    CompareItem::Int(Int::from(*prec)),
                 ]
             }
             Head::Symbol(s) => s.compare_content(),
@@ -1586,6 +1633,7 @@ impl fmt::Display for Basic {
             Head::NegativeInfinity => write!(f, "-oo"),
             Head::ComplexInfinity => write!(f, "zoo"),
             Head::NaN => write!(f, "nan"),
+            Head::Float { value, prec } => write!(f, "{}", super::float::float_str(value, *prec)),
             Head::Pi => write!(f, "pi"),
             Head::Exp1 => write!(f, "E"),
             Head::EulerGamma => write!(f, "EulerGamma"),

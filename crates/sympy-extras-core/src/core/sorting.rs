@@ -19,6 +19,8 @@ pub enum CompareItem {
     Int(Int),
     /// An assumption of a symbol `(name, value)`.
     Fact(String, bool),
+    /// The magnitude of a float.
+    Rat(crate::numbers::Rat),
 }
 
 /// The key of the `compare` order.
@@ -154,7 +156,7 @@ pub fn class_key(e: &Basic) -> ClassKey {
 /// The value which orders the numbers (`sort_value`: `0` for the
 /// infinities and `nan`).
 fn sort_value(e: &Basic) -> Rat {
-    e.as_rational().cloned().unwrap_or(Rat::ZERO)
+    e.exact_value().cloned().unwrap_or(Rat::ZERO)
 }
 
 /// The arguments part of the key of an atom (`_sort_atom_args`).
@@ -281,10 +283,11 @@ pub fn as_ordered_factors(e: &Basic) -> Vec<Basic> {
     factors
 }
 
-/// The number of nodes by which SymPy's `ordered` sorts (`_nodes`): the
-/// nodes of the tree, and for a derivative those of the function plus the
-/// number of differentiations (`Derivative(f(y), y)` counts 3). SymPy's
-/// half node of a float has no counterpart: the core has no floats.
+/// Twice the number of nodes by which SymPy's `ordered` sorts (`_nodes`):
+/// the nodes of the tree, a float counting for a half (`_node_count`:
+/// `exp(2.5*x)` sorts before `exp(2*x)`), and for a derivative those of the
+/// function plus the number of differentiations (`Derivative(f(y), y)`
+/// counts 3). Doubled so that the half of a float is an integer.
 fn nodes(e: &Basic) -> usize {
     if matches!(e.head(), Head::Derivative) {
         // an integer order counts as itself, a symbolic one by its nodes
@@ -292,12 +295,23 @@ fn nodes(e: &Basic) -> usize {
             .iter()
             .map(|pair| {
                 let n: &Basic = &pair.args()[1];
-                n.to_string().parse::<usize>().unwrap_or_else(|_| nodes(n))
+                n.to_string()
+                    .parse::<usize>()
+                    .map(|k| 2 * k)
+                    .unwrap_or_else(|_| nodes(n))
             })
             .sum();
         return nodes(&e.args()[0]) + counts;
     }
-    e.count_nodes()
+    half_nodes(e)
+}
+
+/// Twice `_node_count`.
+fn half_nodes(e: &Basic) -> usize {
+    if e.is_float() {
+        return 1;
+    }
+    2 + e.args().iter().map(half_nodes).sum::<usize>()
 }
 
 /// SymPy's `ordered` (`core.sorting.ordered`): by the number of nodes, then
