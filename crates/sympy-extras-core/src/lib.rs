@@ -45,6 +45,7 @@ pub mod numeric;
 pub mod orderedmap;
 pub mod physics;
 pub mod polys;
+pub mod printing;
 pub mod random;
 pub mod series;
 pub mod sets;

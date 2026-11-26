@@ -234,7 +234,7 @@ pub fn in_compare_order(args: &[Basic]) -> bool {
 }
 
 /// The factors of a product in the printing order (`_printing_order`).
-fn printing_order(factors: &[Basic]) -> Vec<Basic> {
+pub(crate) fn printing_order(factors: &[Basic]) -> Vec<Basic> {
     let commutative: Vec<Basic> = factors.iter().filter(|f| is_commutative_maybe(f)).cloned().collect();
     if !in_compare_order(&commutative) {
         return factors.to_vec();

@@ -968,6 +968,52 @@ fn sstr(e: &Bound<'_, PyAny>) -> PyResult<String> {
     Ok(rust_core::printing::sstr(&from_python(e)?))
 }
 
+/// `latex(e, **settings)` printed by the Rust core (the settings as a dict:
+/// the strings, booleans and the float `long_frac_ratio` of the Python
+/// `latex`).
+#[pyfunction]
+#[pyo3(signature = (e, settings=None))]
+fn latex(e: &Bound<'_, PyAny>, settings: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<String> {
+    let mut s = sympy_extras_core::printing::latex::LatexSettings::default();
+    if let Some(d) = settings {
+        for (k, v) in d.iter() {
+            let key: String = k.extract()?;
+            let text = |v: &Bound<'_, PyAny>| -> PyResult<Option<String>> {
+                if v.is_none() {
+                    Ok(None)
+                } else {
+                    Ok(Some(v.extract::<String>()?))
+                }
+            };
+            match key.as_str() {
+                "mode" => s.mode = v.extract()?,
+                "fold_frac_powers" => s.fold_frac_powers = v.extract()?,
+                "fold_func_brackets" => s.fold_func_brackets = v.extract()?,
+                "fold_short_frac" => s.fold_short_frac = if v.is_none() { None } else { Some(v.extract()?) },
+                "inv_trig_style" => s.inv_trig_style = v.extract()?,
+                "itex" => s.itex = v.extract()?,
+                "ln_notation" => s.ln_notation = v.extract()?,
+                "long_frac_ratio" => s.long_frac_ratio = if v.is_none() { None } else { Some(v.extract()?) },
+                "mul_symbol" => s.mul_symbol = text(&v)?,
+                "order" => s.order = text(&v)?,
+                "root_notation" => s.root_notation = v.extract()?,
+                "imaginary_unit" => s.imaginary_unit = v.extract()?,
+                "gothic_re_im" => s.gothic_re_im = v.extract()?,
+                "decimal_separator" => s.decimal_separator = v.extract()?,
+                "parenthesize_super" => s.parenthesize_super = v.extract()?,
+                "diff_operator" => s.diff_operator = v.extract()?,
+                other => {
+                    return Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(
+                        "not ported: the LaTeX setting {}",
+                        other
+                    )))
+                }
+            }
+        }
+    }
+    sympy_extras_core::printing::latex::latex(&from_python(e)?, s).map_err(crate::convert::err)
+}
+
 #[pyfunction]
 fn exp<'py>(py: Python<'py>, x: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(py, &exponential::exp(&from_python(x)?).map_err(crate::convert::err)?)
@@ -8093,6 +8139,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(neg, m)?)?;
     m.add_function(wrap_pyfunction!(number_pow, m)?)?;
     m.add_function(wrap_pyfunction!(sstr, m)?)?;
+    m.add_function(wrap_pyfunction!(latex, m)?)?;
     m.add_function(wrap_pyfunction!(exp, m)?)?;
     m.add_function(wrap_pyfunction!(log, m)?)?;
     m.add_function(wrap_pyfunction!(as_numer_denom, m)?)?;
