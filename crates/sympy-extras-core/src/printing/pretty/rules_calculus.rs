@@ -107,7 +107,10 @@ fn integral(p: &PrettyPrinter, e: &Basic, ctx: &PrettyContext) -> R {
     for integral in &chain {
         let h: usize = arg.height();
         let height: usize = h + 2 + if ascii_mode { 2 } else { 0 };
-        let mut sign: Picture = Picture::text(&p.symbology.vobj("int", height), arg.baseline + ((height - h) / 2) as i64);
+        let mut sign: Picture = Picture::text(
+            &p.symbology.vobj("int", height),
+            arg.baseline + ((height - h) / 2) as i64,
+        );
         let (_, _, bounds) = crate::integrals::integral::parts(integral);
         if let Some((a, b)) = bounds {
             let mut lower: Picture = p.operand(a, &ctx.delimited())?;

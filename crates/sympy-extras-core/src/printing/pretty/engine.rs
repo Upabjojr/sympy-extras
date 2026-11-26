@@ -171,7 +171,10 @@ impl PrettyPrinter {
     pub fn fraction(&self, numerator: &Picture, denominator: &Picture) -> Picture {
         let width: usize = numerator.width().max(denominator.width());
         let bar: Picture = Picture::of(&self.symbology.hobj("-", width));
-        Picture::new(Picture::stacked(&[numerator, &bar, denominator]), numerator.height() as i64)
+        Picture::new(
+            Picture::stacked(&[numerator, &bar, denominator]),
+            numerator.height() as i64,
+        )
     }
 
     /// `base` with `exponent` raised at its right (`power`).

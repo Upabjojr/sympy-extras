@@ -1,8 +1,8 @@
 """The LaTeX of the objects which are not functions
 (``printing/latex_objects.rs``) against ``sympy_extras.printing.latex``:
 piecewise expressions, sums, products, integrals, sets, quantifiers,
-limits, order terms, accumulation bounds; the nodes not ported yet are a
-skip on the Rust side."""
+limits, order terms, accumulation bounds, roots of polynomials; the
+nodes not ported yet are a skip on the Rust side."""
 
 from __future__ import annotations
 
@@ -27,7 +27,12 @@ def _cases() -> list[Any]:
     from sympy_extras.sets.fancysets import Complexes, Integers, Naturals, Naturals0, Rationals
     from sympy_extras.sets.sets import EmptySet, Reals, UniversalSet
     from sympy_extras.core.containers import Tuple
-    x, y, z = Symbol('x'), Symbol('y'), Symbol('z')
+    from sympy_extras.core.function import Lambda
+    from sympy_extras.polys.cad.indexedroot import IndexedRoot
+    from sympy_extras.polys.complexrootof import CRootOf
+    from sympy_extras.polys.rootoftools import RootSum
+    from sympy_extras.solvers.isolation import TranscendentalRoot
+    x, y, z, t = Symbol('x'), Symbol('y'), Symbol('z'), Symbol('t')
     k, n = Symbol('k', integer=True), Symbol('n', integer=True)
     one, zero = Integer(1), Integer(0)
     pw = f.Piecewise((x, x > 0), (-x, True))
@@ -46,7 +51,9 @@ def _cases() -> list[Any]:
             ConditionSet(x, Eq(x**2, 1), UniversalSet), PowerSet(FiniteSet(one, Integer(2))),
             Contains(x, Interval(zero, one)), forall(x, x**2 >= 0), exists((x, y), Eq(x, y)),
             Limit(f.sin(x)/x, x, zero), Limit(1/x, x, zero, '-'), Limit(x, x, oo), Limit(f.exp(x), x, one, '+-'),
-            O(x**3), O(x, (x, oo)), O(x*y), x + O(x**2), AccumBounds(-one, one), AccumBounds(zero, Rational(1, 2))]
+            O(x**3), O(x, (x, oo)), O(x*y), x + O(x**2), AccumBounds(-one, one), AccumBounds(zero, Rational(1, 2)),
+            CRootOf(x**3 - x - 1, 0), RootSum(t**3 + t + 1, Lambda(t, t**2 + x), t), IndexedRoot(x**2 - 2, x, 1),
+            TranscendentalRoot(f.cos(x) - x, x, 0, 1), RootSum(t**3 + t + 1, Lambda(t, t*f.log(x - t)), t)]
 
 
 @pytest.mark.parametrize("index", range(len(_cases())))

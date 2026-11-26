@@ -343,7 +343,9 @@ fn indices(
     } else {
         left.below(&[right])
     };
-    sign.with_baseline(above as i64).right(&[&block]).with_baseline((above + add) as i64)
+    sign.with_baseline(above as i64)
+        .right(&[&block])
+        .with_baseline((above + add) as i64)
 }
 
 fn hyper(p: &PrettyPrinter, e: &Basic, ctx: &PrettyContext) -> R {

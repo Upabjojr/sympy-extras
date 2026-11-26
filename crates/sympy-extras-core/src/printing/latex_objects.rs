@@ -1,8 +1,8 @@
 //! Port of `sympy_extras/printing/_latex_objects.py` and of the calculus
 //! rules of `latex.py` which are not functions: piecewise expressions,
 //! sums, products and integrals, sets, quantifiers, limits, order terms,
-//! accumulation bounds. Not ported yet: the sequences, the series and the
-//! roots of polynomials (not nodes of the core, or not yet mapped).
+//! accumulation bounds, the roots of polynomials. Not ported yet: the
+//! sequences and the series (not nodes of the core).
 
 // PORTED FROM SYMPY: sympy/printing/latex.py:LatexPrinter._print_Piecewise, _print_Sum, _print_Product,
 // _print_Integral, _print_ProductSet, _print_Interval, _print_ImageSet, _print_ConditionSet,
@@ -112,8 +112,56 @@ pub(crate) fn object_rule(p: &LatexPrinter, e: &Basic, ctx: &Ctx) -> Option<R> {
                 p.inside(&e.args()[1], ctx)?
             )))
         })(),
+        Head::ComplexRootOf(_) => (|| {
+            let index: usize = crate::polys::complexrootof::index_of_node(e);
+            Ok(applied_atom(format!(
+                r"\operatorname{{CRootOf}} {{\left({}, {}\right)}}",
+                p.inside(&e.args()[0], ctx)?,
+                index
+            )))
+        })(),
+        Head::RootSum => (|| {
+            let (f, var, body, _) = crate::polys::rootoftools::parts(e);
+            // the function is a Lambda of one variable: \left( x \mapsto body \right)
+            let fun: String = format!(
+                r"\left( {} \mapsto {} \right)",
+                p.inside(var, ctx)?,
+                p.inside(body, ctx)?
+            );
+            Ok(applied_atom(format!(
+                r"\operatorname{{RootSum}} {{\left({}, {}\right)}}",
+                p.inside(f, ctx)?,
+                fun
+            )))
+        })(),
+        Head::IndexedRoot => (|| {
+            let (f, t, k) = crate::polys::cad::indexedroot::shown_parts(e);
+            Ok(applied_atom(format!(
+                r"\operatorname{{Root}}_{{{}}} {{\left({}, {}\right)}}",
+                k,
+                p.inside(&f, ctx)?,
+                p.inside(&t, ctx)?
+            )))
+        })(),
+        Head::TranscendentalRoot => (|| {
+            let a: &[Basic] = e.args();
+            Ok(applied_atom(format!(
+                r"\operatorname{{Root}} {{\left({}, {} \in \left({}, {}\right)\right)}}",
+                p.inside(&a[0], ctx)?,
+                p.inside(&a[1], ctx)?,
+                p.inside(&a[2], ctx)?,
+                p.inside(&a[3], ctx)?
+            )))
+        })(),
         _ => return None,
     })
+}
+
+/// A notation applied to bracketed arguments (`Binding.APPLICATION`, `applies`).
+fn applied_atom(tex: String) -> Res {
+    let mut r: Res = PrintResult::new(tex, Binding::Application);
+    r.applies = true;
+    r
 }
 
 fn piecewise(p: &LatexPrinter, e: &Basic, ctx: &Ctx) -> R {

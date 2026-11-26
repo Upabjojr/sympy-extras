@@ -1,9 +1,10 @@
 //! Port of the parts of `sympy_extras/printing/pretty/rules_other.py` on
-//! the nodes of the core: the quantifiers and the non-elementary
-//! integrals. Not ported yet: the roots of polynomials, the sequences and
-//! the series.
+//! the nodes of the core: the quantifiers, the non-elementary integrals,
+//! the roots of polynomials. Not ported yet: the sequences and the series.
 
-// PORTED FROM SYMPY: through sympy_extras/printing/pretty/rules_other.py (the quantifiers are original)
+// PORTED FROM SYMPY: sympy/printing/pretty/pretty.py:PrettyPrinter._print_ComplexRootOf, _print_RootSum,
+// _print_Lambda (SymPy 1.14, BSD license; through sympy_extras/printing/pretty/rules_other.py; the
+// quantifiers are original)
 
 use super::engine::PrettyPrinter;
 use super::layout::{Picture, PrettyContext, PrettyResult};
@@ -21,6 +22,43 @@ pub fn other_rule(p: &PrettyPrinter, e: &Basic, ctx: &PrettyContext) -> PolyResu
             let integral: Basic = crate::integrals::integral::integral(&e.args()[0], &e.args()[1], None)?;
             p.rule(&integral, ctx)?
         }
+        Head::ComplexRootOf(_) => {
+            let index: usize = crate::polys::complexrootof::index_of_node(e);
+            let inside: Picture = p.join(
+                &[
+                    p.operand(&e.args()[0], &ctx.delimited())?,
+                    Picture::of(&index.to_string()),
+                ],
+                ", ",
+            );
+            p.applied(&Picture::of("CRootOf"), &inside, ctx)
+        }
+        Head::RootSum => {
+            let (f, var, body, _) = crate::polys::rootoftools::parts(e);
+            // the function is a Lambda of one variable (`_lambda`)
+            let arrow: String = format!(" {} ", p.symbology.atom("ArrowFromBar", "->"));
+            let fun: Picture = Picture::beside(&[
+                &p.operand(var, &ctx.delimited())?,
+                &Picture::of(&arrow),
+                &p.operand(body, &ctx.at(Position::Body, Binding::Lowest, ChildOptions::default()))?,
+            ]);
+            let inside: Picture = p.join(&[p.operand(f, &ctx.delimited())?, fun], ", ");
+            p.applied(&Picture::of("RootSum"), &inside, ctx)
+        }
+        Head::IndexedRoot => {
+            let (f, t, k) = crate::polys::cad::indexedroot::shown_parts(e);
+            let inside: Picture = p.join(
+                &[
+                    p.operand(&f, &ctx.delimited())?,
+                    p.operand(&t, &ctx.delimited())?,
+                    Picture::of(&k.to_string()),
+                ],
+                ", ",
+            );
+            p.applied(&Picture::of("IndexedRoot"), &inside, ctx)
+        }
+        // no notation of its own: its string form (`generic`)
+        Head::TranscendentalRoot => p.generic(e),
         _ => return Ok(None),
     }))
 }
