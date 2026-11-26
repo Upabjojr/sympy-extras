@@ -6,3 +6,4 @@ pub mod framework;
 pub mod latex;
 pub mod latex_names;
 pub mod latex_objects;
+pub mod pretty;

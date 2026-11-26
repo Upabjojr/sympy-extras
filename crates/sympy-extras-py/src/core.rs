@@ -1014,6 +1014,36 @@ fn latex(e: &Bound<'_, PyAny>, settings: Option<&Bound<'_, pyo3::types::PyDict>>
     sympy_extras_core::printing::latex::latex(&from_python(e)?, s).map_err(crate::convert::err)
 }
 
+/// `pretty(e, **settings)` printed by the Rust core (the settings as a
+/// dict: `use_unicode`, `wrap_line`, `num_columns`, `order`,
+/// `root_notation`, `use_unicode_sqrt_char`, `imaginary_unit`).
+#[pyfunction]
+#[pyo3(signature = (e, settings=None))]
+fn pretty(e: &Bound<'_, PyAny>, settings: Option<&Bound<'_, pyo3::types::PyDict>>) -> PyResult<String> {
+    let mut s = sympy_extras_core::printing::pretty::engine::PrettySettings::default();
+    if let Some(d) = settings {
+        for (k, v) in d.iter() {
+            let key: String = k.extract()?;
+            match key.as_str() {
+                "use_unicode" => s.use_unicode = v.extract()?,
+                "wrap_line" => s.wrap_line = v.extract()?,
+                "num_columns" => s.num_columns = if v.is_none() { None } else { Some(v.extract()?) },
+                "order" => s.order = if v.is_none() { None } else { Some(v.extract()?) },
+                "root_notation" => s.root_notation = v.extract()?,
+                "use_unicode_sqrt_char" => s.use_unicode_sqrt_char = v.extract()?,
+                "imaginary_unit" => s.imaginary_unit = v.extract()?,
+                other => {
+                    return Err(pyo3::exceptions::PyNotImplementedError::new_err(format!(
+                        "not ported: the pretty setting {}",
+                        other
+                    )))
+                }
+            }
+        }
+    }
+    sympy_extras_core::printing::pretty::pretty(&from_python(e)?, s).map_err(crate::convert::err)
+}
+
 #[pyfunction]
 fn exp<'py>(py: Python<'py>, x: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     to_python(py, &exponential::exp(&from_python(x)?).map_err(crate::convert::err)?)
@@ -8140,6 +8170,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(number_pow, m)?)?;
     m.add_function(wrap_pyfunction!(sstr, m)?)?;
     m.add_function(wrap_pyfunction!(latex, m)?)?;
+    m.add_function(wrap_pyfunction!(pretty, m)?)?;
     m.add_function(wrap_pyfunction!(exp, m)?)?;
     m.add_function(wrap_pyfunction!(log, m)?)?;
     m.add_function(wrap_pyfunction!(as_numer_denom, m)?)?;
